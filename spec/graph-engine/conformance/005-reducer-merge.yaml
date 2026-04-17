@@ -1,0 +1,31 @@
+state:
+  fields:
+    metadata:
+      type: dict<string,string>
+      reducer: merge
+      default: {source: "seed"}
+
+entry: a
+
+nodes:
+  a:
+    update: {metadata: {author: "alice", stage: "draft"}}
+  b:
+    update: {metadata: {stage: "final", reviewer: "bob"}}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: END}
+
+initial_state: {}
+
+expected:
+  # Merge semantics: later writes win on key conflict; non-conflicting keys from
+  # both writers are preserved; keys present only in the prior state are kept.
+  final_state:
+    metadata:
+      source: "seed"
+      author: "alice"
+      stage: "final"
+      reviewer: "bob"
+  execution_order: [a, b]

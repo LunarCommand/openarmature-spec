@@ -1,0 +1,32 @@
+state:
+  fields:
+    v:
+      type: string
+      default: ""
+
+entry: a
+
+nodes:
+  a:
+    update: {v: "a"}
+  b:
+    update: {v: "b"}
+
+edges:
+  # Conditional edge whose `else` branch names a node that is not declared.
+  # Routing must fail at runtime with a categorized routing error.
+  - from: a
+    condition:
+      if_field: v
+      equals: "nope"
+      then: b
+      else: ghost
+  - {from: b, to: END}
+
+initial_state: {}
+
+expected_error:
+  category: routing_error
+  # Pre-failure state MUST be recoverable from the raised error.
+  recoverable_state:
+    v: "a"

@@ -1,0 +1,37 @@
+state:
+  fields:
+    count:
+      type: int
+      default: 0
+    log:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {count: 1, log: ["a"]}
+  b:
+    update: {log: ["b"]}
+
+edges:
+  # Conditional edge evaluated against post-update state: after node `a` runs,
+  # count == 1, so this MUST route to END (not to `b`, which is what the
+  # pre-update state `count == 0` would have selected).
+  - from: a
+    condition:
+      if_field: count
+      equals: 1
+      then: END
+      else: b
+  - {from: b, to: END}
+
+initial_state: {count: 0}
+
+expected:
+  final_state:
+    count: 1
+    log: ["a"]
+  execution_order: [a]

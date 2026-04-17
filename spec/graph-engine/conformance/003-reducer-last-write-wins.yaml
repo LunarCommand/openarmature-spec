@@ -1,0 +1,25 @@
+state:
+  fields:
+    value:
+      type: string
+      default: ""
+      reducer: last_write_wins
+
+entry: a
+
+nodes:
+  a:
+    update: {value: "first"}
+  b:
+    update: {value: "second"}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: END}
+
+initial_state: {}
+
+expected:
+  final_state:
+    value: "second"
+  execution_order: [a, b]
