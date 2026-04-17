@@ -1,9 +1,9 @@
 # 0001: Graph Engine Foundation
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-04-16
-- **Accepted:**
+- **Accepted:** 2026-04-16
 - **Targets:** spec/graph-engine/spec.md (creates)
 - **Related:**
 - **Supersedes:**
