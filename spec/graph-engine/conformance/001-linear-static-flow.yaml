@@ -1,0 +1,32 @@
+state:
+  fields:
+    greeting:
+      type: string
+      default: ""
+    log:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {greeting: "hello", log: ["a"]}
+  b:
+    update: {greeting: "hello world", log: ["b"]}
+  c:
+    update: {log: ["c"]}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+expected:
+  final_state:
+    greeting: "hello world"
+    log: ["a", "b", "c"]
+  execution_order: [a, b, c]

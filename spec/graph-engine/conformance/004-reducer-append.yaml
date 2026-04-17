@@ -1,0 +1,25 @@
+state:
+  fields:
+    items:
+      type: list<string>
+      reducer: append
+      default: ["seed"]
+
+entry: a
+
+nodes:
+  a:
+    update: {items: ["x", "y"]}
+  b:
+    update: {items: ["z"]}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: END}
+
+initial_state: {}
+
+expected:
+  final_state:
+    items: ["seed", "x", "y", "z"]
+  execution_order: [a, b]

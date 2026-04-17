@@ -1,0 +1,34 @@
+state:
+  fields:
+    log:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {log: ["a"]}
+  b:
+    raises: "boom"
+  c:
+    # Should never run — execution halts when b raises.
+    update: {log: ["c"]}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+expected_error:
+  category: node_exception
+  raised_from: b
+  message: "boom"
+  # State at point of failure reflects a's update merged in, but not b's
+  # (b raised before returning any update) and not c's (c never ran).
+  recoverable_state:
+    log: ["a"]
+  execution_order: [a, b]

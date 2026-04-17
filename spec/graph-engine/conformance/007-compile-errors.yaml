@@ -1,0 +1,77 @@
+# Table fixture: each case is an invalid graph definition whose compilation
+# MUST fail with the named diagnostic category. Adapters assert that
+# compilation raises an error whose category matches `expected_compile_error`.
+
+cases:
+  - name: no_declared_entry
+    graph:
+      state:
+        fields:
+          v: {type: string, default: ""}
+      # entry omitted
+      nodes:
+        a: {update: {v: "a"}}
+      edges:
+        - {from: a, to: END}
+    expected_compile_error: no_declared_entry
+
+  - name: unreachable_node
+    graph:
+      state:
+        fields:
+          v: {type: string, default: ""}
+      entry: a
+      nodes:
+        a: {update: {v: "a"}}
+        orphan: {update: {v: "orphan"}}
+      edges:
+        - {from: a, to: END}
+    expected_compile_error: unreachable_node
+
+  - name: dangling_edge_target
+    graph:
+      state:
+        fields:
+          v: {type: string, default: ""}
+      entry: a
+      nodes:
+        a: {update: {v: "a"}}
+      edges:
+        # `ghost` is not declared as a node.
+        - {from: a, to: ghost}
+    expected_compile_error: dangling_edge
+
+  - name: multiple_outgoing_edges
+    graph:
+      state:
+        fields:
+          v: {type: string, default: ""}
+      entry: a
+      nodes:
+        a: {update: {v: "a"}}
+        b: {update: {v: "b"}}
+        c: {update: {v: "c"}}
+      edges:
+        - {from: a, to: b}
+        - {from: a, to: c}
+        - {from: b, to: END}
+        - {from: c, to: END}
+    expected_compile_error: multiple_outgoing_edges
+
+  - name: conflicting_reducers
+    graph:
+      state:
+        fields:
+          # Conflicting reducer declarations for the same field. The exact
+          # surface form depends on the implementation; the invariant is that
+          # declaring two distinct reducers for one field is a compile error.
+          v:
+            type: list<string>
+            reducer: append
+            alt_reducer: last_write_wins
+      entry: a
+      nodes:
+        a: {update: {v: ["a"]}}
+      edges:
+        - {from: a, to: END}
+    expected_compile_error: conflicting_reducers

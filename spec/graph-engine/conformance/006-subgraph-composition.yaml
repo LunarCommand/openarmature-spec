@@ -1,0 +1,64 @@
+# Subgraph composition: a compiled inner graph is used as a node within an outer
+# graph. The subgraph sees a projection of the parent state (fields with matching
+# names) and its final partial update is merged back into the parent using the
+# parent's reducers.
+
+subgraph:
+  name: inner
+  state:
+    fields:
+      message:
+        type: string
+        default: ""
+      trace:
+        type: list<string>
+        reducer: append
+        default: []
+
+  entry: x
+
+  nodes:
+    x:
+      update: {message: "from-x", trace: ["x"]}
+    y:
+      update: {message: "from-y", trace: ["y"]}
+
+  edges:
+    - {from: x, to: y}
+    - {from: y, to: END}
+
+state:
+  fields:
+    message:
+      type: string
+      default: ""
+    trace:
+      type: list<string>
+      reducer: append
+      default: ["outer-start"]
+
+entry: outer_a
+
+nodes:
+  outer_a:
+    update: {trace: ["outer_a"]}
+  outer_sub:
+    subgraph: inner
+  outer_b:
+    update: {trace: ["outer_b"]}
+
+edges:
+  - {from: outer_a, to: outer_sub}
+  - {from: outer_sub, to: outer_b}
+  - {from: outer_b, to: END}
+
+initial_state: {}
+
+expected:
+  final_state:
+    # Subgraph's last `message` write (`"from-y"`) merges back via outer's
+    # last_write_wins; subgraph's `trace` (`["x", "y"]`) merges back via
+    # outer's `append` reducer.
+    message: "from-y"
+    trace: ["outer-start", "outer_a", "x", "y", "outer_b"]
+  execution_order: [outer_a, outer_sub, outer_b]

@@ -1,0 +1,46 @@
+# Determinism: the same graph, same initial state, and same node implementations
+# MUST produce byte-for-byte identical final state and execution order across
+# runs. Adapters MUST execute this fixture at least twice and assert deep
+# equality on both results.
+
+run_count: 2
+
+state:
+  fields:
+    counter:
+      type: int
+      default: 0
+    log:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {counter: 1, log: ["a"]}
+  b:
+    update: {counter: 2, log: ["b"]}
+  c:
+    update: {counter: 3, log: ["c"]}
+
+edges:
+  - from: a
+    condition:
+      if_field: counter
+      equals: 1
+      then: b
+      else: c
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+expected:
+  final_state:
+    counter: 3
+    log: ["a", "b", "c"]
+  execution_order: [a, b, c]
+  # Each of the `run_count` executions MUST produce final_state and
+  # execution_order equal to the above AND equal to every other run's result.
