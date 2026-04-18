@@ -48,14 +48,18 @@ field has exactly one reducer. The default reducer is _last-write-wins_ (the new
 Implementations MUST provide at least: `last_write_wins`, `append` (for list-typed fields), and `merge`
 (for mapping-typed fields). Users MAY register custom reducers per field.
 
-**Subgraph.** A compiled graph used as a node inside another graph. A subgraph receives a view of the parent's
-state (projected onto the subgraph's state schema) and returns a partial update merged back into the parent.
-Projection and merging use the same reducer rules as ordinary nodes.
+**Subgraph.** A compiled graph used as a node inside another graph. A subgraph executes against its own state
+schema and produces a partial update that is merged into the parent's state. The merge uses the same reducer
+rules as ordinary nodes — parent reducers, applied to parent fields.
 
-Projection defaults to **field-name matching**: parent fields whose names match subgraph fields are copied
-into the subgraph's initial state, and the subgraph's final values for those same-named fields are merged
-back into the parent via the parent's reducers. Alternative projection strategies (e.g., explicit
-input/output mapping) are out of scope for this specification and will be addressed by follow-on proposals.
+By default, no projection in occurs: the subgraph runs from the initial state defined by its own schema's
+field defaults, independent of the parent's current state.
+
+Projection out defaults to **field-name matching**: when the subgraph completes, the values of any subgraph
+fields whose names match parent fields are merged into those parent fields via the parent's reducers.
+Subgraph fields with no matching parent field are discarded. Alternative projection strategies (e.g.,
+explicit input/output mapping that copies named parent fields into the subgraph at entry) are out of scope
+for this specification and will be addressed by follow-on proposals.
 
 **Compiled graph.** The result of compiling a graph definition. A compiled graph is immutable and executable.
 The entry node MUST be declared explicitly by the graph author — there is no implicit "first node added"
@@ -78,9 +82,11 @@ identifiers (as an error class, error code, or tagged discriminant, per the lang
 2. The current node's async function is invoked with the current state. Its returned partial update is merged
    into state using each field's reducer.
 3. The engine then evaluates the outgoing edge from the current node:
-   - If static: route to the fixed destination.
-   - If conditional: invoke the edge function with the **post-update** state — i.e., the state reflecting the
-     partial update merged in step 2. The returned value is the destination node name or the `END` sentinel.
+
+- If static: route to the fixed destination.
+- If conditional: invoke the edge function with the **post-update** state — i.e., the state reflecting the
+  partial update merged in step 2. The returned value is the destination node name or the `END` sentinel.
+
 4. If the destination is `END`, execution halts and the final state is returned.
 5. Otherwise, repeat from step 2 with the destination node.
 
