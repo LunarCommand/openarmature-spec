@@ -489,7 +489,7 @@ graph.add_edge("chunk_transcript", "analyze_chunks")
 graph.add_edge("analyze_chunks", Graph.END)
 
 pipeline = graph.compile()
-result = await pipeline.run(PipelineState(video_url="https://..."))
+result = await pipeline.invoke(PipelineState(video_url="https://..."))
 ```
 
 Control flow is deterministic. LLM calls are scoped to the `analyze_chunks` step. Checkpointing lets a failed run resume
