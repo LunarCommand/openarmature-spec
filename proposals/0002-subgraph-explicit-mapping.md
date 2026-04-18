@@ -12,15 +12,17 @@
 
 Add an optional explicit input/output mapping to subgraph composition, allowing graph authors to declare
 which parent fields feed which subgraph fields on entry, and which subgraph fields merge back into which
-parent fields on exit. When no mapping is declared, field-name matching (the default established by
-proposal 0001) applies unchanged.
+parent fields on exit. When no mapping is declared, the §2 defaults established by proposal 0001 apply
+unchanged: no projection in (the subgraph runs from its own schema defaults), and field-name matching for
+projection out.
 
 ## Motivation
 
-Proposal 0001 established field-name matching as the default projection rule between parent and subgraph
-state. That default is ergonomic when schemas align by name, but it forces tight coupling between a
-subgraph's field names and every parent that wants to use it. Three real cases break down under
-name-matching-only:
+Proposal 0001 established two defaults for subgraph composition: **no projection in** (subgraphs run from
+their own schema's field defaults, independent of the parent), and **field-name matching for projection
+out** (subgraph fields whose names match parent fields merge back via the parent's reducers; non-matching
+subgraph fields are discarded). Those defaults are simple and predictable, but they leave several real
+composition needs unaddressed. Three cases that break down under the name-matching-only defaults:
 
 1. **Reusable subgraphs.** A subgraph designed to be instantiated in multiple parent graphs becomes
    dependent on each parent using identical field names. If one parent calls its message field `message`
@@ -30,9 +32,10 @@ name-matching-only:
    a research subgraph run once per candidate in a list), both instances would read from and write to the
    same parent fields under name matching. The author needs a way to point each instance at different
    parent fields.
-3. **Partial projection.** A subgraph may declare fields that the parent should *not* supply (e.g.,
-   internal scratch state the subgraph initializes itself). Name matching either over-shares or forces
-   the subgraph to rename its internal fields to avoid collision.
+3. **Field-name collision on output.** A subgraph may declare internal scratch fields that happen to share
+   names with parent fields. Under default name-matching projection-out, those scratch values would leak
+   back into the parent. The subgraph author can avoid this only by renaming internal fields to be globally
+   unique across every parent that uses the subgraph — burdensome and brittle.
 
 Without explicit mapping, authors work around these by inserting pre/post-processing nodes that shuffle
 state, which is boilerplate that belongs in graph composition, not in user code.
@@ -54,20 +57,33 @@ introduced by proposal 0001:
 >   parent's reducer for that field. Subgraph fields not named in `outputs` are discarded — they do NOT
 >   fall through to field-name matching.
 >
-> When `inputs` is present, it **replaces** field-name matching for projection-in. When `outputs` is
-> present, it **replaces** field-name matching for projection-out. The two directions are independent:
-> a subgraph-as-node MAY declare `inputs` only, `outputs` only, both, or neither (in which case the
-> default field-name-matching rule from §2 applies to both directions).
+> The two directions are independent: a subgraph-as-node MAY declare `inputs` only, `outputs` only, both,
+> or neither.
+>
+> - When `inputs` is absent, the default from §2 applies: no projection in. The subgraph runs from its own
+>   schema defaults.
+> - When `inputs` is present, named parent fields are copied to their mapped subgraph fields at entry; all
+>   other subgraph fields receive their schema-declared defaults.
+> - When `outputs` is absent, the default from §2 applies: subgraph fields whose names match parent fields
+>   are merged back via the parent's reducers; non-matching subgraph fields are discarded.
+> - When `outputs` is present, it **replaces** field-name matching for projection-out: only the
+>   parent/subgraph field pairs named in `outputs` are merged, via the parent's reducer for the named
+>   parent field. All other subgraph fields are discarded.
+>
+> This asymmetry — `inputs` additive, `outputs` replacement — is intentional. It reflects the asymmetry in
+> the §2 defaults themselves: projection-in is off by default (so `inputs` turns it on for listed fields),
+> while projection-out is on by default via field-name matching (so `outputs` replaces it to avoid
+> ambiguous mixed rules).
 >
 > Compilation MUST fail if an `inputs` mapping names a parent field that is not declared in the parent's
 > state schema, or a subgraph field that is not declared in the subgraph's state schema. The same rule
 > applies symmetrically to `outputs`.
 
-**Precedence rationale.** Replace rather than extend. Falling through from explicit mapping to field-name
-matching would produce confusing hybrid behavior where some fields follow one rule and some follow
-another, and authors would have to reason about which fields they "forgot" to list. Making explicit
-mapping a clean replacement keeps the behavior predictable: if you declare a mapping, what you see is
-what you get.
+**Precedence rationale (`outputs`).** Replace rather than extend. Falling through from `outputs` to
+field-name matching for unlisted subgraph fields would produce confusing hybrid behavior where some
+fields follow the explicit mapping and some follow the default, and authors would have to reason about
+which fields they "forgot" to list. Clean replacement keeps the behavior predictable: if you declare an
+`outputs` mapping, what you see is what you get.
 
 **Type compatibility.** Implementations SHOULD validate at compile time that the types of mapped
 parent/subgraph field pairs are compatible (per the language's type system's notion of compatibility).
