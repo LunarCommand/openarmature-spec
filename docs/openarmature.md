@@ -152,15 +152,15 @@ the patterns below are distilled observations, not retrofits.
 
 ### 2.1 Projects Behind the Design
 
-| Project            | Type                               | Key contribution                                                                                                                                             |
-| ------------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Rotas**          | Tool-calling agent                 | Glue-tax quantification: ~40% of 5,284 lines bridging framework gaps (MCP production hardening, observability wiring, prompt DIY, eval-as-parallel-codebase) |
-| **Multivac**       | LLM pipeline (content analysis)    | Prompt-pair pattern, multi-stage LLM pipeline with typed inter-stage contracts                                                                               |
-| **Bird-Dog**       | LLM pipeline (creator sourcing)    | Checkpoint/resumability, batch processing with incremental persistence, per-stage rerun from checkpoint                                                      |
-| **Audio Refinery** | Non-LLM ML pipeline (GPU audio)    | Resource lifecycle management, per-item vs per-stage strategies, Ghost Track recovery                                                                        |
-| **MBT Game Agent** | Tool-calling agent (game)          | Tiered decision-making, conversation memory reconstruction from external state                                                                               |
-| **Manukora S&OP**  | Minimal LLM pipeline (forecasting) | "Calculate first, reason second" — deterministic computation followed by LLM narrative generation                                                            |
-| **Forbin**         | MCP tooling (CLI)                  | MCP server exploration, schema discovery, connection diagnostics                                                                                             |
+| Type                               | Key contribution                                                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tool-calling agent                 | Glue-tax quantification: ~40% of the codebase bridging framework gaps (MCP production hardening, observability wiring, prompt DIY, eval-as-parallel-codebase) |
+| LLM pipeline (content analysis)    | Prompt-pair pattern, multi-stage LLM pipeline with typed inter-stage contracts                                                                                |
+| LLM pipeline (creator sourcing)    | Checkpoint/resumability, batch processing with incremental persistence, per-stage rerun from checkpoint                                                       |
+| Non-LLM ML pipeline (GPU audio)    | Resource lifecycle management, per-item vs per-stage strategies, Ghost Track recovery                                                                         |
+| Tool-calling agent (game)          | Tiered decision-making, conversation memory reconstruction from external state                                                                                |
+| Minimal LLM pipeline (forecasting) | "Calculate first, reason second" — deterministic computation followed by LLM narrative generation                                                             |
+| MCP tooling (CLI)                  | MCP server exploration, schema discovery, connection diagnostics                                                                                              |
 
 ### 2.2 Distilled Patterns
 
