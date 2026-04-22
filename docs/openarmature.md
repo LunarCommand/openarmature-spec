@@ -215,25 +215,31 @@ LLM generates narrative or interpretation. The framework should make the boundar
 **1. LLM pipelines and agents share primitives.** The graph engine is agnostic to whether control flow is LLM-driven or
 deterministic. Pipeline utilities are first-class in core, not an afterthought. Agents work with the same primitives.
 
-**2. Focused core, composable ecosystem.** The core handles orchestration, state, LLM abstraction, tool dispatch, and
+**2. The engine is content-agnostic.** A node is an opaque IO boundary — a black-box async function that returns a
+partial update. The engine has no concept of LLMs, tools, or external systems, so validation, retry, and recovery of
+external inputs (JSON parsing, schema drift, truncated responses, timeouts) are node-internal concerns.
+`NodeException` with `recoverable_state` is the crash-context primitive; patterns built on top (retries, graceful
+degradation, circuit breakers) belong at the user level or in pipeline utilities, not the engine.
+
+**3. Focused core, composable ecosystem.** The core handles orchestration, state, LLM abstraction, tool dispatch, and
 prompt interfaces. Evaluation, observability backends, and provider integrations live in sibling packages. Swap a
 backend by installing a different sibling.
 
-**3. MCP-native.** Tool discovery, calling, retry, cold-start handling, and transport management are first-class in
+**4. MCP-native.** Tool discovery, calling, retry, cold-start handling, and transport management are first-class in
 core. Remote and local tools use the same `ToolSet` interface.
 
-**4. Ambient observability via interfaces.** The core defines observability contracts (trace context, span creation,
+**5. Ambient observability via interfaces.** The core defines observability contracts (trace context, span creation,
 correlation IDs) and provides instrumentation automatically. Specific backends (Langfuse, OTEL/HyperDX, Datadog)
 implement the contracts. Switching backends is a package swap.
 
-**5. Evaluation as a sibling, not built-in.** Metric base classes and `EvalCase` live in core. The test runner, SQLite
+**6. Evaluation as a sibling, not built-in.** Metric base classes and `EvalCase` live in core. The test runner, SQLite
 persistence, trend charts, and CLI live in `openarmature-eval`. This keeps core dependency-light while making eval a
 first-class ecosystem citizen.
 
-**6. No built-in prompts.** The framework never embeds hidden prompt text that shapes LLM behavior. No ReAct templates,
+**7. No built-in prompts.** The framework never embeds hidden prompt text that shapes LLM behavior. No ReAct templates,
 no default personas. Every prompt the LLM sees is authored by the developer.
 
-**7. Escape hatches everywhere.** Every default can be overridden. The framework handles the common case; developers
+**8. Escape hatches everywhere.** Every default can be overridden. The framework handles the common case; developers
 handle the exceptional case.
 
 ### 3.2 Package Structure
