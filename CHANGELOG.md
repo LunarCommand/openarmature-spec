@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-04-28
+
+### Fixed
+
+- Conformance fixture `013-observer-subgraph-namespacing-and-ordering` was syntactically invalid YAML and could not be parsed by spec-conforming loaders (PyYAML, libyaml). The four `parent_states:` values inside the flow-style event mappings used block-style sub-sequences (`- {...}`), which YAML 1.2 §8.1.2 forbids inside a flow context. Converted those four sub-sequences to flow style (`[{...}]`); the parsed semantic content is unchanged. No spec text or fixture expectations changed.
+
 ## [0.3.0] — 2026-04-27
 
 ### Added
