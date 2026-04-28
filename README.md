@@ -4,10 +4,11 @@ Language-agnostic specification for [OpenArmature](docs/openarmature.md) — a w
 
 **Current spec version:** [v0.3.0](CHANGELOG.md). Pre-1.0; breaking changes may land in MINOR bumps. The only capability specified so far is `graph-engine`; additional capabilities listed in the charter are planned.
 
-This repo holds the spec, conformance fixtures, governance, and proposals. **No implementation code lives here.** Implementations target this spec from sibling repos:
+This repo holds the spec, conformance fixtures, governance, and proposals. **No implementation code lives here.** Sibling repos:
 
 - [`openarmature-python`](https://github.com/LunarCommand/openarmature-python) — Python reference implementation
-- `openarmature-typescript` — planned
+- `openarmature-typescript` — planned implementation
+- [`openarmature-examples`](https://github.com/LunarCommand/openarmature-examples) — end-to-end examples
 
 ## Layout
 
