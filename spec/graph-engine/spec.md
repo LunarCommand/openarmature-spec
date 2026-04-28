@@ -7,6 +7,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
 - **History:**
   - created by [proposal 0001](../../proposals/0001-graph-engine-foundation.md)
   - §2 Subgraph extended with explicit input/output mapping by [proposal 0002](../../proposals/0002-subgraph-explicit-mapping.md)
+  - §6 Observer hooks promoted from informative to normative by [proposal 0003](../../proposals/0003-node-boundary-observer-hooks.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -120,14 +121,20 @@ identifiers (as an error class, error code, or tagged discriminant, per the lang
 1. Execution begins at the designated **entry** node with the initial state supplied by the caller.
 2. The current node's async function is invoked with the current state. Its returned partial update is merged
    into state using each field's reducer.
-3. The engine then evaluates the outgoing edge from the current node:
+3. Between the merge in step 2 and the edge evaluation in step 4, the engine MUST dispatch the node event
+   for the just-completed node onto the observer delivery queue per §6. Dispatch completes synchronously
+   before step 4; observer processing happens asynchronously on the delivery queue and does not affect
+   node execution timing. If step 2 fails — because the node raised, a reducer raised, or state validation
+   failed — the engine MUST dispatch the node event (with `error` populated) before the failure
+   propagates to the caller.
+4. The engine then evaluates the outgoing edge from the current node:
 
 - If static: route to the fixed destination.
 - If conditional: invoke the edge function with the **post-update** state — i.e., the state reflecting the
   partial update merged in step 2. The returned value is the destination node name or the `END` sentinel.
 
-4. If the destination is `END`, execution halts and the final state is returned.
-5. Otherwise, repeat from step 2 with the destination node.
+5. If the destination is `END`, execution halts and the final state is returned.
+6. Otherwise, repeat from step 2 with the destination node.
 
 Execution is single-threaded per invocation: one node is active at a time within a given graph run. Parallel
 fan-out is a separate concern addressed by pipeline utilities (future capability), not by the base execution
@@ -163,11 +170,105 @@ Given the same initial state, the same node implementations, and the same edge f
 produce the same final state and the same observed node-execution order. Nondeterminism introduced by node
 implementations (wall-clock time, randomness, external I/O) is out of scope for this guarantee.
 
-## 6. Observability hooks (informative)
+## 6. Observer hooks
 
-The engine is expected to expose, but this specification does not standardize, hooks for: node start, node
-end, edge evaluation, and state updates. These will be specified alongside the observability capability once
-that spec lands.
+The compiled graph MUST expose a way to register one or more **observers**. An observer is a function or
+callable that receives a **node event** and returns nothing of interest to the engine. Observers inspect
+execution as it happens; they MUST NOT alter state, routing, or any other aspect of the graph run.
+
+An implementation MUST support at least two registration modes:
+
+- **Graph-attached.** Observers registered on a compiled graph fire on every invocation of that graph
+  until removed.
+- **Invocation-scoped.** Observers passed to a single invocation fire only for that invocation.
+
+An implementation MAY provide additional registration modes; these two are the minimum.
+
+Observers attached to a compiled graph fire whenever that graph runs — whether invoked directly by a
+caller or as a subgraph inside a parent. A subgraph's attached observers therefore receive events for the
+subgraph's internal nodes during a parent run, in addition to any observers attached to or passed to the
+parent.
+
+Observers MUST be asynchronous — the delivery queue awaits each observer to coordinate its completion. In
+Python this means `async def` observers; in TypeScript, functions returning `Promise<void>`. An
+implementation MAY accept synchronous observers by wrapping them internally, but this specification models
+observers as async to keep delivery semantics well-defined.
+
+**Event delivery.** Observer events are delivered asynchronously with respect to graph execution. The
+graph's execution loop MUST NOT await observer processing; observer latency MUST NOT affect node execution
+timing. Each invocation of the outermost graph has an observer delivery queue that runs concurrently with
+graph execution.
+
+The delivery queue MUST be strictly serial across the entire invocation. For a given invocation:
+
+- No two observers receive the same event concurrently.
+- No observer receives event e+1 until every observer has finished receiving event e.
+- Observers receive each event in the following deterministic order:
+  1. Graph-attached observers, outermost graph down to the graph that directly owns the node (within each
+     graph, in registration order).
+  2. Invocation-scoped observers passed to the outermost `invoke` call, in the order they were passed.
+
+`invoke()` MUST return as soon as graph execution completes, regardless of the state of the observer
+delivery queue. Observer processing may continue after `invoke()` returns.
+
+An observer that raises an error MUST NOT interrupt the graph run, MUST NOT prevent other observers from
+receiving the same event, and MUST NOT prevent any observer from receiving subsequent events.
+Implementations SHOULD report observer errors through a language-idiomatic warning channel (e.g.,
+Python's `warnings.warn`, TypeScript's `console.warn`).
+
+**Drain.** The compiled graph MUST expose a `drain` operation that, when awaited, returns once all
+observer events produced by prior invocations of this graph have been delivered to every registered
+observer. Events produced by subgraphs during an invocation are part of that invocation and are covered
+by the parent graph's drain. Callers running in short-lived processes (scripts, serverless functions,
+CLIs) MUST use drain to avoid losing observer events that were dispatched but not yet delivered.
+
+Implementations MAY provide APIs to add or remove registered observers. Any change to the set of
+registered observers during a graph run MUST NOT take effect until the next invocation — the set of
+observers receiving events for an in-flight invocation is fixed at the point the invocation begins.
+
+**Node event shape.** A node event carries the following fields:
+
+- `node_name` — the name under which this node was registered in its immediate containing graph.
+- `namespace` — an ordered sequence of node names identifying the execution path from the outermost graph
+  down to this node. For a node in the outermost graph, `namespace` is `[node_name]`. For a node inside a
+  subgraph, `namespace` is the chain of outer subgraph-node names followed by the inner node name. Nested
+  subgraphs extend the chain. Implementations MUST NOT represent the namespace as a delimiter-joined
+  string at the specification boundary — the sequence form is required so that node names may contain any
+  characters without parsing ambiguity.
+- `step` — a monotonically increasing non-negative integer, starting at `0`, counting node executions
+  within a single invocation of the outermost graph. Subgraph-internal node executions increment the same
+  counter.
+- `pre_state` — the state the node received, before the reducer merge.
+- `post_state` — the state after the node's partial update merged successfully via reducers. Populated
+  only when the node executed to completion without raising and the merge did not raise.
+- `error` — the error category identifier from §4 (e.g., `node_exception`, `reducer_error`) together with
+  the raised error instance. Populated only when the node event corresponds to a failed node execution.
+
+Exactly one of `post_state` or `error` MUST be populated per event.
+
+**Event dispatch.** A node event is dispatched onto the delivery queue exactly once per node execution:
+
+- On successful execution, after the reducer merge has produced the post-update state and before the
+  outgoing edge is evaluated.
+- On failed execution (node raised, reducer raised, or state validation failed per §4), before the error
+  propagates to the caller.
+
+The engine MUST complete dispatch before proceeding to the next graph step, but it MUST NOT await
+observer processing — dispatch enqueues the event; the delivery queue processes it separately per the
+rules above.
+
+`routing_error` from §4 is a consequence of evaluating an outgoing edge against a post-update state. The
+node event for the preceding node has already been dispatched by the time a routing error arises; a
+routing error does NOT produce its own node event.
+
+**State immutability.** `pre_state` and `post_state` MUST present the same immutability contract as state
+instances flowing through the graph (§2 Node). Attempts by an observer to mutate either MUST fail per the
+implementation's state-immutability strategy (e.g., Python: frozen-instance error).
+
+**Determinism.** Given the same initial state, same node implementations, same edge functions, and same
+registered observers, the sequence of events passed to observers MUST be identical across runs. This
+extends the §5 determinism guarantee to observer delivery order. Observer side effects (logging, IO)
+remain out of scope for this guarantee.
 
 ## 7. Out of scope
 

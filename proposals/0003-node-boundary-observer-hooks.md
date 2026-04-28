@@ -1,9 +1,9 @@
 # 0003: Node-Boundary Observer Hooks
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-04-22
-- **Accepted:**
+- **Accepted:** 2026-04-27
 - **Targets:** spec/graph-engine/spec.md (promotes §6 from informative to normative; minor cross-reference in §3)
 - **Related:** 0001
 - **Supersedes:**

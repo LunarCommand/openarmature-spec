@@ -1,0 +1,92 @@
+# Observer hooks — observer error isolation.
+#
+# Three-node linear graph: a -> b -> c -> END. Two graph-attached observers:
+#   - obs_raiser: raises on every event (behavior: raise)
+#   - obs_recorder: records every event normally (behavior: record)
+#
+# Verifies:
+#   - obs_recorder receives EVERY event (a, b, c) despite obs_raiser raising
+#     on every event before it. This proves:
+#       * §6 "[an observer error] MUST NOT prevent other observers from
+#         receiving the same event"
+#       * §6 "[an observer error] MUST NOT prevent any observer from
+#         receiving subsequent events" — the second event is delivered to
+#         both observers despite the first event having raised.
+#   - The graph run completes; final state matches the no-observer baseline.
+#   - obs_raiser's exceptions do NOT propagate to invoke()'s caller.
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1, trace: ["a"]}
+  b:
+    update: {v: 2, trace: ["b"]}
+  c:
+    update: {v: 3, trace: ["c"]}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+observers:
+  - name: obs_raiser
+    attach: graph
+    target: outer
+    behavior: raise          # raises on every event the delivery queue
+                             # delivers to it. Engine MUST catch and proceed.
+  - name: obs_recorder
+    attach: graph
+    target: outer
+    behavior: record
+
+expected:
+  # Final state matches the no-observer baseline — obs_raiser's failures
+  # do not perturb graph execution.
+  final_state:
+    v: 3
+    trace: ["a", "b", "c"]
+  execution_order: [a, b, c]
+
+  # invoke() returns normally; obs_raiser's exceptions are surfaced to a
+  # warning channel per §6, NOT propagated to the caller.
+  no_propagated_error: true
+
+  # obs_raiser's received events are not enumerated — only that obs_recorder
+  # received the full sequence despite obs_raiser failing on each.
+  observer_events:
+    obs_recorder:
+      - {step: 0, node_name: a, namespace: [a],
+         pre_state:  {v: 0, trace: []},
+         post_state: {v: 1, trace: ["a"]}}
+      - {step: 1, node_name: b, namespace: [b],
+         pre_state:  {v: 1, trace: ["a"]},
+         post_state: {v: 2, trace: ["a", "b"]}}
+      - {step: 2, node_name: c, namespace: [c],
+         pre_state:  {v: 2, trace: ["a", "b"]},
+         post_state: {v: 3, trace: ["a", "b", "c"]}}
+
+  # Per-event delivery order. obs_raiser is delivered first (registration
+  # order), raises, the engine catches and warns, then obs_recorder is
+  # delivered for the SAME event. The next event then proceeds with both
+  # observers despite the prior failure.
+  delivery_order:
+    - {observer: obs_raiser,   step: 0}
+    - {observer: obs_recorder, step: 0}
+    - {observer: obs_raiser,   step: 1}
+    - {observer: obs_recorder, step: 1}
+    - {observer: obs_raiser,   step: 2}
+    - {observer: obs_recorder, step: 2}
