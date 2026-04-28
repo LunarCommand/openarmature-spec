@@ -4,7 +4,9 @@ Canonical behavioral specification for the OpenArmature graph engine.
 
 - **Capability:** graph-engine
 - **Introduced:** spec version 0.1.0
-- **History:** created by [proposal 0001](../../proposals/0001-graph-engine-foundation.md)
+- **History:**
+  - created by [proposal 0001](../../proposals/0001-graph-engine-foundation.md)
+  - §2 Subgraph extended with explicit input/output mapping by [proposal 0002](../../proposals/0002-subgraph-explicit-mapping.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -57,9 +59,44 @@ field defaults, independent of the parent's current state.
 
 Projection out defaults to **field-name matching**: when the subgraph completes, the values of any subgraph
 fields whose names match parent fields are merged into those parent fields via the parent's reducers.
-Subgraph fields with no matching parent field are discarded. Alternative projection strategies (e.g.,
-explicit input/output mapping that copies named parent fields into the subgraph at entry) are out of scope
-for this specification and will be addressed by follow-on proposals.
+Subgraph fields with no matching parent field are discarded.
+
+**Explicit input/output mapping.** A subgraph-as-node MAY declare an `inputs` mapping, an `outputs` mapping,
+or both:
+
+- `inputs`: a mapping from subgraph field name → parent field name. For each entry, the parent field's
+  current value is copied to the subgraph's corresponding field at entry. Subgraph fields not named in
+  `inputs` receive their schema-declared default — they are NOT filled by field-name matching as a
+  fallback.
+- `outputs`: a mapping from parent field name → subgraph field name. For each entry, the subgraph's final
+  value for the named subgraph field is merged into the corresponding parent field via the parent's
+  reducer for that field. Subgraph fields not named in `outputs` are discarded — they do NOT fall through
+  to field-name matching.
+
+The two directions are independent: a subgraph-as-node MAY declare `inputs` only, `outputs` only, both, or
+neither.
+
+- When `inputs` is absent, the default above applies: no projection in. The subgraph runs from its own
+  schema defaults.
+- When `inputs` is present, named parent fields are copied to their mapped subgraph fields at entry; all
+  other subgraph fields receive their schema-declared defaults.
+- When `outputs` is absent, the default above applies: subgraph fields whose names match parent fields are
+  merged back via the parent's reducers; non-matching subgraph fields are discarded.
+- When `outputs` is present, it **replaces** field-name matching for projection-out: only the
+  parent/subgraph field pairs named in `outputs` are merged, via the parent's reducer for the named parent
+  field. All other subgraph fields are discarded.
+
+This asymmetry — `inputs` additive, `outputs` replacement — is intentional. It reflects the asymmetry in
+the defaults themselves: projection-in is off by default (so `inputs` turns it on for listed fields), while
+projection-out is on by default via field-name matching (so `outputs` replaces it to avoid ambiguous mixed
+rules).
+
+Compilation MUST fail with category `mapping_references_undeclared_field` if an `inputs` mapping names a
+parent field that is not declared in the parent's state schema, or a subgraph field that is not declared in
+the subgraph's state schema. The same rule applies symmetrically to `outputs`. Implementations SHOULD
+validate at compile time that the types of mapped parent/subgraph field pairs are compatible (per the
+language's type system's notion of compatibility); this is SHOULD rather than MUST because type-system
+expressiveness varies across languages.
 
 **Compiled graph.** The result of compiling a graph definition. A compiled graph is immutable and executable.
 The entry node MUST be declared explicitly by the graph author — there is no implicit "first node added"
@@ -75,6 +112,8 @@ identifiers (as an error class, error code, or tagged discriminant, per the lang
 - `dangling_edge` — an edge references a node name that is not declared.
 - `multiple_outgoing_edges` — a node has more than one outgoing edge.
 - `conflicting_reducers` — a state field has more than one declared reducer.
+- `mapping_references_undeclared_field` — a subgraph-as-node `inputs` or `outputs` mapping names a field
+  not declared in the relevant state schema.
 
 ## 3. Execution model
 

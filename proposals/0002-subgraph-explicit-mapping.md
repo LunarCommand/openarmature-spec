@@ -1,9 +1,9 @@
 # 0002: Subgraph Explicit Input/Output Mapping
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-04-16
-- **Accepted:**
+- **Accepted:** 2026-04-27
 - **Targets:** spec/graph-engine/spec.md (modifies §2 Subgraph)
 - **Related:** 0001
 - **Supersedes:**
