@@ -1,0 +1,163 @@
+# Observer hooks — namespacing and outermost-to-innermost delivery order
+# across a subgraph boundary.
+#
+# Outer graph: outer_in -> outer_sub -> outer_out
+# Subgraph (named "inner"):  inner_x -> inner_y
+#
+# Two observers:
+#   - obs_outer: graph-attached on the OUTER graph
+#   - obs_inner: graph-attached on the SUBGRAPH (`inner`)
+#
+# Verifies:
+#   - Namespaces chain: outer-graph nodes get [outer_name]; subgraph-internal
+#     nodes get [outer_subgraph_node_name, inner_name].
+#   - `step` is monotonic across the subgraph boundary
+#     (outer_in=0, inner_x=1, inner_y=2, outer_out=3).
+#   - For outer-graph node events (step 0, step 3), only obs_outer fires —
+#     obs_inner does not receive events that originate outside the subgraph.
+#   - For subgraph-internal node events (step 1, step 2), obs_outer fires
+#     FIRST and obs_inner fires SECOND — outermost-to-innermost ordering per §6.
+#   - `pre_state`/`post_state` for inner-node events carry the SUBGRAPH's
+#     state shape (the state the inner node received), not the outer state.
+#   - `parent_states` for inner-node events contains exactly one entry: the
+#     OUTER graph's state at the moment outer_sub was entered (i.e., outer_in's
+#     post_state). Both inner events share the same snapshot — the parent
+#     is not stepping while the subgraph runs.
+#   - `parent_states` is empty for outer-graph events (no containing graph).
+
+subgraph:
+  name: inner
+  state:
+    fields:
+      v:
+        type: int
+        default: 0
+      trace:
+        type: list<string>
+        reducer: append
+        default: []
+
+  entry: inner_x
+
+  nodes:
+    inner_x:
+      update: {v: 10, trace: ["inner_x"]}
+    inner_y:
+      update: {v: 20, trace: ["inner_y"]}
+
+  edges:
+    - {from: inner_x,  to: inner_y}
+    - {from: inner_y,  to: END}
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: outer_in
+
+nodes:
+  outer_in:
+    update: {v: 1, trace: ["outer_in"]}
+  outer_sub:
+    subgraph: inner
+  outer_out:
+    update: {v: 99, trace: ["outer_out"]}
+
+edges:
+  - {from: outer_in,  to: outer_sub}
+  - {from: outer_sub, to: outer_out}
+  - {from: outer_out, to: END}
+
+initial_state: {}
+
+observers:
+  - name: obs_outer
+    attach: graph
+    target: outer
+    behavior: record
+  - name: obs_inner
+    attach: graph
+    target: inner            # attached to the subgraph; fires only when
+                             # the subgraph runs (here, during outer_sub).
+    behavior: record
+
+expected:
+  # Final outer state after default field-name matching projects subgraph
+  # output back: outer.trace appends ["inner_x", "inner_y"]; outer.v takes
+  # subgraph's last write (20), then outer_out overwrites it to 99.
+  final_state:
+    v: 99
+    trace: ["outer_in", "inner_x", "inner_y", "outer_out"]
+
+  # Outer execution order treats the subgraph as a single step.
+  execution_order: [outer_in, outer_sub, outer_out]
+
+  observer_events:
+    # obs_outer is attached to the OUTER graph and so receives events for
+    # every node executed during the invocation — including subgraph-internal
+    # ones, with the chained namespace.
+    obs_outer:
+      - {step: 0, node_name: outer_in, namespace: [outer_in],
+         pre_state:  {v: 0, trace: []},
+         post_state: {v: 1, trace: ["outer_in"]},
+         parent_states: []}
+      # Inner-node events: pre/post are SUBGRAPH state. The subgraph runs
+      # from its own schema defaults (no projection in by default per §2),
+      # so inner_x's pre_state has v=0 and trace=[] from the subgraph
+      # schema, NOT from the outer state.
+      #
+      # parent_states[0] is the OUTER state at the moment outer_sub was
+      # entered — i.e., outer_in's post_state ({v: 1, trace: ["outer_in"]}).
+      # This snapshot is identical for inner_x and inner_y because the
+      # outer graph is not stepping during the subgraph's run.
+      - {step: 1, node_name: inner_x, namespace: [outer_sub, inner_x],
+         pre_state:  {v: 0, trace: []},
+         post_state: {v: 10, trace: ["inner_x"]},
+         parent_states:
+           - {v: 1, trace: ["outer_in"]}}
+      - {step: 2, node_name: inner_y, namespace: [outer_sub, inner_y],
+         pre_state:  {v: 10, trace: ["inner_x"]},
+         post_state: {v: 20, trace: ["inner_x", "inner_y"]},
+         parent_states:
+           - {v: 1, trace: ["outer_in"]}}
+      # Back at the outer level: subgraph's exit values are projected back
+      # via default field-name matching, so outer_out's pre_state is the
+      # outer state with the subgraph's contributions merged in.
+      - {step: 3, node_name: outer_out, namespace: [outer_out],
+         pre_state:  {v: 20, trace: ["outer_in", "inner_x", "inner_y"]},
+         post_state: {v: 99, trace: ["outer_in", "inner_x", "inner_y", "outer_out"]},
+         parent_states: []}
+
+    # obs_inner is attached to the SUBGRAPH and only receives events for
+    # node executions that occur while the subgraph is running. It does
+    # NOT receive outer_in or outer_out events. Its events carry the same
+    # parent_states snapshots as obs_outer's matching events — the
+    # snapshot is a property of the event, not of the receiving observer.
+    obs_inner:
+      - {step: 1, node_name: inner_x, namespace: [outer_sub, inner_x],
+         pre_state:  {v: 0, trace: []},
+         post_state: {v: 10, trace: ["inner_x"]},
+         parent_states:
+           - {v: 1, trace: ["outer_in"]}}
+      - {step: 2, node_name: inner_y, namespace: [outer_sub, inner_y],
+         pre_state:  {v: 10, trace: ["inner_x"]},
+         post_state: {v: 20, trace: ["inner_x", "inner_y"]},
+         parent_states:
+           - {v: 1, trace: ["outer_in"]}}
+
+  # Per-event delivery order. For outer-graph events (steps 0 and 3), only
+  # obs_outer is delivered. For subgraph-internal events (steps 1 and 2),
+  # obs_outer is delivered first (outermost) and obs_inner second (innermost).
+  delivery_order:
+    - {observer: obs_outer, step: 0}
+    - {observer: obs_outer, step: 1}
+    - {observer: obs_inner, step: 1}
+    - {observer: obs_outer, step: 2}
+    - {observer: obs_inner, step: 2}
+    - {observer: obs_outer, step: 3}

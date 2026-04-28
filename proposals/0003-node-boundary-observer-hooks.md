@@ -1,9 +1,9 @@
 # 0003: Node-Boundary Observer Hooks
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-04-22
-- **Accepted:**
+- **Accepted:** 2026-04-27
 - **Targets:** spec/graph-engine/spec.md (promotes §6 from informative to normative; minor cross-reference in §3)
 - **Related:** 0001
 - **Supersedes:**
@@ -117,14 +117,29 @@ observers receiving events for an in-flight invocation is fixed at the point the
 - `step` — a monotonically increasing non-negative integer, starting at `0`, counting node executions
   within a single invocation of the outermost graph. Subgraph-internal node executions increment the
   same counter.
-- `pre_state` — the state the node received, before the reducer merge.
+- `pre_state` — the state the node received, before the reducer merge. For a node in the outermost
+  graph, this is the outermost state. For a node inside a subgraph, this is the subgraph's state — the
+  state the inner node actually received. State shape therefore varies with `namespace`.
 - `post_state` — the state after the node's partial update merged successfully via reducers. Populated
-  only when the node executed to completion without raising and the merge did not raise.
+  only when the node executed to completion without raising and the merge did not raise. Same
+  shape-varies-with-namespace rule as `pre_state`.
 - `error` — the error category identifier from §4 (e.g., `node_exception`, `reducer_error`) together
   with the raised error instance. Populated only when the node event corresponds to a failed node
   execution.
+- `parent_states` — an ordered sequence of state snapshots, one per containing graph, outermost first.
+  For a node in the outermost graph, `parent_states` is empty. For a node inside a subgraph,
+  `parent_states[0]` is the outermost graph's state, `parent_states[1]` is the next-inner containing
+  graph's state, and so on; the last entry is the immediate parent's state. The invariant
+  `len(parent_states) == len(namespace) - 1` MUST hold.
 
 Exactly one of `post_state` or `error` MUST be populated per event.
+
+**Parent-state snapshot semantics.** Each entry of `parent_states` is the corresponding containing
+graph's state **at the moment that graph entered the subgraph-as-node leading down to this event**.
+The parent is not stepping while the subgraph runs, so all node events emitted from a single subgraph
+run share the same `parent_states` snapshots. Snapshots MUST present the same immutability contract as
+`pre_state`/`post_state`. The shape of each entry is the corresponding graph's own state schema — it
+is NOT projected, mapped, or otherwise transformed.
 
 **Event dispatch.** A node event is dispatched onto the delivery queue exactly once per node
 execution:
@@ -142,9 +157,10 @@ the rules above.
 The node event for the preceding node has already been dispatched by the time a routing error
 arises; a routing error does NOT produce its own node event.
 
-**State immutability.** `pre_state` and `post_state` MUST present the same immutability contract as
-state instances flowing through the graph (§2 Node). Attempts by an observer to mutate either MUST
-fail per the implementation's state-immutability strategy (e.g., Python: frozen-instance error).
+**State immutability.** `pre_state`, `post_state`, and every entry of `parent_states` MUST present the
+same immutability contract as state instances flowing through the graph (§2 Node). Attempts by an
+observer to mutate any of them MUST fail per the implementation's state-immutability strategy (e.g.,
+Python: frozen-instance error).
 
 **Determinism.** Given the same initial state, same node implementations, same edge functions, and
 same registered observers, the sequence of events passed to observers MUST be identical across runs.

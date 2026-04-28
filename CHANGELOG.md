@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-04-27
+
+### Added
+
+- **graph-engine §6 Observer hooks (promoted from informative to normative).** Compiled graphs MUST expose a way to register observers (graph-attached and invocation-scoped, at minimum). Observers are async, fire-and-forget, and receive node events with `node_name`, `namespace` (ordered sequence), `step` (monotonic across the invocation including subgraph-internal nodes), `pre_state`, exactly one of `post_state` or `error`, and `parent_states` (ordered sequence of containing-graph state snapshots, outermost first; empty for outermost-graph events; `len(parent_states) == len(namespace) - 1`). `pre_state`/`post_state` carry the *node-level* state shape — outer state for outermost-graph nodes, subgraph state for inner nodes. Per-invocation delivery is strictly serial across all observers and all events; per-event order is graph-attached outermost→innermost, then invocation-scoped. Observer errors MUST NOT interrupt the graph run, prevent other observers from receiving the same event, or prevent subsequent events from being delivered. Compiled graphs MUST expose a `drain` operation. ([proposal 0003](proposals/0003-node-boundary-observer-hooks.md))
+- **graph-engine §3 Execution model — observer dispatch step.** Between the reducer merge and the outgoing-edge evaluation, the engine MUST dispatch the node event onto the observer delivery queue. On a failed merge step, the event is dispatched (with `error` populated) before the failure propagates to the caller.
+- Conformance fixture `012-observer-basic-firing` — linear graph with one graph-attached and one invocation-scoped observer; verifies per-node event firing, monotonic `step`, single-element `namespace`, and graph-attached-before-invocation-scoped delivery order.
+- Conformance fixture `013-observer-subgraph-namespacing-and-ordering` — outer + subgraph each with an attached observer; verifies chained `namespace`, `step` monotonicity across the subgraph boundary, and outermost-first delivery for subgraph-internal events.
+- Conformance fixture `014-observer-error-event` — failing-node event has `error` populated and `post_state` absent; engine still propagates the §4 `node_exception` to the caller after dispatch.
+- Conformance fixture `015-observer-error-isolation` — first-registered observer raises on every event; verifies the second observer still receives every event, the graph run completes, and the raised exceptions do not propagate to `invoke()`.
+
 ## [0.2.0] — 2026-04-27
 
 ### Added

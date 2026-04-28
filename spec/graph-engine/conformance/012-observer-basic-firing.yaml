@@ -1,0 +1,89 @@
+# Observer hooks — basic firing on a linear graph.
+#
+# Two observers receive events for every node execution:
+#   - obs_graph: graph-attached (registered on the compiled graph)
+#   - obs_invoke: invocation-scoped (passed to the single invoke() call)
+#
+# Verifies:
+#   - Each observer is invoked exactly once per node (three events each).
+#   - `step` values are 0, 1, 2 in execution order.
+#   - `namespace` is [node_name] for each event in the outermost graph.
+#   - `pre_state` reflects pre-merge state; `post_state` reflects post-merge state.
+#   - Per-event delivery order: obs_graph (graph-attached) is delivered before
+#     obs_invoke (invocation-scoped).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1, trace: ["a"]}
+  b:
+    update: {v: 2, trace: ["b"]}
+  c:
+    update: {v: 3, trace: ["c"]}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+observers:
+  - name: obs_graph
+    attach: graph             # registered on the compiled graph
+    target: outer             # outermost graph (i.e., this graph)
+    behavior: record
+  - name: obs_invoke
+    attach: invocation        # passed to invoke()
+    target: outer
+    behavior: record
+
+expected:
+  final_state:
+    v: 3
+    trace: ["a", "b", "c"]
+  execution_order: [a, b, c]
+
+  observer_events:
+    obs_graph:
+      - {step: 0, node_name: a, namespace: [a],
+         pre_state:  {v: 0, trace: []},
+         post_state: {v: 1, trace: ["a"]}}
+      - {step: 1, node_name: b, namespace: [b],
+         pre_state:  {v: 1, trace: ["a"]},
+         post_state: {v: 2, trace: ["a", "b"]}}
+      - {step: 2, node_name: c, namespace: [c],
+         pre_state:  {v: 2, trace: ["a", "b"]},
+         post_state: {v: 3, trace: ["a", "b", "c"]}}
+    obs_invoke:
+      - {step: 0, node_name: a, namespace: [a],
+         pre_state:  {v: 0, trace: []},
+         post_state: {v: 1, trace: ["a"]}}
+      - {step: 1, node_name: b, namespace: [b],
+         pre_state:  {v: 1, trace: ["a"]},
+         post_state: {v: 2, trace: ["a", "b"]}}
+      - {step: 2, node_name: c, namespace: [c],
+         pre_state:  {v: 2, trace: ["a", "b"]},
+         post_state: {v: 3, trace: ["a", "b", "c"]}}
+
+  # Per-event delivery order. The harness records (observer, step) pairs in the
+  # order they are delivered and compares to this list. Within a single event,
+  # graph-attached observers are delivered before invocation-scoped observers.
+  delivery_order:
+    - {observer: obs_graph,  step: 0}
+    - {observer: obs_invoke, step: 0}
+    - {observer: obs_graph,  step: 1}
+    - {observer: obs_invoke, step: 1}
+    - {observer: obs_graph,  step: 2}
+    - {observer: obs_invoke, step: 2}
