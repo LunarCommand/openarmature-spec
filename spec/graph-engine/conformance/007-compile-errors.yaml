@@ -75,3 +75,32 @@ cases:
       edges:
         - {from: a, to: END}
     expected_compile_error: conflicting_reducers
+
+  - name: mapping_references_undeclared_field
+    # A subgraph-as-node `inputs` mapping names a parent field that is not
+    # declared in the parent's state schema. The spec applies the same rule
+    # symmetrically to `outputs` and to subgraph-side names; this case
+    # exercises the parent-side variant.
+    graph:
+      state:
+        fields:
+          v: {type: string, default: ""}
+      subgraph:
+        name: inner
+        state:
+          fields:
+            x: {type: string, default: ""}
+        entry: i
+        nodes:
+          i: {update: {x: "i"}}
+        edges:
+          - {from: i, to: END}
+      entry: a
+      nodes:
+        a:
+          subgraph: inner
+          # `unknown_parent_field` is not declared on the parent's schema.
+          inputs: {x: unknown_parent_field}
+      edges:
+        - {from: a, to: END}
+    expected_compile_error: mapping_references_undeclared_field

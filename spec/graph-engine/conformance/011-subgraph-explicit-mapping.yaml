@@ -1,0 +1,175 @@
+# Subgraph composition with explicit input/output mapping. The same compiled
+# subgraph (`doubler`) is used at three different sites in the parent, each
+# with a different mapping configuration:
+#
+#   sub_full         — both `inputs` and `outputs` declared.
+#   sub_inputs_only  — only `inputs` declared (default field-name matching applies on output).
+#   sub_outputs_only — only `outputs` declared (default no-projection-in applies on input).
+#
+# `note` is named on both the parent and subgraph schemas to verify that, when
+# `outputs` is declared, field-name matching is fully *replaced* (not extended)
+# — the subgraph's `note` value MUST NOT leak into the parent's `note` field at
+# the `sub_full` and `sub_outputs_only` sites.
+#
+# `compute` writes `result: 99` so projection-out behavior is distinguishable
+# from defaults. Capturing `subgraph.input` via `outputs` at two sites lets us
+# verify that `inputs` actually copied parent values in (`a_seen_input == 5`)
+# and that absent-`inputs` falls back to subgraph schema defaults
+# (`b_seen_input == 3`, the subgraph's own default for `input`).
+
+subgraph:
+  name: doubler
+  state:
+    fields:
+      input:
+        type: int
+        default: 3
+      result:
+        type: int
+        default: 0
+      note:
+        type: string
+        default: "subgraph-default"
+
+  entry: compute
+
+  nodes:
+    compute:
+      update: {result: 99, note: "computed"}
+
+  edges:
+    - {from: compute, to: END}
+
+state:
+  fields:
+    a:
+      type: int
+      default: 5
+    b:
+      type: int
+      default: 7
+    note:
+      type: string
+      default: "outer-default"
+    a_seen_input:
+      type: int
+      default: -1
+    b_seen_input:
+      type: int
+      default: -1
+    a_result:
+      type: int
+      default: -1
+    b_result:
+      type: int
+      default: -1
+    result:
+      type: int
+      default: -1
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: outer_a
+
+nodes:
+  outer_a:
+    update: {trace: ["outer_a"]}
+
+  # Site 1: both `inputs` and `outputs` declared.
+  # - `inputs: {input: a}` copies parent.a (5) → subgraph.input.
+  # - `outputs` projects subgraph.input and subgraph.result back via the
+  #   parent's reducers. subgraph.input (5) → parent.a_seen_input;
+  #   subgraph.result (99) → parent.a_result.
+  # - subgraph.note is NOT projected (outputs replaces field-name matching),
+  #   so parent.note remains "outer-default" through this step.
+  # - parent.result is NOT touched here (outputs replaces matching).
+  sub_full:
+    subgraph: doubler
+    inputs: {input: a}
+    outputs: {a_seen_input: input, a_result: result}
+
+  # Site 2: only `inputs` declared.
+  # - `inputs: {input: b}` copies parent.b (7) → subgraph.input.
+  # - No `outputs`, so default field-name matching applies on exit:
+  #     subgraph.result (99) → parent.result via last_write_wins
+  #     subgraph.note ("computed") → parent.note via last_write_wins
+  #     subgraph.input (7) is discarded (no parent.input)
+  sub_inputs_only:
+    subgraph: doubler
+    inputs: {input: b}
+
+  # Site 3: only `outputs` declared.
+  # - No `inputs`, so subgraph runs from own schema defaults:
+  #     input=3, result=0, note="subgraph-default".
+  # - `outputs` projects subgraph.input (3) → parent.b_seen_input and
+  #   subgraph.result (99) → parent.b_result.
+  # - parent.note and parent.result are NOT touched (outputs replaces
+  #   matching). They keep whatever value they had after sub_inputs_only.
+  sub_outputs_only:
+    subgraph: doubler
+    outputs: {b_seen_input: input, b_result: result}
+
+  outer_z:
+    update: {trace: ["outer_z"]}
+
+edges:
+  - {from: outer_a, to: sub_full}
+  - {from: sub_full, to: sub_inputs_only}
+  - {from: sub_inputs_only, to: sub_outputs_only}
+  - {from: sub_outputs_only, to: outer_z}
+  - {from: outer_z, to: END}
+
+initial_state: {}
+
+expected:
+  final_state:
+    # Parent's `a` and `b` are read-only at the call sites — never written back.
+    a: 5
+    b: 7
+
+    # Proves sub_full's `inputs: {input: a}` copied parent.a (5) into
+    # subgraph.input. If this is 3, the implementation skipped the inputs
+    # mapping and used the subgraph schema default.
+    a_seen_input: 5
+
+    # Proves sub_outputs_only's absent `inputs` left the subgraph running
+    # from its own schema default for `input` (3). If this is 7, the
+    # implementation fell through to field-name matching for input — which
+    # the spec forbids.
+    b_seen_input: 3
+
+    # Proves sub_full's `outputs` projected subgraph.result (99) onto
+    # parent.a_result via the parent's last_write_wins reducer.
+    a_result: 99
+
+    # Proves sub_outputs_only's `outputs` projected subgraph.result (99) onto
+    # parent.b_result. Same site also captures b_seen_input above.
+    b_result: 99
+
+    # Proves sub_inputs_only's absent `outputs` triggered default field-name
+    # matching: subgraph.result (99) → parent.result via last_write_wins.
+    # Critically, sub_full and sub_outputs_only did NOT write parent.result
+    # (their `outputs` did not include it; outputs replaces matching).
+    # If this is -1, sub_inputs_only failed to project; if this is the
+    # initial -1 with sub_full or sub_outputs_only having modified it, the
+    # implementation extended outputs with field-name fallback.
+    result: 99
+
+    # `note` was overwritten in sub_inputs_only via DEFAULT field-name
+    # matching (subgraph.note "computed" → parent.note via last_write_wins).
+    # Critically:
+    # - sub_full did NOT touch parent.note (outputs replaces matching).
+    # - sub_outputs_only did NOT touch parent.note (outputs replaces matching).
+    # If parent.note is "outer-default" here, sub_inputs_only's default
+    # matching failed; if it is "computed" but came from sub_full or
+    # sub_outputs_only, the implementation incorrectly extended outputs
+    # with field-name fallback.
+    note: "computed"
+
+    # `trace` collects only the outer-graph node names. Subgraph-internal
+    # nodes do not contribute because the subgraph has no `trace` field.
+    trace: ["outer_a", "outer_z"]
+
+  execution_order: [outer_a, sub_full, sub_inputs_only, sub_outputs_only, outer_z]

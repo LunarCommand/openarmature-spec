@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-04-27
+
+### Added
+
+- **graph-engine §2 Subgraph — explicit input/output mapping.** A subgraph-as-node MAY declare optional `inputs` (subgraph field name → parent field name) and/or `outputs` (parent field name → subgraph field name) mappings. `inputs` is additive over the §2 default of no projection in; `outputs` *replaces* (does not extend) the §2 default of field-name matching for projection out. ([proposal 0002](proposals/0002-subgraph-explicit-mapping.md))
+- New canonical compile-error category `mapping_references_undeclared_field` — added to the §2 Compiled graph mandated identifier list. Compilation MUST fail with this category when an `inputs` or `outputs` mapping names a field that is not declared in the relevant state schema.
+- Conformance fixture `011-subgraph-explicit-mapping` — composes the same subgraph at three sites with different mapping configurations (both / inputs-only / outputs-only) and verifies projection-in copies, projection-out replacement vs. fallback, and per-site mapping independence.
+- Conformance fixture `007-compile-errors` adds case `mapping_references_undeclared_field`.
+
 ## [0.1.1] — 2026-04-18
 
 ### Changed
