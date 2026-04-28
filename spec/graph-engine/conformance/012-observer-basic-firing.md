@@ -64,6 +64,14 @@ expected:
         error: <category_identifier>          # one of §4 categories, e.g.,
                                               # node_exception. Mutually exclusive
                                               # with post_state.
+        parent_states:                        # OPTIONAL. Ordered sequence of
+                                              # containing-graph state snapshots,
+                                              # outermost first. Omitted = empty.
+                                              # MUST satisfy
+                                              # len(parent_states) == len(namespace) - 1.
+          - {<field>: <value>, ...}           # outermost containing graph
+          - {<field>: <value>, ...}           # next-inner containing graph (if nested)
+          ...
       ...
 
   delivery_order:                # per-event delivery sequence as (observer, step)
