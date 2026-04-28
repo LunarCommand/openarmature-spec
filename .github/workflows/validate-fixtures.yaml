@@ -1,0 +1,25 @@
+name: validate-fixtures
+
+on:
+  pull_request:
+    paths:
+      - "spec/**/conformance/*.yaml"
+      - "scripts/validate_fixtures.py"
+      - ".github/workflows/validate-fixtures.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "spec/**/conformance/*.yaml"
+      - "scripts/validate_fixtures.py"
+      - ".github/workflows/validate-fixtures.yaml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - run: python scripts/validate_fixtures.py
