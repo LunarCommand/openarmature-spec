@@ -119,13 +119,11 @@ expected:
       - {step: 1, node_name: inner_x, namespace: [outer_sub, inner_x],
          pre_state:  {v: 0, trace: []},
          post_state: {v: 10, trace: ["inner_x"]},
-         parent_states:
-           - {v: 1, trace: ["outer_in"]}}
+         parent_states: [{v: 1, trace: ["outer_in"]}]}
       - {step: 2, node_name: inner_y, namespace: [outer_sub, inner_y],
          pre_state:  {v: 10, trace: ["inner_x"]},
          post_state: {v: 20, trace: ["inner_x", "inner_y"]},
-         parent_states:
-           - {v: 1, trace: ["outer_in"]}}
+         parent_states: [{v: 1, trace: ["outer_in"]}]}
       # Back at the outer level: subgraph's exit values are projected back
       # via default field-name matching, so outer_out's pre_state is the
       # outer state with the subgraph's contributions merged in.
@@ -143,13 +141,11 @@ expected:
       - {step: 1, node_name: inner_x, namespace: [outer_sub, inner_x],
          pre_state:  {v: 0, trace: []},
          post_state: {v: 10, trace: ["inner_x"]},
-         parent_states:
-           - {v: 1, trace: ["outer_in"]}}
+         parent_states: [{v: 1, trace: ["outer_in"]}]}
       - {step: 2, node_name: inner_y, namespace: [outer_sub, inner_y],
          pre_state:  {v: 10, trace: ["inner_x"]},
          post_state: {v: 20, trace: ["inner_x", "inner_y"]},
-         parent_states:
-           - {v: 1, trace: ["outer_in"]}}
+         parent_states: [{v: 1, trace: ["outer_in"]}]}
 
   # Per-event delivery order. For outer-graph events (steps 0 and 3), only
   # obs_outer is delivered. For subgraph-internal events (steps 1 and 2),
