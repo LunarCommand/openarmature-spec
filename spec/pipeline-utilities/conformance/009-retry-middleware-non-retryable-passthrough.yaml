@@ -1,0 +1,44 @@
+# Retry with a non-retryable exception: classifier returns false, the
+# exception propagates immediately (no retry attempts beyond the first).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: target
+
+nodes:
+  target:
+    flaky:
+      failure_sequence:
+        # provider_authentication is in the §6.1 default-classifier non-transient
+        # set. Should NOT trigger a retry.
+        - {transient: false, category: provider_authentication, message: "bad key"}
+
+edges:
+  - {from: target, to: END}
+
+initial_state: {v: 1}
+
+middleware:
+  per_node:
+    target:
+      - type: retry
+        max_attempts: 5
+        backoff: {type: deterministic, seconds: 0}
+
+expected_error:
+  category: node_exception
+  raised_from: target
+  message: "bad key"
+  recoverable_state: {v: 1, trace: []}
+  # The retry middleware MUST not have retried — the engine sees one attempt's
+  # worth of execution. The harness asserts the flaky_node was invoked exactly
+  # once via its internal call counter.
+  flaky_call_count: 1

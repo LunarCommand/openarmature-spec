@@ -1,0 +1,48 @@
+# Short-circuit: middleware does NOT call next; returns its own partial update.
+# Wrapped node never executes. Subsequent (inner) middleware never executes.
+# The short-circuiting middleware's own post-phase is also skipped.
+#
+# Chain: [outer_recorder, short_circuit, inner_recorder] → node `a`.
+#
+# outer_recorder records pre and post markers.
+# short_circuit returns {trace: ["short_circuit"]} without calling next.
+# inner_recorder, if it ran, would append "inner.pre" / "inner.post"; it MUST
+# not run.
+# node `a`, if it ran, would append "a"; it MUST not run.
+
+state:
+  fields:
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {trace: ["a"]}
+
+edges:
+  - {from: a, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    a:
+      - {type: trace_recorder, name: outer, pre_marker: "outer.pre", post_marker: "outer.post"}
+      - {type: short_circuit, partial_update: {trace: ["short_circuit"]}}
+      - {type: trace_recorder, name: inner, pre_marker: "inner.pre", post_marker: "inner.post"}
+
+expected:
+  # outer.pre fires (before short_circuit runs).
+  # short_circuit returns {trace: ["short_circuit"]} without calling next.
+  # outer.post fires (the OUTER middleware's post-phase still runs because
+  # outer DID call next; short_circuit's own post-phase is skipped because
+  # short_circuit didn't call next).
+  # Note: inner.pre / inner.post / "a" do NOT appear.
+  final_state:
+    trace: ["outer.pre", "short_circuit", "outer.post"]
+  # No execution at the engine level: node `a` did not run.
+  execution_order: []

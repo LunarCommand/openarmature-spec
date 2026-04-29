@@ -1,0 +1,58 @@
+# Determinism: deterministic retry middleware (jitter swapped for fixed
+# backoff). Two runs of an identical mocked-failure-then-success scenario
+# MUST produce identical final state and identical observer event sequences.
+#
+# This fixture's expected block lists `run_count: 2` so the harness invokes
+# the graph twice and asserts equality between runs (and against the
+# expected final_state/observer_events).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: target
+
+nodes:
+  target:
+    flaky:
+      failure_sequence:
+        - {transient: true, category: provider_rate_limit, message: "throttle 1"}
+        - {transient: true, category: provider_rate_limit, message: "throttle 2"}
+      success_update: {v: 100, trace: ["target"]}
+
+edges:
+  - {from: target, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    target:
+      - type: retry
+        max_attempts: 3
+        backoff: {type: deterministic, seconds: 0}
+
+run_count: 2
+
+expected:
+  final_state: {v: 100, trace: ["target"]}
+  execution_order: [target]
+  # Per-attempt observer events (per graph-engine §6 modifications added by
+  # proposal 0004): 3 events for `target`, attempt_index 0/1/2.
+  # Run 1 and Run 2 MUST produce identical sequences.
+  observer_events:
+    - {step: 0, node_name: target, attempt_index: 0, namespace: [target],
+       pre_state: {v: 0, trace: []},
+       error: node_exception}
+    - {step: 0, node_name: target, attempt_index: 1, namespace: [target],
+       pre_state: {v: 0, trace: []},
+       error: node_exception}
+    - {step: 0, node_name: target, attempt_index: 2, namespace: [target],
+       pre_state: {v: 0, trace: []},
+       post_state: {v: 100, trace: ["target"]}}

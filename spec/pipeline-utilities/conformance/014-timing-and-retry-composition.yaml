@@ -1,0 +1,96 @@
+# Timing + retry composition. Two sub-cases verifying that ordering matters:
+#
+# Case A: [timing, retry, node] — timing wraps retry. on_complete fires once
+#   with duration_ms covering all three attempts plus backoff sleeps. Single
+#   end-to-end measurement.
+# Case B: [retry, timing, node] — retry wraps timing. on_complete fires three
+#   times, each measuring a single attempt's duration.
+#
+# The deterministic-clock stub advances 5 ms per `monotonic()` call. backoff
+# is `seconds: 0` so retry doesn't add real time, but the timing middleware
+# still sees clock-stub advances per its monotonic reads.
+
+cases:
+  - name: timing_wraps_retry
+    state:
+      fields:
+        v:
+          type: int
+          default: 0
+        trace:
+          type: list<string>
+          reducer: append
+          default: []
+    entry: target
+    nodes:
+      target:
+        flaky:
+          failure_sequence:
+            - {transient: true, category: provider_rate_limit, message: "throttle 1"}
+            - {transient: true, category: provider_rate_limit, message: "throttle 2"}
+          success_update: {v: 1, trace: ["target"]}
+    edges:
+      - {from: target, to: END}
+    initial_state: {}
+    middleware:
+      per_node:
+        target:
+          # Outer = timing, Inner = retry. Timing measures total elapsed
+          # including all retry attempts.
+          - type: timing
+            node_name: target
+            on_complete: {capture_to: timing_records}
+          - type: retry
+            max_attempts: 3
+            backoff: {type: deterministic, seconds: 0}
+    clock_stub: {type: deterministic_monotonic, advance_ms_per_call: 5}
+    expected:
+      final_state: {v: 1, trace: ["target"]}
+      timing_records:
+        # Timing read monotonic twice: enter and after retry finally returns.
+        # Between those reads, retry made 3 calls to next (each consulting
+        # monotonic at its own seam? — no, retry doesn't consult monotonic).
+        # So duration_ms = 5 ms (one tick between the timing's two
+        # monotonic reads).
+        - {node_name: target, duration_ms: 5, outcome: "success", exception_category: null}
+
+  - name: retry_wraps_timing
+    state:
+      fields:
+        v:
+          type: int
+          default: 0
+        trace:
+          type: list<string>
+          reducer: append
+          default: []
+    entry: target
+    nodes:
+      target:
+        flaky:
+          failure_sequence:
+            - {transient: true, category: provider_rate_limit, message: "throttle 1"}
+            - {transient: true, category: provider_rate_limit, message: "throttle 2"}
+          success_update: {v: 1, trace: ["target"]}
+    edges:
+      - {from: target, to: END}
+    initial_state: {}
+    middleware:
+      per_node:
+        target:
+          # Outer = retry, Inner = timing. Timing measures each attempt
+          # individually; on_complete fires once per attempt.
+          - type: retry
+            max_attempts: 3
+            backoff: {type: deterministic, seconds: 0}
+          - type: timing
+            node_name: target
+            on_complete: {capture_to: timing_records}
+    clock_stub: {type: deterministic_monotonic, advance_ms_per_call: 5}
+    expected:
+      final_state: {v: 1, trace: ["target"]}
+      timing_records:
+        # Three calls — two failures (5 ms each) and one success (5 ms).
+        - {node_name: target, duration_ms: 5, outcome: "exception", exception_category: provider_rate_limit}
+        - {node_name: target, duration_ms: 5, outcome: "exception", exception_category: provider_rate_limit}
+        - {node_name: target, duration_ms: 5, outcome: "success", exception_category: null}

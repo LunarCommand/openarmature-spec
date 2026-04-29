@@ -1,0 +1,48 @@
+# Retry middleware: node fails on first attempt with a transient exception,
+# succeeds on second. Verifies retry catches the transient, retries, and the
+# combined operation surfaces a single success to the engine. Per-attempt
+# observer events are covered by fixture 015.
+#
+# The harness's `flaky_node` test seam takes a `failure_sequence` (list of
+# failures keyed to attempt index) and a final `success_update`. Each entry
+# in the sequence is either a `transient` flag (raises an exception with the
+# given category, classified transient by the default classifier) or `null`
+# (the attempt succeeds and the success_update is returned).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: target
+
+nodes:
+  target:
+    flaky:
+      failure_sequence:
+        - {transient: true, category: provider_rate_limit, message: "throttle"}
+      success_update: {v: 42, trace: ["target"]}
+
+edges:
+  - {from: target, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    target:
+      - type: retry
+        max_attempts: 3
+        # Default classifier (matches transient categories incl. provider_rate_limit).
+        # Default backoff swapped for deterministic-zero so the test runs fast and
+        # reproducibly.
+        backoff: {type: deterministic, seconds: 0}
+
+expected:
+  final_state: {v: 42, trace: ["target"]}
+  execution_order: [target]

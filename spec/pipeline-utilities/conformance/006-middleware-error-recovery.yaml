@@ -1,0 +1,51 @@
+# Node raises; middleware catches and returns a partial update. Verifies
+# execution continues normally — graph completes, observer event has
+# post_state populated (no error), final state reflects the recovery
+# partial update.
+#
+# Chain: [error_recovery] → node `failing` (raises). The error_recovery
+# middleware catches any Exception from next, returns the configured
+# partial update (here: {v: 99, trace: ["recovered"]}).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: failing
+
+nodes:
+  failing:
+    raises: "boom recoverable"
+
+edges:
+  - {from: failing, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    failing:
+      - {type: error_recovery, partial_update: {v: 99, trace: ["recovered"]}}
+
+expected:
+  # The recovery middleware caught the exception. The partial update
+  # {v: 99, trace: ["recovered"]} merges via the parent's reducers
+  # (last_write_wins for v, append for trace). Engine never sees the
+  # exception.
+  final_state:
+    v: 99
+    trace: ["recovered"]
+  execution_order: [failing]
+
+  # Observer event for the recovered node carries post_state (the merged
+  # state), not an error.
+  expected_observer_event:
+    node_name: failing
+    post_state: {v: 99, trace: ["recovered"]}
+    error_absent: true

@@ -1,0 +1,89 @@
+# Subgraph locality: parent's per-graph middleware wraps the subgraph as a
+# single dispatch. Subgraph's own per-graph middleware wraps its inner nodes.
+# Neither set sees the other's domain.
+#
+# Outer graph: outer_node → sub → END
+# Subgraph "inner": x → y → END
+#
+# parent_recorder (per-graph on outer): MUST fire for outer_node and for
+# sub-as-a-dispatch. MUST NOT fire for x or y individually.
+# subgraph_recorder (per-graph on inner): MUST fire for x and y. MUST NOT
+# fire for outer_node.
+#
+# trace_recorder semantics: returns a partial update of the form
+#   {trace: [pre_marker] + (next's update's trace) + [post_marker]}
+# so each middleware's pre and post markers sandwich whatever the wrapped
+# chain produced. Per-graph reducers (append on `trace`) accumulate.
+
+subgraph:
+  name: inner
+  state:
+    fields:
+      v:
+        type: int
+        default: 0
+      trace:
+        type: list<string>
+        reducer: append
+        default: []
+  entry: x
+  nodes:
+    x:
+      update: {v: 10, trace: ["x"]}
+    y:
+      update: {v: 20, trace: ["y"]}
+  edges:
+    - {from: x, to: y}
+    - {from: y, to: END}
+  middleware:
+    per_graph:
+      - {type: trace_recorder, name: subgraph, pre_marker: "subgraph.pre", post_marker: "subgraph.post"}
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: outer_node
+
+nodes:
+  outer_node:
+    update: {v: 1, trace: ["outer_node"]}
+  sub:
+    subgraph: inner
+
+edges:
+  - {from: outer_node, to: sub}
+  - {from: sub, to: END}
+
+initial_state: {}
+
+middleware:
+  per_graph:
+    - {type: trace_recorder, name: parent, pre_marker: "parent.pre", post_marker: "parent.post"}
+
+expected:
+  # outer_node wrap contribution: ["parent.pre", "outer_node", "parent.post"]
+  # sub wrap contribution: ["parent.pre", <subgraph trace>, "parent.post"]
+  #   subgraph trace: ["subgraph.pre", "x", "subgraph.post", "subgraph.pre", "y", "subgraph.post"]
+  # Final v: outer_node sets 1, subgraph projection sets 20 (last_write_wins).
+  final_state:
+    v: 20
+    trace:
+      - "parent.pre"
+      - "outer_node"
+      - "parent.post"
+      - "parent.pre"
+      - "subgraph.pre"
+      - "x"
+      - "subgraph.post"
+      - "subgraph.pre"
+      - "y"
+      - "subgraph.post"
+      - "parent.post"
+  execution_order: [outer_node, sub]
