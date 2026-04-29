@@ -1,0 +1,73 @@
+# Basic middleware firing: single node + one per-node middleware that records
+# the input state and the partial update. Verifies the middleware sees what the
+# spec promises and the engine merges normally.
+#
+# Conformance harness contract for pipeline-utilities fixtures (used by all
+# 001-016):
+#
+#   - The harness instantiates the graph following graph-engine fixture format
+#     (state.fields, entry, nodes, edges, initial_state).
+#   - `middleware` block declares per-graph and/or per-node middleware. Each
+#     entry has a `type` discriminator naming a canonical middleware
+#     (`retry`, `timing`) OR a fixture-only test middleware
+#     (`trace_recorder`, `short_circuit`, `error_recovery`, `state_inspector`,
+#     etc.) that the harness implements.
+#   - The harness MUST surface a deterministic-clock stub for `timing`
+#     middleware and a deterministic-backoff override for `retry` middleware
+#     so timing/jitter assertions are stable across runs.
+#   - `expected` asserts: final state, execution order, observer events,
+#     and per-fixture-specific recorded data (e.g., the trace_recorder's
+#     captured records, the timing middleware's on_complete records).
+#
+# fixture-only test middleware:
+#
+#   - `trace_recorder` — records (state_in, state_seen_in_post_phase,
+#     partial_update_returned) for every dispatch. Inspectable via
+#     `expected.trace_records`.
+#   - `short_circuit` — never calls next; returns the partial update specified
+#     in its config. Verifies short-circuit semantics.
+#   - `error_recovery` — catches the wrapped chain's exception and returns
+#     the partial update specified in its config.
+#   - `error_raiser` — raises immediately on entry (pre-phase) with the
+#     specified message; verifies middleware-raised exceptions surface as
+#     node_exception.
+#   - `state_inspector` — wraps next, comparing the input state to a captured
+#     snapshot to verify immutability (i.e., that nothing mutated the state
+#     between middleware invocation and engine merge).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1, trace: ["a"]}
+
+edges:
+  - {from: a, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    a:
+      - {type: trace_recorder, name: rec1}
+
+expected:
+  final_state:
+    v: 1
+    trace: ["a"]
+  execution_order: [a]
+
+  trace_records:
+    rec1:
+      - state_in: {v: 0, trace: []}
+        partial_update_returned: {v: 1, trace: ["a"]}

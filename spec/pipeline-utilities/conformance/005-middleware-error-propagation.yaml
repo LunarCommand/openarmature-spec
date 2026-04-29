@@ -1,0 +1,52 @@
+# Node raises; middleware does not catch. Verifies the exception propagates
+# as node_exception per graph-engine §4, with recoverable_state populated and
+# __cause__ preserved.
+#
+# Chain: [outer_recorder] → node `failing` (raises RuntimeError).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: failing
+
+nodes:
+  failing:
+    raises: "boom from failing"
+
+edges:
+  - {from: failing, to: END}
+
+initial_state: {v: 7}
+
+middleware:
+  per_node:
+    failing:
+      - {type: trace_recorder, name: outer, pre_marker: "outer.pre", post_marker: "outer.post"}
+
+expected_error:
+  category: node_exception
+  raised_from: failing
+  message: "boom from failing"
+  recoverable_state:
+    v: 7
+    trace: []
+
+expected:
+  # outer.pre runs (before next is called and the exception propagates).
+  # outer.post does NOT run (next raised; outer didn't catch).
+  # Note: trace recorders MUST commit their pre-phase markers via a side
+  # channel; the partial update path is preempted by the exception. The
+  # harness implementation chooses how to surface this — typically the
+  # trace_recorder with `pre_marker` records into an out-of-band log inspectable
+  # via expected.trace_records[<name>].pre_seen.
+  trace_records:
+    outer:
+      - pre_seen: true
+        post_seen: false

@@ -1,0 +1,41 @@
+# Three middleware [m1, m2, m3] wrapping node `a`. Each one appends to a
+# list-typed `trace` field via the trace_recorder. Verifies execution proceeds
+# m1.pre → m2.pre → m3.pre → a → m3.post → m2.post → m1.post.
+#
+# trace_recorder, when given an `appends` config, produces a partial update
+# of {trace: [<appends>]} which the parent's append reducer accumulates.
+# Each middleware appends a distinct marker for the pre-phase and post-phase
+# so the order can be observed in the final trace.
+
+state:
+  fields:
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {trace: ["a"]}
+
+edges:
+  - {from: a, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    a:
+      - {type: trace_recorder, name: m1, pre_marker: "m1.pre", post_marker: "m1.post"}
+      - {type: trace_recorder, name: m2, pre_marker: "m2.pre", post_marker: "m2.post"}
+      - {type: trace_recorder, name: m3, pre_marker: "m3.pre", post_marker: "m3.post"}
+
+expected:
+  # Pre-markers append on the way in (m1 first, m3 last).
+  # Node a's update appends "a".
+  # Post-markers append on the way out (m3 first, m1 last).
+  final_state:
+    trace: ["m1.pre", "m2.pre", "m3.pre", "a", "m3.post", "m2.post", "m1.post"]
+  execution_order: [a]

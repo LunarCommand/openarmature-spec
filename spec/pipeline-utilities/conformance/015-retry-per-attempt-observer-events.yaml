@@ -1,0 +1,62 @@
+# Per-attempt observer events. Retry middleware MUST dispatch a §6 event for
+# each non-final attempt. The engine dispatches the final attempt's event.
+# Net result for a 3-attempt retry: 3 events with attempt_index 0/1/2.
+#
+# Verifies the graph-engine §6 modifications added by proposal 0004:
+#   - attempt_index field on the node event shape
+#   - middleware-dispatched events flow through the same delivery queue
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: target
+
+nodes:
+  target:
+    flaky:
+      failure_sequence:
+        - {transient: true, category: provider_rate_limit, message: "throttle 1"}
+        - {transient: true, category: provider_rate_limit, message: "throttle 2"}
+      success_update: {v: 7, trace: ["target"]}
+
+edges:
+  - {from: target, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    target:
+      - type: retry
+        max_attempts: 3
+        backoff: {type: deterministic, seconds: 0}
+
+observers:
+  - {name: obs, attach: graph, target: outer, behavior: record}
+
+expected:
+  final_state: {v: 7, trace: ["target"]}
+  execution_order: [target]
+
+  observer_events:
+    obs:
+      # Three events for a 3-attempt retry. All share node_name, namespace,
+      # step, pre_state, parent_states. Distinguished by attempt_index.
+      # The first two have `error` populated (dispatched by retry middleware);
+      # the third has `post_state` populated (dispatched by the engine).
+      - {step: 0, node_name: target, attempt_index: 0, namespace: [target],
+         pre_state: {v: 0, trace: []},
+         error: node_exception, parent_states: []}
+      - {step: 0, node_name: target, attempt_index: 1, namespace: [target],
+         pre_state: {v: 0, trace: []},
+         error: node_exception, parent_states: []}
+      - {step: 0, node_name: target, attempt_index: 2, namespace: [target],
+         pre_state: {v: 0, trace: []},
+         post_state: {v: 7, trace: ["target"]}, parent_states: []}

@@ -1,0 +1,45 @@
+# Timing middleware fires correctly on a raised exception. Verifies on_complete
+# receives a record with outcome="exception" and exception_category extracted
+# from the exception's `category` attribute. The original exception MUST still
+# propagate unchanged.
+
+state:
+  fields: {}
+
+entry: failing
+
+nodes:
+  failing:
+    raises: "boom"
+    error_category: provider_rate_limit
+
+edges:
+  - {from: failing, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    failing:
+      - type: timing
+        node_name: failing
+        on_complete: {capture_to: timing_records}
+
+clock_stub: {type: deterministic_monotonic, advance_ms_per_call: 5}
+
+# Engine surfaces node_exception per §4 (the original exception's category
+# attribute is `provider_rate_limit`; node_exception wraps it).
+expected_error:
+  category: node_exception
+  raised_from: failing
+  message: "boom"
+
+# The timing middleware's record fires before the exception propagates. Its
+# `exception_category` is the cause's category (the original exception had
+# .category="provider_rate_limit" before being wrapped by node_exception).
+expected:
+  timing_records:
+    - node_name: failing
+      duration_ms: 5
+      outcome: "exception"
+      exception_category: provider_rate_limit

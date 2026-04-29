@@ -1,0 +1,48 @@
+# Timing middleware: per-node use, single dispatch, on_complete records the
+# duration and outcome. Verifies the §6.2 record fields and the per-node
+# binding pattern (user supplies node_name explicitly at registration).
+#
+# The harness's deterministic-clock stub returns monotonic times that
+# advance by exactly 5 ms per `monotonic()` call so durations are
+# reproducible. The configured node_name ("worker") matches the registered
+# node and MUST appear in the captured TimingRecord.
+
+state:
+  fields:
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: worker
+
+nodes:
+  worker:
+    update: {trace: ["worker"]}
+
+edges:
+  - {from: worker, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    worker:
+      - type: timing
+        node_name: worker
+        on_complete: {capture_to: timing_records}
+
+clock_stub: {type: deterministic_monotonic, advance_ms_per_call: 5}
+
+expected:
+  final_state: {trace: ["worker"]}
+  execution_order: [worker]
+
+  # The on_complete callback's record. duration_ms = 5 ms (one monotonic
+  # tick: started_at when middleware enters, then again when next returns).
+  # The harness's capture_to: timing_records collects these for assertion.
+  timing_records:
+    - node_name: worker
+      duration_ms: 5
+      outcome: "success"
+      exception_category: null

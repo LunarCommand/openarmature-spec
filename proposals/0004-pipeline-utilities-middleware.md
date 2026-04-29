@@ -1,9 +1,9 @@
 # 0004: Pipeline Utilities — Middleware
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-04-28
-- **Accepted:**
+- **Accepted:** 2026-04-28
 - **Targets:**
   - spec/pipeline-utilities/spec.md (creates)
   - spec/graph-engine/spec.md (modifies §6 Observer hooks — adds `attempt_index` field to the node-event shape; documents middleware-dispatched events for retry per-attempt visibility)

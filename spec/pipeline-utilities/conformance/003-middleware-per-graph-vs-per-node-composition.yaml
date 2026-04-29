@@ -1,0 +1,48 @@
+# Verifies §3: per-graph middleware composes OUTSIDE per-node middleware.
+#
+# Two per-graph trace_recorders [pg1, pg2] applied to the whole graph,
+# plus two per-node trace_recorders [pn1, pn2] applied to node `a`.
+# Composition order MUST be: pg1 → pg2 → pn1 → pn2 → a → pn2 → pn1 → pg2 → pg1.
+#
+# (Per-graph more general / outer; per-node more specific / inner.)
+
+state:
+  fields:
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {trace: ["a"]}
+
+edges:
+  - {from: a, to: END}
+
+initial_state: {}
+
+middleware:
+  per_graph:
+    - {type: trace_recorder, name: pg1, pre_marker: "pg1.pre", post_marker: "pg1.post"}
+    - {type: trace_recorder, name: pg2, pre_marker: "pg2.pre", post_marker: "pg2.post"}
+  per_node:
+    a:
+      - {type: trace_recorder, name: pn1, pre_marker: "pn1.pre", post_marker: "pn1.post"}
+      - {type: trace_recorder, name: pn2, pre_marker: "pn2.pre", post_marker: "pn2.post"}
+
+expected:
+  final_state:
+    trace:
+      - "pg1.pre"
+      - "pg2.pre"
+      - "pn1.pre"
+      - "pn2.pre"
+      - "a"
+      - "pn2.post"
+      - "pn1.post"
+      - "pg2.post"
+      - "pg1.post"
+  execution_order: [a]

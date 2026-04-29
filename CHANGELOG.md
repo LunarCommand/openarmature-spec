@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-04-28
+
+### Added
+
+- **pipeline-utilities capability (created).** Establishes the foundational pipeline-utilities surface. §2 specifies the **middleware** primitive: an async wrapper around node execution with the shape `(state, next) -> partial_update`, supporting pre-node and post-node phases, short-circuit, exception recovery, and reentrant `next` calls. §3 mandates per-node and per-graph registration with per-graph-outside-per-node composition. §4 mandates strict bidirectional subgraph-boundary locality (parent middleware sees the subgraph as a single dispatch; subgraph middleware never sees parent state). §6 specifies two **canonical middleware** implementations MUST ship: **retry** (§6.1) with default classifier aligned to llm-provider §7 transient categories, exponential-with-full-jitter backoff, explicit cancellation propagation, and per-attempt observer event dispatch; **timing** (§6.2) with monotonic-clock duration record, `on_complete` callback, and per-node `node_name` capture. ([proposal 0004](proposals/0004-pipeline-utilities-middleware.md))
+- New `RetryMiddleware.classifier` signature `(exception, state) -> bool`. Default classifier ignores `state` and matches purely on §7 transient categories; user-supplied classifiers MAY consult pre-merge state for context-dependent retry policies.
+- Conformance fixture suite `001-016` for pipeline-utilities, exercising basic firing, composition ordering, per-graph-vs-per-node nesting, short-circuit, error propagation, error recovery, retry success/exhaustion/passthrough/determinism, subgraph isolation, timing basic firing/failure path, timing+retry composition, retry per-attempt observer events, and retry state-aware classifier.
+
+### Changed
+
+- **graph-engine §6 Observer hooks — `attempt_index` field added to node event shape.** Non-negative integer, default `0`. For nodes wrapped by retry middleware (pipeline-utilities §6.1) that re-attempts execution, `attempt_index` increments per attempt; combined with `node_name` and `namespace` it uniquely identifies events from a retried node. The `len(parent_states) == len(namespace) - 1` invariant is unaffected. ([proposal 0004](proposals/0004-pipeline-utilities-middleware.md))
+- **graph-engine §6 Event dispatch — events fire per attempt, not per node execution.** For nodes not wrapped by re-attempting middleware, this is exactly once per node execution (unchanged from v0.4.0). For nodes wrapped by retry middleware, one event fires per attempt: the engine dispatches the final attempt's event; the retry middleware dispatches events for any preceding failed attempts via the new "Middleware-dispatched events" subsection.
+- **graph-engine §6 — new "Middleware-dispatched events" subsection.** Middleware MAY dispatch additional node events through the engine's delivery queue. Pipeline-utilities canonical retry middleware MUST do so for non-final attempts. Implementation-defined dispatch mechanism; same delivery-queue rules and observer-error isolation as engine-dispatched events; same §5 determinism contract.
+- Graph-engine conformance fixture `016-observer-attempt-index-default` — verifies the new `attempt_index` field defaults correctly to `0` for non-retry workflows.
+
+### Notes
+
+- Open question deferred from proposal 0004: per-conditional-branch middleware. Documented as an Out-of-scope item in pipeline-utilities §8 with workarounds (state markers + per-node middleware).
+
 ## [0.4.0] — 2026-04-28
 
 ### Added

@@ -1,0 +1,85 @@
+# State-aware classifier: classifier(exception, state) sees both. Two cases
+# drive the same node with different initial state to verify the classifier
+# can branch on state.
+#
+# The harness's `state_aware_classifier` test seam reads a state field
+# (`max_retries_remaining`) and returns true only when that field is > 0.
+# The classifier is supplied by name; the harness wires the implementation.
+
+cases:
+  - name: state_permits_retry
+    state:
+      fields:
+        max_retries_remaining:
+          type: int
+          default: 0
+        v:
+          type: int
+          default: 0
+        trace:
+          type: list<string>
+          reducer: append
+          default: []
+    entry: target
+    nodes:
+      target:
+        flaky:
+          failure_sequence:
+            # provider_invalid_request — non-transient by default. The
+            # state-aware classifier overrides: retry as long as
+            # state.max_retries_remaining > 0.
+            - {transient: false, category: provider_invalid_request, message: "boom"}
+          success_update: {v: 1, trace: ["target"]}
+    edges:
+      - {from: target, to: END}
+    initial_state: {max_retries_remaining: 3}
+    middleware:
+      per_node:
+        target:
+          - type: retry
+            max_attempts: 5
+            classifier: {type: state_aware_max_retries_remaining}
+            backoff: {type: deterministic, seconds: 0}
+    expected:
+      # State permits retry (max_retries_remaining=3 > 0). Node fails once
+      # then succeeds on second attempt.
+      final_state: {max_retries_remaining: 3, v: 1, trace: ["target"]}
+      execution_order: [target]
+
+  - name: state_blocks_retry
+    state:
+      fields:
+        max_retries_remaining:
+          type: int
+          default: 0
+        v:
+          type: int
+          default: 0
+        trace:
+          type: list<string>
+          reducer: append
+          default: []
+    entry: target
+    nodes:
+      target:
+        flaky:
+          failure_sequence:
+            - {transient: false, category: provider_invalid_request, message: "boom"}
+    edges:
+      - {from: target, to: END}
+    initial_state: {max_retries_remaining: 0}
+    middleware:
+      per_node:
+        target:
+          - type: retry
+            max_attempts: 5
+            classifier: {type: state_aware_max_retries_remaining}
+            backoff: {type: deterministic, seconds: 0}
+    expected_error:
+      # State forbids retry (max_retries_remaining=0). Classifier returns
+      # false on the first failure; node_exception propagates immediately.
+      category: node_exception
+      raised_from: target
+      message: "boom"
+      recoverable_state: {max_retries_remaining: 0, v: 0, trace: []}
+      flaky_call_count: 1

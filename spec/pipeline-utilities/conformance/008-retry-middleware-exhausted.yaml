@@ -1,0 +1,43 @@
+# Retry exhausted: node fails repeatedly with transient exceptions; max_attempts
+# is reached; the final exception propagates as node_exception per §4 with
+# recoverable_state and __cause__.
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: target
+
+nodes:
+  target:
+    flaky:
+      failure_sequence:
+        - {transient: true, category: provider_rate_limit, message: "throttle 1"}
+        - {transient: true, category: provider_rate_limit, message: "throttle 2"}
+        - {transient: true, category: provider_rate_limit, message: "throttle 3"}
+      # No success_update: every attempt fails. After max_attempts (3),
+      # the third (final) failure propagates.
+
+edges:
+  - {from: target, to: END}
+
+initial_state: {v: 5}
+
+middleware:
+  per_node:
+    target:
+      - type: retry
+        max_attempts: 3
+        backoff: {type: deterministic, seconds: 0}
+
+expected_error:
+  category: node_exception
+  raised_from: target
+  message: "throttle 3"
+  recoverable_state: {v: 5, trace: []}

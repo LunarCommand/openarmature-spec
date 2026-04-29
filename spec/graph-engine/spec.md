@@ -8,6 +8,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - created by [proposal 0001](../../proposals/0001-graph-engine-foundation.md)
   - §2 Subgraph extended with explicit input/output mapping by [proposal 0002](../../proposals/0002-subgraph-explicit-mapping.md)
   - §6 Observer hooks promoted from informative to normative by [proposal 0003](../../proposals/0003-node-boundary-observer-hooks.md)
+  - §6 Observer hooks gained `attempt_index` field and middleware-dispatched events by [proposal 0004](../../proposals/0004-pipeline-utilities-middleware.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -251,6 +252,14 @@ observers receiving events for an in-flight invocation is fixed at the point the
   `parent_states[0]` is the outermost graph's state, `parent_states[1]` is the next-inner containing
   graph's state, and so on; the last entry is the immediate parent's state. The invariant
   `len(parent_states) == len(namespace) - 1` MUST hold.
+- `attempt_index` — non-negative integer, default `0`. The 0-based index of this attempt among any
+  retries of the same node within a single invocation. For nodes not wrapped by retry middleware
+  (pipeline-utilities §6.1), `attempt_index` MUST be `0`. For nodes wrapped by retry middleware that
+  re-attempts execution, `attempt_index` increments per attempt: `0` for the first attempt, `1` for
+  the second, and so on through the final attempt. Combined with `node_name` and `namespace`, the
+  field uniquely identifies each event from a retried node. The §6 invariant
+  `len(parent_states) == len(namespace) - 1` is unaffected; `attempt_index` is independent of the
+  namespace chain and parent-state list.
 
 Exactly one of `post_state` or `error` MUST be populated per event.
 
@@ -260,7 +269,14 @@ not stepping while the subgraph runs, so all node events emitted from a single s
 same `parent_states` snapshots. The shape of each entry is the corresponding graph's own state schema —
 it is NOT projected, mapped, or otherwise transformed.
 
-**Event dispatch.** A node event is dispatched onto the delivery queue exactly once per node execution:
+**Event dispatch.** A node event is dispatched onto the delivery queue once per node *attempt*. For
+nodes not wrapped by retry middleware (or any other middleware that re-attempts execution), this is
+exactly once per node execution. For nodes wrapped by retry middleware (pipeline-utilities §6.1),
+one event is dispatched per attempt — the engine dispatches the event for the final attempt
+(success or terminal failure); the retry middleware dispatches events for any preceding failed
+attempts (see "Middleware-dispatched events" below). Each event carries an `attempt_index`.
+
+The engine's own dispatch fires:
 
 - On successful execution, after the reducer merge has produced the post-update state and before the
   outgoing edge is evaluated.
@@ -274,6 +290,39 @@ rules above.
 `routing_error` from §4 is a consequence of evaluating an outgoing edge against a post-update state. The
 node event for the preceding node has already been dispatched by the time a routing error arises; a
 routing error does NOT produce its own node event.
+
+**Middleware-dispatched events.** Middleware MAY dispatch additional node events through the
+engine's delivery queue. The pipeline-utilities canonical retry middleware (§6.1 of
+spec/pipeline-utilities/spec.md) MUST do so — when retry catches a transient exception and elects
+to retry, it MUST dispatch a node event for the failed attempt before invoking `next` again. The
+dispatched event MUST:
+
+- Have `attempt_index` set to the failed attempt's 0-based index.
+- Have `error` populated with the §4 category and exception (matching the §4 contract for failed
+  nodes).
+- Carry the same `node_name`, `namespace`, `step`, `pre_state`, and `parent_states` as an
+  engine-dispatched event for that node would have.
+- Have `post_state` absent (consistent with the `error`/`post_state` mutual exclusion).
+
+The engine continues to dispatch its own event for the final attempt with the corresponding
+`attempt_index`. Net result for an N-attempt retry: N events total, with `attempt_index` values
+`0..N-1` in order. The first N-1 events have `error` populated; the final event has `post_state`
+populated on success or `error` populated on terminal failure.
+
+The dispatch mechanism is implementation-defined (e.g., a method on a context object exposed to
+middleware, an attribute on the compiled graph, etc.). Implementations MUST ensure that
+middleware-dispatched events flow through the same delivery queue as engine-dispatched events, with
+the same per-event ordering rules (graph-attached outermost-to-innermost, then invocation-scoped)
+and the same observer-error isolation (an observer raising on a middleware-dispatched event MUST
+NOT prevent subsequent events from being delivered).
+
+The §5 determinism guarantee continues to apply: given the same inputs and the same registered
+observers, the sequence of events (now including per-attempt events) MUST be identical across runs,
+modulo any nondeterminism introduced by the middleware itself (e.g., retry's jitter).
+
+Other middleware MAY use the same dispatch mechanism when retry-like per-iteration visibility is
+intrinsic to the middleware's purpose; doing so is implementation-private unless and until the
+pattern is standardized by a follow-on proposal.
 
 **State immutability.** `pre_state`, `post_state`, and every entry of `parent_states` MUST present the
 same immutability contract as state instances flowing through the graph (§2 Node). Attempts by an
