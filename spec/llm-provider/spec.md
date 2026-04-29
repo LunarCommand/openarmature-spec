@@ -1,65 +1,20 @@
-# 0006: LLM Provider — Core Abstraction (OpenAI-Compatible)
+# LLM Provider
 
-- **Status:** Accepted
-- **Author:** Chris Colinsky
-- **Created:** 2026-04-28
-- **Accepted:** 2026-04-28
-- **Targets:** spec/llm-provider/spec.md (creates)
-- **Related:** 0001
-- **Supersedes:**
+Canonical behavioral specification for the OpenArmature LLM provider abstraction.
 
-## Summary
+- **Capability:** llm-provider
+- **Introduced:** spec version 0.4.0
+- **History:**
+  - created by [proposal 0006](../../proposals/0006-llm-provider-core.md)
 
-Establish the foundational behavioral specification for the OpenArmature LLM provider abstraction:
-typed message and tool-call shapes, a stateless `complete()` operation, a pre-flight `ready()` check,
-canonical error categories, and a normative mapping onto the OpenAI Chat Completions wire format.
-This is the first capability spec to address the LLM half of the charter's thesis ("LLM pipelines and
-tool-calling agents") and is a prerequisite for tool-system, prompt-management, and evaluation
-capabilities.
+This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
+onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
 
-## Motivation
-
-Three releases of the graph-engine (v0.1, v0.2, v0.3) have shipped without a single LLM-shaped
-primitive. Graph-engine is content-agnostic by design — it knows about state, nodes, and edges, not
-about models — but the charter's defining claim is "one framework for both deterministic LLM
-pipelines and tool-calling agents." Until LLM calls have a defined shape, that claim is unbacked: any
-two implementations could each ship a working graph-engine and then disagree completely on what an
-LLM call looks like, leaving users to write provider-specific code in their nodes.
-
-A provider abstraction is also the prerequisite for every later LLM-shaped capability:
-
-- **Tool system / MCP** (charter §4.4) needs a `ToolCall` shape to translate tool definitions into
-  whatever the provider expects, and to surface tool-call requests back as routable graph state.
-- **Prompt management** (charter §4.5) produces `Message` sequences; the provider abstraction is what
-  consumes them.
-- **Evaluation** (charter §4.7) needs a stable provider call surface to record inputs and outputs
-  against.
-- **Pipeline-utilities retry middleware** (proposal 0004, in flight) needs canonical error categories
-  to classify which errors are retryable.
-
-Picking OpenAI-compatible as the v1 wire format is a pragmatic shortcut. The OpenAI Chat Completions
-API (`/v1/chat/completions`) is the de facto standard for local LLM servers — vLLM, LM Studio,
-llama.cpp, Bifrost, and Ollama-with-the-OpenAI-shim all implement it. A single OpenAI-compatible
-provider implementation therefore covers most of the local development surface. Provider-native
-shapes (Anthropic Messages API, Google Vertex, Bedrock) are deferred to follow-on proposals; each
-adds a new wire-format mapping section to this same capability spec rather than a new abstraction.
-
-Streaming, multi-modal content (images / audio), structured output / JSON mode, and pre-call token
-counting are deferred. The minimum viable surface is stateless text-and-tools completion: enough to
-build a working agent loop above.
-
-## Detailed design
-
-The full proposed text of `spec/llm-provider/spec.md` is reproduced below. It is written in
-language-agnostic terms — Python and TypeScript map their own idioms (Pydantic vs. Zod, dataclasses
-vs. interfaces) onto the behavioral contract described here.
-
-The spec version under which this capability lands is determined at acceptance time and recorded in
-`CHANGELOG.md`.
+Normative keywords (MUST, MUST NOT, SHOULD, MAY) are used per [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
 
 ---
 
-### 1. Purpose
+## 1. Purpose
 
 The LLM provider capability defines a uniform request/response surface for sending messages to a
 Large Language Model and receiving its response. It is the substrate every higher-level LLM
@@ -72,7 +27,7 @@ The substrate is intentionally narrow:
 - A provider does **not** loop on tool calls. If the assistant returns tool calls, the caller is
   responsible for executing the tools and making a follow-on `complete()` with the results.
 - A provider does **not** handle retry, rate limiting, fallback, or routing. Those are pipeline-
-  utilities concerns and compose above the provider via middleware (proposal 0004).
+  utilities concerns and compose above the provider via middleware.
 - A provider is **bound to a single model identifier**. Switching models means constructing a new
   provider, not passing a different argument per call. (Implementations MAY offer convenience
   factories that produce per-model providers from shared credentials; that is a constructor concern,
@@ -89,7 +44,7 @@ provider exception as cause. Users who need provider-specific fields (logprobs, 
 details, vendor-specific extensions) reach through the abstraction directly; structure is added,
 never removed.
 
-### 2. Concepts
+## 2. Concepts
 
 **Message.** A typed entry in a conversation. The four message kinds are `system`, `user`,
 `assistant`, and `tool`. Each kind carries kind-specific content as defined in §3.
@@ -107,7 +62,7 @@ single assistant message wrapped in a `Response`. A provider is bound to a speci
 **Response.** The result of a provider call: the assistant message, a finish reason, and usage
 information.
 
-### 3. Message shape
+## 3. Message shape
 
 A message is a record with the following fields:
 
@@ -174,7 +129,7 @@ across providers cleanly without id rewriting. Applications that need a unified 
 MAY rewrite ids at their own boundary; the spec keeps the abstraction transparent and leaves that
 choice to the application.
 
-### 4. Tool definition
+## 4. Tool definition
 
 A `Tool` record:
 
@@ -190,11 +145,11 @@ provider-agnostic (every supported wire format expects JSON Schema) and language
 e.g., Pydantic's `model_json_schema()`, Zod's `zod-to-json-schema` — but the spec surface is JSON
 Schema regardless).
 
-### 5. Provider interface
+## 5. Provider interface
 
 A provider MUST expose the following operations:
 
-#### `ready()`
+### `ready()`
 
 Async. Verifies that the bound model is reachable and serving — i.e., that the next `complete()`
 call is expected to succeed. A successful return MUST imply that `complete()` would not raise any
@@ -217,7 +172,7 @@ distinguishes "model in registry" from "model loaded" SHOULD be preferred over a
 `ready()` is a pre-flight check intended for fail-fast on startup or warmup polling. It MUST NOT
 be called automatically by `complete()`; callers decide when (or whether) to invoke it.
 
-#### `complete(messages, tools=None, config=None)`
+### `complete(messages, tools=None, config=None)`
 
 Async. Performs a single completion call.
 
@@ -242,7 +197,7 @@ Operation semantics:
 - `complete()` does NOT retry on transient errors. Errors propagate; retry policy belongs above this
   layer.
 
-### 6. Response and configuration
+## 6. Response and configuration
 
 A `Response` record:
 
@@ -276,7 +231,7 @@ A `RuntimeConfig` record:
 
 Implementations MAY accept additional provider-specific fields. The four above are the minimum.
 
-### 7. Error semantics
+## 7. Error semantics
 
 A provider call (`ready()` or `complete()`) may raise one of the following canonical category errors:
 
@@ -302,7 +257,7 @@ Each error MUST expose a `category` identifier (matching the strings above, as a
 code, or tagged discriminant per the language's idiom). Provider-originated errors SHOULD preserve
 the underlying provider exception as cause (`__cause__` in Python, `cause` in TypeScript).
 
-These six categories are the minimum required surface. Implementations MAY raise additional
+These seven categories are the minimum required surface. Implementations MAY raise additional
 provider-specific categories for cases not covered above; users MAY catch by category to implement
 retry policy.
 
@@ -310,16 +265,16 @@ retry policy.
 `provider_model_not_loaded`, and `finish_reason: "error"` are *transient* — a retry MAY succeed.
 The categories `provider_authentication`, `provider_invalid_model`, `provider_invalid_request`,
 and `provider_invalid_response` are *non-transient* — retrying without changing the request will
-not succeed. Pipeline-utilities retry middleware (proposal 0004) consumes these categories.
+not succeed.
 
-### 8. OpenAI-compatible wire format
+## 8. OpenAI-compatible wire format
 
 The OpenAI Chat Completions API (`POST /v1/chat/completions`) is the de facto standard for local
-LLM servers (vLLM, LM Studio, llama.cpp, Bifrost) as well as the OpenAI hosted API itself. A
-provider implementation MAY opt into an "OpenAI-compatible" label only if it implements the wire
-mapping below.
+LLM servers (vLLM, LM Studio, llama.cpp) as well as the OpenAI hosted API itself. A provider
+implementation MAY opt into an "OpenAI-compatible" label only if it implements the wire mapping
+below.
 
-#### 8.1 Request mapping
+### 8.1 Request mapping
 
 The §3 message list maps onto the OpenAI `messages` field:
 
@@ -361,7 +316,7 @@ A §4 `Tool` `{name, description, parameters}` maps to an OpenAI `tools` entry a
 The §6 `RuntimeConfig` fields map directly: `temperature`, `max_tokens`, `top_p`, `seed`. The bound
 model identifier becomes OpenAI's `model` field.
 
-#### 8.2 Response mapping
+### 8.2 Response mapping
 
 A successful OpenAI response maps onto a §6 `Response` as follows:
 
@@ -376,25 +331,26 @@ A successful OpenAI response maps onto a §6 `Response` as follows:
   rewrite, or omit fields. Provider-specific extensions surface here unchanged (e.g.,
   `choices[0].logprobs`, vLLM's `prompt_logprobs`, LM Studio's runtime stats).
 
-#### 8.3 Error mapping
+### 8.3 Error mapping
 
 | OpenAI condition | Spec category |
 |---|---|
 | HTTP 401, 403 | `provider_authentication` |
 | HTTP 404 with model-not-found body | `provider_invalid_model` |
+| HTTP 503 with model-loading body | `provider_model_not_loaded` |
 | HTTP 429 | `provider_rate_limit` |
-| HTTP 5xx, connection error, timeout | `provider_unavailable` |
+| HTTP 5xx (other), connection error, timeout | `provider_unavailable` |
 | HTTP 400 (malformed request, schema violation) | `provider_invalid_request` |
 | Successful HTTP response that fails to parse into §6 shape | `provider_invalid_response` |
 
-#### 8.4 Concurrency
+### 8.4 Concurrency
 
 OpenAI-compatible servers vary in concurrency support — local servers may serialize internally,
 hosted APIs do not. Implementations MUST NOT add a serialization layer; concurrent `complete()` calls
 go to the wire concurrently. Providers that benefit from client-side concurrency limits use the
 pipeline-utilities rate limiter or middleware, not this layer.
 
-### 9. Determinism
+## 9. Determinism
 
 LLM completions are not deterministic by default. Even with `temperature=0` and a fixed `seed`,
 identical inputs MAY produce different outputs across calls or across deployments of the same
@@ -408,7 +364,7 @@ For `ready()`: implementations MUST return successfully when the provider is rea
 model exists, and raise the appropriate §7 category otherwise. This is testable deterministically
 against a mock or stub HTTP server.
 
-### 10. Out of scope
+## 10. Out of scope
 
 Not covered by this specification; deferred to follow-on capabilities or proposals:
 
@@ -420,130 +376,6 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
   §8-style mapping section to this spec via a follow-on proposal.
 - **Agent loop** — tool-call-then-respond loops live in graph-engine nodes or a future agent-runner
   capability.
-- **Retry and rate-limit policy** — pipeline-utilities concern (proposal 0004).
+- **Retry and rate-limit policy** — pipeline-utilities concern.
 - **Prompt template rendering** — prompt-management capability (charter §4.5).
 - **Embeddings** — separate API surface; separate capability if/when needed.
-
-## Conformance test impact
-
-Add a new conformance directory `spec/llm-provider/conformance/` with the following fixtures. The
-shape mirrors graph-engine conformance: a YAML pair (input + expected) plus a markdown description.
-All fixtures use a **mock provider** the implementation supplies for testing — the conformance suite
-does not call live APIs.
-
-1. **`001-basic-completion`** — `[system, user]` → mock provider returns assistant text → `Response`
-   has `message.role == "assistant"`, `content` populated, `finish_reason == "stop"`, no
-   `tool_calls`. Verifies the minimal happy path.
-
-2. **`002-tool-call-roundtrip`** — `[user]` with one `Tool` defined → mock provider returns
-   assistant `tool_calls` (with a non-trivial id, e.g., `call_abc123_with_underscores`) → caller
-   appends `tool` message → second `complete()` with full history → mock returns final assistant
-   text with `finish_reason == "stop"`. Verifies the call / tool-result / call shape, the
-   `tool_call_id` matching, and that the tool-call `id` is preserved verbatim through the second
-   `complete()` (no rewriting, normalization, or stripping).
-
-3. **`003-message-validation`** — table of malformed inputs (system message in middle of list, tool
-   message without preceding assistant tool_call, duplicate tool names, empty content where required)
-   → each MUST raise `provider_invalid_request` before any wire call.
-
-4. **`004-error-categories`** — table of mock provider failures → each maps to the documented §7
-   category. Cases: 401 → `provider_authentication`; 404+model-not-found →
-   `provider_invalid_model`; 503 with model-loading body (or vLLM-style `model_not_loaded` payload)
-   → `provider_model_not_loaded`; 429 → `provider_rate_limit`; 5xx → `provider_unavailable`;
-   malformed-but-200 → `provider_invalid_response`.
-
-5. **`005-openai-wire-mapping`** — table of round-trip cases: spec `Message` / `Tool` /
-   `RuntimeConfig` → OpenAI request JSON → spec `Response`. Verifies the §8 mapping
-   bidirectionally. Includes a case where the OpenAI response carries a provider-specific extension
-   (e.g., `choices[0].logprobs`); verifies `Response.raw` carries it verbatim while normalized
-   fields are unchanged. Implementations MAY use a stub HTTP server or a translation function
-   exposed for testing.
-
-6. **`006-usage-accounting`** — mock provider returns a response with `usage` populated; another
-   mock returns `usage: null`. Verifies `Response.usage` carries integers in the first case and
-   `null` in all three subfields in the second.
-
-7. **`007-ready-check`** — table of `ready()` outcomes against a stub server: 200 with model
-   listed AND loaded → success; 200 with model listed but not yet loaded →
-   `provider_model_not_loaded`; 401 → `provider_authentication`; 404 with no matching model →
-   `provider_invalid_model`; network failure → `provider_unavailable`. Verifies the stronger
-   `ready()` contract: a successful return implies the next `complete()` is expected to succeed.
-
-8. **`008-error-finish-reason-with-malformed-tool-calls`** — mock provider returns a 200 response
-   with `finish_reason: "error"` and a `tool_calls` array containing: one valid tool call with
-   parseable schema-conforming arguments, one with parseable JSON that does not conform to the
-   tool's parameters schema, and one with truncated/invalid JSON in the arguments string.
-   Verifies:
-   - `complete()` does NOT raise (`finish_reason: "error"` is a degraded but parseable response,
-     not a request-level failure).
-   - `Response.message.tool_calls` has all three entries.
-   - The valid call's `arguments` is a parsed mapping; the schema-violating call's `arguments` is
-     a parsed mapping (no schema enforcement under `error`); the truncated-JSON call's
-     `arguments` is `null`.
-   - `Response.raw` carries the full original response, including the truncated-JSON arguments
-     bytes verbatim — application code can repair from there.
-
-The conformance harness in each implementation supplies a mock-provider adapter that loads a fixture,
-runs the operation, and asserts against the YAML's expected block. The fixtures themselves contain
-no live URLs and no API keys.
-
-## Alternatives considered
-
-**Do nothing — let each implementation define its own LLM call shape.** The path of least resistance,
-and the path LangChain Python and LangChain TypeScript took (visible drift, separate "differences"
-docs). Rejected: violates the charter's drift policy (`GOVERNANCE.md` §Multi-language consistency).
-A user moving between Python and TypeScript implementations would face two unrelated provider APIs.
-
-**Spec the OpenAI wire format directly as the abstraction.** Faster: the wire shape is already
-defined and mature. Rejected because it bakes one provider's design choices into the spec — OpenAI's
-content-array shape, OpenAI's `function_call` legacy field, OpenAI's specific `finish_reason` set.
-Future Anthropic-native or Bedrock-native providers would have to either pretend to be OpenAI on the
-wire (re-translation surface) or sit outside the abstraction. The two-layer approach (abstract shape
-+ wire mapping) lets each provider's native form be a parallel mapping section, with the abstract
-shape stable.
-
-**Abstract over message *content* shape (text + parts) from day one.** OpenAI and Anthropic both
-support a richer "content as list of parts" form for multi-modal messages. Rejected because the
-spec scope here is text-and-tool-calls; baking a content-parts abstraction in v1 would be designing
-for a feature (multi-modal) that's explicitly deferred. When multi-modal lands as a follow-on
-proposal, it can extend `content` to accept either a string or a list of parts in a backwards-
-compatible way (tagged-union semantics; the string form remains valid).
-
-**Make the provider stateful — cache conversation history server-side.** Some provider APIs offer
-this (OpenAI's Assistants API, Anthropic's prompt-caching opt-in). Rejected: stateful providers
-complicate every higher-level capability (retry can't blindly resubmit, evaluation can't reproduce
-inputs from logs alone, the agent loop has to know whether the provider remembers). A stateless
-substrate composes; statefulness can be added by a higher capability that wraps a stateless
-provider.
-
-**Have `complete()` loop on tool calls internally (single call returns final assistant text).** The
-"agent runner" shape — the caller passes tools and a starting message list, the provider loops
-until it gets a non-tool-calling response. Rejected because it conflates two concerns: provider
-calls and agent loops. Tool execution is application logic (tools may be local Python functions,
-remote MCP servers, network calls); embedding it in the provider forces the provider to know about
-async tool dispatch, error handling, and step budgets. The graph-engine + a tool-system capability
-expresses the loop as a conditional edge — a much better fit for the framework's primitives.
-
-**Retries inside the provider.** Rejected for the same reason: retry policy is a cross-cutting
-concern that belongs in pipeline-utilities middleware (proposal 0004). The provider returns errors
-classified by category; middleware decides what to do with them.
-
-**Rate limiting inside the provider.** Same. The charter §4.2 (`RateLimiter` with per-model and
-per-node scopes that compose) places rate limiting in pipeline-utilities. A per-provider limiter
-inside this layer would conflict with the cross-cutting design.
-
-**Tokenizer access (token counting before the call).** Useful for prompt-budget-aware assembly.
-Rejected for v1: not every provider exposes a tokenizer (especially private models behind APIs),
-and the bringing-your-own-tokenizer story (tiktoken for OpenAI, the equivalent for Anthropic, etc.)
-is messy enough to deserve its own proposal. Without it, `max_tokens` and `usage.total_tokens` are
-the budget tools available; that is enough for v1.
-
-**Use a vendor-neutral framework like LiteLLM as the abstraction.** LiteLLM is excellent at what it
-does (provider routing, fallback, cost tracking) but it solves a different problem — multi-provider
-*runtime* dispatch. The spec needs a *static type contract* implementations can ship without a
-runtime dependency on a third-party library. A provider built on top of LiteLLM is a perfectly good
-implementation of this spec.
-
-## Open questions
-
-None at time of submission.

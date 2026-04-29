@@ -1,0 +1,61 @@
+# Usage accounting: when the provider reports token counts, surface them as
+# integers; when usage is absent, surface all three subfields as null.
+#
+# Verifies §6 Response.usage semantics. Two cases.
+
+cases:
+  - name: usage_populated
+    description: |
+      Provider returns a usage record; Response.usage carries the integers.
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-usage-1
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            usage:
+              prompt_tokens: 100
+              completion_tokens: 50
+              total_tokens: 150
+    call:
+      operation: complete
+      messages: [{role: user, content: "Hi"}]
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+        usage:
+          prompt_tokens: 100
+          completion_tokens: 50
+          total_tokens: 150
+
+  - name: usage_absent
+    description: |
+      Provider omits the usage field entirely. All three Response.usage
+      subfields MUST be null per §6.
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-usage-2
+            object: chat.completion
+            created: 1700000001
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            # No `usage` key.
+    call:
+      operation: complete
+      messages: [{role: user, content: "Hi"}]
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+        usage:
+          prompt_tokens: null
+          completion_tokens: null
+          total_tokens: null

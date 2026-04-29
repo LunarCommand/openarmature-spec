@@ -1,0 +1,115 @@
+# Tool-call roundtrip: user → assistant tool_calls → tool result → assistant text.
+#
+# Verifies the call / tool-result / call shape of the tool-calling protocol and
+# that the tool-call id is preserved verbatim through the second complete().
+#
+# The id used in the mock response, `call_abc123_with_underscores`, is non-trivial
+# (mixed characters, underscores) — verifies the implementation does not normalize,
+# strip, or rewrite it. The §3 "Cross-provider id round-tripping" rule depends on
+# this verbatim guarantee.
+
+mock_provider:
+  responses:
+    # First call: model decides to use the get_weather tool.
+    - status: 200
+      body:
+        id: chatcmpl-test-002a
+        object: chat.completion
+        created: 1700000001
+        model: test-model
+        choices:
+          - index: 0
+            message:
+              role: assistant
+              content: null
+              tool_calls:
+                - id: call_abc123_with_underscores
+                  type: function
+                  function:
+                    name: get_weather
+                    arguments: '{"city": "Boston"}'
+            finish_reason: tool_calls
+        usage:
+          prompt_tokens: 30
+          completion_tokens: 18
+          total_tokens: 48
+    # Second call: caller has executed the tool and appended the tool message.
+    # Model produces final assistant text.
+    - status: 200
+      body:
+        id: chatcmpl-test-002b
+        object: chat.completion
+        created: 1700000002
+        model: test-model
+        choices:
+          - index: 0
+            message:
+              role: assistant
+              content: "It's 68°F and sunny in Boston."
+            finish_reason: stop
+        usage:
+          prompt_tokens: 55
+          completion_tokens: 12
+          total_tokens: 67
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "What's the weather in Boston?"}
+    tools:
+      - name: get_weather
+        description: "Get current weather for a city."
+        parameters:
+          type: object
+          properties:
+            city: {type: string}
+          required: [city]
+    expected:
+      response:
+        message:
+          role: assistant
+          content: null
+          tool_calls:
+            - id: call_abc123_with_underscores
+              name: get_weather
+              arguments: {city: "Boston"}
+        finish_reason: tool_calls
+        usage:
+          prompt_tokens: 30
+          completion_tokens: 18
+          total_tokens: 48
+        raw_check:
+          required_keys: [id, choices, usage]
+
+  # Caller appends a tool message bearing the SAME id verbatim, then makes the
+  # follow-on call. The implementation MUST send `tool_call_id: call_abc123_with_underscores`
+  # in the wire request — verifying verbatim id preservation.
+  - operation: complete
+    messages:
+      - {role: user, content: "What's the weather in Boston?"}
+      - role: assistant
+        content: null
+        tool_calls:
+          - id: call_abc123_with_underscores
+            name: get_weather
+            arguments: {city: "Boston"}
+      - {role: tool, content: '{"temp": 68, "condition": "sunny"}', tool_call_id: call_abc123_with_underscores}
+    tools:
+      - name: get_weather
+        description: "Get current weather for a city."
+        parameters:
+          type: object
+          properties:
+            city: {type: string}
+          required: [city]
+    expected:
+      response:
+        message:
+          role: assistant
+          content: "It's 68°F and sunny in Boston."
+          tool_calls: null
+        finish_reason: stop
+        usage:
+          prompt_tokens: 55
+          completion_tokens: 12
+          total_tokens: 67

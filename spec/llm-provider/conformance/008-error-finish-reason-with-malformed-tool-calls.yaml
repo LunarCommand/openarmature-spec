@@ -1,0 +1,91 @@
+# finish_reason: "error" with malformed tool_calls.
+#
+# Verifies §3 "Validation under finish_reason: \"error\"":
+#   - complete() does NOT raise — finish_reason: error is a degraded but
+#     parseable response, not a request-level failure.
+#   - All tool_calls (valid, schema-violating, truncated) flow through to
+#     Response.message.tool_calls.
+#   - Successfully-parsed arguments populate as a mapping; unparseable
+#     arguments populate as null.
+#   - Response.raw carries the original bytes verbatim, including the
+#     truncated arguments string — application code repairs from there.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-008
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message:
+              role: assistant
+              content: null
+              tool_calls:
+                # Valid: parseable JSON, conforms to schema.
+                - id: call_valid_001
+                  type: function
+                  function:
+                    name: get_weather
+                    arguments: '{"city": "Boston"}'
+                # Schema-violating: parseable JSON, but extra unknown field.
+                # Under finish_reason: error this is allowed through; under
+                # any other finish_reason this would have raised
+                # provider_invalid_response.
+                - id: call_schema_violating_002
+                  type: function
+                  function:
+                    name: get_weather
+                    arguments: '{"city": "Seattle", "extra": "ignored"}'
+                # Truncated: unparseable JSON. arguments end with an open
+                # brace — implementation cannot produce a mapping.
+                - id: call_truncated_003
+                  type: function
+                  function:
+                    name: get_weather
+                    arguments: '{"city": "London", "ext'
+            finish_reason: error
+        usage: {prompt_tokens: 50, completion_tokens: 30, total_tokens: 80}
+
+calls:
+  - operation: complete
+    messages: [{role: user, content: "Weather for three cities"}]
+    tools:
+      - name: get_weather
+        description: "Get current weather for a city."
+        parameters:
+          type: object
+          properties:
+            city: {type: string}
+          required: [city]
+          additionalProperties: false
+    expected:
+      response:
+        message:
+          role: assistant
+          content: null
+          tool_calls:
+            # Valid: arguments is a parsed mapping conforming to schema.
+            - id: call_valid_001
+              name: get_weather
+              arguments: {city: "Boston"}
+            # Schema-violating: arguments is a parsed mapping (does NOT
+            # validate against the schema, but is still a mapping).
+            - id: call_schema_violating_002
+              name: get_weather
+              arguments: {city: "Seattle", extra: "ignored"}
+            # Truncated: arguments is null. Original bytes available via raw.
+            - id: call_truncated_003
+              name: get_weather
+              arguments: null
+        finish_reason: error
+        usage: {prompt_tokens: 50, completion_tokens: 30, total_tokens: 80}
+        raw_check:
+          # The original truncated arguments string MUST be present in raw
+          # so application code can repair it. The harness MAY assert on the
+          # nested path raw.choices[0].message.tool_calls[2].function.arguments
+          # if it supports deep raw assertions; the top-level keys check
+          # below is the minimum.
+          required_keys: [id, object, created, model, choices, usage]

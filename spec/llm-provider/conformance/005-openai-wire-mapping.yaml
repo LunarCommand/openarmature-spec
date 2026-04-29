@@ -1,0 +1,208 @@
+# OpenAI wire format round-trip: spec input → wire JSON → spec Response.
+#
+# Verifies the §8 OpenAI-compatible mapping in both directions:
+#   - Request: spec Message/Tool/RuntimeConfig → OpenAI request body.
+#   - Response: OpenAI response body → spec Response (with `raw` carrying the
+#     original verbatim).
+#
+# Each case provides:
+#   - The spec-level inputs (`call`)
+#   - The wire JSON the implementation MUST send (`expected_wire_request`)
+#   - The mock response body the harness returns (`mock_provider.responses`)
+#   - The spec Response the implementation MUST return (`expected.response`)
+#
+# The harness MUST capture the implementation's outbound request body and
+# compare to `expected_wire_request` literally (key-by-key; ordering of keys
+# in mappings is not significant).
+
+cases:
+  - name: simple_text_completion
+    description: |
+      System + user messages, no tools, default config. Verifies basic message
+      role mapping and required `model` field.
+    call:
+      operation: complete
+      messages:
+        - {role: system, content: "Be brief."}
+        - {role: user, content: "Hello"}
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: system, content: "Be brief."}
+        - {role: user, content: "Hello"}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-1
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "Hi."}, finish_reason: stop}
+            usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      response:
+        message:
+          role: assistant
+          content: "Hi."
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+
+  - name: tool_call_with_serialized_arguments
+    description: |
+      Assistant message with tool_calls, then a follow-up tool message.
+      Verifies that `arguments` is serialized to a JSON-encoded string on the
+      wire (per §8.1) and that the spec stores the deserialized mapping.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "What's 2+2?"}
+        - role: assistant
+          content: null
+          tool_calls:
+            - id: call_xyz
+              name: calculate
+              arguments: {expression: "2+2"}
+        - {role: tool, content: "4", tool_call_id: call_xyz}
+      tools:
+        - name: calculate
+          description: "Evaluate a math expression."
+          parameters:
+            type: object
+            properties:
+              expression: {type: string}
+            required: [expression]
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "What's 2+2?"}
+        - role: assistant
+          content: null
+          tool_calls:
+            - id: call_xyz
+              type: function
+              function:
+                name: calculate
+                arguments: '{"expression":"2+2"}'
+        - {role: tool, content: "4", tool_call_id: call_xyz}
+      tools:
+        - type: function
+          function:
+            name: calculate
+            description: "Evaluate a math expression."
+            parameters:
+              type: object
+              properties:
+                expression: {type: string}
+              required: [expression]
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-2
+            object: chat.completion
+            created: 1700000001
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "It is 4."}, finish_reason: stop}
+            usage: {prompt_tokens: 30, completion_tokens: 4, total_tokens: 34}
+    expected:
+      response:
+        message:
+          role: assistant
+          content: "It is 4."
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 30, completion_tokens: 4, total_tokens: 34}
+
+  - name: runtime_config_passthrough
+    description: |
+      RuntimeConfig fields (temperature, max_tokens, top_p, seed) map directly
+      to OpenAI's request body fields.
+    call:
+      operation: complete
+      messages: [{role: user, content: "Hi"}]
+      config:
+        temperature: 0.7
+        max_tokens: 100
+        top_p: 0.95
+        seed: 42
+    expected_wire_request:
+      model: test-model
+      messages: [{role: user, content: "Hi"}]
+      temperature: 0.7
+      max_tokens: 100
+      top_p: 0.95
+      seed: 42
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-3
+            object: chat.completion
+            created: 1700000002
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "Hello"}, finish_reason: stop}
+            usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2}
+    expected:
+      response:
+        message: {role: assistant, content: "Hello", tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2}
+
+  - name: function_call_legacy_finish_reason_mapping
+    description: |
+      OpenAI's legacy `finish_reason: "function_call"` MUST map to the spec's
+      `tool_calls` finish_reason. Provider-specific extensions (here:
+      `choices[0].logprobs`) MUST surface in `raw` verbatim.
+    call:
+      operation: complete
+      messages: [{role: user, content: "Use a tool"}]
+      tools:
+        - name: noop
+          description: "Does nothing."
+          parameters: {type: object, properties: {}}
+    expected_wire_request:
+      model: test-model
+      messages: [{role: user, content: "Use a tool"}]
+      tools:
+        - type: function
+          function: {name: noop, description: "Does nothing.", parameters: {type: object, properties: {}}}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-4
+            object: chat.completion
+            created: 1700000003
+            model: test-model
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: null
+                  tool_calls:
+                    - id: call_legacy
+                      type: function
+                      function: {name: noop, arguments: "{}"}
+                finish_reason: function_call
+                logprobs: {tokens: ["{", "}"], token_logprobs: [-0.1, -0.05]}
+            usage: {prompt_tokens: 5, completion_tokens: 2, total_tokens: 7}
+    expected:
+      response:
+        message:
+          role: assistant
+          content: null
+          tool_calls:
+            - {id: call_legacy, name: noop, arguments: {}}
+        finish_reason: tool_calls
+        usage: {prompt_tokens: 5, completion_tokens: 2, total_tokens: 7}
+        raw_check:
+          # logprobs is a provider-specific extension; MUST appear in raw verbatim.
+          required_keys: [id, object, created, model, choices, usage]
+          # Implementations MAY assert raw.choices[0].logprobs is preserved
+          # if they support deep raw assertions. The harness asserts only
+          # top-level key presence by default per the §6 raw contract.

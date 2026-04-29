@@ -1,0 +1,132 @@
+# Error category mapping: each mock provider failure mode produces the correct
+# §7 category. Table-style.
+#
+# Verifies that the implementation classifies provider errors per §7 and that
+# the §8.3 OpenAI mapping is correct.
+
+cases:
+  - name: authentication_401
+    description: HTTP 401 → provider_authentication
+    mock_provider:
+      responses:
+        - status: 401
+          body:
+            error:
+              type: invalid_request_error
+              code: invalid_api_key
+              message: "Incorrect API key provided"
+    call:
+      operation: complete
+      messages: [{role: user, content: "Hi"}]
+    expected:
+      raises:
+        category: provider_authentication
+
+  - name: invalid_model_404
+    description: HTTP 404 with model-not-found body → provider_invalid_model
+    mock_provider:
+      responses:
+        - status: 404
+          body:
+            error:
+              type: invalid_request_error
+              code: model_not_found
+              message: "The model 'no-such-model' does not exist"
+    call:
+      operation: complete
+      messages: [{role: user, content: "Hi"}]
+    expected:
+      raises:
+        category: provider_invalid_model
+
+  - name: model_not_loaded_503
+    description: |
+      HTTP 503 with model-loading body → provider_model_not_loaded.
+      Local LLM servers (vLLM, LM Studio) emit 503 with a body indicating the
+      model is configured but not currently serving. Distinct from
+      provider_unavailable (no model context) and provider_invalid_model
+      (model unknown).
+    mock_provider:
+      responses:
+        - status: 503
+          body:
+            error:
+              type: model_not_loaded
+              message: "Model 'test-model' is configured but not loaded into memory"
+    call:
+      operation: complete
+      messages: [{role: user, content: "Hi"}]
+    expected:
+      raises:
+        category: provider_model_not_loaded
+
+  - name: rate_limit_429
+    description: HTTP 429 → provider_rate_limit
+    mock_provider:
+      responses:
+        - status: 429
+          headers:
+            Retry-After: "30"
+          body:
+            error:
+              type: rate_limit_error
+              message: "Rate limit exceeded"
+    call:
+      operation: complete
+      messages: [{role: user, content: "Hi"}]
+    expected:
+      raises:
+        category: provider_rate_limit
+        # Implementations SHOULD expose retry_after when the provider supplies
+        # it. The harness MAY assert this when the implementation supports it;
+        # not strictly mandatory per spec §7 (SHOULD).
+        retry_after_seconds: 30
+
+  - name: server_error_500
+    description: HTTP 500 → provider_unavailable
+    mock_provider:
+      responses:
+        - status: 500
+          body:
+            error:
+              type: server_error
+              message: "Internal server error"
+    call:
+      operation: complete
+      messages: [{role: user, content: "Hi"}]
+    expected:
+      raises:
+        category: provider_unavailable
+
+  - name: malformed_response_200
+    description: |
+      HTTP 200 but the response body cannot be parsed into the §6 shape.
+      Missing required `choices` array → provider_invalid_response.
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-test-malformed
+            object: chat.completion
+            # `choices` is missing entirely.
+    call:
+      operation: complete
+      messages: [{role: user, content: "Hi"}]
+    expected:
+      raises:
+        category: provider_invalid_response
+
+  - name: connection_failure
+    description: |
+      Network failure (connection refused, DNS, timeout) → provider_unavailable.
+      The harness's mock provider supports a `connection_failure: true` mode
+      that simulates the failure without dispatching a response.
+    mock_provider:
+      responses:
+        - connection_failure: true
+    call:
+      operation: complete
+      messages: [{role: user, content: "Hi"}]
+    expected:
+      raises:
+        category: provider_unavailable
