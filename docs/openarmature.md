@@ -239,7 +239,13 @@ first-class ecosystem citizen.
 **7. No built-in prompts.** The framework never embeds hidden prompt text that shapes LLM behavior. No ReAct templates,
 no default personas. Every prompt the LLM sees is authored by the developer.
 
-**8. Escape hatches everywhere.** Every default can be overridden. The framework handles the common case; developers
+**8. Transparency over abstraction.** The framework adds structure but never hides what's underneath. Provider
+responses, exception causes, intermediate state, and routing decisions are exposed alongside their normalized views —
+not behind escape hatches, but as first-class fields users can read directly. Hiding implementation details from users
+hides failures from users; OpenArmature defaults the other way. Principle 7 ("No built-in prompts") is one specific
+case of this rule; the rule itself is general.
+
+**9. Escape hatches everywhere.** Every default can be overridden. The framework handles the common case; developers
 handle the exceptional case.
 
 ### 3.2 Package Structure
