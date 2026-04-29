@@ -1,0 +1,105 @@
+# ready() check: verifies the strengthened §5 contract.
+#
+# A successful ready() return MUST imply the next complete() call would not
+# raise any of the configuration / load-state §7 categories. Each case below
+# exercises a single ready() call against a stub that emulates the provider's
+# health-check endpoint.
+#
+# The harness's mock supports a `health_endpoint` block that responds to the
+# implementation's chosen probe (typically GET /v1/models for OpenAI-compatible).
+
+cases:
+  - name: model_listed_and_loaded
+    description: |
+      Provider lists the bound model in /v1/models AND the model is serving.
+      ready() returns successfully.
+    mock_provider:
+      health_endpoint:
+        path: /v1/models
+        status: 200
+        body:
+          object: list
+          data:
+            - id: test-model
+              object: model
+              # Local-server-style "loaded" indicator. The implementation
+              # MAY accept different conventions (e.g., a separate /health
+              # probe). The harness verifies the spec contract, not the
+              # specific probe shape.
+              status: loaded
+    call:
+      operation: ready
+    expected:
+      success: true
+
+  - name: model_listed_not_loaded
+    description: |
+      Provider lists the model but it is not currently loaded (local server
+      pattern: configured but not warm). ready() raises
+      provider_model_not_loaded.
+    mock_provider:
+      health_endpoint:
+        path: /v1/models
+        status: 200
+        body:
+          object: list
+          data:
+            - id: test-model
+              object: model
+              status: not_loaded
+    call:
+      operation: ready
+    expected:
+      raises:
+        category: provider_model_not_loaded
+
+  - name: authentication_failed
+    description: |
+      ready() probe returns 401. Raises provider_authentication.
+    mock_provider:
+      health_endpoint:
+        path: /v1/models
+        status: 401
+        body:
+          error: {message: "Invalid API key"}
+    call:
+      operation: ready
+    expected:
+      raises:
+        category: provider_authentication
+
+  - name: model_unknown_to_provider
+    description: |
+      Provider lists models but the bound `test-model` is not among them.
+      ready() raises provider_invalid_model — terminal: retrying without
+      changing the bound model identifier will never succeed.
+    mock_provider:
+      health_endpoint:
+        path: /v1/models
+        status: 200
+        body:
+          object: list
+          data:
+            - id: gpt-4o-mini
+              object: model
+            - id: gpt-3.5-turbo
+              object: model
+    call:
+      operation: ready
+    expected:
+      raises:
+        category: provider_invalid_model
+
+  - name: network_failure
+    description: |
+      Probe fails with a network error (connection refused / DNS failure /
+      timeout). ready() raises provider_unavailable.
+    mock_provider:
+      health_endpoint:
+        path: /v1/models
+        connection_failure: true
+    call:
+      operation: ready
+    expected:
+      raises:
+        category: provider_unavailable

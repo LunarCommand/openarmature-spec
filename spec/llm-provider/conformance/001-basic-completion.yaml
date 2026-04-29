@@ -1,0 +1,62 @@
+# Basic completion: system + user → assistant text reply.
+#
+# Verifies the minimal happy path of complete():
+#   - Response.message has role=assistant, content populated, no tool_calls.
+#   - finish_reason is "stop".
+#   - usage record is populated with all three integer fields.
+#   - raw carries the full original provider response verbatim.
+#
+# Conformance harness contract for llm-provider fixtures:
+#
+#   - The harness instantiates a mock OpenAI-compatible provider preloaded
+#     with the responses in `mock_provider.responses`. Each call() consumes
+#     one response in order.
+#   - For each entry in `calls`, the harness invokes the named operation
+#     (`complete` or `ready`) with the inputs given, then asserts the
+#     `expected` block against the result.
+#   - The `expected.response.raw_check` block specifies subset assertions:
+#     `required_keys` lists top-level keys that MUST appear in raw with the
+#     values from the mock response. The harness compares those keys'
+#     values literally; other keys MAY also be present.
+#   - The `expected.raises` block, when present (mutually exclusive with
+#     `expected.response`), asserts the operation raised an error of the
+#     stated category and that the error preserved the underlying provider
+#     exception as cause when applicable.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-001
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message:
+              role: assistant
+              content: "Hello! How can I help you today?"
+            finish_reason: stop
+        usage:
+          prompt_tokens: 12
+          completion_tokens: 9
+          total_tokens: 21
+
+calls:
+  - operation: complete
+    messages:
+      - {role: system, content: "You are a helpful assistant."}
+      - {role: user, content: "Hi"}
+    expected:
+      response:
+        message:
+          role: assistant
+          content: "Hello! How can I help you today?"
+          tool_calls: null
+        finish_reason: stop
+        usage:
+          prompt_tokens: 12
+          completion_tokens: 9
+          total_tokens: 21
+        raw_check:
+          required_keys: [id, object, created, model, choices, usage]

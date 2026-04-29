@@ -1,0 +1,103 @@
+# Pre-send message validation: malformed inputs raise provider_invalid_request
+# BEFORE any wire call.
+#
+# Verifies that the implementation enforces §3 per-role constraints, §3
+# tool_call_id matching, and §4 unique tool names at the boundary of complete()
+# — without consulting the provider. Each case below is independent; the
+# fixture is table-style.
+#
+# No mock_provider.responses are consumed because every case is expected to
+# raise BEFORE reaching the wire.
+
+mock_provider:
+  responses: []
+
+cases:
+  - name: system_message_in_middle
+    description: |
+      A system message appearing after the first message position is invalid.
+      The first message MAY be system; subsequent system messages are not
+      permitted.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "First user turn"}
+        - {role: system, content: "Late system message"}
+      tools: []
+    expected:
+      raises:
+        category: provider_invalid_request
+
+  - name: tool_message_without_matching_assistant
+    description: |
+      A tool message bearing a tool_call_id that does not match any earlier
+      assistant ToolCall.id is invalid.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Run the tool"}
+        - {role: tool, content: "result", tool_call_id: nonexistent_id}
+      tools: []
+    expected:
+      raises:
+        category: provider_invalid_request
+
+  - name: duplicate_tool_names
+    description: |
+      Two Tool entries with the same `name` violate §4 uniqueness.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Hi"}
+      tools:
+        - name: dup
+          description: "First"
+          parameters: {type: object, properties: {}}
+        - name: dup
+          description: "Second"
+          parameters: {type: object, properties: {}}
+    expected:
+      raises:
+        category: provider_invalid_request
+
+  - name: empty_user_content
+    description: |
+      A user message with empty content violates §3 per-role constraints.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: ""}
+      tools: []
+    expected:
+      raises:
+        category: provider_invalid_request
+
+  - name: assistant_with_neither_content_nor_tool_calls
+    description: |
+      An assistant message with empty content and absent/empty tool_calls
+      violates §3 per-role constraints (assistant MUST carry at least one of
+      content or tool_calls).
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Hi"}
+        - {role: assistant, content: ""}
+        - {role: user, content: "Continue?"}
+      tools: []
+    expected:
+      raises:
+        category: provider_invalid_request
+
+  - name: last_message_assistant
+    description: |
+      The last message before complete() MUST be user or tool. An assistant
+      message at the end is invalid (the model has nothing to respond to).
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Hi"}
+        - {role: assistant, content: "Hello!"}
+      tools: []
+    expected:
+      raises:
+        category: provider_invalid_request

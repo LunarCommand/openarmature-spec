@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-04-28
+
+### Added
+
+- **llm-provider capability (created).** Establishes the foundational LLM provider abstraction: typed `Message` (system/user/assistant/tool), `Tool`, `ToolCall`, and `Response` shapes; stateless async `complete()` operation; pre-flight `ready()` check with a strong "next call expected to succeed" contract; seven canonical error categories (`provider_authentication`, `provider_unavailable`, `provider_invalid_model`, `provider_model_not_loaded`, `provider_rate_limit`, `provider_invalid_response`, `provider_invalid_request`); a normative OpenAI-compatible wire format mapping (§8) covering vLLM, LM Studio, llama.cpp, and the OpenAI hosted API. Charter §3.1 principle 8 ("Transparency over abstraction") is realized by `Response.raw` (verbatim provider response, always populated) and by surfacing partial/malformed tool calls under `finish_reason: "error"` for application-level repair. ([proposal 0006](proposals/0006-llm-provider-core.md))
+- New canonical runtime category `provider_model_not_loaded` — distinct from `provider_invalid_model`. The model is configured but not currently serving (local-server warmup pattern); marked transient (retry MAY succeed once loading completes).
+- `Response.raw` field — the parsed provider response verbatim, MUST be populated on every successful `complete()` return. Provider-specific extensions (logprobs, vendor stats) surface here unchanged.
+- `Tool-call id` verbatim preservation rule — implementations MUST NOT rewrite or normalize provider-supplied ids. Documents cross-provider id round-tripping behavior for applications behind LLM gateways or routers.
+- Conformance fixture suite `001-008` for llm-provider, exercising basic completion, tool-call roundtrip with verbatim id preservation, pre-send message validation, error category mapping, OpenAI wire-format mapping with raw passthrough, usage accounting, the strengthened `ready()` contract, and partial/malformed tool calls under `finish_reason: "error"`.
+
 ## [0.3.1] — 2026-04-28
 
 ### Fixed
