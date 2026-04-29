@@ -81,6 +81,14 @@ The substrate is intentionally narrow:
 Every constraint above is a deliberate scope cut. The narrower the provider surface, the easier it is
 to swap implementations, mock for tests, and stack pipeline utilities on top.
 
+**Transparency.** Per charter §3.1 principle 8 ("Transparency over abstraction"), the provider
+abstraction surfaces a normalized shape — `Message`, `Tool`, `Response` — without hiding what the
+underlying provider returned. The `Response` record carries the parsed provider response verbatim
+alongside the normalized fields (§6 `raw`), and the §7 error categories preserve the underlying
+provider exception as cause. Users who need provider-specific fields (logprobs, content-filter
+details, vendor-specific extensions) reach through the abstraction directly; structure is added,
+never removed.
+
 ### 2. Concepts
 
 **Message.** A typed entry in a conversation. The four message kinds are `system`, `user`,
@@ -127,15 +135,44 @@ A `ToolCall` record:
 
 | Field | Description |
 |---|---|
-| `id` | String identifier, unique within the message. The matching `tool` message bears this `id` as `tool_call_id`. |
-| `name` | The tool name. MUST match a `Tool.name` declared in the call's `tools` argument. |
-| `arguments` | A JSON-serializable mapping of argument names to values. MUST validate against the tool's `parameters` schema. |
+| `id` | String identifier, unique within the message. The matching `tool` message bears this `id` as `tool_call_id`. For provider-returned tool calls, implementations MUST preserve the provider's `id` verbatim — neither rewriting nor normalizing it. Ids are opaque correlators within a single message list; preserving the original lets users correlate with provider-side logs/billing and persists naturally as conversations are stored, replayed, or routed. |
+| `name` | The tool name. MUST match a `Tool.name` declared in the call's `tools` argument under non-error responses; on `finish_reason: "error"`, an unmatched `name` MAY appear (see below). |
+| `arguments` | A JSON-serializable mapping of argument names to values. Under non-error responses, MUST be a parsed mapping conforming to the tool's `parameters` schema. Under `finish_reason: "error"`, MAY be `null` (the implementation could not parse the provider's bytes as JSON) or a parsed mapping that does not conform to the schema. |
 
 **Validation timing.** Implementations MUST validate message-shape constraints (per-role required
 fields, `tool_call_id` matching, etc.) at the boundary of `complete()` — before sending to the
 provider, and on the response before returning. Tool argument validation against the parameters
-schema happens at the same boundaries; a malformed assistant `ToolCall` from the provider raises
-`provider_invalid_response` (§7).
+schema happens at the same boundaries; under non-error responses, a malformed assistant `ToolCall`
+from the provider raises `provider_invalid_response` (§7).
+
+**Validation under `finish_reason: "error"`.** A degraded response MAY carry `tool_calls`, and
+those tool calls MAY be partially constructed: malformed argument JSON (truncated, syntactically
+invalid), `arguments` that don't match the parameters schema, or unmatched `name`. Implementations
+MUST NOT raise `provider_invalid_response` in this case — the partial response is the response.
+The implementation surfaces what it could parse:
+
+- Tool calls with parseable JSON arguments populate `arguments` as a mapping (whether or not it
+  matches the schema).
+- Tool calls with unparseable arguments populate `arguments` as `null`. The original bytes are
+  available verbatim via `Response.raw`.
+- Tool calls with missing or unknown `name` are still surfaced.
+
+Callers iterating `tool_calls` after a successful (non-error) `complete()` can rely on validated
+arguments. Callers handling `finish_reason: "error"` SHOULD inspect each tool call before
+executing — argument repair (parsing partial JSON, completing truncated braces) is an application
+concern, performed against `Response.raw` for the original bytes. The spec deliberately surfaces
+malformed data rather than dropping it, so applications can repair-and-continue.
+
+**Cross-provider id round-tripping.** A conversation MAY traverse multiple providers within a
+single application — for example, behind an LLM gateway / router that applies fallback strategies
+across providers, or when an application explicitly switches providers between conversation rounds.
+Tool-call ids are opaque correlators within the message list, not provider-side references;
+providers accept arbitrary id strings on inbound requests and only verify that subsequent
+`tool_call_id` values match earlier tool calls in the same conversation. Because implementations
+preserve provider-supplied ids verbatim (per the `id` field rule above), message lists round-trip
+across providers cleanly without id rewriting. Applications that need a unified internal id format
+MAY rewrite ids at their own boundary; the spec keeps the abstraction transparent and leaves that
+choice to the application.
 
 ### 4. Tool definition
 
@@ -159,12 +196,26 @@ A provider MUST expose the following operations:
 
 #### `ready()`
 
-Async. Verifies the provider is reachable and the bound model exists. Returns successfully on
-success. Raises an error of one of the §7 categories on failure. Implementations SHOULD make this
-operation idempotent and inexpensive (a `GET /models` style probe rather than a no-op completion).
+Async. Verifies that the bound model is reachable and serving — i.e., that the next `complete()`
+call is expected to succeed. A successful return MUST imply that `complete()` would not raise any
+of the §7 categories that surface mismatched configuration or unloaded state
+(`provider_authentication`, `provider_invalid_model`, `provider_model_not_loaded`,
+`provider_unavailable`). Raises one of the §7 categories on failure.
 
-`ready()` is a pre-flight check intended for fail-fast on startup; it MUST NOT be called automatically
-by `complete()`. Callers decide when (or whether) to invoke it.
+For hosted APIs this typically means credentials are valid, the base URL is reachable, and the
+model is in the provider's catalog. For local servers (vLLM, LM Studio, llama.cpp),
+this additionally means the model is loaded into memory and ready to serve — not just
+configured. Implementations SHOULD distinguish these by raising `provider_invalid_model` when the
+model is unknown to the provider versus `provider_model_not_loaded` when the model is known but
+not yet serving (see §7).
+
+Implementations SHOULD make this operation idempotent and inexpensive — a `GET /models`-style
+probe is RECOMMENDED for hosted APIs; for local servers, a server-specific health endpoint that
+distinguishes "model in registry" from "model loaded" SHOULD be preferred over a no-op
+`complete()`.
+
+`ready()` is a pre-flight check intended for fail-fast on startup or warmup polling. It MUST NOT
+be called automatically by `complete()`; callers decide when (or whether) to invoke it.
 
 #### `complete(messages, tools=None, config=None)`
 
@@ -200,6 +251,7 @@ A `Response` record:
 | `message` | The assistant message returned by the model. Always `role: "assistant"`. May carry `tool_calls`. |
 | `finish_reason` | One of `"stop"`, `"length"`, `"tool_calls"`, `"content_filter"`, `"error"`. See below. |
 | `usage` | A record `{prompt_tokens, completion_tokens, total_tokens}`. Each field is a non-negative integer or `null`. If the provider does not report usage, all three MUST be `null`. |
+| `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Carries everything the provider returned — including fields the spec does not normalize (logprobs, content-filter details, provider-specific extensions). The normalized fields above are derived from `raw`; the two views MUST be consistent (modifying one does not affect the other, since both are immutable from the caller's perspective). |
 
 `finish_reason` semantics:
 
@@ -209,7 +261,9 @@ A `Response` record:
 - `content_filter` — the provider's content filter blocked or truncated the response.
 - `error` — the provider reported an internal error mid-stream and could not return a complete
   response. This is distinct from a `complete()` exception (which signals a request-level failure
-  per §7); `finish_reason: "error"` signals a degraded but parseable response.
+  per §7); `finish_reason: "error"` signals a degraded but parseable response. The response MAY
+  carry `tool_calls`, possibly with malformed `arguments`; see §3 "Validation under
+  `finish_reason: \"error\"`" for handling.
 
 A `RuntimeConfig` record:
 
@@ -229,7 +283,13 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
 - `provider_authentication` — auth failed (invalid key, expired token, missing credentials).
 - `provider_unavailable` — provider is unreachable (network failure, 5xx error, connection timeout,
   DNS failure).
-- `provider_invalid_model` — the bound model does not exist on this provider.
+- `provider_invalid_model` — the bound model does not exist on this provider (unknown to the
+  provider's model catalog). Terminal: retry will not succeed without changing the bound model.
+- `provider_model_not_loaded` — the bound model is known to the provider but is not currently
+  serving requests (e.g., a local vLLM, LM Studio, or llama.cpp server has the model configured
+  but has not yet loaded it into memory, or has unloaded it under memory pressure). Distinct from
+  `provider_invalid_model` because retry MAY succeed once loading completes; warmup-polling
+  callers SHOULD treat this as a transient signal.
 - `provider_rate_limit` — provider returned a rate-limit response (e.g., HTTP 429). Implementations
   SHOULD expose a `retry_after` accessor when the provider supplies one (e.g., `Retry-After` header).
 - `provider_invalid_response` — provider returned a malformed response that cannot be parsed into
@@ -246,11 +306,11 @@ These six categories are the minimum required surface. Implementations MAY raise
 provider-specific categories for cases not covered above; users MAY catch by category to implement
 retry policy.
 
-**Retry classification.** The categories `provider_unavailable`, `provider_rate_limit`, and
-`finish_reason: "error"` are *transient* — a retry MAY succeed. The categories
-`provider_authentication`, `provider_invalid_model`, `provider_invalid_request`, and
-`provider_invalid_response` are *non-transient* — retrying without changing the request will not
-succeed. Pipeline-utilities retry middleware (proposal 0004) consumes these categories.
+**Retry classification.** The categories `provider_unavailable`, `provider_rate_limit`,
+`provider_model_not_loaded`, and `finish_reason: "error"` are *transient* — a retry MAY succeed.
+The categories `provider_authentication`, `provider_invalid_model`, `provider_invalid_request`,
+and `provider_invalid_response` are *non-transient* — retrying without changing the request will
+not succeed. Pipeline-utilities retry middleware (proposal 0004) consumes these categories.
 
 ### 8. OpenAI-compatible wire format
 
@@ -312,6 +372,9 @@ A successful OpenAI response maps onto a §6 `Response` as follows:
   unknown `finish_reason` to `error`.
 - `usage` — built from the response's `usage` field. If `usage` is absent, all three usage subfields
   MUST be `null`.
+- `raw` — the parsed JSON body of the OpenAI response, verbatim. Implementations MUST NOT redact,
+  rewrite, or omit fields. Provider-specific extensions surface here unchanged (e.g.,
+  `choices[0].logprobs`, vLLM's `prompt_logprobs`, LM Studio's runtime stats).
 
 #### 8.3 Error mapping
 
@@ -373,30 +436,52 @@ does not call live APIs.
    `tool_calls`. Verifies the minimal happy path.
 
 2. **`002-tool-call-roundtrip`** — `[user]` with one `Tool` defined → mock provider returns
-   assistant `tool_calls` → caller appends `tool` message → second `complete()` with full history
-   → mock returns final assistant text with `finish_reason == "stop"`. Verifies the call /
-   tool-result / call shape and `tool_call_id` matching.
+   assistant `tool_calls` (with a non-trivial id, e.g., `call_abc123_with_underscores`) → caller
+   appends `tool` message → second `complete()` with full history → mock returns final assistant
+   text with `finish_reason == "stop"`. Verifies the call / tool-result / call shape, the
+   `tool_call_id` matching, and that the tool-call `id` is preserved verbatim through the second
+   `complete()` (no rewriting, normalization, or stripping).
 
 3. **`003-message-validation`** — table of malformed inputs (system message in middle of list, tool
    message without preceding assistant tool_call, duplicate tool names, empty content where required)
    → each MUST raise `provider_invalid_request` before any wire call.
 
 4. **`004-error-categories`** — table of mock provider failures → each maps to the documented §7
-   category. Cases: 401 → `provider_authentication`; 404+model-not-found → `provider_invalid_model`;
-   429 → `provider_rate_limit`; 5xx → `provider_unavailable`; malformed-but-200 →
-   `provider_invalid_response`.
+   category. Cases: 401 → `provider_authentication`; 404+model-not-found →
+   `provider_invalid_model`; 503 with model-loading body (or vLLM-style `model_not_loaded` payload)
+   → `provider_model_not_loaded`; 429 → `provider_rate_limit`; 5xx → `provider_unavailable`;
+   malformed-but-200 → `provider_invalid_response`.
 
-5. **`005-openai-wire-mapping`** — table of round-trip cases: spec `Message` / `Tool` / `RuntimeConfig`
-   → OpenAI request JSON → spec `Response`. Verifies the §8 mapping bidirectionally. Implementations
-   MAY use a stub HTTP server or a translation function exposed for testing.
+5. **`005-openai-wire-mapping`** — table of round-trip cases: spec `Message` / `Tool` /
+   `RuntimeConfig` → OpenAI request JSON → spec `Response`. Verifies the §8 mapping
+   bidirectionally. Includes a case where the OpenAI response carries a provider-specific extension
+   (e.g., `choices[0].logprobs`); verifies `Response.raw` carries it verbatim while normalized
+   fields are unchanged. Implementations MAY use a stub HTTP server or a translation function
+   exposed for testing.
 
 6. **`006-usage-accounting`** — mock provider returns a response with `usage` populated; another
    mock returns `usage: null`. Verifies `Response.usage` carries integers in the first case and
    `null` in all three subfields in the second.
 
-7. **`007-ready-check`** — table of `ready()` outcomes against a stub server: 200 with model-listed →
-   success; 401 → `provider_authentication`; 404 with no matching model → `provider_invalid_model`;
-   network failure → `provider_unavailable`.
+7. **`007-ready-check`** — table of `ready()` outcomes against a stub server: 200 with model
+   listed AND loaded → success; 200 with model listed but not yet loaded →
+   `provider_model_not_loaded`; 401 → `provider_authentication`; 404 with no matching model →
+   `provider_invalid_model`; network failure → `provider_unavailable`. Verifies the stronger
+   `ready()` contract: a successful return implies the next `complete()` is expected to succeed.
+
+8. **`008-error-finish-reason-with-malformed-tool-calls`** — mock provider returns a 200 response
+   with `finish_reason: "error"` and a `tool_calls` array containing: one valid tool call with
+   parseable schema-conforming arguments, one with parseable JSON that does not conform to the
+   tool's parameters schema, and one with truncated/invalid JSON in the arguments string.
+   Verifies:
+   - `complete()` does NOT raise (`finish_reason: "error"` is a degraded but parseable response,
+     not a request-level failure).
+   - `Response.message.tool_calls` has all three entries.
+   - The valid call's `arguments` is a parsed mapping; the schema-violating call's `arguments` is
+     a parsed mapping (no schema enforcement under `error`); the truncated-JSON call's
+     `arguments` is `null`.
+   - `Response.raw` carries the full original response, including the truncated-JSON arguments
+     bytes verbatim — application code can repair from there.
 
 The conformance harness in each implementation supplies a mock-provider adapter that loads a fixture,
 runs the operation, and asserts against the YAML's expected block. The fixtures themselves contain
@@ -461,26 +546,4 @@ implementation of this spec.
 
 ## Open questions
 
-1. **Should `ready()` distinguish "model exists" from "model is loaded"?** Local LLM servers
-   (vLLM, LM Studio) draw a hard distinction between configured-but-not-loaded and loaded. The
-   `provider_invalid_model` category covers "model does not exist," but a separate
-   `provider_model_not_loaded` could be useful for fail-fast warmup. Currently rolled into
-   `provider_invalid_model`; raise to its own category if implementation feedback shows the
-   distinction matters operationally.
-
-2. **Should `Response` carry the raw provider response object?** Some users want access to
-   provider-specific fields (logprobs, content_filter details) that aren't in §6's normalized shape.
-   Adding a `raw` accessor that returns the deserialized provider JSON would unblock those users at
-   a minor abstraction cost (now the response surface has a "supported normalized fields" half and
-   a "raw passthrough" half). Defer until a concrete need surfaces.
-
-3. **`finish_reason: "error"` interaction with `tool_calls`.** OpenAI does not return tool calls
-   with `finish_reason: "error"`; the assistant message in that case is degraded. The spec currently
-   says `finish_reason: "error"` signals a degraded-but-parseable response, but does not specify
-   whether `message.tool_calls` could be partially present. Confirm against provider behavior in
-   implementation; tighten the spec on a clarification if real cases surface.
-
-4. **Should the spec mandate a tool-call-id format?** OpenAI uses `call_<random>`; Anthropic uses
-   `toolu_<random>`. The spec currently requires only that `id` be a string and that `tool_call_id`
-   match. Mandating a format would let users persist message lists across providers without
-   id-rewriting. Probably not worth the constraint — defer.
+None at time of submission.
