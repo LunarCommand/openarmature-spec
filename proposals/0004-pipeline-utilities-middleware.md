@@ -4,7 +4,9 @@
 - **Author:** Chris Colinsky
 - **Created:** 2026-04-28
 - **Accepted:**
-- **Targets:** spec/pipeline-utilities/spec.md (creates)
+- **Targets:**
+  - spec/pipeline-utilities/spec.md (creates)
+  - spec/graph-engine/spec.md (modifies §6 Observer hooks — adds `attempt_index` field to the node-event shape; documents middleware-dispatched events for retry per-attempt visibility)
 - **Related:** 0001, 0003, 0006
 - **Supersedes:**
 
@@ -13,9 +15,11 @@
 Establish the foundational behavioral specification for the OpenArmature pipeline-utilities
 capability, beginning with **middleware**: a composable wrapper around node execution that lets
 cross-cutting concerns (retry, timing, structured logging, instrumentation) layer on without
-modifying node implementations or the engine. The proposal includes a canonical retry middleware as
-the first concrete example. Per-node and per-graph registration are both required; middleware does
-not cross subgraph boundaries.
+modifying node implementations or the engine. The proposal includes two canonical middleware that
+implementations MUST ship — **retry** (with a default classifier aligned to llm-provider §7
+transient categories, exponential-with-full-jitter backoff, and explicit cancellation propagation)
+and **timing** (with a monotonic-clock duration record and per-node-bound `node_name`). Per-node
+and per-graph registration are both required; middleware does not cross subgraph boundaries.
 
 ## Motivation
 
@@ -59,7 +63,10 @@ The spec version under which this capability lands is determined at acceptance t
 
 The pipeline-utilities capability defines a layer of cross-cutting concerns that compose with the
 graph-engine without modifying the engine. This first version specifies **middleware** — wrappers
-around node execution — and a canonical **retry middleware** as the first concrete instance.
+around node execution — and two canonical middleware as concrete instances: **retry** and
+**timing**. Both are mandated as part of the pipeline-utilities surface (§6) because their shape
+is non-obvious enough to warrant a normative contract; other middleware-shaped concerns (logging,
+resource lifecycle, circuit breakers) are implementable as middleware but are not spec-mandated.
 
 Middleware solves the problem of code that should run around many node invocations without being
 duplicated in each node's body. Retry, timing, logging, instrumentation, and resource lifecycle are
@@ -92,8 +99,10 @@ A middleware MAY:
 - Call `next(state)` to invoke the wrapped chain, optionally inspecting or transforming the input
   state first (the transformed state is passed to `next`, NOT to the engine's merge step).
 - Inspect, augment, or replace the returned partial update before returning it.
-- Short-circuit by NOT calling `next` and returning its own partial update. The wrapped node does
-  not execute.
+- Short-circuit by NOT calling `next` and returning its own partial update. The rest of the chain
+  — subsequent middleware and the wrapped node — does not execute, and this middleware's own
+  post-phase (code following `await next(...)`) is skipped. See "Pre-node and post-node phases"
+  below for the dual-phase model that makes this possible.
 - Catch exceptions raised by `next(state)` and either re-raise, transform, or recover (returning a
   partial update instead of raising).
 - Call `next` more than once (e.g., retry middleware). The state passed to subsequent calls MAY be
@@ -123,6 +132,31 @@ m1 returns partial_update ◄──── m2 returns partial_update ◄───
 ```
 
 Each middleware's return value flows back through the previous layer's `next` call return.
+
+**Pre-node and post-node phases.** A middleware function has two phases separated by
+`await next(...)`. Code *before* `await next` is the **pre-node phase**, running on the way *into*
+the chain (left-to-right in the diagram); code *after* `await next` returns is the **post-node
+phase**, running on the way *out* (right-to-left). The wrapped node always runs at the innermost
+point — it is never reached partway through the chain.
+
+The two phases are tied to a single position in the chain: if `m1` is outermost, `m1`'s pre-phase
+runs first AND `m1`'s post-phase runs last. Pre-order and post-order are not configured
+independently. Concretely, a middleware function carries both phases:
+
+```
+async def my_middleware(state, next):
+    # ── pre-node phase: runs on the way IN ──
+    started_at = time.time()
+
+    partial_update = await next(state)   # the rest of the chain (and eventually the node) runs here
+
+    # ── post-node phase: runs on the way OUT ──
+    log(f"node took {time.time() - started_at}s")
+    return partial_update
+```
+
+This is the standard middleware shape used by Express, Koa, ASGI, Tower, Django middleware, and
+similar frameworks.
 
 ### 3. Registration
 
@@ -162,9 +196,17 @@ Middleware does NOT cross the subgraph boundary. When a subgraph runs as a node 
 
 The four sets compose locally to each graph; there is no implicit propagation across the boundary.
 
-This matches the §6 observer hook behavior (graph-engine spec §6, proposal 0003): subgraph-attached
-observers fire only for subgraph-internal events, parent-attached observers fire for everything in
-the invocation. Middleware follows the same locality principle.
+Middleware locality is **strictly bidirectional**: parent middleware sees the subgraph as a single
+dispatch (never individual inner nodes), and subgraph middleware sees only its own internals (never
+anything in the parent). The subgraph is atomic from the parent's middleware perspective.
+
+This is intentionally stricter than the §6 observer hook contract (graph-engine spec §6, proposal
+0003), where parent-attached observers DO see subgraph-internal events with chained `namespace`.
+The asymmetry is deliberate: read-only observation across the boundary is harmless, but
+read-write control across the boundary would break encapsulation — a compiled subgraph reused in
+multiple parents would behave differently in each depending on the parent's middleware set.
+Strict locality preserves the property that a compiled subgraph runs identically regardless of
+where it's embedded.
 
 ### 5. Error semantics
 
@@ -193,15 +235,23 @@ middleware-internal observation through a separate mechanism; that is out of sco
 ultimately propagates, the engine's `node_exception` carries the pre-merge state, identical to the
 case where the node itself raised.
 
-### 6. Retry middleware (canonical)
+### 6. Canonical middleware
 
-Implementations MUST provide a retry middleware as part of the pipeline-utilities surface. The
-configuration record:
+Implementations MUST provide two canonical middleware as part of the pipeline-utilities surface:
+**retry** (§6.1) and **timing** (§6.2). These are the cross-cutting concerns whose shape is
+non-obvious enough to warrant a normative contract — getting them right by hand requires alignment
+with llm-provider §7 categories, careful clock semantics, or interaction with subgraph composition.
+Implementations MAY provide additional middleware (logging, instrumentation, resource lifecycle,
+circuit breakers); those are not spec-mandated and may differ in shape across implementations.
+
+#### 6.1 Retry
+
+The retry middleware configuration record:
 
 | Field | Description |
 |---|---|
 | `max_attempts` | Int, default `3`. Total attempts including the first call. `1` disables retry. |
-| `classifier` | Predicate `(exception) -> bool`. Returns `true` if the exception is retryable. Default: matches the well-known transient categories (see below). |
+| `classifier` | Predicate `(exception, state) -> bool`. Returns `true` if the exception is retryable. `state` is the pre-merge state the wrapped chain received as input on the failed attempt — i.e., the same `state` argument the middleware itself received. (There is no post-merge state on failure.) The default classifier ignores `state` and matches purely on exception category (see below); user-supplied classifiers MAY consult `state` for context-dependent retry policies. |
 | `backoff` | Callable `(attempt_index) -> seconds`. `attempt_index` is 0-based. Default: exponential with full jitter, base 1s, cap 30s. |
 | `on_retry` | Optional async callback `(exception, attempt_index) -> None`. Fires before each sleep. Implementations MAY use this for logging hooks. |
 
@@ -211,21 +261,41 @@ Behavior:
 attempt = 0
 while True:
     try:
-        return await next(state)
+        return await next(state)         # final attempt's event is dispatched by the engine
     except Exception as exc:
-        if not classifier(exc) or attempt + 1 >= max_attempts:
-            raise
+        if not classifier(exc, state) or attempt + 1 >= max_attempts:
+            raise                        # terminal — the engine dispatches the event with `error`
+        dispatch_failed_attempt_event(   # see "Per-attempt observer events" below
+            attempt_index=attempt,
+            exception=exc,
+        )
         if on_retry is not None:
             await on_retry(exc, attempt)
         await sleep(backoff(attempt))
         attempt += 1
 ```
 
-**Default transient classifier.** The default classifier MUST return `true` for exceptions whose
+**Per-attempt observer events.** Each non-final retry attempt MUST dispatch a node event onto
+the §6 observer delivery queue (per the graph-engine §6 modifications above). The dispatched
+event has `attempt_index` set to the attempt's 0-based index, `error` populated with the
+§4 category and the raised exception, and the same `node_name` / `namespace` / `step` /
+`pre_state` / `parent_states` the engine-dispatched event for that attempt would have carried.
+The final attempt's event is dispatched by the engine on the normal §6 dispatch step (with
+`attempt_index` set to the final attempt's index and either `post_state` populated on success
+or `error` populated on terminal failure). Net result: N events for an N-attempt retry —
+N-1 from the middleware, 1 from the engine — with `attempt_index` values `0..N-1` in order.
+
+The dispatch mechanism is implementation-defined per graph-engine §6's "Middleware-dispatched
+events" subsection. Implementations MUST surface a per-language API on the middleware execution
+context so retry can call it without inspecting engine internals.
+
+**Default transient classifier.** The default classifier ignores its `state` argument and returns
+`true` purely on exception category. Specifically, it MUST return `true` for exceptions whose
 error category (per the carrying spec) is one of:
 
 - `provider_unavailable` (llm-provider §7)
 - `provider_rate_limit` (llm-provider §7)
+- `provider_model_not_loaded` (llm-provider §7)
 - Any exception whose carrying spec marks it transient
 
 It MUST return `false` for:
@@ -236,9 +306,18 @@ It MUST return `false` for:
 - All graph-engine §4 errors except as carrier wrappers (a `node_exception` whose `__cause__` is a
   transient category MUST be classified as transient).
 
-Forward dependency: the categories above are normative as of llm-provider §7. If a §7 category is
-added, removed, or reclassified by a later proposal, the default classifier MUST be updated in lock-
-step (a clarification PATCH).
+Dependency on llm-provider §7: the categories above are normative as of llm-provider §7 (spec
+v0.4.0). If a §7 category is added, removed, or reclassified by a later proposal, the default
+classifier MUST be updated in lock-step (a clarification PATCH).
+
+**Cancellation signals MUST propagate.** Cancellation signals raised by the language runtime
+(Python's `CancelledError`, TypeScript's `AbortError`, equivalents in other languages) MUST NOT
+be classified as transient — cancellation is intentional, and retrying through it defeats the
+calling context (e.g., the fan-out node's fail-fast policy in proposal 0005, which cancels sibling
+instances when one raises). In Python this is automatic: `CancelledError` extends `BaseException`,
+not `Exception`, so the retry middleware's `except Exception` does not catch it. In TypeScript
+and similar languages where cancellation is a regular `Exception` subclass, retry middleware
+implementations MUST detect cancellation and re-raise it before consulting the classifier.
 
 **Backoff with full jitter.** The default backoff is `random.uniform(0, min(cap, base * 2^attempt))`
 where `base = 1.0` and `cap = 30.0`. The jitter is mandatory — fixed exponential backoff causes
@@ -250,6 +329,79 @@ MUST default to exponential-with-full-jitter.
 that returns an "error-shaped" partial update — partial updates are not exceptions, and the engine's
 contract is that nodes signal failure by raising. If a node returns `{"error": "..."}` as data, that
 is application data, not a retry trigger.
+
+#### 6.2 Timing
+
+The timing middleware records wall-clock duration of the wrapped chain (including any inner
+middleware time, e.g., retries) and dispatches the result to a user-supplied async callback. The
+configuration record:
+
+| Field | Description |
+|---|---|
+| `on_complete` | Async callback `(record) -> None`. Called once per dispatch after the chain returns or raises. |
+
+A `TimingRecord`:
+
+| Field | Description |
+|---|---|
+| `node_name` | String. The node name this middleware was attached to (captured at registration; see below). |
+| `duration_ms` | Float. Milliseconds from middleware entry to chain return-or-raise, measured with a monotonic clock. |
+| `outcome` | One of `"success"`, `"exception"`. |
+| `exception_category` | String or `null`. When `outcome == "exception"` and the exception carries a `category` attribute (per graph-engine §4 / llm-provider §7), the category identifier; otherwise `null`. |
+
+Behavior:
+
+```
+started_at = monotonic()
+try:
+    partial_update = await next(state)
+    await on_complete(TimingRecord(
+        node_name=<captured at registration>,
+        duration_ms=(monotonic() - started_at) * 1000,
+        outcome="success",
+        exception_category=null,
+    ))
+    return partial_update
+except Exception as exc:
+    await on_complete(TimingRecord(
+        node_name=<captured at registration>,
+        duration_ms=(monotonic() - started_at) * 1000,
+        outcome="exception",
+        exception_category=getattr(exc, "category", null),
+    ))
+    raise
+```
+
+**Monotonic clock requirement.** Implementations MUST use the language's monotonic clock (Python's
+`time.monotonic`, JavaScript's `performance.now`, equivalents elsewhere). Wall-clock time is
+unreliable across NTP corrections and DST transitions; using it would produce negative durations
+that corrupt downstream metric pipelines.
+
+**Node-name capture.** Because the §2 middleware shape `(state, next)` does not expose node
+identity at call time, the timing middleware captures `node_name` at registration. Two registration
+forms MUST be supported:
+
+- **Per-node use.** The user supplies `node_name` explicitly when constructing the middleware,
+  alongside `on_complete`. The user already has the name at the call site (it's the first argument
+  to `add_node`).
+- **Per-graph use.** Implementations MUST provide a factory form (e.g., a `for_graph()`
+  classmethod, a separate constructor, or a sentinel value) that defers binding until the engine
+  attaches the middleware to each node at compile time. The engine resolves the factory once per
+  registration site, producing per-node-bound middleware. The exact API is per-language; the
+  behavioral contract is that per-graph timing middleware MUST receive the correct `node_name`
+  in every record.
+
+**Callback timing and error propagation.** `on_complete` fires inline before the wrapped chain's
+result returns to the caller — a slow callback adds to the apparent node duration. Users SHOULD
+keep the callback fast (queue work, defer I/O). Exceptions raised by `on_complete` propagate to
+the engine as `node_exception` per graph-engine §4 (consistent with general middleware error
+behavior). Users who want isolation MUST wrap their callback bodies in their own try/except.
+
+**Composition with retry.** When timing wraps retry (`[timing, retry, node]`), the recorded
+`duration_ms` includes all retry attempts and backoff sleeps — measuring the *total* time the
+caller waited. When retry wraps timing (`[retry, timing, node]`), `on_complete` fires once per
+attempt. Both compositions are valid; the user picks based on whether they want per-attempt
+visibility (retry-wraps-timing) or end-to-end latency (timing-wraps-retry).
 
 ### 7. Determinism
 
@@ -283,6 +435,85 @@ Not covered by this specification; deferred to follow-on proposals or capabiliti
 - **Deadline propagation** — per-call timeouts that compose with retries.
 - **Middleware on conditional edges** — wrapping the edge function. Edges are simpler (no merge
   step, no partial update); a follow-on proposal can extend middleware shape to edges if needed.
+
+---
+
+### Graph-engine §6: Observer hooks (attempt_index field, middleware-dispatched events)
+
+The retry middleware (§6.1 above) makes per-attempt visibility a first-class observability concern.
+A user wiring an OTel exporter, a structured-log observer, or any other tool that consumes the §6
+event stream should see one event per *attempt*, not one event per *node execution*. Achieving
+this without forcing every observer-consuming integration to duplicate retry-tracking logic
+requires graph-engine §6 to carry attempt-level information and to acknowledge middleware-emitted
+events as part of the same delivery queue.
+
+The two diff items below are normative additions to graph-engine §6 (currently at spec v0.4.0 as
+amended by proposal 0003).
+
+#### `attempt_index` field on the node event
+
+Add to the §6 Node event shape:
+
+> - `attempt_index` — non-negative integer, default `0`. The 0-based index of this attempt among
+>   any retries of the same node within a single invocation. For nodes not wrapped by retry
+>   middleware (pipeline-utilities §6.1), `attempt_index` MUST be `0`. For nodes wrapped by retry
+>   middleware that re-attempts execution, `attempt_index` increments per attempt: `0` for the
+>   first attempt, `1` for the second, and so on through the final attempt. Combined with
+>   `node_name` and `namespace`, the field uniquely identifies each event from a retried node.
+
+The §6 invariant `len(parent_states) == len(namespace) - 1` is unaffected; `attempt_index` is
+independent of the namespace chain and parent-state list.
+
+#### Middleware-dispatched events
+
+Replace the §6 "Event dispatch" subsection's opening sentence:
+
+> **Event dispatch.** A node event is dispatched onto the delivery queue exactly once per node
+> execution:
+
+with:
+
+> **Event dispatch.** A node event is dispatched onto the delivery queue once per node *attempt*.
+> For nodes not wrapped by retry middleware (or any other middleware that re-attempts), this is
+> exactly once per node execution. For nodes wrapped by retry middleware (pipeline-utilities §6.1),
+> one event is dispatched per attempt — the engine dispatches the event for the final attempt
+> (success or terminal failure); the retry middleware dispatches events for any preceding failed
+> attempts. Each event carries an `attempt_index` per the field defined above.
+
+Add a new subsection at the end of §6:
+
+> **Middleware-dispatched events.** Middleware MAY dispatch additional node events through the
+> engine's delivery queue. The pipeline-utilities canonical retry middleware (§6.1 of
+> spec/pipeline-utilities/spec.md) MUST do so — when retry catches a transient exception and
+> elects to retry, it MUST dispatch a node event for the failed attempt before invoking
+> `next` again. The dispatched event MUST:
+>
+> - Have `attempt_index` set to the failed attempt's 0-based index.
+> - Have `error` populated with the §4 category and exception (matching the §4 contract for failed
+>   nodes).
+> - Carry the same `node_name`, `namespace`, `step`, `pre_state`, and `parent_states` as an
+>   engine-dispatched event for that node would have.
+> - Have `post_state` absent (consistent with the `error`/`post_state` mutual exclusion).
+>
+> The engine continues to dispatch its own event for the final attempt with the corresponding
+> `attempt_index`. Net result for an N-attempt retry: N events total, with `attempt_index`
+> values `0..N-1` in order. The first N-1 events have `error` populated; the final event has
+> `post_state` populated on success or `error` populated on terminal failure.
+>
+> The dispatch mechanism is implementation-defined (e.g., a method on a context object exposed
+> to middleware, an attribute on the compiled graph, etc.). Implementations MUST ensure that
+> middleware-dispatched events flow through the same delivery queue as engine-dispatched events,
+> with the same per-event ordering rules (graph-attached outermost-to-innermost, then
+> invocation-scoped) and the same observer-error isolation (an observer raising on a
+> middleware-dispatched event MUST NOT prevent subsequent events from being delivered).
+>
+> The §5 determinism guarantee continues to apply: given the same inputs and the same registered
+> observers, the sequence of events (now including per-attempt events) MUST be identical across
+> runs, modulo any nondeterminism introduced by the middleware itself (e.g., retry's jitter).
+>
+> Other middleware MAY use the same dispatch mechanism when retry-like per-iteration visibility
+> is intrinsic to the middleware's purpose; doing so is implementation-private unless and until
+> the pattern is standardized by a follow-on proposal.
 
 ## Conformance test impact
 
@@ -334,8 +565,57 @@ Each is a YAML pair (input + expected) plus a markdown description.
     for a fixed backoff), two runs against an identical mocked-failure-then-success scenario.
     Verifies final state and observer event sequence are identical across runs.
 
-The conformance harness in each implementation supplies a mock-transient-exception adapter for the
-retry fixtures; live LLM provider calls are out of scope for this suite.
+12. **`012-timing-middleware-basic-firing`** — single node with timing middleware attached.
+    Verifies `on_complete` fires once with `node_name` matching the registered node, `outcome ==
+    "success"`, `duration_ms` non-negative (the harness uses a deterministic clock stub),
+    `exception_category == null`. Validates per-node and per-graph registration produce
+    equivalent records.
+
+13. **`013-timing-middleware-failure-path`** — single node that raises a `node_exception` whose
+    cause has a §4/§7 `category`. Timing middleware attached. Verifies `on_complete` fires once
+    with `outcome == "exception"`, `duration_ms` populated, and `exception_category` matches the
+    cause's category. Verifies the original exception propagates unchanged.
+
+14. **`014-timing-and-retry-composition`** — node fails twice (transient) and succeeds on third
+    attempt; both retry and timing middleware attached. Two sub-cases:
+    - `[timing, retry, node]` — `on_complete` fires once with `outcome == "success"` and
+      `duration_ms` covering all three attempts plus backoff sleeps (with jitter swapped for
+      deterministic backoff).
+    - `[retry, timing, node]` — `on_complete` fires three times (two with `outcome ==
+      "exception"`, one with `outcome == "success"`); each `duration_ms` covers a single attempt.
+
+15. **`015-retry-per-attempt-observer-events`** — node fails twice (transient) and succeeds on
+    third attempt; one observer attached. Verifies:
+    - Observer receives THREE node events (one per attempt).
+    - Events have `attempt_index` values `0`, `1`, `2` in order.
+    - The first two events have `error` populated and `post_state` absent; the third event has
+      `post_state` populated and `error` absent.
+    - All three events share the same `node_name`, `namespace`, `pre_state`, and `parent_states`
+      (the pre-merge state at node entry is the same across attempts).
+    - `step` is the same across the three events (one node position; attempts disambiguated by
+      `attempt_index`). The next node in the graph receives `step + 1`.
+
+16. **`016-retry-state-aware-classifier`** — user supplies a classifier that retries only when a
+    state field is below a threshold (e.g., `lambda exc, state: state.attempts_used < 2`). Two
+    sub-cases drive the same node with different initial state:
+    - `attempts_used=0` — classifier returns `true`; retry occurs; the node eventually succeeds
+      after the configured retry count.
+    - `attempts_used=5` — classifier returns `false` on the first failure; the exception
+      propagates immediately without retry.
+    Verifies the classifier receives both arguments (`exception`, `state`) and that user-supplied
+    classifiers can express state-dependent retry policies.
+
+Add the following fixture to `spec/graph-engine/conformance/`:
+
+- **`016-observer-attempt-index-default`** — linear graph with no retry middleware. Verifies
+  that every node event carries `attempt_index == 0` (the default for non-retried nodes).
+  Confirms the §6 modification's default value behavior across non-retry workflows. (Number is
+  tentative: if proposal 0005 accepts first and claims `016` for its fan-out fixture, this
+  fixture renumbers to the next available slot at acceptance time.)
+
+The conformance harness in each implementation supplies a mock-transient-exception adapter for
+the retry fixtures and a deterministic-clock stub for the timing fixtures; live LLM provider
+calls and real-time clocks are out of scope for this suite.
 
 ## Alternatives considered
 
@@ -392,23 +672,9 @@ registration would make composition order ambiguous and complicate determinism.
 
 ## Open questions
 
-1. **Should middleware see the §6 observer event before it dispatches?** Currently the spec says
-   observers see the *final* partial update (or final error) after all middleware. This is the
-   simple thing. An alternative: observers see one event per "attempt" (so retries are visible in
-   the observer stream). The simple thing is shipped; revisit if production users want
-   per-attempt visibility and can't get it through middleware-internal logging.
-
-2. **Per-conditional-branch middleware?** A middleware that applies only to nodes routed-to from
-   a specific conditional edge. Probably not worth a registration mode of its own — users can put
-   the middleware on the target node directly. Defer.
-
-3. **Should `RetryMiddleware.classifier` see the post-merge state in addition to the exception?**
-   The current shape is `classifier(exception) -> bool`. Adding `state` would let
-   "retry only if some field is X" classifiers work, but makes the contract more complex. Defer
-   until a real use case surfaces.
-
-4. **Should the retry middleware emit observer events on retries?** Currently retries are invisible
-   to observers (only the final attempt's event fires). Emitting per-attempt events would help
-   debugging but couples retry middleware to graph-engine §6 details. Could be added as an
-   `on_retry` instrumentation callback (already in the config record) without expanding the
-   observer event surface.
+1. **Per-conditional-branch middleware?** A middleware that applies only to nodes routed-to from
+   a specific conditional edge. Currently deferred: users can put the middleware on the target
+   node directly, or set a state marker at the routing node and branch on it inside per-node
+   middleware. Diamond topologies (where the same node is reachable from multiple paths) are
+   uncommon enough in LLM pipelines that adding a third registration mode for this isn't worth
+   the API surface today. Revisit if real workflows surface that the workarounds don't cover.
