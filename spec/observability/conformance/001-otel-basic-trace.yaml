@@ -1,0 +1,110 @@
+# Smallest possible OTel trace: linear graph with three nodes, default observer
+# config. Establishes the fundamental shape before testing nuances in 002-011.
+#
+# Conformance harness contract for observability fixtures:
+#
+#   - The harness instantiates an in-memory OTel SpanExporter and a private
+#     TracerProvider for openarmature spans (per spec §6 TracerProvider
+#     isolation). For fixture 010, the harness also installs an in-memory
+#     LogRecordExporter wired through the OTel Logs Bridge.
+#   - Graph definition follows the pipeline-utilities/graph-engine fixture
+#     conventions (state, entry, nodes, edges, initial_state).
+#   - Optional config blocks:
+#     * `caller_correlation_id` — string passed to invoke(); when omitted, the
+#       framework auto-generates a UUIDv4 (spec §3.1).
+#     * `detached_subgraphs` / `detached_fan_outs` — sets of subgraph/fan-out
+#       names to configure as detached (spec §4.4).
+#     * `disable_llm_spans` — bool, opts out of §5.5 LLM provider span
+#       emission.
+#     * `mock_llm` — canned responses for an OpenAI-compatible mock provider
+#       (per llm-provider §8 wire format).
+#     * `caller_global_otel_active` — bool. When true, the harness installs a
+#       SECOND exporter on the OTel global TracerProvider to verify that
+#       openarmature spans do NOT leak into it (fixture 005 isolation case).
+#   - Expected output:
+#     * `expected.span_tree` — hierarchical span structure with name,
+#       attributes (subset assertions), status, optional links, and children.
+#     * `expected.log_records` — for fixture 010, list of expected log
+#       records with attribute assertions.
+#     * `expected.no_global_provider_spans` — for fixture 005, asserts
+#       openarmature didn't emit through the global provider.
+#
+# Attribute placeholder strings:
+#   - `<uuid>` matches any canonical UUIDv4 (36 chars, hyphenated).
+#   - `<any-string>` matches any non-empty string.
+#   - `<trace_id_X>` matches an opaque trace_id used for parent-link
+#     correlation across the fixture's spans (the harness binds X to the
+#     actual trace_id on first occurrence and asserts equality on later
+#     occurrences).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1, trace: ["a"]}
+  b:
+    update: {v: 2, trace: ["b"]}
+  c:
+    update: {v: 3, trace: ["c"]}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+# No caller_correlation_id — verify auto-generation.
+
+expected:
+  span_tree:
+    - name: "openarmature.invocation"
+      attributes:
+        openarmature.invocation_id: "<uuid>"
+        openarmature.correlation_id: "<uuid>"
+        openarmature.graph.entry_node: "a"
+        openarmature.graph.spec_version: "<any-string>"
+      status: OK
+      children:
+        - name: "a"
+          attributes:
+            openarmature.node.name: "a"
+            openarmature.node.namespace: ["a"]
+            openarmature.node.step: 0
+            openarmature.node.attempt_index: 0
+            openarmature.correlation_id: "<uuid>"
+          status: OK
+          children: []
+        - name: "b"
+          attributes:
+            openarmature.node.name: "b"
+            openarmature.node.namespace: ["b"]
+            openarmature.node.step: 1
+            openarmature.node.attempt_index: 0
+            openarmature.correlation_id: "<uuid>"
+          status: OK
+          children: []
+        - name: "c"
+          attributes:
+            openarmature.node.name: "c"
+            openarmature.node.namespace: ["c"]
+            openarmature.node.step: 2
+            openarmature.node.attempt_index: 0
+            openarmature.correlation_id: "<uuid>"
+          status: OK
+          children: []
+
+  # All four spans (invocation + a + b + c) MUST share the same
+  # correlation_id value (the framework's auto-generated UUIDv4).
+  invariants:
+    correlation_id_consistency: true

@@ -1,0 +1,43 @@
+# Error status mapping: a node raises; its span gets ERROR with the §4
+# category as the description. Sibling spans before the failure are OK; the
+# invocation span ends ERROR (parent-status-from-failed-children).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: ok_node
+
+nodes:
+  ok_node:
+    update: {v: 1, trace: ["ok_node"]}
+  fail_node:
+    raises: "boom"
+
+edges:
+  - {from: ok_node, to: fail_node}
+  - {from: fail_node, to: END}
+
+initial_state: {}
+
+expected:
+  span_tree:
+    - name: "openarmature.invocation"
+      status: ERROR
+      children:
+        - name: "ok_node"
+          status: OK
+          children: []
+        - name: "fail_node"
+          status: ERROR
+          status_description: "node_exception"
+          exception_recorded: true
+          attributes:
+            openarmature.error.category: "node_exception"
+          children: []

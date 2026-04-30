@@ -1,0 +1,82 @@
+# Subgraph hierarchy: outer + subgraph nested correctly. Inner-node spans
+# parented to the subgraph span; subgraph span parented to the invocation span.
+
+subgraph:
+  name: inner
+  state:
+    fields:
+      v:
+        type: int
+        default: 0
+      trace:
+        type: list<string>
+        reducer: append
+        default: []
+  entry: inner_x
+  nodes:
+    inner_x:
+      update: {v: 10, trace: ["inner_x"]}
+    inner_y:
+      update: {v: 20, trace: ["inner_y"]}
+  edges:
+    - {from: inner_x, to: inner_y}
+    - {from: inner_y, to: END}
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: outer_in
+
+nodes:
+  outer_in:
+    update: {v: 1, trace: ["outer_in"]}
+  outer_sub:
+    subgraph: inner
+  outer_out:
+    update: {v: 99, trace: ["outer_out"]}
+
+edges:
+  - {from: outer_in, to: outer_sub}
+  - {from: outer_sub, to: outer_out}
+  - {from: outer_out, to: END}
+
+initial_state: {}
+
+expected:
+  span_tree:
+    - name: "openarmature.invocation"
+      attributes: {openarmature.correlation_id: "<uuid>"}
+      status: OK
+      children:
+        - name: "outer_in"
+          attributes:
+            openarmature.node.namespace: ["outer_in"]
+          status: OK
+          children: []
+        - name: "outer_sub"
+          attributes:
+            openarmature.node.name: "outer_sub"
+          status: OK
+          children:
+            - name: "inner_x"
+              attributes:
+                openarmature.node.namespace: ["outer_sub", "inner_x"]
+              status: OK
+              children: []
+            - name: "inner_y"
+              attributes:
+                openarmature.node.namespace: ["outer_sub", "inner_y"]
+              status: OK
+              children: []
+        - name: "outer_out"
+          attributes:
+            openarmature.node.namespace: ["outer_out"]
+          status: OK
+          children: []

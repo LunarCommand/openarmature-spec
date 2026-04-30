@@ -1,0 +1,106 @@
+# Log correlation (§7): every log record emitted during an invocation MUST
+# carry the active span's trace_id/span_id (via the OTel Logs Bridge) AND
+# `openarmature.correlation_id`. Two sub-cases — nested-trace correlation
+# and detached-trace correlation.
+
+cases:
+  - name: log_records_carry_trace_span_correlation_ids
+    description: |
+      Single-invocation graph emits logs from inside two nodes. Each log
+      record MUST carry the active node span's trace_id+span_id plus the
+      invocation-scoped correlation_id.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+        emits_log:
+          message: "node a executing"
+          level: INFO
+      b:
+        update_pure: {x: 2}
+        emits_log:
+          message: "node b executing"
+          level: INFO
+    edges:
+      - {from: a, to: b}
+      - {from: b, to: END}
+    initial_state: {}
+    caller_correlation_id: "log-test-corr-1"
+    expected:
+      log_records:
+        - body: "node a executing"
+          attributes:
+            openarmature.correlation_id: "log-test-corr-1"
+            trace_id: "<trace_id_main>"
+            span_id: "<span_id_node_a>"   # active span at log time
+        - body: "node b executing"
+          attributes:
+            openarmature.correlation_id: "log-test-corr-1"
+            trace_id: "<trace_id_main>"
+            span_id: "<span_id_node_b>"
+      invariants:
+        # Both records share the SAME trace_id (single trace) but DIFFERENT
+        # span_ids (each log was emitted under its own node's active span).
+        all_logs_same_trace_id: true
+        log_span_ids_match_active_span_at_emission: true
+        all_logs_carry_correlation_id: "log-test-corr-1"
+
+  - name: detached_subgraph_log_uses_detached_trace_id_keeps_correlation_id
+    description: |
+      Outer invocation has a detached subgraph (per §4.4). Logs emitted
+      INSIDE the detached subgraph carry the DETACHED trace's trace_id —
+      NOT the parent's. The correlation_id is unchanged (invocation-scoped,
+      not trace-scoped).
+    subgraphs:
+      detached_inner:
+        state:
+          fields:
+            y:
+              type: int
+              default: 0
+        entry: inner
+        nodes:
+          inner:
+            update_pure: {y: 1}
+            emits_log:
+              message: "inside detached subgraph"
+              level: INFO
+        edges:
+          - {from: inner, to: END}
+    state:
+      fields:
+        z:
+          type: int
+          default: 0
+    entry: outer_dispatch
+    nodes:
+      outer_dispatch:
+        emits_log:
+          message: "before subgraph dispatch"
+          level: INFO
+        subgraph: detached_inner
+    edges:
+      - {from: outer_dispatch, to: END}
+    initial_state: {}
+    caller_correlation_id: "detached-corr-1"
+    detached_subgraphs: ["detached_inner"]
+    expected:
+      log_records:
+        - body: "before subgraph dispatch"
+          attributes:
+            openarmature.correlation_id: "detached-corr-1"
+            trace_id: "<trace_id_parent>"
+        - body: "inside detached subgraph"
+          attributes:
+            openarmature.correlation_id: "detached-corr-1"
+            trace_id: "<trace_id_detached>"   # different trace
+      invariants:
+        # The two log records have DIFFERENT trace_ids (one in parent
+        # trace, one in detached trace) but the SAME correlation_id.
+        log_trace_ids_differ_when_detached: true
+        all_logs_carry_correlation_id: "detached-corr-1"

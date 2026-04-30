@@ -1,0 +1,100 @@
+# Cross-cutting correlation_id (§3, §5.6): every span emitted during an
+# invocation MUST carry `openarmature.correlation_id`, equal across the whole
+# trace tree. Three sub-cases — caller-supplied, auto-generated UUIDv4, and
+# context-reset between back-to-back invocations.
+
+cases:
+  - name: caller_supplied_id_used_verbatim
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+      b:
+        update_pure: {x: 2}
+    edges:
+      - {from: a, to: b}
+      - {from: b, to: END}
+    initial_state: {}
+    caller_correlation_id: "request-abc-123"
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          attributes:
+            openarmature.correlation_id: "request-abc-123"
+          children:
+            - name: "a"
+              attributes:
+                openarmature.correlation_id: "request-abc-123"
+              children: []
+            - name: "b"
+              attributes:
+                openarmature.correlation_id: "request-abc-123"
+              children: []
+      invariants:
+        # Every span across the whole tree carries the same correlation_id —
+        # the load-bearing cross-cutting check.
+        correlation_id_uniform_across_tree: "request-abc-123"
+
+  - name: auto_generated_uuidv4_when_absent
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    # No caller_correlation_id supplied — framework MUST auto-generate UUIDv4.
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          attributes:
+            openarmature.correlation_id: "<uuid>"
+          children:
+            - name: "a"
+              attributes:
+                openarmature.correlation_id: "<uuid>"
+              children: []
+      invariants:
+        correlation_id_is_uuidv4: true
+        correlation_id_uniform_across_tree: "<uuid>"
+
+  - name: context_reset_between_invocations
+    description: |
+      Two back-to-back invocations of the same graph (no caller-supplied
+      correlation_id on either). The framework MUST auto-generate a fresh
+      UUIDv4 per invocation and reset the context primitive between them —
+      the two invocations MUST have DIFFERENT correlation_ids.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    invocations: 2
+    expected:
+      invocation_count: 2
+      invariants:
+        # Each invocation's spans uniformly carry one correlation_id.
+        each_invocation_correlation_id_uniform: true
+        # The two invocations have DIFFERENT correlation_ids.
+        correlation_ids_differ_across_invocations: true
+        # Both are valid UUIDv4s.
+        all_correlation_ids_uuidv4: true

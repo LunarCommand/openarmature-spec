@@ -1,0 +1,48 @@
+# Routing error: a conditional edge returns an undeclared node name. The
+# preceding node's span gets ERROR with description "routing_error" — there
+# is no separate span for the edge function (per §4.2).
+
+state:
+  fields:
+    flag:
+      type: string
+      default: "go_invalid"
+
+entry: pick
+
+nodes:
+  pick:
+    update: {flag: "go_invalid"}
+  unreachable_a:
+    update: {flag: "a"}
+  unreachable_b:
+    update: {flag: "b"}
+
+edges:
+  - from: pick
+    condition:
+      if_field: flag
+      equals: "go_invalid"
+      then: nonexistent_destination
+      else: unreachable_a
+  - {from: unreachable_a, to: END}
+  - {from: unreachable_b, to: END}
+
+initial_state: {}
+
+expected:
+  span_tree:
+    - name: "openarmature.invocation"
+      status: ERROR
+      children:
+        - name: "pick"
+          status: ERROR
+          status_description: "routing_error"
+          exception_recorded: true
+          attributes:
+            openarmature.error.category: "routing_error"
+          children: []
+
+  # No span for the edge function — edge logic is folded into the preceding
+  # node span per §4.2 (and Q4 declined edge spans during review).
+  no_edge_spans: true
