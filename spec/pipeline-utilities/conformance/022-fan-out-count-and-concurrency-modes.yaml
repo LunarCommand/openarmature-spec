@@ -1,0 +1,150 @@
+# Fan-out using `count` instead of `items_field`. Exercises both static and
+# callable forms of `count` and `concurrency`. Four sub-cases.
+
+subgraph:
+  name: simple_worker
+  state:
+    fields:
+      result:
+        type: int
+        default: 0
+  entry: work
+  nodes:
+    work:
+      update_pure: {result: 1}
+  edges:
+    - {from: work, to: END}
+
+subgraph_with_idx:
+  name: indexed_worker
+  state:
+    fields:
+      idx:
+        type: int
+        default: -1
+      result:
+        type: int
+        default: 0
+  entry: work
+  nodes:
+    work:
+      update_from_field: {result: idx, multiplier: 1}
+  edges:
+    - {from: work, to: END}
+
+cases:
+  - name: count_literal
+    state:
+      fields:
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: simple_worker
+          count: 3
+          collect_field: result
+          target_field: results
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        results: [1, 1, 1]
+      execution_order: [process]
+
+  - name: count_callable_from_state
+    state:
+      fields:
+        worker_count:
+          type: int
+          default: 4
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: simple_worker
+          count: {callable: state_field_read, field: worker_count}
+          collect_field: result
+          target_field: results
+    edges:
+      - {from: process, to: END}
+    initial_state: {worker_count: 4}
+    expected:
+      final_state:
+        worker_count: 4
+        results: [1, 1, 1, 1]
+      execution_order: [process]
+
+  - name: count_callable_computed
+    state:
+      fields:
+        queue:
+          type: list<string>
+          default: ["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z","aa","bb","cc","dd","ee","ff","gg","hh","ii"]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: simple_worker
+          count: {callable: queue_chunk, field: queue, chunk_size: 10}
+          collect_field: result
+          target_field: results
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      # 35 // 10 = 3, max(1, 3) = 3 instances run.
+      final_state:
+        queue: ["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z","aa","bb","cc","dd","ee","ff","gg","hh","ii"]
+        results: [1, 1, 1]
+      execution_order: [process]
+
+  - name: concurrency_callable_with_items_field
+    state:
+      fields:
+        allowed_in_flight:
+          type: int
+          default: 2
+        items:
+          type: list<int>
+          default: [10, 20, 30, 40, 50, 60]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: indexed_worker
+          items_field: items
+          item_field: idx
+          collect_field: result
+          target_field: results
+          concurrency: {callable: state_field_read, field: allowed_in_flight}
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        allowed_in_flight: 2
+        items: [10, 20, 30, 40, 50, 60]
+        results: [10, 20, 30, 40, 50, 60]
+      execution_order: [process]
+      # The harness MUST verify the "at most 2 in flight" invariant by
+      # tracking per-instance entry/exit timing markers — at no point during
+      # the fan-out should more than 2 instances be concurrently active.
+      concurrency_invariant:
+        max_in_flight: 2

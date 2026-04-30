@@ -1,9 +1,9 @@
 # 0005: Pipeline Utilities — Parallel Fan-Out
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-04-28
-- **Accepted:**
+- **Accepted:** 2026-04-28
 - **Targets:**
   - spec/pipeline-utilities/spec.md (extends; adds new §9 "Parallel fan-out" after the existing §8 Out of scope; modifies §6.1 Retry middleware to remove the now-redundant manual dispatch of failed-attempt events)
   - spec/graph-engine/spec.md (modifies §3 Execution model — fan-out concurrency exception; modifies §6 Observer hooks — replaces single-event-per-attempt model with **started/completed pairs**, adds per-observer phase-subscription filter, adds `fan_out_index` field, removes the "Middleware-dispatched events" subsection that v0.5.0 added since it is no longer needed under the pair model)
@@ -89,6 +89,8 @@ A fan-out node is registered with the following fields:
 | `target_field` | A field name on the parent state into which the collected list is merged. |
 | `concurrency` | Optional. Upper bound on concurrently-running instances. Accepts either a literal `int` (static concurrency fixed at compile time), a callable `(state) -> int` (concurrency read from / computed over parent state at fan-out entry), or `None` (unbounded). Default: `10`. Same int-or-callable shape as `count` (§9.1) for symmetry. |
 | `error_policy` | One of `"fail_fast"` (default) or `"collect"`. See §9.5 below. |
+| `on_empty` | One of `"raise"` (default) or `"noop"`. Behavior when the resolved instance count is zero. `"raise"` (default) treats empty as unexpected and raises a `node_exception` per graph-engine §4 with category `fan_out_empty`. `"noop"` treats empty as a legitimate state and produces a silent no-op. See §9.1 below. |
+| `count_field` | Optional. A field name on the parent state into which the fan-out writes the resolved instance count after execution. MUST be a declared int-typed field on the parent state schema. Useful for programmatic inspection of how many instances ran (e.g., a downstream conditional edge that branches on `state.count_field == 0`). Written at the fan-in step regardless of `on_empty` mode; if `on_empty: "raise"` and count is zero, the raise occurs before the field is written. |
 | `inputs` | Optional `Mapping[str, str]` (subgraph_field → parent_field) to copy additional non-per-item parent fields into each instance. Same semantics as graph-engine §2 explicit input mapping. |
 | `extra_outputs` | Optional `Mapping[str, str]` (parent_field → subgraph_field) to merge additional non-collected fields back from each instance via the parent's reducer. |
 | `instance_middleware` | Optional ordered list of middleware that wrap each instance's invocation as a unit. Composes outer-to-inner. Sits *between* outer fan-out-node-level middleware (per-graph + per-node on the fan-out node itself) and the inner subgraph's own middleware. See §9.7 below. |
@@ -107,6 +109,10 @@ validation:
 - **Mutual exclusion** — exactly one of `items_field` or `count` MUST be specified. If both or
   neither are specified, compilation MUST fail with a new category
   `fan_out_count_mode_ambiguous`.
+- **`on_empty`** — MUST be one of `"raise"` or `"noop"`. Other values are a compile error.
+- **`count_field`** — if specified, MUST refer to a declared int-typed field on the parent state
+  schema. Type mismatch is a compile error per the existing `mapping_references_undeclared_field`
+  rule applied symmetrically to type compatibility.
 
 ##### 9.1 Per-instance projection
 
@@ -148,18 +154,52 @@ state-tracked counter).
 In both modes, the instance receives a fresh subgraph state instance, NOT a shared one. Mutations
 within an instance do not affect siblings.
 
-**Empty fan-out is valid.** When the resolved instance count is zero (whether from
-`items_field == []` or from `count == 0` / a callable returning `0`), the fan-out executes zero
-instances. `target_field` receives an empty contribution (a no-op under the `append` reducer);
-`errors_field` (if configured) receives an empty contribution. The fan-out node still produces
-its started/completed event pair (per §6) with `post_state` reflecting the no-op. Downstream
-execution proceeds normally.
+**Empty fan-out behavior** (resolved instance count == 0, whether from `items_field == []` or
+`count == 0` / a callable returning `0`) depends on the `on_empty` config:
 
-An empty fan-out is NOT an error condition — "we expected items but got none" is a legitimate
-state in LLM pipelines (filter rejected all candidates, retrieval returned no matches, queue
-was empty, upstream node returned an empty list by design). Implementations MUST NOT raise on
-empty input; user code that wants to treat empty as an error handles it via a downstream
-conditional edge or guard node.
+- **`on_empty: "raise"` (default)** — the engine raises a `node_exception` per graph-engine §4
+  with category `fan_out_empty`. The exception carries the pre-fan-out parent state as
+  `recoverable_state`. The fan-out's `started` event still fires (the engine fires it before
+  resolving the count), but no `completed` event fires; the propagated `node_exception` takes
+  the place of the completed event. This is the safe default — empty inputs are usually
+  unexpected and silent skipping is a footgun; raising surfaces the situation immediately.
+- **`on_empty: "noop"`** — the fan-out runs zero instances and produces a clean no-op. The
+  fan-in step contributes empty lists to `target_field` and `errors_field` (if configured),
+  which under the `append` reducer leaves both fields unchanged from their pre-fan-out values.
+  If `count_field` is configured, it is written with `0`. The fan-out node fires its full §6
+  event pair: a `started` event with `pre_state` populated, then a `completed` event with
+  `pre_state` and `post_state` both populated and identical for the fan-out's output fields.
+  Downstream execution proceeds normally.
+
+`fan_out_empty` is not a transient category — retrying the fan-out with the same inputs will
+produce the same empty count. Retry middleware (§6.1) MUST NOT classify it as transient.
+
+When `on_empty: "noop"` is used and the user wants to react to the empty case programmatically,
+the recommended pattern is to configure `count_field` and add a downstream conditional edge that
+branches on the field value:
+
+```python
+add_fan_out_node(
+    name="process",
+    subgraph=worker,
+    items_field="items",
+    item_field="item",
+    collect_field="result",
+    target_field="results",
+    on_empty="noop",
+    count_field="processed_count",
+)
+
+builder.add_conditional_edge(
+    "process",
+    lambda s: "halt_on_empty" if s.processed_count == 0 else "continue",
+)
+```
+
+Empty inputs ARE legitimate in some LLM pipeline shapes (a retrieval node that genuinely might
+return no documents, an upstream filter that may reject every candidate, a queue that may be
+drained). For those cases, set `on_empty: "noop"` explicitly. The default raises so that empty
+inputs that weren't anticipated surface loudly rather than disappear silently.
 
 ##### 9.2 Concurrent execution
 
@@ -182,9 +222,13 @@ MUST NOT block one instance's progress on another's.
 
 Concurrency is resolved exactly once at fan-out entry — the limit does not change mid-execution
 even if the parent state changes (which it can't, since the parent doesn't step during fan-out
-per graph-engine §3). A callable `concurrency` that depends on wall-clock time, randomness, or
-other nondeterministic sources introduces nondeterminism the same way as nondeterministic node
-implementations or a nondeterministic `count` callable (graph-engine §5).
+per graph-engine §3). When `concurrency` is a callable, the callable's determinism is the user's
+responsibility — the framework cannot statically or dynamically detect nondeterministic
+callables (same model as node implementations per graph-engine §5). For the §5 determinism
+guarantee to apply to a graph using a callable `concurrency`, the callable MUST be a pure
+function of its `state` argument. Callables that consult wall-clock time, randomness, or other
+nondeterministic sources are permitted, but graph runs using them fall under the §5
+nondeterministic-user-code carve-out.
 
 ##### 9.3 Per-instance fan-in
 
@@ -213,10 +257,13 @@ completion order, given deterministic instance work. The collected `target_field
 instance-index order; `extra_outputs` merges happen via the parent's reducer in instance-index
 order. This preserves graph-engine §5 determinism end to end.
 
-In `count` mode where `count` is a callable, the callable's evaluation MUST be deterministic in
-its inputs (the parent state snapshot) for the spec's determinism guarantee to apply. Callables
-that consult wall-clock time, randomness, or other nondeterministic sources introduce
-nondeterminism the same way as nondeterministic node implementations (graph-engine §5).
+In `count` mode where `count` is a callable, the callable's determinism is the user's
+responsibility — the framework cannot statically or dynamically detect nondeterministic
+callables (same model as node implementations per graph-engine §5). For the §5 determinism
+guarantee to apply to a graph using a callable `count`, the callable MUST be a pure function of
+its `state` argument. Callables that consult wall-clock time, randomness, or other
+nondeterministic sources are permitted, but graph runs using them fall under the §5
+nondeterministic-user-code carve-out.
 
 ##### 9.5 Error policy
 

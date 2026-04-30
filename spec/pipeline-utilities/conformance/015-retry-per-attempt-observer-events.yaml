@@ -1,10 +1,12 @@
-# Per-attempt observer events. Retry middleware MUST dispatch a §6 event for
-# each non-final attempt. The engine dispatches the final attempt's event.
-# Net result for a 3-attempt retry: 3 events with attempt_index 0/1/2.
+# Per-attempt observer events. Each retry attempt produces a started/completed
+# event pair from the engine (per graph-engine §6's pair model, established by
+# proposal 0005). Net result for a 3-attempt retry: 6 events (3 pairs) with
+# attempt_index 0/1/2.
 #
-# Verifies the graph-engine §6 modifications added by proposal 0004:
+# Verifies the graph-engine §6 contract:
+#   - phase field on every event
 #   - attempt_index field on the node event shape
-#   - middleware-dispatched events flow through the same delivery queue
+#   - engine dispatches all events; retry middleware does not dispatch directly
 
 state:
   fields:
@@ -47,16 +49,19 @@ expected:
 
   observer_events:
     obs:
-      # Three events for a 3-attempt retry. All share node_name, namespace,
-      # step, pre_state, parent_states. Distinguished by attempt_index.
-      # The first two have `error` populated (dispatched by retry middleware);
-      # the third has `post_state` populated (dispatched by the engine).
-      - {step: 0, node_name: target, attempt_index: 0, namespace: [target],
-         pre_state: {v: 0, trace: []},
-         error: node_exception, parent_states: []}
-      - {step: 0, node_name: target, attempt_index: 1, namespace: [target],
-         pre_state: {v: 0, trace: []},
-         error: node_exception, parent_states: []}
-      - {step: 0, node_name: target, attempt_index: 2, namespace: [target],
+      # Six events for a 3-attempt retry — one pair per attempt. All share
+      # node_name, namespace, step, pre_state, parent_states. Distinguished
+      # by (attempt_index, phase).
+      - {step: 0, phase: started,   node_name: target, attempt_index: 0, namespace: [target],
+         pre_state: {v: 0, trace: []}, parent_states: []}
+      - {step: 0, phase: completed, node_name: target, attempt_index: 0, namespace: [target],
+         pre_state: {v: 0, trace: []}, error: node_exception, parent_states: []}
+      - {step: 0, phase: started,   node_name: target, attempt_index: 1, namespace: [target],
+         pre_state: {v: 0, trace: []}, parent_states: []}
+      - {step: 0, phase: completed, node_name: target, attempt_index: 1, namespace: [target],
+         pre_state: {v: 0, trace: []}, error: node_exception, parent_states: []}
+      - {step: 0, phase: started,   node_name: target, attempt_index: 2, namespace: [target],
+         pre_state: {v: 0, trace: []}, parent_states: []}
+      - {step: 0, phase: completed, node_name: target, attempt_index: 2, namespace: [target],
          pre_state: {v: 0, trace: []},
          post_state: {v: 7, trace: ["target"]}, parent_states: []}

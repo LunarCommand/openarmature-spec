@@ -1,0 +1,84 @@
+# Observer fan_out_index: verifies §6 fan_out_index semantics added by
+# proposal 0005. Per-instance events (started + completed pairs) carry
+# fan_out_index matching the instance index. The fan-out node's own pair has
+# fan_out_index absent. Outside-fan-out events have fan_out_index absent.
+
+subgraph:
+  name: leaf
+  state:
+    fields:
+      x:
+        type: int
+        default: 0
+      result:
+        type: int
+        default: 0
+  entry: compute
+  nodes:
+    compute:
+      update_from_field: {result: x, multiplier: 2}
+  edges:
+    - {from: compute, to: END}
+
+state:
+  fields:
+    items:
+      type: list<int>
+      default: [1, 2, 3]
+    results:
+      type: list<int>
+      reducer: append
+      default: []
+    pre_marker:
+      type: bool
+      default: false
+
+entry: pre
+
+nodes:
+  pre:
+    update: {pre_marker: true}
+  process:
+    fan_out:
+      subgraph: leaf
+      items_field: items
+      item_field: x
+      collect_field: result
+      target_field: results
+
+edges:
+  - {from: pre,     to: process}
+  - {from: process, to: END}
+
+initial_state: {}
+
+observers:
+  - {name: obs, attach: graph, target: outer, behavior: record}
+
+expected:
+  final_state:
+    items: [1, 2, 3]
+    results: [2, 4, 6]
+    pre_marker: true
+  execution_order: [pre, process]
+
+  # Verify fan_out_index attribution. The harness checks invariants on the
+  # event stream rather than enumerating all events (the full event list
+  # depends on inner-instance scheduling order which is observable but not
+  # uniquely determined).
+  observer_event_invariants:
+    # Pre-fan-out node `pre` events: 2 (started + completed), fan_out_index ABSENT.
+    pre_node_events_count: 2
+    pre_node_fan_out_index_absent: true
+    # Fan-out node `process` events: 2 (started + completed), fan_out_index ABSENT.
+    process_node_events_count: 2
+    process_node_fan_out_index_absent: true
+    # Inner-instance events: 6 (3 instances × 2 phases). Each carries
+    # fan_out_index matching the instance index. attempt_index == 0
+    # (no retry middleware).
+    inner_event_count: 6
+    inner_fan_out_indices_seen: [0, 1, 2]
+    inner_attempt_indices_seen: [0]
+    # Identity rule: namespace + fan_out_index + attempt_index + phase
+    # uniquely identifies each event source.
+    inner_event_identities_unique: true

@@ -48,18 +48,23 @@ expected:
     category: node_exception
     message: "boom"
 
+  # Each attempt produces a started/completed pair. The failing node STILL
+  # produces a started event (engine fires it before invoking the node) and
+  # a completed event with `error` populated.
   observer_events:
     obs:
-      - {step: 0, node_name: ok_node, namespace: [ok_node],
-         pre_state:  {v: "",   trace: []},
-         post_state: {v: "ok", trace: ["ok_node"]}}
-      # Failed-node event: `error` populated, `post_state` absent. The
-      # node raised, so no reducer merge happened; pre_state is the state
-      # the node received before raising.
-      - {step: 1, node_name: fail_node, namespace: [fail_node],
-         pre_state:  {v: "ok", trace: ["ok_node"]},
-         error: node_exception}
+      - {step: 0, phase: started,   node_name: ok_node, namespace: [ok_node],
+         pre_state: {v: "", trace: []}}
+      - {step: 0, phase: completed, node_name: ok_node, namespace: [ok_node],
+         pre_state: {v: "", trace: []}, post_state: {v: "ok", trace: ["ok_node"]}}
+      - {step: 1, phase: started,   node_name: fail_node, namespace: [fail_node],
+         pre_state: {v: "ok", trace: ["ok_node"]}}
+      # Failed-node completed event: `error` populated, `post_state` absent.
+      - {step: 1, phase: completed, node_name: fail_node, namespace: [fail_node],
+         pre_state: {v: "ok", trace: ["ok_node"]}, error: node_exception}
 
   delivery_order:
-    - {observer: obs, step: 0}
-    - {observer: obs, step: 1}
+    - {observer: obs, step: 0, phase: started}
+    - {observer: obs, step: 0, phase: completed}
+    - {observer: obs, step: 1, phase: started}
+    - {observer: obs, step: 1, phase: completed}

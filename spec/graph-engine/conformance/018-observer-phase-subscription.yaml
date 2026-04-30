@@ -1,0 +1,73 @@
+# Per-observer phase subscription. Three observers register with different
+# `phases` parameters; the engine filters delivery so each receives only
+# events matching its subscription.
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1, trace: ["a"]}
+  b:
+    update: {v: 2, trace: ["b"]}
+  c:
+    update: {v: 3, trace: ["c"]}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+observers:
+  - {name: obs_both,      attach: graph, target: outer, behavior: record}                       # default — both phases
+  - {name: obs_completed, attach: graph, target: outer, behavior: record, phases: [completed]}
+  - {name: obs_started,   attach: graph, target: outer, behavior: record, phases: [started]}
+
+expected:
+  final_state:
+    v: 3
+    trace: ["a", "b", "c"]
+  execution_order: [a, b, c]
+
+  observer_events:
+    # obs_both receives all 6 events (3 nodes × 2 phases).
+    obs_both:
+      - {step: 0, phase: started,   node_name: a, namespace: [a], pre_state: {v: 0, trace: []}}
+      - {step: 0, phase: completed, node_name: a, namespace: [a],
+         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}}
+      - {step: 1, phase: started,   node_name: b, namespace: [b], pre_state: {v: 1, trace: ["a"]}}
+      - {step: 1, phase: completed, node_name: b, namespace: [b],
+         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}}
+      - {step: 2, phase: started,   node_name: c, namespace: [c], pre_state: {v: 2, trace: ["a", "b"]}}
+      - {step: 2, phase: completed, node_name: c, namespace: [c],
+         pre_state: {v: 2, trace: ["a", "b"]}, post_state: {v: 3, trace: ["a", "b", "c"]}}
+
+    # obs_completed receives only the 3 completed events.
+    obs_completed:
+      - {step: 0, phase: completed, node_name: a, namespace: [a],
+         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}}
+      - {step: 1, phase: completed, node_name: b, namespace: [b],
+         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}}
+      - {step: 2, phase: completed, node_name: c, namespace: [c],
+         pre_state: {v: 2, trace: ["a", "b"]}, post_state: {v: 3, trace: ["a", "b", "c"]}}
+
+    # obs_started receives only the 3 started events.
+    obs_started:
+      - {step: 0, phase: started, node_name: a, namespace: [a], pre_state: {v: 0, trace: []}}
+      - {step: 1, phase: started, node_name: b, namespace: [b], pre_state: {v: 1, trace: ["a"]}}
+      - {step: 2, phase: started, node_name: c, namespace: [c], pre_state: {v: 2, trace: ["a", "b"]}}
+
+  # Empty phases set is a configuration error (asserted via a separate harness check
+  # rather than in the event sequence).
+  empty_phases_raises_at_registration: true

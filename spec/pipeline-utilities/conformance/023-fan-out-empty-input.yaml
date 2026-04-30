@@ -1,0 +1,155 @@
+# Empty fan-out behavior: default raises (fan_out_empty); `on_empty: noop`
+# produces a clean no-op; `count_field` records the resolved count for
+# programmatic inspection.
+
+subgraph:
+  name: simple_worker
+  state:
+    fields:
+      result:
+        type: int
+        default: 0
+  entry: work
+  nodes:
+    work:
+      update_pure: {result: 1}
+  edges:
+    - {from: work, to: END}
+
+cases:
+  # Default behavior: empty items_field raises a node_exception with
+  # category fan_out_empty.
+  - name: default_raises_on_empty_items_field
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: []
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: simple_worker
+          items_field: items
+          item_field: anything
+          collect_field: result
+          target_field: results
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected_error:
+      category: node_exception
+      raised_from: process
+      fan_out_category: fan_out_empty
+      recoverable_state:
+        items: []
+        results: []
+
+  # Default behavior: count callable returning 0 raises fan_out_empty.
+  - name: default_raises_on_count_zero
+    state:
+      fields:
+        zero_field:
+          type: int
+          default: 0
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: simple_worker
+          count: {callable: state_field_read, field: zero_field}
+          collect_field: result
+          target_field: results
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected_error:
+      category: node_exception
+      raised_from: process
+      fan_out_category: fan_out_empty
+
+  # on_empty: noop produces a clean no-op. count_field captures the
+  # resolved count (0). Downstream proceeds.
+  - name: noop_opt_out_with_count_field
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: []
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+        processed_count:
+          type: int
+          default: -1   # sentinel — should be overwritten with 0
+        downstream_ran:
+          type: bool
+          default: false
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: simple_worker
+          items_field: items
+          item_field: anything
+          collect_field: result
+          target_field: results
+          on_empty: noop
+          count_field: processed_count
+      after:
+        update: {downstream_ran: true}
+    edges:
+      - {from: process, to: after}
+      - {from: after,   to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: []
+        results: []
+        processed_count: 0    # count_field captures the 0-count outcome
+        downstream_ran: true
+      execution_order: [process, after]
+
+  # count_field records the actual resolved count even when non-empty.
+  # Verifies count_field is written regardless of whether on_empty fires.
+  - name: count_field_records_actual_count
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+        processed_count:
+          type: int
+          default: -1
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: simple_worker
+          items_field: items
+          item_field: anything
+          collect_field: result
+          target_field: results
+          count_field: processed_count
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: [10, 20, 30]
+        results: [1, 1, 1]
+        processed_count: 3    # three instances ran
+      execution_order: [process]

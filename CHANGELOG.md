@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-04-28
+
+### Added
+
+- **pipeline-utilities §9 Parallel fan-out (created).** A `fan_out` node type that executes a compiled subgraph (or async callable) once per item in a parent state field, with bounded concurrency, and collects per-instance results back into a parent collection field. Two modes: `items_field` (data-driven; instance count = `len(items_field_value)`, items projected per-instance via `item_field`) and `count` (count-driven; literal int OR callable `(state) -> int`; no per-item data). Mutually exclusive. Default `concurrency: 10` (also int-or-callable). Default `error_policy: "fail_fast"` (cancel siblings on first failure); alternative `"collect"` (run all, omit failed slots, record errors in `errors_field`). New `instance_middleware` config wraps each instance's invocation as a unit (the seam for whole-instance retry vs. per-inner-node retry). Empty fan-out (`items_field == []` or `count == 0`) raises `fan_out_empty` by default (`on_empty: "raise"`); user opts in to silent no-op via `on_empty: "noop"`. Optional `count_field` writes the resolved instance count to a parent state field for programmatic inspection. New compile error categories `fan_out_field_not_list`, `fan_out_count_mode_ambiguous`. New runtime error categories `fan_out_invalid_count`, `fan_out_invalid_concurrency`, `fan_out_empty` (non-transient — does not auto-resolve via retry). ([proposal 0005](proposals/0005-pipeline-utilities-parallel-fan-out.md))
+- **graph-engine §3 Execution model — fan-out concurrency exception.** Single-threaded execution rule carved out so a fan-out node may execute multiple subgraph instances concurrently. Single-threaded execution resumes for the parent run after the fan-out completes.
+- **graph-engine §6 — `fan_out_index` field on the node event shape.** Optional non-negative integer; populated only on events from nodes inside a fan-out instance. The combination of `namespace`, `fan_out_index`, `attempt_index`, and `phase` uniquely identifies an event source.
+- **graph-engine §6 — per-observer phase subscription.** Optional `phases` parameter on observer registration. Accepted values: `{"started", "completed"}` (default), `{"completed"}` (v0.5.0-style; useful for metrics/log aggregators), `{"started"}` (useful for stuck-node alerting). Empty phase sets raise at registration. Engine filters delivery; phase filter applies at delivery, not dispatch.
+- Conformance fixtures for pipeline-utilities `017-023` (fan-out basic, fail-fast, collect, retry-middleware, instance-middleware-retry, count-and-concurrency-modes, empty-input) and for graph-engine `017-018` (fan-out index, phase subscription).
+
+### Changed
+
+- **graph-engine §6 Event dispatch — replaced single-event-per-attempt with started/completed pairs (BREAKING, but pre-1.0).** Each node attempt now produces TWO events: a `started` event before the node executes, and a `completed` event after the reducer merge (or after a failure is captured). Both events share `node_name`, `namespace`, `step`, `attempt_index`, `fan_out_index`, `pre_state`, `parent_states`. `started` events have `post_state` and `error` absent; `completed` events have exactly one of `post_state` or `error` populated. Required new `phase` field on the event shape. The pair model makes span boundaries cleaner for OpenTelemetry mapping and other observability backends; doubled event volume is mitigated by per-observer phase subscription.
+- **graph-engine §6 — removed the v0.5.0 "Middleware-dispatched events" subsection.** Under the pair model, the engine instruments at the inner-node-call level: each invocation of the wrapped node function produces a started/completed pair from the engine. Retry middleware no longer dispatches its own events — engine handles per-attempt events naturally. The "Middleware-dispatched events" mechanism added in v0.5.0 is no longer needed and is removed.
+- **pipeline-utilities §6.1 Retry middleware — manual dispatch removed.** Pseudocode simplified: no more `dispatch_failed_attempt_event(...)` calls. Each call to `next(state)` triggers a fresh started/completed pair from the engine. The "Per-attempt observer events" subsection rewritten to reflect engine-handled events.
+- pipeline-utilities §8 Out of scope — removed "Parallel fan-out / fan-in" (now in §9).
+- Existing v0.5.0 conformance fixtures updated for the pair model: `graph-engine/conformance/012-016` (5 fixtures) and `pipeline-utilities/conformance/011`, `015` — every event in `expected.observer_events` split into a started/completed pair; `delivery_order` updated to include `phase` field.
+
+### Notes
+
+- **Breaking change to v0.5.0 §6 contract permitted by pre-1.0 SemVer** (per `GOVERNANCE.md`). Per the new "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.5.0 may target v0.6.0 directly without implementing the v0.5.0 contract first.
+
 ## [0.5.0] — 2026-04-28
 
 ### Added

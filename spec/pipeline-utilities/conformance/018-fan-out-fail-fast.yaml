@@ -1,0 +1,63 @@
+# Fan-out fail_fast (default): instance index 1 raises; siblings cancelled;
+# fan-out node propagates node_exception per §4 with recoverable_state at
+# the pre-fan-out snapshot.
+
+subgraph:
+  name: maybe_fail
+  state:
+    fields:
+      idx:
+        type: int
+        default: -1
+      result:
+        type: int
+        default: 0
+  entry: maybe
+  nodes:
+    maybe:
+      flaky_by_index:
+        # Harness mock: instance with idx == 1 raises; others succeed.
+        fail_when_idx: 1
+        success_compute: {result: idx}   # result = idx
+  edges:
+    - {from: maybe, to: END}
+
+state:
+  fields:
+    items:
+      type: list<int>
+      default: [0, 1, 2]
+    results:
+      type: list<int>
+      reducer: append
+      default: []
+
+entry: process
+
+nodes:
+  process:
+    fan_out:
+      subgraph: maybe_fail
+      items_field: items
+      item_field: idx
+      collect_field: result
+      target_field: results
+      error_policy: fail_fast   # default; explicit for clarity
+
+edges:
+  - {from: process, to: END}
+
+initial_state: {}
+
+expected_error:
+  category: node_exception
+  raised_from: process
+  # Recoverable state is the pre-fan-out snapshot — the fan-out's contributions
+  # never merge, so `results` is the empty default.
+  recoverable_state:
+    items: [0, 1, 2]
+    results: []
+
+# Sibling cancellations don't produce additional node_exception per cancelled
+# instance; cancellations are infrastructure. The harness MAY assert that
+# observer events from cancelled instances did NOT have post_state populated.

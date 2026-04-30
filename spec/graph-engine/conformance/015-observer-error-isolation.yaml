@@ -66,27 +66,32 @@ expected:
   no_propagated_error: true
 
   # obs_raiser's received events are not enumerated — only that obs_recorder
-  # received the full sequence despite obs_raiser failing on each.
+  # received the full pair sequence despite obs_raiser failing on each phase.
   observer_events:
     obs_recorder:
-      - {step: 0, node_name: a, namespace: [a],
-         pre_state:  {v: 0, trace: []},
-         post_state: {v: 1, trace: ["a"]}}
-      - {step: 1, node_name: b, namespace: [b],
-         pre_state:  {v: 1, trace: ["a"]},
-         post_state: {v: 2, trace: ["a", "b"]}}
-      - {step: 2, node_name: c, namespace: [c],
-         pre_state:  {v: 2, trace: ["a", "b"]},
-         post_state: {v: 3, trace: ["a", "b", "c"]}}
+      - {step: 0, phase: started,   node_name: a, namespace: [a], pre_state: {v: 0, trace: []}}
+      - {step: 0, phase: completed, node_name: a, namespace: [a],
+         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}}
+      - {step: 1, phase: started,   node_name: b, namespace: [b], pre_state: {v: 1, trace: ["a"]}}
+      - {step: 1, phase: completed, node_name: b, namespace: [b],
+         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}}
+      - {step: 2, phase: started,   node_name: c, namespace: [c], pre_state: {v: 2, trace: ["a", "b"]}}
+      - {step: 2, phase: completed, node_name: c, namespace: [c],
+         pre_state: {v: 2, trace: ["a", "b"]}, post_state: {v: 3, trace: ["a", "b", "c"]}}
 
-  # Per-event delivery order. obs_raiser is delivered first (registration
-  # order), raises, the engine catches and warns, then obs_recorder is
-  # delivered for the SAME event. The next event then proceeds with both
-  # observers despite the prior failure.
+  # Per-event delivery order. obs_raiser is delivered first (registration order),
+  # raises, the engine catches and warns, then obs_recorder is delivered for the
+  # SAME event. Both phases (started, then completed) follow this pattern.
   delivery_order:
-    - {observer: obs_raiser,   step: 0}
-    - {observer: obs_recorder, step: 0}
-    - {observer: obs_raiser,   step: 1}
-    - {observer: obs_recorder, step: 1}
-    - {observer: obs_raiser,   step: 2}
-    - {observer: obs_recorder, step: 2}
+    - {observer: obs_raiser,   step: 0, phase: started}
+    - {observer: obs_recorder, step: 0, phase: started}
+    - {observer: obs_raiser,   step: 0, phase: completed}
+    - {observer: obs_recorder, step: 0, phase: completed}
+    - {observer: obs_raiser,   step: 1, phase: started}
+    - {observer: obs_recorder, step: 1, phase: started}
+    - {observer: obs_raiser,   step: 1, phase: completed}
+    - {observer: obs_recorder, step: 1, phase: completed}
+    - {observer: obs_raiser,   step: 2, phase: started}
+    - {observer: obs_recorder, step: 2, phase: started}
+    - {observer: obs_raiser,   step: 2, phase: completed}
+    - {observer: obs_recorder, step: 2, phase: completed}

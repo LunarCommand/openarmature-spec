@@ -1,0 +1,81 @@
+# Fan-out where each instance has retry middleware on a flaky inner node.
+# Each instance retries independently; sibling instances aren't blocked by
+# another's retries beyond the concurrency budget. Verifies the inner-node
+# retry shape and that per-attempt observer events from inner instances
+# carry both `attempt_index` and `fan_out_index`.
+
+subgraph:
+  name: scorer
+  state:
+    fields:
+      item:
+        type: int
+        default: 0
+      score:
+        type: int
+        default: 0
+  entry: score
+  nodes:
+    score:
+      flaky_by_index:
+        # Each instance fails its first attempt with a transient exception,
+        # succeeds on its second.
+        fail_count_per_idx: 1
+        category: provider_rate_limit
+        success_compute: {score: item}
+  edges:
+    - {from: score, to: END}
+  middleware:
+    per_node:
+      score:
+        - type: retry
+          max_attempts: 3
+          backoff: {type: deterministic, seconds: 0}
+
+state:
+  fields:
+    items:
+      type: list<int>
+      default: [10, 20, 30]
+    scores:
+      type: list<int>
+      reducer: append
+      default: []
+
+entry: process
+
+nodes:
+  process:
+    fan_out:
+      subgraph: scorer
+      items_field: items
+      item_field: item
+      collect_field: score
+      target_field: scores
+      concurrency: 3
+
+edges:
+  - {from: process, to: END}
+
+initial_state: {}
+
+observers:
+  - {name: obs, attach: graph, target: outer, behavior: record}
+
+expected:
+  final_state:
+    items: [10, 20, 30]
+    scores: [10, 20, 30]
+  execution_order: [process]
+
+  # Per-attempt event pairs from inner instances carry both attempt_index
+  # and fan_out_index. For each instance, 2 attempts (failure then success)
+  # × 2 phases = 4 events. Three instances = 12 inner-node events plus the
+  # fan-out node's own pair = 14 events total. The harness MAY assert on a
+  # subset (e.g., that every inner event has a populated `fan_out_index`
+  # matching its instance index AND attempt_index 0 or 1).
+  observer_event_invariants:
+    inner_events_have_fan_out_index: true
+    inner_events_attempt_indices_seen: [0, 1]
+    fan_out_indices_seen: [0, 1, 2]
+    inner_event_pair_count_per_instance: 4   # 2 attempts × 2 phases
