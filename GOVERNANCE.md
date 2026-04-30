@@ -168,6 +168,14 @@ Inspired by OpenTelemetry's library guidelines, with a smaller scope (two langua
   (e.g., Python `pyproject.toml`: `openarmature_spec_version = "0.3.1"`). The implementation MUST pass the conformance
   test suite for that version.
 
+- **Skip-ahead implementation.** When a follow-on proposal supersedes parts of an accepted-but-unimplemented
+  predecessor, implementations MAY skip the intermediate spec version and target the later one directly.
+  Pre-1.0 SemVer permits breaking changes between MINOR versions, so this situation arises naturally when spec
+  design iterates faster than implementation. The intermediate version remains in the spec history (CHANGELOG entry,
+  accepted proposal text) for design documentation; no implementation effort is wasted on superseded contracts.
+  Implementations that DO want to ship the intermediate version (e.g., for incremental release) MAY do so, but are
+  not required to.
+
 ---
 
 ## Conformance tests
