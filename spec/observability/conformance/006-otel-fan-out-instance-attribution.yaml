@@ -1,0 +1,89 @@
+# Fan-out instance span attribution: each instance is its own subgraph span
+# under the fan-out node span, disambiguated by `openarmature.node.fan_out_index`.
+# Fan-out node span carries `item_count`, `concurrency`, `error_policy`.
+
+subgraph:
+  name: worker
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      doubled:
+        type: int
+        default: 0
+  entry: compute
+  nodes:
+    compute:
+      update_pure_from_state: {doubled: input_times_two}   # harness: doubled = input * 2
+  edges:
+    - {from: compute, to: END}
+
+cases:
+  - name: three_instances_attributed_by_fan_out_index
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: worker
+          items_field: items
+          item_field: input
+          collect_field: doubled
+          target_field: results
+          concurrency: 2
+          error_policy: collect
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "process"
+              status: OK
+              attributes:
+                openarmature.fan_out.item_count: 3
+                openarmature.fan_out.concurrency: 2
+                openarmature.fan_out.error_policy: "collect"
+              children:
+                - name: "process"
+                  status: OK
+                  attributes:
+                    openarmature.node.fan_out_index: 0
+                    openarmature.fan_out.parent_node_name: "process"
+                  children:
+                    - name: "compute"
+                      status: OK
+                      children: []
+                - name: "process"
+                  status: OK
+                  attributes:
+                    openarmature.node.fan_out_index: 1
+                    openarmature.fan_out.parent_node_name: "process"
+                  children:
+                    - name: "compute"
+                      status: OK
+                      children: []
+                - name: "process"
+                  status: OK
+                  attributes:
+                    openarmature.node.fan_out_index: 2
+                    openarmature.fan_out.parent_node_name: "process"
+                  children:
+                    - name: "compute"
+                      status: OK
+                      children: []
+      invariants:
+        # Every per-instance span has a unique fan_out_index in 0..count-1.
+        unique_fan_out_indices_under: "process"
+        fan_out_index_range: [0, 2]

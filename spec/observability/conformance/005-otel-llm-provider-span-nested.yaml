@@ -1,0 +1,140 @@
+# LLM provider span: a node calls a mock OpenAI-compatible provider. Three
+# sub-cases — default emission, opt-out, and external auto-instrumentation
+# isolation. Verifies §5.5 MUST emit, the disable_llm_spans opt-out, and the
+# §6 TracerProvider isolation rule.
+
+cases:
+  - name: default
+    description: |
+      Default OTel observer config. The §5.5 MUST emits a child span under
+      the calling node for the complete() call.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-1
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.llm.model: "test-model"
+                    openarmature.llm.finish_reason: "stop"
+                    openarmature.llm.usage.prompt_tokens: 5
+                    openarmature.llm.usage.completion_tokens: 1
+                    openarmature.llm.usage.total_tokens: 6
+                  children: []
+
+  - name: disable_llm_spans
+    description: |
+      OTel observer constructed with disable_llm_spans=True. The §5.5 LLM
+      span is NOT emitted; node and other spans still emit normally.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-2
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hi back"}, finish_reason: stop}
+    disable_llm_spans: true
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children: []   # NO openarmature.llm.complete span here
+      no_llm_provider_span: true
+
+  - name: external_auto_instrumentation_active
+    description: |
+      The harness installs a SECOND in-memory exporter on the OTel global
+      TracerProvider, simulating an external auto-instrumentation library
+      (OpenInference, opentelemetry-instrumentation-openai, etc.) emitting
+      its own LLM span. Verifies the §6 TracerProvider isolation rule:
+      openarmature spans MUST appear only on openarmature's private exporter,
+      NOT on the global one. The external span (emitted by the harness
+      directly through the global provider) MUST appear only on the global
+      exporter.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+        also_emits_via_global_tracer:
+          span_name: "external.llm.call"
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-3
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hi"}, finish_reason: stop}
+    caller_global_otel_active: true
+    expected:
+      # Private exporter sees openarmature's spans.
+      span_tree_private:
+        - name: "openarmature.invocation"
+          children:
+            - name: "ask_llm"
+              children:
+                - name: "openarmature.llm.complete"
+                  children: []
+      # Global exporter sees ONLY the external span the harness emitted.
+      span_tree_global:
+        - name: "external.llm.call"
+          children: []
+      # No openarmature spans on the global exporter (the load-bearing
+      # check for §6 TracerProvider isolation).
+      no_openarmature_spans_on_global: true

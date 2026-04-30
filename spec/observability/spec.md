@@ -1,66 +1,24 @@
-# 0007: Observability — OpenTelemetry Span Mapping
+# Observability
 
-- **Status:** Accepted
-- **Author:** Chris Colinsky
-- **Created:** 2026-04-28
-- **Accepted:** 2026-04-28
-- **Targets:** spec/observability/spec.md (creates)
-- **Related:** 0001, 0003, 0004, 0005, 0006
-- **Supersedes:**
+Canonical behavioral specification for the OpenArmature observability capability.
 
-## Summary
+- **Capability:** observability
+- **Introduced:** spec version 0.7.0
+- **History:**
+  - created by [proposal 0007](../../proposals/0007-observability-otel-span-mapping.md)
 
-Establish the foundational behavioral specification for the OpenArmature observability capability,
-beginning with a normative **OpenTelemetry span mapping**: a contract for how a graph invocation,
-its subgraphs, individual node executions, and fan-out instances translate into OTel spans, span
-attributes, status, and parent-child relationships. This is the first concrete backend mapping;
-future proposals add Langfuse and other backends as additional sections of the same capability
-spec. The mapping consumes the v0.6.0 §6 observer event stream — specifically the started/completed
-event pairs, which provide natural span open/close points without requiring middleware
-instrumentation.
+This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
+onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
 
-## Motivation
+Normative keywords (MUST, MUST NOT, SHOULD, MAY) are used per [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
 
-Graph-engine §6 observer hooks (proposal 0003) provided the original observation primitive; the
-v0.6.0 pair model (proposal 0005) refined it so that every node attempt produces a started event
-and a completed event in temporal order. The pair model is exactly what OpenTelemetry semantics
-need — span open at `started`, span close at `completed`, with a clean parent-child structure
-falling out of the existing `namespace` and `fan_out_index` fields. That's a substrate, not yet a
-usable observability story. Production users need their existing OTel-based stack (Grafana,
-Honeycomb, DataDog, Jaeger, Tempo) to render graph runs as spans without each user re-deriving
-how to map the §6 event shape onto OTel semantics.
-
-A normative mapping has three concrete benefits:
-
-1. **Cross-implementation parity.** A run executed by openarmature-python and the same run by
-   openarmature-typescript produce equivalent OTel traces — same span hierarchy, same attribute
-   names, same status mapping. Users can swap implementations without re-tooling dashboards or
-   alerting rules.
-
-2. **Backend independence.** Any OTel-compatible backend (the SDK is provider-neutral) sees a
-   consistent shape. The user picks the backend; the framework's contract is the same.
-
-3. **Foundation for Langfuse and other backends.** Once the OTel mapping is normative, Langfuse
-   mapping can be specified as a sibling section that maps the same source data to Langfuse's trace
-   model, with the OTel mapping providing the reference shape for cross-backend equivalence
-   testing.
-
-The work projects driving the immediate adoption (per the user's roadmap) require OTel to be
-shipped before they go to production. The mapping is small enough — perhaps 200 lines of normative
-text and a handful of conformance fixtures — to land in a single proposal without sprawling.
-
-## Detailed design
-
-The full proposed text of `spec/observability/spec.md` is reproduced below. It is written in
-language-agnostic terms — Python and TypeScript map their own idioms (the OTel SDK shape is
-similar across both) onto the behavioral contract described here.
-
-The spec version under which this capability lands is determined at acceptance time and recorded in
-`CHANGELOG.md`.
+This first version of the observability capability defines two foundational concepts (cross-backend
+correlation ID, OpenTelemetry span and log mapping) and one concrete backend mapping (OTel). Future
+proposals add other backend mappings (e.g., Langfuse) as additional sections of this same spec.
 
 ---
 
-### 1. Purpose
+## 1. Purpose
 
 The observability capability defines normative mappings from OpenArmature's runtime event surface
 (graph-engine §6 observer events, specifically the v0.6.0 started/completed event pairs) into
@@ -75,7 +33,7 @@ The capability does NOT introduce new graph-engine primitives. It consumes the e
 event stream — `started` events open spans, `completed` events close them. An implementation that
 emits OTel spans is built on top of §6, not into the engine.
 
-### 2. Concepts
+## 2. Concepts
 
 **Span.** A unit of work in OTel — a logically distinct interval with a name, start/end timestamps,
 status, attributes, and parent-child relationships. The mapping translates each user-meaningful unit
@@ -105,7 +63,7 @@ LLM workflow with both an OTel backend (system traces, logs) and a Langfuse back
 in Langfuse, search for its `correlation_id` in OTel logs, and see the surrounding
 infrastructure activity. See §3 (architectural contract) and §5.6 (OTel attribute realization).
 
-### 3. Cross-backend correlation ID
+## 3. Cross-backend correlation ID
 
 The **correlation ID** is a per-invocation identifier the framework propagates across every
 observability backend the implementation emits to. It is the join key for cross-backend pivots:
@@ -116,7 +74,7 @@ This section defines the architectural contract for the correlation ID. The OTel
 realization — how it appears on spans and log records — is in §5.6 (cross-cutting attributes)
 and §7 (log correlation).
 
-#### 3.1 Lifecycle and propagation
+### 3.1 Lifecycle and propagation
 
 The correlation ID is per-invocation and lives for the duration of one outermost `invoke()`
 call. Implementations MUST:
@@ -141,7 +99,7 @@ The correlation ID is a string type. Format is implementation-defined beyond "no
 URL-safe characters." Implementations SHOULD avoid characters that require escaping in OTel
 attribute serialization, JSON, or HTTP headers.
 
-#### 3.2 Distinction from `invocation_id`
+### 3.2 Distinction from `invocation_id`
 
 `correlation_id` and `invocation_id` (defined in §5.1) serve different purposes:
 
@@ -153,7 +111,7 @@ attribute serialization, JSON, or HTTP headers.
 Both MAY be the same value if the user chooses (e.g., a caller-supplied UUID could be used as
 both), but the spec treats them as distinct fields. Backends MUST NOT conflate them.
 
-#### 3.3 Backend-mapping contract
+### 3.3 Backend-mapping contract
 
 Each backend mapping in this spec MUST define how the correlation ID surfaces in that backend.
 For the OTel mapping (this proposal):
@@ -172,7 +130,7 @@ ID is invocation-scoped, not trace-scoped, so it flows through detached subgraph
 unchanged. A detached subgraph's spans carry the same correlation ID as the parent trace's
 spans.
 
-### 4. Span hierarchy
+## 4. Span hierarchy
 
 Each invocation of the outermost graph produces the following span tree:
 
@@ -203,7 +161,7 @@ invocation (root)
 └── node: outer_out
 ```
 
-#### 4.1 Span timing
+### 4.1 Span timing
 
 A node span's start time is the moment the §6 `started` event fires for that attempt. Its end time
 is the moment the §6 `completed` event fires for the same attempt. The pair model gives a clean
@@ -227,7 +185,7 @@ Implementations MAY also use pipeline-utilities middleware as the lifecycle driv
 produce identical span structure for conformance purposes; the contract is the emitted spans, not
 the driver mechanism. Most implementations will pick the observer-driven path for simplicity.
 
-#### 4.2 Status mapping
+### 4.2 Status mapping
 
 A span's OTel status is set as follows:
 
@@ -252,7 +210,7 @@ OTel parent-status-from-failed-children propagation when any of these fail, but 
 NOT explicitly mark the invocation span ERROR for the node-boundary case (the inheritance is
 sufficient — explicit duplicate attribution would create noise without adding diagnostic value).
 
-#### 4.3 Parent-child rules
+### 4.3 Parent-child rules
 
 Spans are parented as follows, using the §6 `namespace` and `fan_out_index` fields:
 
@@ -272,7 +230,7 @@ The invariant `len(parent_states) == len(namespace) - 1` from §6 is preserved b
 parent-state entry corresponds to exactly one ancestor span. The `attempt_index` and
 `fan_out_index` fields disambiguate sibling spans at the same hierarchy level.
 
-#### 4.4 Detached trace mode (opt-in)
+### 4.4 Detached trace mode (opt-in)
 
 The default behavior described in §4.1–§4.3 puts every span produced during a single `invoke()`
 call into one trace. This is the right default for typical LLM workloads but breaks down in two
@@ -336,7 +294,7 @@ creates the detached trace if matched. Other detachment-configuration shapes (de
 graph-builder argument, etc.) are equivalently valid as long as the behavioral contract above
 holds.
 
-#### 4.5 Span names
+### 4.5 Span names
 
 Span names are how OTel trace UIs identify each span in lists, search results, and aggregations.
 Implementations MUST use these names for spans they emit:
@@ -360,12 +318,12 @@ typically not a problem for LLM workflows (10–50 nodes per pipeline, not thous
 needing low-cardinality aggregations build them from the `openarmature.node.name` attribute
 (per §5.2) instead.
 
-### 5. Attribute namespace
+## 5. Attribute namespace
 
 All openarmature-emitted attributes use the prefix `openarmature.`. The mapping defines the
 following normative attribute keys; implementations MUST emit each on the spans listed.
 
-#### 5.1 Invocation span attributes
+### 5.1 Invocation span attributes
 
 - `openarmature.invocation_id` — string. A unique identifier for this invocation. MUST be a
   UUIDv4 (canonical 36-character form: `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx`). Mandating the
@@ -376,7 +334,7 @@ following normative attribute keys; implementations MUST emit each on the spans 
 - `openarmature.graph.spec_version` — string. The version of the openarmature-spec the
   implementation targets (e.g., `"0.7.0"`). Sourced from the implementation's package metadata.
 
-#### 5.2 Node span attributes
+### 5.2 Node span attributes
 
 Required on every node span:
 
@@ -394,7 +352,7 @@ When the node fails:
   `reducer_error`). Set on the `completed` span only; `started` spans never carry an error
   attribute.
 
-#### 5.3 Subgraph span attributes
+### 5.3 Subgraph span attributes
 
 Required on every subgraph span:
 
@@ -402,7 +360,7 @@ Required on every subgraph span:
 - `openarmature.subgraph.name` — string. The compiled subgraph's name (if the implementation tracks
   one) or the empty string. Optional in practice; populated when available.
 
-#### 5.4 Fan-out span attributes
+### 5.4 Fan-out span attributes
 
 The following attributes MUST appear on fan-out instance spans (per pipeline-utilities §9):
 
@@ -418,7 +376,7 @@ Fan-out node spans (the parent of the per-instance subgraph spans) carry:
 - `openarmature.fan_out.error_policy` — string. One of `"fail_fast"` or `"collect"`. Useful for
   filtering traces by policy.
 
-#### 5.5 LLM provider attributes
+### 5.5 LLM provider attributes
 
 Implementations of the llm-provider capability (per llm-provider §5 / proposal 0006), when paired
 with an OTel observer per this mapping, MUST emit a span around each `complete()` call. This is a
@@ -447,7 +405,7 @@ The span's attributes include:
 The LLM provider span's parent is the node span of the node that invoked the provider. This
 provides direct attribution of LLM calls to the graph nodes they originate from.
 
-#### 5.6 Cross-cutting attributes
+### 5.6 Cross-cutting attributes
 
 These attributes appear on EVERY span emitted during an invocation, regardless of span type
 (invocation, node, subgraph, fan-out instance, LLM provider call, retry attempt):
@@ -462,7 +420,7 @@ The cross-cutting nature of `openarmature.correlation_id` means observability ba
 filter for "all spans related to request X" with a single attribute query, regardless of which
 node, subgraph, or fan-out instance emitted the span.
 
-### 6. Driving span lifecycle
+## 6. Driving span lifecycle
 
 The v0.6.0 §6 pair model gives OTel a natural lifecycle driver: register an observer with the
 default phase subscription (both `started` and `completed`), and let the `started` event open the
@@ -540,7 +498,7 @@ This pattern is non-obvious but production-validated — naive implementations r
 and discover the duplication only after deploying. Mandating it in the spec saves every
 implementation from rediscovering the issue.
 
-### 7. Log correlation
+## 7. Log correlation
 
 OpenTelemetry has a first-class **Logs** signal alongside Traces and Metrics. Log records carry
 their own attributes plus the active OTel `TraceContext` (`trace_id`, `span_id`, `trace_flags`).
@@ -588,7 +546,7 @@ transparently. If the user uses a custom logger that isn't bridged to OTel, fram
 correlation is best-effort — the spec contract applies to logs that flow through the OTel
 Logs SDK.
 
-### 8. Determinism
+## 8. Determinism
 
 OTel span content is a function of (a) the §6 observer event stream and (b) implementation-specific
 data (timestamps, span IDs, trace IDs). The graph-engine §5 determinism guarantee covers the §6
@@ -600,7 +558,7 @@ The conformance suite asserts determinism over the *deterministic* portion of sp
 hierarchy, span names, span attributes (excluding timing-derived attributes), and span status. It
 does NOT assert exact timestamps or IDs.
 
-### 9. Out of scope
+## 9. Out of scope
 
 Not covered by this specification; deferred to follow-on proposals or sibling sections of this
 spec:
@@ -618,169 +576,3 @@ spec:
 - **Span links** — OTel span links between traces (e.g., for batch operations that accumulate
   inputs from many traces). Defer until needed.
 
----
-
-## Conformance test impact
-
-Add a new conformance directory `spec/observability/conformance/` with the following fixtures.
-Each fixture's expected output is a normalized span tree (excluding timestamps and IDs); the
-conformance harness in each implementation captures emitted spans via an in-memory OTel exporter
-and compares structurally.
-
-1. **`001-otel-basic-trace`** — linear graph with three nodes. Verifies:
-   - One invocation span, three node spans as children, in execution order.
-   - Each node span carries `openarmature.node.name`, `openarmature.node.namespace`,
-     `openarmature.node.step`.
-   - Invocation span carries `openarmature.invocation_id`, `openarmature.graph.entry_node`.
-   - All spans have status `OK`.
-
-2. **`002-otel-subgraph-hierarchy`** — outer + subgraph. Verifies:
-   - Hierarchy: invocation → outer_in → subgraph(outer_sub) → inner_x, inner_y → outer_out.
-   - Subgraph span carries `openarmature.node.name` (the SubgraphNode's name in the parent).
-   - Inner node spans' parent is the subgraph span.
-   - `openarmature.node.namespace` on inner nodes is the full chain (e.g., `["outer_sub",
-     "inner_x"]`).
-
-3. **`003-otel-error-status`** — a node raises. Verifies:
-   - The failing node's span has status `ERROR` with description matching the §4 category.
-   - The exception is recorded on the span via `record_exception`.
-   - Sibling spans (preceding the failure) have status `OK`.
-   - The invocation span has status `ERROR` (the error propagates out).
-
-4. **`004-otel-routing-error-attribution`** — a conditional edge returns an undeclared node name
-   (`routing_error` per §4). Verifies:
-   - The preceding node's span has status `ERROR` with description `routing_error`.
-   - The routing error is recorded as an exception on the preceding node's span (no separate span
-     for the edge function).
-
-5. **`005-otel-llm-provider-span-nested`** — a node calls a mock OpenAI-compatible provider (per
-   llm-provider §5). Three sub-cases:
-   - `default` — OTel observer with no opt-out flags. Verifies a child span under the node
-     span exists for the provider call, carrying `openarmature.llm.model`,
-     `openarmature.llm.finish_reason`, and `openarmature.llm.usage.*`.
-   - `disable_llm_spans` — OTel observer constructed with `disable_llm_spans=True` (per §5.5
-     opt-out). Verifies the LLM span is NOT emitted; the node span and other openarmature
-     spans are still emitted normally.
-   - `external_auto_instrumentation_active` — the harness simulates external OTel
-     auto-instrumentation by registering a separate exporter on the OTel global
-     `TracerProvider` and emitting a fake "external" LLM span there during the `complete()`
-     call. Verifies that openarmature's LLM span is captured ONLY by openarmature's private
-     exporter (not the global one), and the external span appears ONLY on the global exporter.
-     Confirms the §6 TracerProvider isolation requirement: openarmature spans don't leak into
-     the global provider.
-
-6. **`006-otel-fan-out-instance-attribution`** — fan-out (per pipeline-utilities §9) over 3
-   items. Verifies:
-   - The fan-out node has a parent span; each instance is a child subgraph span.
-   - Per-instance subgraph spans carry `openarmature.node.fan_out_index` (0, 1, 2).
-   - Inner-node spans within each instance are parented to that instance's subgraph span.
-   - Fan-out node span carries `openarmature.fan_out.item_count`,
-     `openarmature.fan_out.concurrency`, `openarmature.fan_out.error_policy`.
-
-7. **`007-otel-retry-attempt-spans`** — node wrapped by retry middleware (pipeline-utilities §6.1)
-   that fails twice (transient) and succeeds on the third attempt. Verifies:
-   - Three sibling node spans for the same node, each with `openarmature.node.attempt_index` 0,
-     1, 2 respectively.
-   - The first two spans have status `ERROR`; the third has status `OK`.
-   - All three are parented to the same enclosing span (typically the invocation span).
-
-8. **`008-otel-detached-trace-mode`** — outer graph with one subgraph configured as detached
-   (per §4.4) and a fan-out node configured as detached. Verifies:
-   - Three traces emitted (the parent invocation, the detached subgraph, one detached trace per
-     fan-out instance — for 3 items, that's 1 + 1 + 3 = 5 traces total).
-   - The parent's subgraph-dispatch span carries an OTel `Link` whose target `trace_id` matches
-     the detached subgraph trace.
-   - The parent's fan-out node span carries one Link per instance, pointing at the corresponding
-     detached fan-out instance trace.
-   - Spans inside the detached subgraph use the detached subgraph's `trace_id`, NOT the
-     invocation's `trace_id`.
-   - A non-detached subgraph in the same graph still uses the invocation `trace_id` (verifies
-     detachment is per-subgraph-name, not all-or-nothing).
-
-9. **`009-otel-correlation-id-cross-cutting`** — graph with a 3-node linear flow plus a
-   subgraph and a fan-out. Two sub-cases:
-   - `caller_supplied` — caller passes `correlation_id="user-req-abc123"` to invoke. Verifies
-     EVERY emitted span (invocation, all node spans, subgraph span, all fan-out instance
-     spans) carries `openarmature.correlation_id == "user-req-abc123"`.
-   - `auto_generated` — caller does not supply correlation_id. Verifies a non-empty UUID-
-     shaped string appears as `openarmature.correlation_id` on every span; the same value
-     appears on every span (single ID per invocation, not per-span).
-
-10. **`010-otel-log-correlation`** — graph with a node that emits log records (via the
-    language's stdlib logger bridged to OTel Logs). Caller supplies `correlation_id`. Verifies:
-    - Each captured log record carries `openarmature.correlation_id` matching the caller's
-      supplied value.
-    - Each captured log record carries the OTel `trace_id` and `span_id` of the active span
-      at emit time (i.e., the node's span context).
-    - Logs emitted from outside the invocation (before / after) do NOT carry
-      `openarmature.correlation_id`.
-    - In a detached subgraph (per §4.4), log records from inside the detached trace carry the
-      detached `trace_id` (NOT the parent invocation's), but the same `correlation_id` as
-      logs from outside the detached subgraph (correlation ID is invocation-scoped, not
-      trace-scoped).
-
-11. **`011-otel-determinism`** — same graph, two runs. Verifies the *normalized* span tree
-    (excluding timestamps and IDs) is identical across runs.
-
-The conformance harness supplies an in-memory OTel `SpanExporter` for capturing spans;
-implementations register it as a `SpanProcessor` for the duration of the test. The fixtures
-themselves contain no real exporter URLs.
-
-## Alternatives considered
-
-**Don't normalize OTel attribute names — let each implementation choose.** Path of least resistance
-but loses cross-implementation parity. A user's dashboard query that filters
-`openarmature.node.name = "summarize"` would need to be re-written for each implementation.
-Rejected: this is exactly the multi-language consistency problem the charter exists to address.
-
-**Use a different attribute prefix.** Rejected on grounds of clarity. `openarmature.*` is
-unambiguous, matches the project name, and namespaces cleanly under the OTel attribute model.
-
-**Match an existing OTel semantic convention namespace** (e.g., `gen_ai.*` for LLM attributes).
-Rejected for v1: the OTel `gen_ai.*` SemConv is still evolving (drafts and stable releases shifting
-quarterly), and tying the spec to it now risks needing PATCH-level rebases as it changes.
-Implementations MAY emit `gen_ai.*` attributes IN ADDITION to `openarmature.llm.*`; the
-`openarmature.*` namespace is the spec's stable contract.
-
-**Drive span lifecycle exclusively through middleware (forbid observer-driven).** Considered
-during draft when §6 still had single-event-per-attempt and middleware was the only way to get
-span duration. With v0.6.0's pair model, observer-driven achieves identical span structure
-without requiring users to wire the OTel middleware on every node. Rejected: middleware-driven
-adds opt-in burden; observer-driven is now the natural path. Both are permitted (per §5).
-
-**Bake span content into the engine itself (graph-engine §6 emits spans directly).** Rejected
-because it forces every implementation to depend on OTel SDKs at the engine layer. The current
-design keeps the engine OTel-free and the OTel mapping as an opt-in capability layered above.
-
-**Register openarmature's TracerProvider as the OTel global, or skip the LLM-span MUST.**
-Considered during review. Both approaches looked simpler but produced production failures in
-practice. Registering globally caused vendor-neutral OTel auto-instrumentation libraries
-(OpenInference, opentelemetry-instrumentation-openai, LiteLLM, Langfuse v3) to emit duplicate
-spans for every LLM call — once via their auto-instrumentation, once via openarmature. Skipping
-the LLM-span MUST left silent gaps in OTel coverage where users had to remember to instrument
-their own. Rejected both. The accepted design — MUST emit + private TracerProvider isolation +
-opt-out config for external-instrumentation-only setups — is non-obvious but production-validated.
-Reference: the inspiration project's `tracing.py` carries the comment "intentionally NOT calling
-trace.set_tracer_provider() here. Setting a global provider causes Langfuse v3 to emit its
-LLM/graph spans through it, duplicating data already in the Langfuse UI." The spec makes that
-hard-won knowledge a normative requirement so every implementation gets it right by default.
-
-**Emit one span per observer event (no parent-child structure).** Rejected — the parent-child
-hierarchy IS the value. Flat span lists are dramatically less useful in trace UIs.
-
-**Match Langfuse's hierarchy directly and treat OTel as a derived view.** Rejected because OTel is
-the stricter, more widely-adopted model — defining OTel first and Langfuse as an additional
-mapping (which can compose with the OTel pipeline or run alongside) is the cleaner direction.
-Langfuse's own tracing model (sessions / traces / observations / spans) maps onto OTel reasonably,
-not the other way around.
-
-**(Historical) Forward-reference proposals 0005 and 0006 in this spec.** During the original
-draft, 0005 (parallel fan-out) and 0006 (llm-provider) were not yet accepted; this proposal used
-"(forward-referenced from proposal NNNN)" tags to mark dependencies that would become concrete on
-acceptance. Both upstream proposals have since accepted (v0.4.0 and v0.6.0 respectively), so the
-references are now concrete citations of accepted spec sections. Retained in this Alternatives
-section only to record the design history.
-
-## Open questions
-
-None at time of submission.

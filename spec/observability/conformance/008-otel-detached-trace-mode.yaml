@@ -1,0 +1,132 @@
+# Detached trace mode (§4.4): opt-in per subgraph or per fan-out node. The
+# parent trace ends at the dispatch span and carries an OTel Link to the
+# detached trace's root. Two sub-cases — detached subgraph and detached fan-out.
+
+cases:
+  - name: detached_subgraph_two_traces_one_link
+    subgraphs:
+      long_running_workflow:
+        state:
+          fields:
+            x:
+              type: int
+              default: 0
+        entry: step
+        nodes:
+          step:
+            update_pure: {x: 1}
+        edges:
+          - {from: step, to: END}
+    state:
+      fields:
+        ran:
+          type: bool
+          default: false
+    entry: dispatch
+    nodes:
+      dispatch:
+        subgraph: long_running_workflow
+      after:
+        update: {ran: true}
+    edges:
+      - {from: dispatch, to: after}
+      - {from: after,    to: END}
+    initial_state: {}
+    detached_subgraphs: ["long_running_workflow"]
+    expected:
+      # Two distinct traces; the parent's `dispatch` span carries a Link to
+      # the detached trace's root.
+      traces:
+        - trace_id: "<trace_id_parent>"
+          span_tree:
+            - name: "openarmature.invocation"
+              status: OK
+              children:
+                - name: "dispatch"
+                  status: OK
+                  links:
+                    - target_trace_id: "<trace_id_detached>"
+                  children: []   # detached — no nested children in parent trace
+                - name: "after"
+                  status: OK
+                  children: []
+        - trace_id: "<trace_id_detached>"
+          span_tree:
+            # Detached subgraph's spans root in their own trace; NOT children
+            # of the parent's invocation span.
+            - name: "long_running_workflow"
+              status: OK
+              children:
+                - name: "step"
+                  status: OK
+                  children: []
+      invariants:
+        # Parent invocation span and detached subgraph span have DIFFERENT trace_ids.
+        distinct_trace_ids: true
+        # Parent's `dispatch` span has exactly one Link, targeting the detached trace.
+        dispatch_span_link_count: 1
+        # The §3 correlation_id is the SAME on both traces (correlation_id flows
+        # across the trace boundary unchanged).
+        correlation_id_consistent_across_traces: true
+
+  - name: detached_fan_out_one_trace_per_instance
+    subgraph:
+      name: per_doc
+      state:
+        fields:
+          input:
+            type: int
+            default: 0
+          out:
+            type: int
+            default: 0
+      entry: score
+      nodes:
+        score:
+          update_pure_from_state: {out: input_times_two}
+      edges:
+        - {from: score, to: END}
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [1, 2, 3]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: per_document_scoring
+    nodes:
+      per_document_scoring:
+        fan_out:
+          subgraph: per_doc
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+    edges:
+      - {from: per_document_scoring, to: END}
+    initial_state: {}
+    detached_fan_outs: ["per_document_scoring"]
+    expected:
+      # Parent trace contains the invocation + fan-out node span; the node
+      # span carries one Link per instance trace.
+      parent_trace:
+        span_tree:
+          - name: "openarmature.invocation"
+            status: OK
+            children:
+              - name: "per_document_scoring"
+                status: OK
+                children: []
+                link_count: 3   # one Link per detached instance trace
+      # Three detached traces, one per instance.
+      detached_trace_count: 3
+      invariants:
+        # Each instance trace has its own trace_id, distinct from the parent.
+        all_instance_trace_ids_distinct: true
+        # All four traces (parent + 3 instances) carry the same correlation_id.
+        correlation_id_consistent_across_traces: true
+        # No openarmature spans from inside the per-instance subgraphs leaked
+        # into the parent trace.
+        no_instance_spans_in_parent_trace: true

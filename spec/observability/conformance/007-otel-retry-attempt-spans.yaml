@@ -1,0 +1,105 @@
+# Retry attempt spans: each attempt produces its own node span (sibling-level),
+# disambiguated by `openarmature.node.attempt_index`. Two sub-cases — eventual
+# success and full exhaustion.
+
+cases:
+  - name: three_attempts_third_succeeds
+    state:
+      fields:
+        attempts:
+          type: int
+          default: 0
+        done:
+          type: bool
+          default: false
+    entry: flaky
+    nodes:
+      flaky:
+        flaky:
+          fail_count: 2          # fail attempts 0 and 1, succeed on attempt 2
+          category: provider_rate_limit
+          on_success: {done: true}
+        middleware:
+          - type: retry
+            max_attempts: 3
+            backoff: {type: deterministic, seconds: 0}
+            classifier:
+              transient_categories: [provider_rate_limit]
+    edges:
+      - {from: flaky, to: END}
+    initial_state: {}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "flaky"
+              status: ERROR
+              attributes:
+                openarmature.node.attempt_index: 0
+                openarmature.error.category: "provider_rate_limit"
+              children: []
+            - name: "flaky"
+              status: ERROR
+              attributes:
+                openarmature.node.attempt_index: 1
+                openarmature.error.category: "provider_rate_limit"
+              children: []
+            - name: "flaky"
+              status: OK
+              attributes:
+                openarmature.node.attempt_index: 2
+              children: []
+      invariants:
+        # Three sibling spans, all named "flaky", all under the invocation span.
+        sibling_attempt_count_under_invocation: 3
+        attempt_indices: [0, 1, 2]
+
+  - name: retry_exhausts_all_three_spans_error
+    state:
+      fields:
+        attempts:
+          type: int
+          default: 0
+    entry: flaky
+    nodes:
+      flaky:
+        flaky:
+          fail_count: 999        # always fails
+          category: provider_rate_limit
+        middleware:
+          - type: retry
+            max_attempts: 3
+            backoff: {type: deterministic, seconds: 0}
+            classifier:
+              transient_categories: [provider_rate_limit]
+    edges:
+      - {from: flaky, to: END}
+    initial_state: {}
+    expected_error:
+      category: node_exception
+      raised_from: flaky
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: ERROR
+          children:
+            - name: "flaky"
+              status: ERROR
+              attributes:
+                openarmature.node.attempt_index: 0
+              children: []
+            - name: "flaky"
+              status: ERROR
+              attributes:
+                openarmature.node.attempt_index: 1
+              children: []
+            - name: "flaky"
+              status: ERROR
+              attributes:
+                openarmature.node.attempt_index: 2
+              children: []
+      invariants:
+        sibling_attempt_count_under_invocation: 3
+        attempt_indices: [0, 1, 2]
+        all_attempt_spans_error: true

@@ -1,0 +1,59 @@
+# Determinism (§8): repeated invocations of the same graph with the same
+# input MUST produce identical *deterministic* span content — hierarchy,
+# names, attributes (excluding timing-derived), status. trace_id, span_id,
+# and timestamps are inherently nondeterministic and NOT compared.
+
+cases:
+  - name: same_input_same_deterministic_span_content
+    description: |
+      Run the same graph twice with the same initial state. Compare the two
+      span trees structurally. Hierarchy, names, attributes (minus timing),
+      and status MUST match between runs.
+    state:
+      fields:
+        counter:
+          type: int
+          default: 0
+        flag:
+          type: bool
+          default: false
+    entry: increment
+    nodes:
+      increment:
+        update_pure: {counter: 1}
+      branch:
+        # Conditional: when counter > 0, go to set_flag; else END.
+        # With deterministic input, the same branch always fires.
+        update_pure: {}
+      set_flag:
+        update_pure: {flag: true}
+    edges:
+      - {from: increment, to: branch}
+      - from: branch
+        when:
+          field: counter
+          gt: 0
+        to: set_flag
+      - {from: branch,    to: END}
+      - {from: set_flag,  to: END}
+    initial_state: {}
+    invocations: 2
+    expected:
+      # Compare run 1 vs. run 2 structurally.
+      determinism_check:
+        compare_runs: [0, 1]
+        ignore_attributes:
+          - openarmature.invocation_id           # framework-generated UUIDv4
+          - openarmature.correlation_id          # auto-generated UUIDv4 (no caller value supplied)
+          - "openarmature.timing.*"              # any timing attributes (informative)
+        compare:
+          - span_tree_structure                  # parent-child hierarchy
+          - span_names
+          - span_status
+          - span_attributes_excluding_ignored
+        require_equal: true
+      invariants:
+        # Both runs hit the SAME branch (counter == 1 > 0 → set_flag).
+        same_execution_path: true
+        # Span counts match.
+        span_count_equal_across_runs: true
