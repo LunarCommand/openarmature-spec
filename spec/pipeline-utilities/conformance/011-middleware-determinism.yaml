@@ -43,16 +43,21 @@ run_count: 2
 expected:
   final_state: {v: 100, trace: ["target"]}
   execution_order: [target]
-  # Per-attempt observer events (per graph-engine §6 modifications added by
-  # proposal 0004): 3 events for `target`, attempt_index 0/1/2.
-  # Run 1 and Run 2 MUST produce identical sequences.
+  # Per-attempt event pairs (per graph-engine §6 pair model): 3 attempts for
+  # `target`, attempt_index 0/1/2. Each attempt produces a started/completed
+  # pair, so 6 events total. The first 4 events are pairs ending in `error`
+  # (transient failures); the final 2 are a pair ending in `post_state`
+  # (success). Run 1 and Run 2 MUST produce identical sequences.
   observer_events:
-    - {step: 0, node_name: target, attempt_index: 0, namespace: [target],
-       pre_state: {v: 0, trace: []},
-       error: node_exception}
-    - {step: 0, node_name: target, attempt_index: 1, namespace: [target],
-       pre_state: {v: 0, trace: []},
-       error: node_exception}
-    - {step: 0, node_name: target, attempt_index: 2, namespace: [target],
-       pre_state: {v: 0, trace: []},
-       post_state: {v: 100, trace: ["target"]}}
+    - {step: 0, phase: started,   node_name: target, attempt_index: 0, namespace: [target],
+       pre_state: {v: 0, trace: []}}
+    - {step: 0, phase: completed, node_name: target, attempt_index: 0, namespace: [target],
+       pre_state: {v: 0, trace: []}, error: node_exception}
+    - {step: 0, phase: started,   node_name: target, attempt_index: 1, namespace: [target],
+       pre_state: {v: 0, trace: []}}
+    - {step: 0, phase: completed, node_name: target, attempt_index: 1, namespace: [target],
+       pre_state: {v: 0, trace: []}, error: node_exception}
+    - {step: 0, phase: started,   node_name: target, attempt_index: 2, namespace: [target],
+       pre_state: {v: 0, trace: []}}
+    - {step: 0, phase: completed, node_name: target, attempt_index: 2, namespace: [target],
+       pre_state: {v: 0, trace: []}, post_state: {v: 100, trace: ["target"]}}

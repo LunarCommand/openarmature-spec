@@ -1,0 +1,107 @@
+# Fan-out where instance_middleware: [retry] wraps each instance's WHOLE
+# subgraph invocation. Inner subgraph has multiple nodes; the failure
+# surfaces from a node that node-level retry alone could NOT have handled.
+# Two sub-cases.
+
+subgraph:
+  name: multi_step
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      stage_a_done:
+        type: bool
+        default: false
+      stage_b_done:
+        type: bool
+        default: false
+      result:
+        type: int
+        default: 0
+  entry: stage_a
+  nodes:
+    stage_a:
+      update_pure: {stage_a_done: true}
+    stage_b:
+      flaky_instance_only:
+        # Harness mock: fails on its first whole-instance invocation but
+        # succeeds on the second whole-invocation. State carryover within an
+        # instance is fresh on retry (whole subgraph runs from scratch).
+        fail_count_per_instance: 1
+        category: provider_rate_limit
+        success_compute: {stage_b_done: true, result: input}
+  edges:
+    - {from: stage_a, to: stage_b}
+    - {from: stage_b, to: END}
+
+cases:
+  - name: instance_middleware_retry_succeeds
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [7, 9]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: multi_step
+          items_field: items
+          item_field: input
+          collect_field: result
+          target_field: results
+          instance_middleware:
+            - type: retry
+              max_attempts: 3
+              backoff: {type: deterministic, seconds: 0}
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      # Each instance: stage_a runs (success), stage_b fails on first
+      # whole-invoke, retry re-invokes whole subgraph, stage_a runs again,
+      # stage_b succeeds. Final results have both items.
+      final_state:
+        items: [7, 9]
+        results: [7, 9]
+      execution_order: [process]
+
+  - name: instance_middleware_retry_exhausts_then_fail_fast
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [7, 9]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: multi_step
+          items_field: items
+          item_field: input
+          collect_field: result
+          target_field: results
+          instance_middleware:
+            - type: retry
+              max_attempts: 1   # no retries — first failure exhausts immediately
+              backoff: {type: deterministic, seconds: 0}
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected_error:
+      category: node_exception
+      raised_from: process
+      recoverable_state:
+        items: [7, 9]
+        results: []

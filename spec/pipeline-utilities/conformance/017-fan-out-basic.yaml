@@ -1,0 +1,55 @@
+# Fan-out basic: items_field mode. Process 3 items concurrently through a
+# subgraph that doubles each, collect results back into the parent's
+# target_field. Verifies §9.1 per-instance projection, §9.2 concurrent
+# execution, §9.3 per-instance fan-in.
+
+subgraph:
+  name: doubler
+  state:
+    fields:
+      x:
+        type: int
+        default: 0
+      result:
+        type: int
+        default: 0
+  entry: compute
+  nodes:
+    compute:
+      update_from_field: {result: x, multiplier: 2}   # result = x * 2 per harness mock
+  edges:
+    - {from: compute, to: END}
+
+state:
+  fields:
+    items:
+      type: list<int>
+      default: [1, 2, 3]
+    results:
+      type: list<int>
+      reducer: append
+      default: []
+
+entry: process
+
+nodes:
+  process:
+    fan_out:
+      subgraph: doubler
+      items_field: items
+      item_field: x
+      collect_field: result
+      target_field: results
+
+edges:
+  - {from: process, to: END}
+
+initial_state: {}
+
+expected:
+  # Final results == [2, 4, 6] (input order preserved despite concurrent
+  # completion).
+  final_state:
+    items: [1, 2, 3]
+    results: [2, 4, 6]
+  execution_order: [process]

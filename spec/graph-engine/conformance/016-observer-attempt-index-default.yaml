@@ -43,14 +43,18 @@ expected:
 
   observer_events:
     obs:
-      # Every event MUST carry attempt_index == 0 since no retry middleware
-      # is in play.
-      - {step: 0, node_name: a, attempt_index: 0, namespace: [a],
-         pre_state: {v: 0, trace: []},
-         post_state: {v: 1, trace: ["a"]}, parent_states: []}
-      - {step: 1, node_name: b, attempt_index: 0, namespace: [b],
-         pre_state: {v: 1, trace: ["a"]},
-         post_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
-      - {step: 2, node_name: c, attempt_index: 0, namespace: [c],
+      # Every attempt produces a started/completed event pair. attempt_index
+      # is 0 since no retry middleware is in play.
+      - {step: 0, phase: started,   node_name: a, attempt_index: 0, namespace: [a],
+         pre_state: {v: 0, trace: []}, parent_states: []}
+      - {step: 0, phase: completed, node_name: a, attempt_index: 0, namespace: [a],
+         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}, parent_states: []}
+      - {step: 1, phase: started,   node_name: b, attempt_index: 0, namespace: [b],
+         pre_state: {v: 1, trace: ["a"]}, parent_states: []}
+      - {step: 1, phase: completed, node_name: b, attempt_index: 0, namespace: [b],
+         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
+      - {step: 2, phase: started,   node_name: c, attempt_index: 0, namespace: [c],
+         pre_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
+      - {step: 2, phase: completed, node_name: c, attempt_index: 0, namespace: [c],
          pre_state: {v: 2, trace: ["a", "b"]},
          post_state: {v: 3, trace: ["a", "b", "c"]}, parent_states: []}

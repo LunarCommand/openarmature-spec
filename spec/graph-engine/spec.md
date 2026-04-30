@@ -9,6 +9,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §2 Subgraph extended with explicit input/output mapping by [proposal 0002](../../proposals/0002-subgraph-explicit-mapping.md)
   - §6 Observer hooks promoted from informative to normative by [proposal 0003](../../proposals/0003-node-boundary-observer-hooks.md)
   - §6 Observer hooks gained `attempt_index` field and middleware-dispatched events by [proposal 0004](../../proposals/0004-pipeline-utilities-middleware.md)
+  - §3 Execution model carved out a fan-out concurrency exception; §6 Observer hooks replaced single-event-per-attempt with started/completed pairs, added per-observer phase subscription, added `fan_out_index` field, and removed the "Middleware-dispatched events" subsection by [proposal 0005](../../proposals/0005-pipeline-utilities-parallel-fan-out.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -137,9 +138,10 @@ identifiers (as an error class, error code, or tagged discriminant, per the lang
 5. If the destination is `END`, execution halts and the final state is returned.
 6. Otherwise, repeat from step 2 with the destination node.
 
-Execution is single-threaded per invocation: one node is active at a time within a given graph run. Parallel
-fan-out is a separate concern addressed by pipeline utilities (future capability), not by the base execution
-model.
+Execution is single-threaded per invocation **except inside a fan-out node** (pipeline-utilities §9): one
+node is active at a time within a given graph run, with the bounded exception that a fan-out node may
+execute multiple subgraph instances concurrently. After a fan-out node completes, single-threaded execution
+resumes for the rest of the parent run.
 
 ## 4. Error semantics
 
@@ -185,6 +187,9 @@ An implementation MUST support at least two registration modes:
 
 An implementation MAY provide additional registration modes; these two are the minimum.
 
+Both registration modes accept an optional `phases` parameter — a set of phase strings the observer
+subscribes to. See "Per-observer phase subscription" below.
+
 Observers attached to a compiled graph fire whenever that graph runs — whether invoked directly by a
 caller or as a subgraph inside a parent. A subgraph's attached observers therefore receive events for the
 subgraph's internal nodes during a parent run, in addition to any observers attached to or passed to the
@@ -229,6 +234,11 @@ observers receiving events for an in-flight invocation is fixed at the point the
 
 **Node event shape.** A node event carries the following fields:
 
+- `phase` — required, one of `"started"` or `"completed"`. `started` events are dispatched before the
+  node executes (after middleware pre-phases; right before the wrapped function call). `completed`
+  events are dispatched after the node returns or raises and the reducer merge runs (or after the
+  failure is captured, on failure). Each node attempt produces exactly one `started` and exactly one
+  `completed` event in that order.
 - `node_name` — the name under which this node was registered in its immediate containing graph.
 - `namespace` — an ordered sequence of node names identifying the execution path from the outermost graph
   down to this node. For a node in the outermost graph, `namespace` is `[node_name]`. For a node inside a
@@ -260,8 +270,17 @@ observers receiving events for an in-flight invocation is fixed at the point the
   field uniquely identifies each event from a retried node. The §6 invariant
   `len(parent_states) == len(namespace) - 1` is unaffected; `attempt_index` is independent of the
   namespace chain and parent-state list.
+- `fan_out_index` — optional non-negative integer. Populated only for events from nodes that execute
+  inside a fan-out instance (pipeline-utilities §9). The 0-based index of this fan-out instance among
+  its siblings (in `items_field` mode, matching the position of the corresponding item; in `count`
+  mode, `0..count-1`). When the same node name appears in multiple fan-out instances, the
+  combination of `namespace`, `fan_out_index`, `attempt_index`, and `phase` uniquely identifies the
+  event source. Absent for events from nodes that are not inside any fan-out instance.
 
-Exactly one of `post_state` or `error` MUST be populated per event.
+`pre_state` is populated on both `started` and `completed` events (it is the state the node received,
+identical across the pair). `post_state` and `error` are populated only on `completed` events;
+exactly one of them MUST be populated on a `completed` event. `started` events MUST have both
+`post_state` and `error` absent.
 
 **Parent-state snapshot semantics.** Each entry of `parent_states` is the corresponding containing graph's
 state **at the moment that graph entered the subgraph-as-node leading down to this event**. The parent is
@@ -269,60 +288,46 @@ not stepping while the subgraph runs, so all node events emitted from a single s
 same `parent_states` snapshots. The shape of each entry is the corresponding graph's own state schema —
 it is NOT projected, mapped, or otherwise transformed.
 
-**Event dispatch.** A node event is dispatched onto the delivery queue once per node *attempt*. For
-nodes not wrapped by retry middleware (or any other middleware that re-attempts execution), this is
-exactly once per node execution. For nodes wrapped by retry middleware (pipeline-utilities §6.1),
-one event is dispatched per attempt — the engine dispatches the event for the final attempt
-(success or terminal failure); the retry middleware dispatches events for any preceding failed
-attempts (see "Middleware-dispatched events" below). Each event carries an `attempt_index`.
+**Event dispatch.** Each node attempt produces a started/completed event pair. The engine dispatches
+the `started` event before invoking the wrapped node function (after all middleware pre-phases run
+per pipeline-utilities §2); the engine dispatches the `completed` event after the reducer merge
+succeeds (with `post_state` populated) or after the node, reducer, or state validation fails (with
+`error` populated per §4). Both dispatches happen synchronously before the engine proceeds to the
+next graph step; neither awaits observer processing.
 
-The engine's own dispatch fires:
+For a given attempt, the `started` event is delivered to subscribed observers strictly before the
+`completed` event for that same attempt.
 
-- On successful execution, after the reducer merge has produced the post-update state and before the
-  outgoing edge is evaluated.
-- On failed execution (node raised, reducer raised, or state validation failed per §4), before the error
-  propagates to the caller.
+For nodes wrapped by middleware that re-attempts (e.g., pipeline-utilities §6.1 retry), each attempt
+invokes the wrapped node function, which triggers a fresh started/completed pair from the engine. A
+3-attempt retry produces 6 events: pairs at `attempt_index` 0, 1, 2 in order. The engine dispatches
+all events; middleware does NOT dispatch directly.
 
-The engine MUST complete dispatch before proceeding to the next graph step, but it MUST NOT await
-observer processing — dispatch enqueues the event; the delivery queue processes it separately per the
-rules above.
+`routing_error` from §4 is a consequence of evaluating an outgoing edge against a post-update state.
+The `completed` event for the preceding node has already been dispatched by the time a routing error
+arises; a routing error does NOT produce its own node event pair.
 
-`routing_error` from §4 is a consequence of evaluating an outgoing edge against a post-update state. The
-node event for the preceding node has already been dispatched by the time a routing error arises; a
-routing error does NOT produce its own node event.
+**Per-observer phase subscription.** Observer registration (graph-attached or invocation-scoped)
+accepts an optional `phases` parameter — a set of phase strings the observer subscribes to.
+Accepted values:
 
-**Middleware-dispatched events.** Middleware MAY dispatch additional node events through the
-engine's delivery queue. The pipeline-utilities canonical retry middleware (§6.1 of
-spec/pipeline-utilities/spec.md) MUST do so — when retry catches a transient exception and elects
-to retry, it MUST dispatch a node event for the failed attempt before invoking `next` again. The
-dispatched event MUST:
+- `{"started", "completed"}` — both phases. **Default if `phases` is not specified.**
+- `{"completed"}` — only `completed` events. Useful for metrics aggregators, completion-only
+  loggers, retry-classification observers.
+- `{"started"}` — only `started` events. Useful for stuck-node detectors and "node entered"
+  alerting.
 
-- Have `attempt_index` set to the failed attempt's 0-based index.
-- Have `error` populated with the §4 category and exception (matching the §4 contract for failed
-  nodes).
-- Carry the same `node_name`, `namespace`, `step`, `pre_state`, and `parent_states` as an
-  engine-dispatched event for that node would have.
-- Have `post_state` absent (consistent with the `error`/`post_state` mutual exclusion).
+Empty phase sets are not permitted; implementations SHOULD raise at registration time.
 
-The engine continues to dispatch its own event for the final attempt with the corresponding
-`attempt_index`. Net result for an N-attempt retry: N events total, with `attempt_index` values
-`0..N-1` in order. The first N-1 events have `error` populated; the final event has `post_state`
-populated on success or `error` populated on terminal failure.
+When delivering events, the engine MUST check the receiving observer's `phases` set before dispatch
+to that observer; it MUST NOT deliver an event whose phase is not in the subscribed set. Observers
+with different phase subscriptions on the same graph or invocation are permitted and common — for
+example, an OpenTelemetry observer subscribes to both for span boundaries while a metrics observer
+subscribes to `completed` only.
 
-The dispatch mechanism is implementation-defined (e.g., a method on a context object exposed to
-middleware, an attribute on the compiled graph, etc.). Implementations MUST ensure that
-middleware-dispatched events flow through the same delivery queue as engine-dispatched events, with
-the same per-event ordering rules (graph-attached outermost-to-innermost, then invocation-scoped)
-and the same observer-error isolation (an observer raising on a middleware-dispatched event MUST
-NOT prevent subsequent events from being delivered).
-
-The §5 determinism guarantee continues to apply: given the same inputs and the same registered
-observers, the sequence of events (now including per-attempt events) MUST be identical across runs,
-modulo any nondeterminism introduced by the middleware itself (e.g., retry's jitter).
-
-Other middleware MAY use the same dispatch mechanism when retry-like per-iteration visibility is
-intrinsic to the middleware's purpose; doing so is implementation-private unless and until the
-pattern is standardized by a follow-on proposal.
+The phase filter applies at delivery, not dispatch — the engine still produces both events for every
+attempt; observers that don't subscribe simply don't receive them. This keeps the delivery-queue
+invariants and §5 determinism intact regardless of observer mix.
 
 **State immutability.** `pre_state`, `post_state`, and every entry of `parent_states` MUST present the
 same immutability contract as state instances flowing through the graph (§2 Node). Attempts by an

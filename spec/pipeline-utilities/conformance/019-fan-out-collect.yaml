@@ -1,0 +1,73 @@
+# Fan-out with error_policy: collect. Two instances succeed, one raises.
+# Final target_field has the two successes (in input order, slot for failure
+# omitted); errors_field carries the failure record. Fan-out itself does NOT
+# raise; downstream nodes execute normally.
+
+subgraph:
+  name: maybe_fail
+  state:
+    fields:
+      idx:
+        type: int
+        default: -1
+      result:
+        type: int
+        default: 0
+  entry: maybe
+  nodes:
+    maybe:
+      flaky_by_index:
+        fail_when_idx: 1
+        success_compute: {result: idx}
+  edges:
+    - {from: maybe, to: END}
+
+state:
+  fields:
+    items:
+      type: list<int>
+      default: [0, 1, 2]
+    results:
+      type: list<int>
+      reducer: append
+      default: []
+    errors:
+      type: list<dict<string,string>>
+      reducer: append
+      default: []
+    downstream_ran:
+      type: bool
+      default: false
+
+entry: process
+
+nodes:
+  process:
+    fan_out:
+      subgraph: maybe_fail
+      items_field: items
+      item_field: idx
+      collect_field: result
+      target_field: results
+      error_policy: collect
+      errors_field: errors
+  after:
+    update: {downstream_ran: true}
+
+edges:
+  - {from: process, to: after}
+  - {from: after,   to: END}
+
+initial_state: {}
+
+expected:
+  # Two successes (idx 0 and 2), failure at idx 1 omitted from results.
+  # errors_field captures the failure with its index.
+  final_state:
+    items: [0, 1, 2]
+    results: [0, 2]
+    errors:
+      - {fan_out_index: "1", category: "node_exception"}
+    downstream_ran: true
+  # Downstream node ran — fan-out didn't raise.
+  execution_order: [process, after]
