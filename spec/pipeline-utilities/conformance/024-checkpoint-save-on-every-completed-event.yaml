@@ -1,0 +1,60 @@
+# Checkpoint save granularity (§10.3): the engine fires Checkpointer.save
+# at every §6 completed event for outermost-graph nodes and subgraph-internal
+# nodes. Fan-out instance internals do NOT fire saves in v1 (§10.7 atomic-
+# restart) — verified separately in fixture 028.
+
+cases:
+  - name: linear_three_node_graph_three_saves
+    description: |
+      Three-node linear graph; in-memory Checkpointer attached. Run to
+      completion; assert save was called exactly three times (once per
+      node's completed event), in step order, with the post-merge state
+      reflecting that node's contribution.
+    state:
+      fields:
+        a:
+          type: int
+          default: 0
+        b:
+          type: int
+          default: 0
+        c:
+          type: int
+          default: 0
+    entry: node_a
+    nodes:
+      node_a:
+        update_pure: {a: 1}
+      node_b:
+        update_pure: {b: 2}
+      node_c:
+        update_pure: {c: 3}
+    edges:
+      - {from: node_a, to: node_b}
+      - {from: node_b, to: node_c}
+      - {from: node_c, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    expected:
+      final_state: {a: 1, b: 2, c: 3}
+      checkpoint_saves:
+        # Three saves, one per completed event, in order.
+        # Each save's record reflects post-merge state at that node's exit.
+        - after_node: node_a
+          state: {a: 1, b: 0, c: 0}
+          completed_positions:
+            - {namespace: [], node_name: node_a, step: 0, attempt_index: 0}
+        - after_node: node_b
+          state: {a: 1, b: 2, c: 0}
+          completed_positions:
+            - {namespace: [], node_name: node_a, step: 0, attempt_index: 0}
+            - {namespace: [], node_name: node_b, step: 1, attempt_index: 0}
+        - after_node: node_c
+          state: {a: 1, b: 2, c: 3}
+          completed_positions:
+            - {namespace: [], node_name: node_a, step: 0, attempt_index: 0}
+            - {namespace: [], node_name: node_b, step: 1, attempt_index: 0}
+            - {namespace: [], node_name: node_c, step: 2, attempt_index: 0}
+      invariants:
+        save_count: 3
+        save_order_matches_completed_event_order: true

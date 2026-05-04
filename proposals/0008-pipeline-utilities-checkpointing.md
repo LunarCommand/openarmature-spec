@@ -1,8 +1,9 @@
 # 0008: Pipeline Utilities — Checkpointing
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-04-30
+- **Accepted:** 2026-05-04
 - **Targets:** spec/pipeline-utilities/spec.md (adds §10)
 - **Related:** 0001, 0003, 0004, 0005, 0007
 - **Supersedes:**

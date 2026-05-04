@@ -1,0 +1,59 @@
+# Retry on resume — attempt_index resets (§10.6): a node wrapped with retry
+# middleware exhausts its budget on the first invocation; on resume, the
+# attempt_index resets to 0 and the retry budget restarts fresh.
+
+cases:
+  - name: exhausted_retry_budget_resumes_with_fresh_budget
+    description: |
+      Single node wrapped with retry middleware (max_attempts: 3). On the
+      first invocation the node fails 3 times and exhausts the budget;
+      checkpoint exists from before the node started (no completed events
+      for it). On resume, the harness mock allows the node to succeed on
+      its second attempt; assert attempt_index of the successful resumed
+      run is 1 (i.e., resume's attempt_index started at 0, NOT carrying
+      over the prior 3 attempts).
+    state:
+      fields:
+        success:
+          type: bool
+          default: false
+    entry: flaky
+    nodes:
+      flaky:
+        flaky_resume_aware:
+          # Harness directive: fails 3x on first invocation_id; succeeds on
+          # second attempt of any subsequent invocation_id (i.e., on resume).
+          fail_first_invocation_count: 3
+          fail_resumed_invocation_count: 1
+          category: provider_rate_limit
+          on_success: {success: true}
+        middleware:
+          - type: retry
+            max_attempts: 3
+            backoff: {type: deterministic, seconds: 0}
+            classifier:
+              transient_categories: [provider_rate_limit]
+    edges:
+      - {from: flaky, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: flaky
+    saved_record_assertions:
+      # No completed_positions for flaky in the saved record — every attempt
+      # in the first run failed and the retry middleware never reached a
+      # successful completed event for the engine to save against.
+      completed_positions: []
+    resume:
+      from_first_run: true
+      expected:
+        final_state: {success: true}
+        # The successful attempt during resume has attempt_index 1 — i.e.,
+        # resume's retry counter started at 0, then bumped to 1 on the
+        # second attempt that succeeded.
+        successful_attempt_index_during_resume: 1
+      invariants:
+        # attempt_index did NOT carry over the prior run's exhausted count.
+        # If it had, the retry budget would already be exhausted on entry.
+        attempt_index_reset_to_zero_on_resume: true

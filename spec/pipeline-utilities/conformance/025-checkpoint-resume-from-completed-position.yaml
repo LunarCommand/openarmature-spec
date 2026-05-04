@@ -1,0 +1,62 @@
+# Resume from completed position (§10.4): three-node linear graph aborts in
+# node B; checkpoint exists for node A; resume picks up at node B (NOT
+# re-running A) and completes normally.
+
+cases:
+  - name: abort_in_b_resume_skips_a
+    description: |
+      Three nodes A → B → C. Node B raises on first run, after node A's
+      completed event has fired and saved. Call invoke(resume_invocation=...)
+      with a fresh mock that lets B succeed; assert A is NOT re-run, B and C
+      run normally, final state matches an uninterrupted run.
+    state:
+      fields:
+        a_ran:
+          type: bool
+          default: false
+        b_ran:
+          type: bool
+          default: false
+        c_ran:
+          type: bool
+          default: false
+    entry: node_a
+    nodes:
+      node_a:
+        update_pure: {a_ran: true}
+      node_b:
+        flaky:
+          fail_first_invocation_only: true
+          on_success: {b_ran: true}
+      node_c:
+        update_pure: {c_ran: true}
+    edges:
+      - {from: node_a, to: node_b}
+      - {from: node_b, to: node_c}
+      - {from: node_c, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    # First invocation aborts in node_b.
+    first_run_expected_error:
+      category: node_exception
+      raised_from: node_b
+    # Saved record at the point of failure: node_a completed, node_b's
+    # started fired but no completed (failure captured).
+    saved_record_assertions:
+      state: {a_ran: true, b_ran: false, c_ran: false}
+      completed_positions:
+        - {namespace: [], node_name: node_a, step: 0, attempt_index: 0}
+    # Second invocation: invoke(resume_invocation=<first run's id>).
+    resume:
+      from_first_run: true
+      expected:
+        final_state: {a_ran: true, b_ran: true, c_ran: true}
+        # Critical: node_a is NOT re-run on resume. The engine resumes at
+        # node_b (the first node not in completed_positions).
+        nodes_executed_during_resume: [node_b, node_c]
+        nodes_skipped_during_resume: [node_a]
+      invariants:
+        # The resumed invocation has its own invocation_id (per §10.4 step 4).
+        resumed_invocation_id_differs_from_original: true
+        # correlation_id is preserved from the original (per §10.4 step 3).
+        resumed_correlation_id_matches_original: true

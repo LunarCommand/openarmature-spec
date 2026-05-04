@@ -1,0 +1,92 @@
+# correlation_id preserved across resume (§10.4 step 3): the resumed
+# invocation keeps the original invocation's correlation_id verbatim, so
+# cross-backend pivots remain valid. The invocation_id changes (per §10.4
+# step 4 — each attempt is its own invocation in the observability sense).
+
+cases:
+  - name: caller_supplied_correlation_id_flows_through_resume
+    description: |
+      Two-node graph; node B fails on first run; caller supplies
+      correlation_id="my-business-request-42". After abort, resume.
+      Assert: every span and log record produced during BOTH the original
+      run and the resumed run carries openarmature.correlation_id =
+      "my-business-request-42". Assert: the original and resumed runs
+      have DIFFERENT openarmature.invocation_id values.
+    state:
+      fields:
+        a:
+          type: bool
+          default: false
+        b:
+          type: bool
+          default: false
+    entry: node_a
+    nodes:
+      node_a:
+        update_pure: {a: true}
+      node_b:
+        flaky:
+          fail_first_invocation_only: true
+          on_success: {b: true}
+    edges:
+      - {from: node_a, to: node_b}
+      - {from: node_b, to: END}
+    initial_state: {}
+    caller_correlation_id: "my-business-request-42"
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: node_b
+    resume:
+      from_first_run: true
+      expected:
+        final_state: {a: true, b: true}
+    invariants:
+      # Cross-backend pivot key flows through resume unchanged.
+      first_run_correlation_id: "my-business-request-42"
+      resumed_run_correlation_id: "my-business-request-42"
+      correlation_id_uniform_across_both_runs: true
+      # Each run is its own invocation in the observability sense.
+      first_and_resumed_invocation_ids_differ: true
+      # Saved record preserves the caller-supplied correlation_id verbatim.
+      saved_record_correlation_id: "my-business-request-42"
+
+  - name: auto_generated_correlation_id_preserved_across_resume
+    description: |
+      Same shape but no caller-supplied correlation_id. The framework
+      auto-generates a UUIDv4 on the first run; resume preserves that
+      UUIDv4 (does NOT generate a new one).
+    state:
+      fields:
+        a:
+          type: bool
+          default: false
+        b:
+          type: bool
+          default: false
+    entry: node_a
+    nodes:
+      node_a:
+        update_pure: {a: true}
+      node_b:
+        flaky:
+          fail_first_invocation_only: true
+          on_success: {b: true}
+    edges:
+      - {from: node_a, to: node_b}
+      - {from: node_b, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: node_b
+    resume:
+      from_first_run: true
+      expected:
+        final_state: {a: true, b: true}
+    invariants:
+      first_run_correlation_id_is_uuidv4: true
+      resumed_run_correlation_id_matches_first: true
+      # Resume MUST NOT generate a new UUIDv4 — that would break cross-attempt
+      # correlation, which is the whole point of preserving correlation_id.
+      no_new_correlation_id_generated_on_resume: true

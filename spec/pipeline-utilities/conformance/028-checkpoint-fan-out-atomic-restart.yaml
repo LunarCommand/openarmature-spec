@@ -1,0 +1,83 @@
+# Fan-out atomic restart in v1 (§10.7): a fan-out is in flight when the run
+# aborts. The saved record does NOT contain any fan-out instance internal
+# completed_positions or fan_out_progress (per §10.3 — no fan-out internal
+# saves in v1). On resume, the entire fan-out re-runs from scratch.
+
+subgraph:
+  name: scorer
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      out:
+        type: int
+        default: 0
+  entry: score
+  nodes:
+    score:
+      flaky_per_index:
+        # Harness directive: fan_out_index 2's instance fails on first run;
+        # all instances succeed on subsequent runs (resume).
+        fail_first_run_indices: [2]
+        success_compute: {out: input}
+  edges:
+    - {from: score, to: END}
+
+cases:
+  - name: fan_out_aborts_in_instance_2_resume_re_runs_all_three
+    description: |
+      Fan-out with 3 instances [10, 20, 30]. Instances 0 and 1 complete on
+      first run; instance 2 fails. The fan-out node never reaches its own
+      completed event (one instance failed under fail_fast). On resume,
+      the saved record's completed_positions does NOT contain the fan-out
+      node, so the engine re-runs the fan-out from scratch — all 3
+      instances re-dispatch.
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: scorer
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: process
+    saved_record_assertions:
+      # Critical v1 assertion: NO fan-out internal saves were recorded.
+      # The fan-out's per-instance completed events fired (observable via
+      # §6) but did NOT trigger Checkpointer.save (per §10.3 elision).
+      no_fan_out_internal_completed_positions: true
+      fan_out_progress: null
+      # The fan-out node itself has no completed_positions entry because
+      # the fan-out never completed as a unit.
+      fan_out_node_in_completed_positions: false
+    resume:
+      from_first_run: true
+      expected:
+        final_state:
+          items: [10, 20, 30]
+          results: [10, 20, 30]
+        # All three instances re-dispatch on resume (atomic restart).
+        instances_executed_during_resume: 3
+      invariants:
+        # The dead-weight save concern is verified: NO inner-instance
+        # records existed to consult on resume even if the engine wanted
+        # to be smarter.
+        atomic_restart_re_runs_all_instances: true
