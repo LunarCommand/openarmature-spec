@@ -1,0 +1,71 @@
+# Subgraph resume (§10.3, §10.4): a long-running subgraph aborts during its
+# second inner node; the saved record carries parent_states populated; on
+# resume, the engine re-enters the subgraph and resumes at the failed inner
+# node (NOT re-running the subgraph's first inner node).
+
+cases:
+  - name: subgraph_aborts_in_inner_node_two_resume_re_enters_at_inner_two
+    description: |
+      Outer graph: dispatch → end. Subgraph "inner" has two inner nodes:
+      step_one always succeeds; step_two raises on first invocation,
+      succeeds on resume. After abort: saved record's completed_positions
+      includes step_one (with parent_states populated showing the outer
+      state at subgraph entry). On resume, step_one is NOT re-run;
+      step_two runs and succeeds; subgraph completes; outer dispatch
+      completes.
+    subgraphs:
+      inner:
+        state:
+          fields:
+            inner_a_done:
+              type: bool
+              default: false
+            inner_b_done:
+              type: bool
+              default: false
+        entry: step_one
+        nodes:
+          step_one:
+            update_pure: {inner_a_done: true}
+          step_two:
+            flaky:
+              fail_first_invocation_only: true
+              on_success: {inner_b_done: true}
+        edges:
+          - {from: step_one, to: step_two}
+          - {from: step_two, to: END}
+    state:
+      fields:
+        outer_done:
+          type: bool
+          default: false
+    entry: dispatch
+    nodes:
+      dispatch:
+        subgraph: inner
+        outputs: {outer_done: inner_b_done}   # carry inner_b_done back as outer_done
+    edges:
+      - {from: dispatch, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: step_two
+    saved_record_assertions:
+      # step_one's completed event saved with parent_states populated.
+      completed_positions:
+        - {namespace: ["inner"], node_name: step_one, step: 0, attempt_index: 0}
+      # parent_states reflects the outer state at the moment step_one's save fired.
+      parent_states_present: true
+      parent_states_outermost_first: true
+    resume:
+      from_first_run: true
+      expected:
+        final_state: {outer_done: true}
+        # On resume the engine re-enters the subgraph using parent_states;
+        # step_one is skipped, step_two runs, subgraph completes.
+        nodes_executed_during_resume: [step_two]
+        nodes_skipped_during_resume: [step_one]
+      invariants:
+        subgraph_re_entry_uses_parent_states: true
+        inner_first_node_not_re_run: true

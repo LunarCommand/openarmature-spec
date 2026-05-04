@@ -1,0 +1,60 @@
+# checkpoint_not_found error (§10.10): invoke(resume_invocation=X) against
+# an empty Checkpointer (or one that has no record for the supplied id)
+# raises a runtime error with category checkpoint_not_found. Two sub-cases —
+# resume against an empty store, and resume against a non-empty store with a
+# mismatched id.
+
+cases:
+  - name: resume_against_empty_checkpointer
+    description: |
+      Trivial single-node graph; in-memory Checkpointer attached but never
+      populated (no prior invocation). Call invoke(resume_invocation="ghost")
+      directly without a successful first run. Assert checkpoint_not_found
+      raised.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    invoke_with:
+      resume_invocation: "ghost-id-no-record-exists"
+    expected_error:
+      category: checkpoint_not_found
+      # Non-transient — retry middleware MUST NOT classify this as recoverable.
+      transient: false
+
+  - name: resume_with_mismatched_id_when_other_records_exist
+    description: |
+      Run two unrelated invocations to populate the checkpointer with two
+      records (each with its own invocation_id). Then call
+      invoke(resume_invocation="never-existed") with a fabricated id that
+      doesn't match either saved record. Assert checkpoint_not_found —
+      the load returned None for that specific id even though OTHER
+      records exist.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    populate_checkpointer_via_runs: 2
+    invoke_with:
+      resume_invocation: "never-existed-fabricated-id"
+    expected_error:
+      category: checkpoint_not_found
+      transient: false

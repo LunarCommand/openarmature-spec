@@ -1,0 +1,52 @@
+# Checkpoint record shape (§10.2): the saved record carries invocation_id,
+# correlation_id, state, completed_positions, parent_states, last_saved_at,
+# and schema_version. fan_out_progress is reserved (absent in v1 since this
+# fixture has no fan-out).
+
+cases:
+  - name: record_carries_required_fields
+    description: |
+      Two-node linear graph; in-memory Checkpointer; caller-supplied
+      correlation_id. Run to completion. Inspect the latest saved record;
+      assert all §10.2 required fields are present and well-formed.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+      b:
+        update_pure: {x: 2}
+    edges:
+      - {from: a, to: b}
+      - {from: b, to: END}
+    initial_state: {}
+    caller_correlation_id: "record-shape-test-corr"
+    checkpointer: in_memory
+    expected:
+      latest_record_assertions:
+        # invocation_id: framework-generated UUIDv4 per observability §5.1.
+        invocation_id: "<uuid>"
+        # correlation_id: caller-supplied verbatim per observability §3.
+        correlation_id: "record-shape-test-corr"
+        # state: post-merge final state.
+        state: {x: 2}
+        # completed_positions: ordered list of all completed node attempts.
+        completed_positions:
+          - {namespace: [], node_name: a, step: 0, attempt_index: 0}
+          - {namespace: [], node_name: b, step: 1, attempt_index: 0}
+        # parent_states: empty list at outermost graph (no nesting).
+        parent_states: []
+        # fan_out_progress: absent (no fan-out in this fixture; reserved for v2).
+        fan_out_progress: null
+        # last_saved_at: present, monotonic across saves.
+        last_saved_at: "<timestamp>"
+        # schema_version: implementation-defined string.
+        schema_version: "<any-string>"
+      invariants:
+        invocation_id_is_uuidv4: true
+        last_saved_at_monotonic_across_saves: true
+        completed_positions_step_monotonic: true
