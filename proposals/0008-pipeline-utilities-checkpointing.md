@@ -116,11 +116,10 @@ The `CheckpointRecord` carries:
   attempt that has been merged. Each position carries `namespace` (per graph-engine §6),
   `node_name`, `step` (monotonic across the invocation, including subgraph-internal nodes),
   `attempt_index`, and `fan_out_index` (when present).
-- `fan_out_progress` — when the latest save point is inside an in-flight fan-out, a structure
-  capturing per-instance status: completed instances (with their results already merged into
-  `state`), in-flight instances (which `fan_out_index` slots were running at save time), and
-  not-yet-started instances. This is required for §10.7 fan-out resume; for the v1 atomic-
-  resume model (see §10.7), the field MAY be absent and the engine treats fan-out as a unit.
+- `fan_out_progress` — reserved field for the v2 per-instance fan-out resume follow-on
+  proposal. In v1 (this proposal), the engine does not save inside fan-out instances at all
+  (see §10.3, §10.7), so this field is absent. The field is reserved in the record shape
+  so that v2 can populate it without a record-shape migration.
 - `parent_states` — when the latest save point is inside a subgraph or fan-out instance, the
   ordered sequence of containing-graph states (outermost first). Per graph-engine §6
   semantics; preserved across resume so the engine can re-enter the subgraph correctly.
@@ -131,24 +130,48 @@ The `CheckpointRecord` carries:
 
 #### 10.3 Save granularity — every `completed` event
 
-The engine offers a save point at every graph-engine §6 `completed` event for the outermost
-graph (i.e., one save point per node attempt that finishes — successful merge or failure
-captured). The engine calls `Checkpointer.save(invocation_id, current_record)` with the
-record reflecting state immediately after the event. Save is **synchronous** (the engine
+The engine fires a save at every graph-engine §6 `completed` event from the following sources:
+
+- **Outermost-graph nodes.** One save per node attempt that finishes (successful merge or
+  failure captured).
+- **Subgraph-internal nodes.** One save per inner-node completion, with `parent_states`
+  populated per §10.2. Resume can re-enter the subgraph at any boundary; long-running
+  subgraphs benefit directly from per-inner-node save granularity.
+- **Fan-out node itself** (the parent dispatch node, per pipeline-utilities §9). One save when
+  the fan-out as a whole has finished and its results have merged back into outer state.
+
+The engine **does NOT save** during fan-out instance execution in v1. Fan-out instance
+internal `completed` events still emit observer events (per graph-engine §6) so the
+observability mapping can surface them as spans, but no checkpoint save fires for them.
+Rationale: §10.7 mandates atomic-restart fan-out resume in v1 — a crash mid-fan-out causes
+the entire fan-out to re-run on resume. Saving inner-instance state that the engine cannot
+resume from is dead weight; eliding those saves keeps the volume bounded for high-instance-
+count fan-outs. The v2 per-instance fan-out resume follow-on proposal reverses this and
+introduces fan-out internal saves with configurable backend batching.
+
+The engine calls `Checkpointer.save(invocation_id, current_record)` with the record
+reflecting state immediately after the triggering event. Save is **synchronous** (the engine
 awaits `save` before continuing to the next node) so that a crash immediately after a
 `completed` event cannot have lost the corresponding save.
 
-Backends MAY batch internally — e.g., a high-throughput backend might buffer multiple records
-and flush at intervals — but the protocol's behavioral contract is "what `load` returns after
-a `save` completes is what was saved." Backends that batch MUST flush before `save` returns
-to honor this; backends that defer flushing accept the risk of losing the last buffered
-records on crash.
+#### 10.3.1 Storage and cost characteristics
 
-Subgraph-internal `completed` events also fire saves, with `parent_states` populated per
-§10.2. This means a long-running subgraph generates one save per inner-node completion, and
-resume can re-enter the subgraph at any boundary.
+A successful run of an N-node graph produces N writes against the Checkpointer. Each write
+is a **full state snapshot** (not a delta), so total cost scales as `N × state_size`. The
+protocol's `load(invocation_id)` returns "the most recent record" — backends are free to
+implement this as upsert (one row per invocation_id, overwritten N times) or as insert-only
+with timestamp-ordered reads. Most backends will choose upsert for resume-only use; the
+`list()` operation determines what history is retained for inspection.
 
-`completed` events from inside fan-out instances also save, populating `fan_out_progress`.
+For typical LLM pipelines (state in kilobytes, dozens to hundreds of nodes) this is sub-
+millisecond per save and effectively invisible. For pipelines whose state is large
+(megabyte-scale outer state with many records) AND whose nodes are cheap, the per-save cost
+can dominate. Backends MAY mitigate via differential storage, compression, or batched flush;
+those are implementation concerns, not protocol concerns. The protocol's behavioral contract
+remains "what `load` returns after a `save` completes is what was saved." Backends that
+batch internally MUST flush before `save` returns to honor this; backends that defer
+flushing across `save` calls accept the risk of losing the last buffered records on crash
+and MUST document that risk.
 
 #### 10.4 Resume model — `invoke(resume_from=invocation_id)`
 
@@ -209,20 +232,25 @@ each resume is a fresh invocation in the observability sense, with its own retry
 
 #### 10.7 Fan-out resume — atomic in v1
 
-When a fan-out is in flight at crash time (some instances completed and merged; some in-
-flight; some not yet started), v1 resume re-runs the **entire fan-out** from scratch. The
-fan-out node's `completed_positions` entry is absent until all instances have completed and
-merged; on resume, the engine sees the fan-out as not-yet-completed and restarts it.
+When a fan-out is in flight at crash time (some instances completed and merged into outer
+state; some in-flight; some not yet started), v1 resume re-runs the **entire fan-out** from
+scratch. The fan-out node's `completed_positions` entry is absent until all instances have
+completed and merged; on resume, the engine sees the fan-out as not-yet-completed and
+restarts it.
+
+This couples directly to §10.3's "no fan-out internal saves in v1" rule: the engine never
+records partial-fan-out progress because it cannot make use of that progress on resume. The
+fan-out node either has its `completed_positions` entry (whole fan-out finished) or does not
+(whole fan-out re-runs). There is no intermediate state.
 
 The cost: instances whose work already completed and merged to `state` get re-run. For
 fan-outs whose inner work is expensive (LLM calls, API requests), this is undesirable. A
-follow-on proposal will add **per-instance resume**, where `fan_out_progress` is consulted
-on resume and only the not-yet-completed `fan_out_index` slots are re-dispatched. The
-follow-on requires careful spec around state semantics (instances whose merges happened
-must not re-merge on resume) and is deferred to keep this proposal scope-bound.
-
-Implementations MAY populate `fan_out_progress` on save in v1 (it is harmless detail), but
-the engine MUST NOT consult it during resume in v1 — atomic restart is the v1 behavior.
+follow-on proposal — **proposal 0009 (Draft)** — adds **per-instance fan-out resume**,
+where the engine saves at fan-out instance internal `completed` events, populates
+`fan_out_progress`, and consults that field on resume to skip already-completed instances.
+The follow-on also introduces configurable backend batching for fan-out internal saves
+(scoped to keep the volume manageable when instance counts and inner-node counts get
+large). v1 keeps the spec scope-bound and ships the simpler atomic-restart contract first.
 
 #### 10.8 Composition with §6 observer hooks
 
@@ -339,9 +367,11 @@ This proposal does not modify llm-provider §1-§8.
   `attempt_index` starts at 0 and node succeeds on the second attempt of the resumed run
   (i.e., budget did NOT carry over).
 - `028-checkpoint-fan-out-atomic-restart.yaml` — fan-out with 3 instances, instances 0 and 1
-  complete and merge before instance 2's failure aborts the run; checkpoint exists; on resume,
-  assert the fan-out is re-run from scratch (all 3 instances re-dispatch) and final results
-  reflect a fresh fan-out execution. Verifies §10.7 atomic-restart behavior in v1.
+  complete and merge before instance 2's failure aborts the run; assert the saved record's
+  `completed_positions` does NOT include the fan-out node and `fan_out_progress` is absent
+  (no fan-out internal saves per §10.3); on resume, assert the fan-out is re-run from
+  scratch (all 3 instances re-dispatch) and final results reflect a fresh fan-out execution.
+  Verifies §10.7 atomic-restart behavior in v1 plus §10.3's no-internal-saves rule.
 - `029-checkpoint-subgraph-resume.yaml` — outer graph with a subgraph containing two inner
   nodes; abort during the subgraph's second inner node; checkpoint exists with `parent_states`
   populated; on resume, assert the engine re-enters the subgraph correctly (subgraph's first
