@@ -173,12 +173,12 @@ batch internally MUST flush before `save` returns to honor this; backends that d
 flushing across `save` calls accept the risk of losing the last buffered records on crash
 and MUST document that risk.
 
-#### 10.4 Resume model — `invoke(resume_from=invocation_id)`
+#### 10.4 Resume model — `invoke(resume_invocation=invocation_id)`
 
-To resume, the application calls `invoke(...)` with a `resume_from` parameter naming a prior
+To resume, the application calls `invoke(...)` with a `resume_invocation` parameter naming a prior
 `invocation_id`. The engine:
 
-1. Calls `Checkpointer.load(resume_from)`. If `None` is returned, the engine raises a
+1. Calls `Checkpointer.load(resume_invocation)`. If `None` is returned, the engine raises a
    resume-failure error (canonical category `checkpoint_not_found`). If non-None, proceed.
 2. Restores the loaded `state` as the post-merge state at the latest save point.
 3. Restores the `correlation_id` from the loaded record (a resumed invocation keeps its
@@ -282,7 +282,7 @@ configuration — that is a fan-out resume question (§10.7), not a detached-tra
 
 #### 10.10 Errors
 
-New canonical runtime category: `checkpoint_not_found` — raised when `invoke(resume_from=X)`
+New canonical runtime category: `checkpoint_not_found` — raised when `invoke(resume_invocation=X)`
 is called and `Checkpointer.load(X)` returns `None`. Non-transient (no auto-recovery via
 retry — the checkpoint genuinely does not exist).
 
@@ -354,7 +354,7 @@ This proposal does not modify llm-provider §1-§8.
   with state snapshots reflecting post-merge state at each save.
 - `025-checkpoint-resume-from-completed-position.yaml` — three-node linear graph; abort the
   run by raising in node B; assert checkpoint records exist for node A's completed event;
-  call `invoke(resume_from=invocation_id)`; assert node A is NOT re-run (no `started` event
+  call `invoke(resume_invocation=invocation_id)`; assert node A is NOT re-run (no `started` event
   emitted for it during resume), node B and node C run normally, final state matches the
   uninterrupted run's final state.
 - `026-checkpoint-record-shape.yaml` — assert the saved record contains all §10.2 required
@@ -363,7 +363,7 @@ This proposal does not modify llm-provider §1-§8.
 - `027-checkpoint-attempt-index-resets-on-resume.yaml` — node wrapped with retry middleware
   (max_attempts: 3); fail node 3 times to exhaust retry budget; checkpoint exists from the
   first attempt's `completed` event was never reached so checkpoint reflects state before the
-  node; `invoke(resume_from=...)` with a retry-success-after-attempt-2 mock; assert resume's
+  node; `invoke(resume_invocation=...)` with a retry-success-after-attempt-2 mock; assert resume's
   `attempt_index` starts at 0 and node succeeds on the second attempt of the resumed run
   (i.e., budget did NOT carry over).
 - `028-checkpoint-fan-out-atomic-restart.yaml` — fan-out with 3 instances, instances 0 and 1
@@ -376,7 +376,7 @@ This proposal does not modify llm-provider §1-§8.
   nodes; abort during the subgraph's second inner node; checkpoint exists with `parent_states`
   populated; on resume, assert the engine re-enters the subgraph correctly (subgraph's first
   inner node is NOT re-run; second inner node re-runs).
-- `030-checkpoint-not-found.yaml` — `invoke(resume_from=fabricated_id)` against an empty
+- `030-checkpoint-not-found.yaml` — `invoke(resume_invocation=fabricated_id)` against an empty
   checkpointer; assert the engine raises a runtime error with category `checkpoint_not_found`.
 - `031-checkpoint-correlation-id-preserved-across-resume.yaml` — invoke with explicit
   `correlation_id=abc-123`; abort mid-run; resume; assert the resumed invocation's spans
