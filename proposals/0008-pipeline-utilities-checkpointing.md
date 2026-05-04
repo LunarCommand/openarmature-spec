@@ -28,9 +28,10 @@ each rebuilt this pattern independently:
 > Multi-hour runs fail at item 847 of 1,200. Restart from scratch is not acceptable. Bird-Dog
 > and Audio Refinery both built this independently.
 
-A third reference project — Howl's `creator-crm` — uses a JSON-per-stage checkpoint pattern that
-is closer to the state-snapshot model this proposal adopts, and is explicitly cited as a
-motivating example in the design discussion below. No prior proposal has specified the contract.
+A third internal pipeline project (referred to below as the "state-snapshot reference") uses a
+JSON-per-stage checkpoint pattern that is closer to the state-snapshot model this proposal
+adopts, and is explicitly cited as a motivating example in the design discussion below. No
+prior proposal has specified the contract.
 Pipelines doing meaningful LLM work today either rebuild this pattern from scratch (the audio-
 refinery approach: filesystem outputs as implicit checkpoint), wire up a heavyweight workflow
 runtime (Temporal class), or accept that interrupted runs are unrecoverable.
@@ -49,25 +50,25 @@ sibling.
 Two production projects have built versions of this independently. Both are referenced for
 motivation; neither dictates the spec, but the spec is informed by what they converged on.
 
-**Audio-refinery** (`/home/commander/Sandbox/audio-refinery`). Resume is a content-addressable-
+**Content-addressable-output reference (Audio-refinery).** Resume is a content-addressable-
 output pattern: each pipeline stage writes its output to a deterministic path derived from a
-stable per-item identifier (`content_id`); on re-run, each stage checks `path.exists() and
-path.stat().st_size > 0` and skips items already complete. There is no separate checkpoint
-storage — the output filesystem is the checkpoint. This works because outputs are content-
-addressable and atomic, but only addresses the "stage output already on disk" case; it does
-not capture intermediate state.
+stable per-item identifier; on re-run, each stage checks "does output exist and is it
+non-empty?" and skips items already complete. There is no separate checkpoint storage — the
+output filesystem is the checkpoint. This works because outputs are content-addressable and
+atomic, but only addresses the "stage output already on disk" case; it does not capture
+intermediate state.
 
-**Howl creator-crm** (`/home/commander/Sandbox/howl/creator-crm`). Resume is a state-snapshot
-pattern: each pipeline stage's output (`list[SearchQuery]`, `list[Candidate]`, etc.) is
-serialized to JSON in `output/.checkpoints/<stage>.json`. On re-run, each stage's first action
-is `load_checkpoint(stage)`; if it returns non-None, the stage skips execution and uses the
-loaded data; otherwise it runs and saves at the end. Granularity is per-stage; per-item
-granularity is achieved with a `product_name` filename suffix.
+**State-snapshot reference (internal pipeline project).** Resume is a state-snapshot pattern:
+each pipeline stage's output (a typed list of records) is serialized to JSON in a checkpoint
+directory. On re-run, each stage's first action is to load the checkpoint; if it returns
+non-None, the stage skips execution and uses the loaded data; otherwise it runs and saves at
+the end. Granularity is per-stage; per-item granularity is achieved with a per-item filename
+suffix.
 
-The proposal adopts the creator-crm shape (state-snapshot, durable record per save point) as
-the **core contract** because state-snapshot generalizes — every pipeline has state; not every
-pipeline has filesystem-addressable outputs. The audio-refinery shape — bypass-execution-when-
-output-exists — is layered on top by the user as a small middleware (a `(state) -> bool`
+The proposal adopts the state-snapshot shape (durable record per save point) as the **core
+contract** because state-snapshot generalizes — every pipeline has state; not every pipeline
+has filesystem-addressable outputs. The content-addressable-output shape — bypass-execution-
+when-output-exists — is layered on top by the user as a small middleware (a `(state) -> bool`
 predicate around a node) using the existing pipeline-utilities §6 middleware seam, and is
 **explicitly out of scope** for this proposal.
 
@@ -186,10 +187,10 @@ external operations (POST to a payment API, send an email) MUST guard those oper
 the user's own idempotency mechanism (idempotency keys, conditional database writes, output-
 existence checks at the node body's entry).
 
-This matches the audio-refinery and creator-crm patterns: both projects' stages are
-idempotent under re-execution because output-file presence (audio-refinery) or checkpoint-
-file presence (creator-crm) blocks duplicated work. OA does not enforce idempotency — it
-documents the contract.
+This matches both reference patterns cited above: stages are idempotent under re-execution
+because output-file presence (content-addressable-output reference) or checkpoint-file
+presence (state-snapshot reference) blocks duplicated work. OA does not enforce idempotency
+— it documents the contract.
 
 #### 10.6 Retry on resume — `attempt_index` resets
 
