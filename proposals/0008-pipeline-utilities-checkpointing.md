@@ -101,6 +101,30 @@ keep references to live objects (in-memory backends). Each backend's documentati
 which state shapes it supports — e.g., "JSON-native types only," "anything pickleable," "any
 shape supported by Temporal's data converter."
 
+#### 10.1.1 Registration and default behavior
+
+Checkpointing is **opt-in via registration**. A user attaches a Checkpointer to a graph at
+build time (per-language ergonomic API: a `with_checkpointer(...)` builder method, a
+constructor parameter, etc., matching the pattern used for §6 observer registration). Without
+a registered Checkpointer:
+
+- The engine does NOT call `save()` at any point. No `CheckpointRecord` is produced; no
+  storage cost is paid; no save-related events fire on the §6 observer stream.
+- `invoke(resume_invocation=X)` raises a runtime error with category `checkpoint_not_found`,
+  because there is no Checkpointer to ask. (A user attempting to resume against an
+  unregistered backend has misconfigured the run; the error surfaces it cleanly.)
+
+The default-off behavior matches the dev-loop case (short runs, no need to persist anything)
+and the case where checkpointing's idempotency contract (§10.5) cannot be honored. Production
+batch pipelines opt in; ad-hoc and test runs do not. This mirrors §6 observer registration
+and the broader OA pattern of "the contract is normative; the activation is an explicit
+choice."
+
+A graph MAY have at most one registered Checkpointer. Multiple Checkpointers (e.g., a primary
+SQLite store and a secondary backup) are out of scope; users wanting that pattern can wrap
+two underlying Checkpointers behind a custom protocol-conforming implementation that
+fans out to both.
+
 #### 10.2 Checkpoint record shape
 
 The `CheckpointRecord` carries:
@@ -214,6 +238,33 @@ This matches both reference patterns cited above: stages are idempotent under re
 because output-file presence (content-addressable-output reference) or checkpoint-file
 presence (state-snapshot reference) blocks duplicated work. OA does not enforce idempotency
 — it documents the contract.
+
+**When a user cannot make a node idempotent.** Some operations have no clean idempotency
+mechanism — for example, a third-party API that is non-idempotent and offers no
+idempotency-key parameter, or an operation whose external system cannot be queried for
+"already-done" state. Three options, in order of preference:
+
+1. **Make the node idempotent at the application level.** This is the recommended path. The
+   most common patterns are idempotency keys (a per-attempt unique key the external system
+   uses to deduplicate), conditional writes (insert only if not exists; UPSERT with WHERE
+   clauses), or output-existence checks at the node body's entry (skip the work if its
+   effect is already visible). These guards make re-execution safe without spec changes.
+2. **Wrap the node in middleware that records an "already-ran" sentinel in state and skips
+   re-execution on resume.** Buildable on top of pipeline-utilities §6 middleware. The
+   middleware checks for the sentinel on entry; if present, returns the empty partial update
+   (no-op); if absent, runs the node and writes the sentinel as part of the partial update.
+   Resume sees the sentinel in restored state and skips re-execution. Trade-off: the node's
+   contribution to outer state is whatever the original run produced — nothing new is
+   computed on resume — so this works only when the node's effect is purely external (e.g.,
+   "send email" — fire-and-forget) or when the original effect on state is already captured.
+3. **Don't register a Checkpointer for the graph.** Loses resume entirely; non-idempotent
+   nodes are never subject to re-execution by the framework because crashes have no recovery
+   path. Acceptable for non-critical workloads where re-running the whole pipeline is
+   cheaper than building idempotency into the node.
+
+A per-node `force_rerun_on_resume` opt-out is NOT specified in this proposal. If real
+workloads demonstrate the need, a follow-on proposal can add it; for now, options 1-3 are
+sufficient.
 
 #### 10.6 Retry on resume — `attempt_index` resets
 
