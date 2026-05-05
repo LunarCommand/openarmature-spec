@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-05-05
+
+### Added
+
+- Conformance fixture `019-subgraph-two-level-nesting` (graph-engine). Regression coverage at depth 3 — existing subgraph fixtures (006, 011, 013) only exercised depth 1, leaving the §6 `len(parent_states) == len(namespace) - 1` invariant and the §2 default-projection chain untested at namespace length 3 / parent_states length 2. First graph-engine fixture using the plural `subgraphs:` form (already in use in observability and pipeline-utilities). No spec text or contract changes. ([PR #28](https://github.com/LunarCommand/openarmature-spec/pull/28))
+
 ## [0.8.0] — 2026-05-04
 
 ### Added
