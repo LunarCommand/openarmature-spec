@@ -101,17 +101,17 @@ noting:
 
 Add fixtures under `spec/graph-engine/conformance/`:
 
-- **`019-drain-timeout-elapses-with-undelivered.yaml`** — a graph with observers that
+- **`020-drain-timeout-elapses-with-undelivered.yaml`** — a graph with observers that
   intentionally sleep longer than the supplied timeout. Asserts drain returns within the timeout,
   the summary reports a non-zero undelivered count, and the timeout-reached flag is true.
-- **`020-drain-timeout-not-reached-fast-observers.yaml`** — same setup with fast observers that
+- **`021-drain-timeout-not-reached-fast-observers.yaml`** — same setup with fast observers that
   finish well within the timeout. Asserts timeout-reached flag is false and undelivered count is
   zero.
-- **`021-drain-timeout-clean-state-for-next-invocation.yaml`** — drain one invocation with a
+- **`022-drain-timeout-clean-state-for-next-invocation.yaml`** — drain one invocation with a
   timeout that elapses, then run a second invocation and drain it without a timeout. Assert the
   second drain returns cleanly and its observer events are delivered as if the first drain's
   truncation never happened. Verifies the "MUST NOT leak" requirement.
-- **`022-drain-no-timeout-waits-for-all.yaml`** — regression coverage: drain called with no
+- **`023-drain-no-timeout-waits-for-all.yaml`** — regression coverage: drain called with no
   timeout still blocks until every event lands, matching the v0.3.0 contract; the returned
   summary has `undelivered_count == 0` and `timeout_reached == false`.
 
