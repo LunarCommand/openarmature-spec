@@ -1,0 +1,180 @@
+# Two-level subgraph nesting: an outer graph contains a middle subgraph
+# which itself contains an inner subgraph. Verifies that the §6 depth
+# invariants — `namespace` chain, `parent_states` stack, and `step`
+# counter — extend correctly to depth 2.
+#
+# Specifically tests the spec invariant `len(parent_states) == len(namespace) - 1`
+# at depth 3 (namespace length 3, parent_states length 2). Existing fixtures
+# 006, 011, 013 only exercise depth 1 (namespace length 2, parent_states length 1).
+#
+# Structure:
+#   outer:  outer_a -> outer_mid -> outer_b
+#   middle: mid_x   -> mid_inner -> mid_y
+#   inner:  inner_p -> inner_q
+#
+# An observer attached to the OUTER graph captures every event so the
+# depth-extending behaviour is asserted in one consolidated sequence.
+
+subgraphs:
+  inner:
+    state:
+      fields:
+        v:
+          type: int
+          default: 0
+        trace:
+          type: list<string>
+          reducer: append
+          default: []
+    entry: inner_p
+    nodes:
+      inner_p:
+        update: {v: 100, trace: ["inner_p"]}
+      inner_q:
+        update: {v: 200, trace: ["inner_q"]}
+    edges:
+      - {from: inner_p, to: inner_q}
+      - {from: inner_q, to: END}
+
+  middle:
+    state:
+      fields:
+        v:
+          type: int
+          default: 0
+        trace:
+          type: list<string>
+          reducer: append
+          default: []
+    entry: mid_x
+    nodes:
+      mid_x:
+        update: {v: 10, trace: ["mid_x"]}
+      mid_inner:
+        subgraph: inner
+      mid_y:
+        update: {v: 20, trace: ["mid_y"]}
+    edges:
+      - {from: mid_x,     to: mid_inner}
+      - {from: mid_inner, to: mid_y}
+      - {from: mid_y,     to: END}
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: outer_a
+
+nodes:
+  outer_a:
+    update: {v: 1, trace: ["outer_a"]}
+  outer_mid:
+    subgraph: middle
+  outer_b:
+    update: {v: 999, trace: ["outer_b"]}
+
+edges:
+  - {from: outer_a,   to: outer_mid}
+  - {from: outer_mid, to: outer_b}
+  - {from: outer_b,   to: END}
+
+initial_state: {}
+
+observers:
+  - {name: obs, attach: graph, target: outer, behavior: record}
+
+expected:
+  # Final outer state after both subgraphs project back via default
+  # field-name matching:
+  #   inner exits {v:200, trace:["inner_p","inner_q"]} -> merges into middle
+  #     middle.v: last_write_wins -> 200
+  #     middle.trace: append      -> ["mid_x","inner_p","inner_q"]
+  #   mid_y runs, middle ends {v:20, trace:["mid_x","inner_p","inner_q","mid_y"]}
+  #   middle exits -> merges into outer
+  #     outer.v: last_write_wins -> 20
+  #     outer.trace: append      -> ["outer_a","mid_x","inner_p","inner_q","mid_y"]
+  #   outer_b runs.
+  final_state:
+    v: 999
+    trace: ["outer_a", "mid_x", "inner_p", "inner_q", "mid_y", "outer_b"]
+
+  # Outer-level execution treats outer_mid as a single step.
+  execution_order: [outer_a, outer_mid, outer_b]
+
+  # Per-attempt started/completed pairs, as specified by §6 (proposal 0005).
+  # The outer-attached observer sees every node executed during the
+  # invocation, including subgraph-internal nodes at depth 2 and 3.
+  observer_events:
+    obs:
+      # Depth 1 — outer_a. namespace length 1, parent_states length 0.
+      - {step: 0, phase: started,   node_name: outer_a, namespace: [outer_a],
+         pre_state: {v: 0, trace: []}, parent_states: []}
+      - {step: 0, phase: completed, node_name: outer_a, namespace: [outer_a],
+         pre_state: {v: 0, trace: []},
+         post_state: {v: 1, trace: ["outer_a"]},
+         parent_states: []}
+
+      # Depth 2 — middle's mid_x. namespace length 2, parent_states length 1.
+      # parent_states[0] is the outer state at the moment outer_mid was entered.
+      # Subgraph runs from its own field defaults (no projection in by default).
+      - {step: 1, phase: started,   node_name: mid_x, namespace: [outer_mid, mid_x],
+         pre_state: {v: 0, trace: []},
+         parent_states: [{v: 1, trace: ["outer_a"]}]}
+      - {step: 1, phase: completed, node_name: mid_x, namespace: [outer_mid, mid_x],
+         pre_state: {v: 0, trace: []},
+         post_state: {v: 10, trace: ["mid_x"]},
+         parent_states: [{v: 1, trace: ["outer_a"]}]}
+
+      # Depth 3 — inner's inner_p. namespace length 3, parent_states length 2.
+      # parent_states[0] = outer state at entry to outer_mid.
+      # parent_states[1] = middle state at entry to mid_inner.
+      # Both inner_p events share the same parent_states snapshots — neither
+      # the outer nor the middle is stepping while the inner runs.
+      - {step: 2, phase: started,   node_name: inner_p,
+         namespace: [outer_mid, mid_inner, inner_p],
+         pre_state: {v: 0, trace: []},
+         parent_states: [{v: 1, trace: ["outer_a"]}, {v: 10, trace: ["mid_x"]}]}
+      - {step: 2, phase: completed, node_name: inner_p,
+         namespace: [outer_mid, mid_inner, inner_p],
+         pre_state: {v: 0, trace: []},
+         post_state: {v: 100, trace: ["inner_p"]},
+         parent_states: [{v: 1, trace: ["outer_a"]}, {v: 10, trace: ["mid_x"]}]}
+
+      # Depth 3 — inner_q. Same parent_states as inner_p.
+      - {step: 3, phase: started,   node_name: inner_q,
+         namespace: [outer_mid, mid_inner, inner_q],
+         pre_state: {v: 100, trace: ["inner_p"]},
+         parent_states: [{v: 1, trace: ["outer_a"]}, {v: 10, trace: ["mid_x"]}]}
+      - {step: 3, phase: completed, node_name: inner_q,
+         namespace: [outer_mid, mid_inner, inner_q],
+         pre_state: {v: 100, trace: ["inner_p"]},
+         post_state: {v: 200, trace: ["inner_p", "inner_q"]},
+         parent_states: [{v: 1, trace: ["outer_a"]}, {v: 10, trace: ["mid_x"]}]}
+
+      # Back at depth 2 — middle's mid_y. parent_states length 1 (back to one).
+      # pre_state reflects inner's projection back into middle:
+      #   middle.v: last_write_wins -> 200
+      #   middle.trace: append      -> ["mid_x","inner_p","inner_q"]
+      - {step: 4, phase: started,   node_name: mid_y, namespace: [outer_mid, mid_y],
+         pre_state: {v: 200, trace: ["mid_x", "inner_p", "inner_q"]},
+         parent_states: [{v: 1, trace: ["outer_a"]}]}
+      - {step: 4, phase: completed, node_name: mid_y, namespace: [outer_mid, mid_y],
+         pre_state: {v: 200, trace: ["mid_x", "inner_p", "inner_q"]},
+         post_state: {v: 20, trace: ["mid_x", "inner_p", "inner_q", "mid_y"]},
+         parent_states: [{v: 1, trace: ["outer_a"]}]}
+
+      # Back at depth 1 — outer_b. parent_states length 0 (back to zero).
+      # pre_state reflects middle's projection back into outer.
+      - {step: 5, phase: started,   node_name: outer_b, namespace: [outer_b],
+         pre_state: {v: 20, trace: ["outer_a", "mid_x", "inner_p", "inner_q", "mid_y"]},
+         parent_states: []}
+      - {step: 5, phase: completed, node_name: outer_b, namespace: [outer_b],
+         pre_state: {v: 20, trace: ["outer_a", "mid_x", "inner_p", "inner_q", "mid_y"]},
+         post_state: {v: 999, trace: ["outer_a", "mid_x", "inner_p", "inner_q", "mid_y", "outer_b"]},
+         parent_states: []}
