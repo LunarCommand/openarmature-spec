@@ -54,7 +54,7 @@ cases:
     saved_record_assertions:
       # step_one's completed event saved with parent_states populated.
       completed_positions:
-        - {namespace: ["inner"], node_name: step_one, step: 0, attempt_index: 0}
+        - {namespace: ["dispatch"], node_name: step_one, step: 0, attempt_index: 0}
       # parent_states reflects the outer state at the moment step_one's save fired.
       parent_states_present: true
       parent_states_outermost_first: true
