@@ -29,7 +29,9 @@ in v1. The two patterns are intentionally asymmetric.
 **What passes:**
 
 - Saved record's `completed_positions` includes the first inner node with `namespace:
-  ["inner"]`.
+  ["dispatch"]` — the parent graph's wrapper-node name (the one carrying `subgraph: inner`),
+  matching the §6 namespace convention established by graph-engine fixture 013 (which uses
+  `namespace: [outer_sub, inner_x]` for inner nodes of a subgraph dispatched by `outer_sub`).
 - Saved record's `parent_states` is populated and outermost-first per graph-engine §6
   semantics.
 - On resume, the first inner node is NOT re-executed; the second inner node runs.
