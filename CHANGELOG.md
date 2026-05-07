@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-05-06
+
+### Fixed
+
+- Conformance fixture `029-checkpoint-subgraph-resume` (pipeline-utilities) used `namespace: ["inner"]` (the subgraph's name) in its expected `completed_positions` entry where it should have used `namespace: ["dispatch"]` (the wrapper node's name in the parent graph). Per graph-engine §6 and the convention established by fixture `013-observer-subgraph-namespacing-and-ordering`, namespace is the chain of containing-graph node names, not subgraph names. `NodePosition.namespace` excludes the node's own name, so for `step_one` inside subgraph `"inner"` dispatched by outer node `"dispatch"`, the saved position carries `namespace: ["dispatch"]`. Bug introduced when fixture 029 was first written; caught during Phase 5 (checkpointing) implementation in `openarmature-python` — the engine implementation correctly follows §6's convention; the fixture was inconsistent. Without this fix, fixture 029 would reject any conformant implementation. Fixture-only correction; no spec text or contract changes. ([PR #30](https://github.com/LunarCommand/openarmature-spec/pull/30))
+
 ## [0.8.1] — 2026-05-05
 
 ### Added
