@@ -279,6 +279,51 @@ observers receiving events for an in-flight invocation is fixed at the point the
   mode, `0..count-1`). When the same node name appears in multiple fan-out instances, the
   combination of `namespace`, `fan_out_index`, `attempt_index`, and `phase` uniquely identifies the
   event source. Absent for events from nodes that are not inside any fan-out instance.
+- `fan_out_config` — optional structured value, populated on EVERY `started` and `completed`
+  event for a fan-out node (i.e., events whose `node_name` resolves to a fan-out node per
+  pipeline-utilities §9), including retried attempts of the fan-out node itself
+  (`attempt_index > 0`). Carries the resolved values for the observability §5.4 fan-out
+  attributes. Absent (null / None / equivalent) on all events from non-fan-out nodes —
+  inner-node events from inside a fan-out instance (those carry `fan_out_index` instead),
+  subgraph wrapper events, function-node events whether retried or not, and so on. The value
+  carries four fields:
+  - `item_count` — non-negative integer. The resolved instance count for this fan-out invocation.
+    Equal to `len(items_field_value)` in `items_field` mode and to the resolved `count` in `count`
+    mode (per pipeline-utilities §9). Available at fan-out entry, so populated on both `started`
+    and `completed` events of the fan-out node.
+  - `concurrency` — positive integer or null (unbounded). The resolved concurrency bound for
+    this fan-out invocation, after evaluating the int-or-callable from pipeline-utilities §9.
+    Matches §9.2's resolved type — zero or negative values are invalid at the configuration
+    boundary (raised as `fan_out_invalid_concurrency` per §9.2) and therefore never appear here;
+    null indicates unbounded. The `0` sentinel in observability §5.4's
+    `openarmature.fan_out.concurrency` attribute is an OTel-attribute-mapping pragmatism (OTel
+    primitives can't carry null) and does NOT appear on this canonical field. Available at
+    fan-out entry, so populated on both `started` and `completed` events.
+  - `error_policy` — string, exactly one of `"fail_fast"` or `"collect"` (per pipeline-utilities
+    §9, `error_policy`). Populated on both `started` and `completed` events.
+  - `parent_node_name` — string. The fan-out node's own name in the parent graph (i.e., equal to
+    `node_name` on this event). Surfaced explicitly so observers and downstream consumers do not
+    need to rederive it from `namespace`. Populated on both `started` and `completed` events.
+
+  Implementations MUST present all four keys of `fan_out_config` whenever the field itself is
+  populated on a fan-out node event — `item_count`, `concurrency`, `error_policy`, and
+  `parent_node_name`. Keys are never individually omitted on the basis of an implementation's
+  representation; observers can rely on key presence. Of the four, only `concurrency` is
+  nullable (null indicates unbounded per pipeline-utilities §9.2); `item_count`, `error_policy`,
+  and `parent_node_name` are always non-null when `fan_out_config` is populated.
+
+  `fan_out_config` MUST be populated on a fan-out node's `completed` event regardless of whether
+  the event carries `post_state` or `error` — i.e., even when the fan-out itself raised
+  (`fan_out_empty`, `fan_out_invalid_count`, `fan_out_field_not_list`, etc.) at runtime after
+  config resolution succeeded, the resolved configuration that was visible at fan-out entry MUST
+  appear on the completed event with all four keys populated.
+
+  Behavior in the rare case where engine configuration resolution itself fails (e.g., a
+  `concurrency` or `count` callable raises) is implementation-defined for v0.10.0 — whether the
+  engine dispatches a fan-out node event pair at all in that case, and if so what shape
+  `fan_out_config` takes for partially-resolved configurations, is left to a future proposal.
+  Conformance does not depend on this corner: existing fixtures exercise the success path and
+  the post-config-resolution runtime-failure paths only.
 
 `pre_state` is populated on both `started` and `completed` events (it is the state the node received,
 identical across the pair). `post_state` and `error` are populated only on `completed` events;
