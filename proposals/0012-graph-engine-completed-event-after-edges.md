@@ -1,8 +1,9 @@
 # 0012: Graph Engine — Completed Event Fires After Edge Evaluation
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-09
+- **Accepted:** 2026-05-09
 - **Targets:** spec/graph-engine/spec.md (revises §3 step 3 and §6
   routing-error treatment)
 - **Related:** 0001, 0003, 0005, 0007

@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-05-09
+
+### Changed
+
+- **graph-engine §3 Execution model — completed event fires after edge evaluation (BREAKING, but pre-1.0).** Step 3 of the execution loop is amended: the `completed` observer event MUST be dispatched after the merge in step 2 AND the edge evaluation in step 4 both complete, rather than between them. The dispatched event captures the node's complete transition: body execution, reducer merge, and outgoing edge resolution. The failure list in step 3 extends to include `routing_error` (no matching edge) and `edge_exception` (edge function raised) — both now populate the `error` field of the preceding node's `completed` event rather than propagating without an event. ([proposal 0012](proposals/0012-graph-engine-completed-event-after-edges.md))
+- **graph-engine §6 Observer hooks — routing_error and edge_exception share the preceding node's event pair (BREAKING, but pre-1.0).** Replaces the v0.6.0 wording "routing_error does NOT produce its own node event pair" with a uniform "edge-resolution failures land on the preceding node's `completed` event with `error` populated; observer applies its standard §4.2 status-mapping path." All five §4 runtime error categories now land via the same mechanism. No new event flow; no implementation-side post-end span mutation; no observer code path additions for edge-resolution errors.
+
+### Added
+
+- Conformance fixture `020-observer-edge-error-events` (graph-engine). Two sub-cases — `routing_error_lands_on_preceding_node_completed`, `edge_exception_lands_on_preceding_node_completed` — verify that edge-resolution failures share the preceding node's started/completed pair with `error` populated, the downstream node never runs, and the error category on the completed event matches the §4 category propagated to the `invoke()` caller.
+
+### Notes
+
+- **Breaking change to v0.6.0+ §6 event-shape contract permitted by pre-1.0 SemVer** (per `GOVERNANCE.md`). Same shape as v0.6.0's pair-model breaking bump (also pre-1.0 MINOR).
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.8.2 may target v0.9.0 directly without implementing the v0.8.2 ordering first. `openarmature-python`'s Phase 6.1 PR-C.1 is the canonical first implementation of this contract.
+- Cross-spec impact verified: observability §4.2 status mapping picks up `routing_error` and `edge_exception` automatically (the existing `error`-populated completed-event handler covers them). No changes required in observability §4.2/§5/§6, pipeline-utilities §6/§9/§10, or llm-provider §1-§9.
+- Surfaced during Phase 6.1 PR-C scoping in `openarmature-python` — conformance fixture `observability/004-otel-routing-error-attribution` could not drive cleanly under the v0.8.2 §3/§6 ordering. Two paths considered (sentinel routing_error event vs. ordering swap); swap was chosen for uniform §4 category treatment and to avoid implementation-defined post-end span mutation.
+
 ## [0.8.2] — 2026-05-06
 
 ### Fixed
