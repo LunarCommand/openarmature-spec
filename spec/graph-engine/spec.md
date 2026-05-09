@@ -123,12 +123,15 @@ identifiers (as an error class, error code, or tagged discriminant, per the lang
 1. Execution begins at the designated **entry** node with the initial state supplied by the caller.
 2. The current node's async function is invoked with the current state. Its returned partial update is merged
    into state using each field's reducer.
-3. Between the merge in step 2 and the edge evaluation in step 4, the engine MUST dispatch the node event
-   for the just-completed node onto the observer delivery queue per §6. Dispatch completes synchronously
-   before step 4; observer processing happens asynchronously on the delivery queue and does not affect
-   node execution timing. If step 2 fails — because the node raised, a reducer raised, or state validation
-   failed — the engine MUST dispatch the node event (with `error` populated) before the failure
-   propagates to the caller.
+3. After the merge in step 2 AND the edge evaluation in step 4 both complete, the engine MUST dispatch
+   the node event for the just-completed node onto the observer delivery queue per §6. Dispatch
+   completes synchronously before the next step 2 begins; observer processing happens asynchronously
+   on the delivery queue and does not affect node execution timing. The dispatched event captures the
+   node's complete transition: its body's execution, the reducer merge, and the resolution of its
+   outgoing edge. If any of those steps fail — because the node raised, a reducer raised, state
+   validation failed, the edge function raised (`edge_exception`), or no matching edge was returned
+   (`routing_error`) — the engine MUST dispatch the node event (with `error` populated) before the
+   failure propagates to the caller.
 4. The engine then evaluates the outgoing edge from the current node:
 
 - If static: route to the fixed destination.
@@ -303,9 +306,12 @@ invokes the wrapped node function, which triggers a fresh started/completed pair
 3-attempt retry produces 6 events: pairs at `attempt_index` 0, 1, 2 in order. The engine dispatches
 all events; middleware does NOT dispatch directly.
 
-`routing_error` from §4 is a consequence of evaluating an outgoing edge against a post-update state.
-The `completed` event for the preceding node has already been dispatched by the time a routing error
-arises; a routing error does NOT produce its own node event pair.
+`routing_error` and `edge_exception` from §4 are consequences of evaluating an outgoing edge against
+a post-update state. Per §3 step 3, the `completed` event fires after edge evaluation completes — so
+an edge-resolution failure populates the `error` field of the preceding node's `completed` event.
+Edge-resolution failures do NOT produce a separate event pair; they share the preceding node's pair,
+and the observer applies its standard §4.2 status-mapping path to surface the error category and
+exception details on that node's span (per the observability spec mapping).
 
 **Per-observer phase subscription.** Observer registration (graph-attached or invocation-scoped)
 accepts an optional `phases` parameter — a set of phase strings the observer subscribes to.

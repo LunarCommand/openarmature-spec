@@ -1,0 +1,87 @@
+# Two sub-cases: routing_error and edge_exception both land on the
+# preceding node's completed event with `error` populated. Verifies
+# the §3 step 3 (revised) + §6 (revised) contract: edge-resolution
+# failures share the preceding node's started/completed pair rather
+# than producing a separate event pair.
+
+cases:
+  - name: routing_error_lands_on_preceding_node_completed
+    description: |
+      Two-node graph; node A's conditional edge function returns a
+      destination not in the graph. Per §6 the routing_error fires
+      on A's completed event with `error` populated; A is the only
+      node that runs.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+      b:
+        update_pure: {x: 2}
+    edges:
+      - from: a
+        condition:
+          callable: state_field_read
+          field: target_node_name   # field doesn't exist; resolves to a missing destination
+        to: b
+    initial_state: {target_node_name: "nonexistent_node"}
+    expected_error:
+      category: routing_error
+      raised_from: a
+    expected:
+      observer_events:
+        obs:
+          # Single started/completed pair on node a. Completed has
+          # error populated to RoutingError; post_state absent.
+          - {step: 0, phase: started,   node_name: a, namespace: [a], pre_state: {x: 0, target_node_name: "nonexistent_node"}, parent_states: []}
+          - {step: 0, phase: completed, node_name: a, namespace: [a], pre_state: {x: 0, target_node_name: "nonexistent_node"},
+             error: {category: routing_error}, parent_states: []}
+      invariants:
+        # Node b never runs — no events for it.
+        no_events_for_node: b
+        # Routing error attributes to a's completed event, not a separate event pair.
+        edge_resolution_failure_in_completed_event: true
+    observers:
+      - {name: obs, attach: graph, target: outer, behavior: record}
+
+  - name: edge_exception_lands_on_preceding_node_completed
+    description: |
+      Two-node graph; node A's conditional edge function raises an
+      exception. Per §6 the edge_exception fires on A's completed
+      event with `error` populated.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+      b:
+        update_pure: {x: 2}
+    edges:
+      - from: a
+        condition:
+          callable: edge_raises
+          message: "edge function failed"
+        to: b
+    initial_state: {}
+    expected_error:
+      category: edge_exception
+      raised_from: a
+    expected:
+      observer_events:
+        obs:
+          - {step: 0, phase: started,   node_name: a, namespace: [a], pre_state: {x: 0}, parent_states: []}
+          - {step: 0, phase: completed, node_name: a, namespace: [a], pre_state: {x: 0},
+             error: {category: edge_exception}, parent_states: []}
+      invariants:
+        no_events_for_node: b
+        edge_resolution_failure_in_completed_event: true
+    observers:
+      - {name: obs, attach: graph, target: outer, behavior: record}
