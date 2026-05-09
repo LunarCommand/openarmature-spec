@@ -122,15 +122,17 @@ relying on each implementation to invent its own mechanism.
 **Add immediately after** (between the `fan_out_index` bullet and
 the closing paragraph at line 283):
 
-> - `fan_out_config` — optional structured value, populated only
->   on a fan-out node's own `started` and `completed` events
+> - `fan_out_config` — optional structured value, populated on
+>   EVERY `started` and `completed` event for a fan-out node
 >   (i.e., events whose `node_name` resolves to a fan-out node
->   per pipeline-utilities §9). Carries the resolved values for
->   the observability §5.4 fan-out attributes. Absent (null /
->   None / equivalent) on all other events: non-fan-out node
->   events, inner-node events from inside a fan-out instance
->   (those carry `fan_out_index` instead), subgraph wrapper
->   events, retry-attempt events, and so on.
+>   per pipeline-utilities §9), including retried attempts of
+>   the fan-out node itself (`attempt_index > 0`). Carries the
+>   resolved values for the observability §5.4 fan-out
+>   attributes. Absent (null / None / equivalent) on all events
+>   from non-fan-out nodes — inner-node events from inside a
+>   fan-out instance (those carry `fan_out_index` instead),
+>   subgraph wrapper events, function-node events whether
+>   retried or not, and so on.
 >
 >   The `fan_out_config` value carries four fields:
 >
@@ -140,14 +142,19 @@ the closing paragraph at line 283):
 >     resolved `count` in `count` mode (per pipeline-utilities
 >     §9). Available at fan-out entry, so populated on both
 >     `started` and `completed` events of the fan-out node.
->   - `concurrency` — non-negative integer. The resolved
->     concurrency bound for this fan-out invocation, after
->     evaluating the int-or-callable from pipeline-utilities §9.
->     A literal `0` is RECOMMENDED as the sentinel for
->     unbounded (matching observability §5.4's existing
->     guidance for the `openarmature.fan_out.concurrency`
->     attribute). Available at fan-out entry, so populated on
->     both `started` and `completed` events.
+>   - `concurrency` — positive integer or null (unbounded).
+>     The resolved concurrency bound for this fan-out
+>     invocation, after evaluating the int-or-callable from
+>     pipeline-utilities §9. Matches §9.2's resolved type —
+>     zero or negative values are invalid at the configuration
+>     boundary (raised as `fan_out_invalid_concurrency` per
+>     §9.2) and therefore never appear here; null indicates
+>     unbounded. The `0` sentinel in observability §5.4's
+>     `openarmature.fan_out.concurrency` attribute is an
+>     OTel-attribute-mapping pragmatism (OTel primitives can't
+>     carry null) and does NOT appear on this canonical field.
+>     Available at fan-out entry, so populated on both
+>     `started` and `completed` events.
 >   - `error_policy` — string, exactly one of `"fail_fast"` or
 >     `"collect"` (per pipeline-utilities §9, `error_policy`).
 >     Populated on both `started` and `completed` events.
@@ -157,19 +164,35 @@ the closing paragraph at line 283):
 >     consumers do not need to rederive it from `namespace`.
 >     Populated on both `started` and `completed` events.
 >
+>   Implementations MUST present all four keys of
+>   `fan_out_config` whenever the field itself is populated on
+>   a fan-out node event — `item_count`, `concurrency`,
+>   `error_policy`, and `parent_node_name`. Keys are never
+>   individually omitted on the basis of an implementation's
+>   representation; observers can rely on key presence. Of the
+>   four, only `concurrency` is nullable (null indicates
+>   unbounded per pipeline-utilities §9.2); `item_count`,
+>   `error_policy`, and `parent_node_name` are always non-null
+>   when `fan_out_config` is populated.
+>
 >   `fan_out_config` MUST be populated on a fan-out node's
 >   `completed` event regardless of whether the event carries
 >   `post_state` or `error` — i.e., even when the fan-out
 >   itself raised (`fan_out_empty`, `fan_out_invalid_count`,
->   `fan_out_field_not_list`, etc.), the resolved configuration
->   that was visible at fan-out entry MUST appear on the
->   completed event. For errors raised at config resolution
->   itself (e.g., `fan_out_invalid_concurrency` from a
->   `concurrency` callable raising), implementations SHOULD
->   populate `fan_out_config` with the values that were
->   resolved up to the point of failure, leaving the failed
->   field at the implementation's null-equivalent (or omit the
->   field if the implementation's representation requires it).
+>   `fan_out_field_not_list`, etc.) at runtime after config
+>   resolution succeeded, the resolved configuration that was
+>   visible at fan-out entry MUST appear on the completed event
+>   with all four keys populated.
+>
+>   Behavior in the rare case where engine configuration
+>   resolution itself fails (e.g., a `concurrency` or `count`
+>   callable raises) is implementation-defined for v0.10.0 —
+>   whether the engine dispatches a fan-out node event pair at
+>   all in that case, and if so what shape `fan_out_config`
+>   takes for partially-resolved configurations, is left to a
+>   future proposal. Conformance does not depend on this
+>   corner: existing fixtures exercise the success path and the
+>   post-config-resolution runtime-failure paths only.
 
 The closing paragraph at lines 283–286 (which currently reads
 "`pre_state` is populated on both `started` and `completed`
@@ -207,19 +230,34 @@ and `error` absent") is unchanged.
 attribute lists, before §5.5):
 
 > Implementations source these attributes from the corresponding
-> graph-engine §6 `NodeEvent` fields: `openarmature.node.fan_out_index`
-> from the event's `fan_out_index`; the four fan-out node-span
-> attributes (`openarmature.fan_out.item_count`,
-> `openarmature.fan_out.concurrency`,
-> `openarmature.fan_out.error_policy`,
-> `openarmature.fan_out.parent_node_name`) from the event's
-> `fan_out_config` field on the fan-out node's own
-> `started`/`completed` events. The per-instance span layout (one
-> per-instance subgraph span as a child of the fan-out node span,
-> with inner-node spans nested below) is required by §4 for both
-> detached and non-detached fan-out modes — the only behavioral
-> difference between detached and non-detached is the trace-id
-> treatment per §4.4, not the per-instance layout.
+> graph-engine §6 `NodeEvent` fields, preserving the two-span-
+> category distinction above:
+>
+> - **Fan-out node span attributes.**
+>   `openarmature.fan_out.item_count`,
+>   `openarmature.fan_out.concurrency`, and
+>   `openarmature.fan_out.error_policy` go on the fan-out node
+>   span. Sourced from `event.fan_out_config` on the fan-out
+>   node's own `started`/`completed` events.
+> - **Fan-out instance span attributes.**
+>   `openarmature.fan_out.parent_node_name` goes on the
+>   per-instance fan-out instance spans (not on the fan-out
+>   node span). It is also surfaced via `event.fan_out_config`
+>   on the fan-out node's `started` event, but per-instance
+>   events don't themselves carry `fan_out_config` — the
+>   observer caches the value from the fan-out node's started
+>   event and applies it when synthesizing each per-instance
+>   instance span. `openarmature.node.fan_out_index` also goes
+>   on per-instance instance spans (and on inner-node spans
+>   nested below); it is sourced directly from
+>   `event.fan_out_index` on those inner-node events.
+>
+> The per-instance span layout (one per-instance subgraph span
+> as a child of the fan-out node span, with inner-node spans
+> nested below) is required by §4 for both detached and
+> non-detached fan-out modes — the only behavioral difference
+> between detached and non-detached is the trace-id treatment
+> per §4.4, not the per-instance layout.
 
 This addition is editorial: it cross-references the existing §6
 field (newly extended by this proposal) and the existing §4

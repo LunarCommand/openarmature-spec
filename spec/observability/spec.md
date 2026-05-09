@@ -377,14 +377,25 @@ Fan-out node spans (the parent of the per-instance subgraph spans) carry:
   filtering traces by policy.
 
 Implementations source these attributes from the corresponding graph-engine §6 `NodeEvent`
-fields: `openarmature.node.fan_out_index` from the event's `fan_out_index`; the four fan-out
-node-span attributes (`openarmature.fan_out.item_count`, `openarmature.fan_out.concurrency`,
-`openarmature.fan_out.error_policy`, `openarmature.fan_out.parent_node_name`) from the event's
-`fan_out_config` field on the fan-out node's own `started`/`completed` events. The per-instance
-span layout (one per-instance subgraph span as a child of the fan-out node span, with
-inner-node spans nested below) is required by §4 for both detached and non-detached fan-out
-modes — the only behavioral difference between detached and non-detached is the trace-id
-treatment per §4.4, not the per-instance layout.
+fields, preserving the two-span-category distinction above:
+
+- **Fan-out node span attributes.** `openarmature.fan_out.item_count`,
+  `openarmature.fan_out.concurrency`, and `openarmature.fan_out.error_policy` go on the
+  fan-out node span. Sourced from `event.fan_out_config` on the fan-out node's own
+  `started`/`completed` events.
+- **Fan-out instance span attributes.** `openarmature.fan_out.parent_node_name` goes on the
+  per-instance fan-out instance spans (not on the fan-out node span). It is also surfaced via
+  `event.fan_out_config` on the fan-out node's `started` event, but per-instance events don't
+  themselves carry `fan_out_config` — the observer caches the value from the fan-out node's
+  started event and applies it when synthesizing each per-instance instance span.
+  `openarmature.node.fan_out_index` also goes on per-instance instance spans (and on
+  inner-node spans nested below); it is sourced directly from `event.fan_out_index` on those
+  inner-node events.
+
+The per-instance span layout (one per-instance subgraph span as a child of the fan-out node
+span, with inner-node spans nested below) is required by §4 for both detached and
+non-detached fan-out modes — the only behavioral difference between detached and non-detached
+is the trace-id treatment per §4.4, not the per-instance layout.
 
 ### 5.5 LLM provider attributes
 
