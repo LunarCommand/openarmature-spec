@@ -279,6 +279,35 @@ observers receiving events for an in-flight invocation is fixed at the point the
   mode, `0..count-1`). When the same node name appears in multiple fan-out instances, the
   combination of `namespace`, `fan_out_index`, `attempt_index`, and `phase` uniquely identifies the
   event source. Absent for events from nodes that are not inside any fan-out instance.
+- `fan_out_config` — optional structured value, populated only on a fan-out node's own `started`
+  and `completed` events (i.e., events whose `node_name` resolves to a fan-out node per
+  pipeline-utilities §9). Carries the resolved values for the observability §5.4 fan-out
+  attributes. Absent (null / None / equivalent) on all other events: non-fan-out node events,
+  inner-node events from inside a fan-out instance (those carry `fan_out_index` instead),
+  subgraph wrapper events, retry-attempt events, and so on. The value carries four fields:
+  - `item_count` — non-negative integer. The resolved instance count for this fan-out invocation.
+    Equal to `len(items_field_value)` in `items_field` mode and to the resolved `count` in `count`
+    mode (per pipeline-utilities §9). Available at fan-out entry, so populated on both `started`
+    and `completed` events of the fan-out node.
+  - `concurrency` — non-negative integer. The resolved concurrency bound for this fan-out
+    invocation, after evaluating the int-or-callable from pipeline-utilities §9. A literal `0` is
+    RECOMMENDED as the sentinel for unbounded (matching observability §5.4's existing guidance
+    for the `openarmature.fan_out.concurrency` attribute). Available at fan-out entry, so
+    populated on both `started` and `completed` events.
+  - `error_policy` — string, exactly one of `"fail_fast"` or `"collect"` (per pipeline-utilities
+    §9, `error_policy`). Populated on both `started` and `completed` events.
+  - `parent_node_name` — string. The fan-out node's own name in the parent graph (i.e., equal to
+    `node_name` on this event). Surfaced explicitly so observers and downstream consumers do not
+    need to rederive it from `namespace`. Populated on both `started` and `completed` events.
+
+  `fan_out_config` MUST be populated on a fan-out node's `completed` event regardless of whether
+  the event carries `post_state` or `error` — i.e., even when the fan-out itself raised
+  (`fan_out_empty`, `fan_out_invalid_count`, `fan_out_field_not_list`, etc.), the resolved
+  configuration that was visible at fan-out entry MUST appear on the completed event. For errors
+  raised at config resolution itself (e.g., `fan_out_invalid_concurrency` from a `concurrency`
+  callable raising), implementations SHOULD populate `fan_out_config` with the values that were
+  resolved up to the point of failure, leaving the failed field at the implementation's
+  null-equivalent (or omit the field if the implementation's representation requires it).
 
 `pre_state` is populated on both `started` and `completed` events (it is the state the node received,
 identical across the pair). `post_state` and `error` are populated only on `completed` events;

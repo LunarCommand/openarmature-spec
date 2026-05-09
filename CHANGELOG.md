@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-05-09
+
+### Added
+
+- **graph-engine §6 Observer hooks — `fan_out_config` field on `NodeEvent`.** Optional structured value populated only on a fan-out node's own `started` and `completed` events. Carries the resolved values for the four observability §5.4 fan-out attributes: `item_count` (non-negative int), `concurrency` (non-negative int; `0` RECOMMENDED as the unbounded sentinel), `error_policy` (`"fail_fast"` or `"collect"`), `parent_node_name` (string, equal to the event's `node_name`). Absent on all other events. The field is the canonical surfacing mechanism — observers source the §5.4 attributes from `event.fan_out_config` rather than from any implementation-private mechanism. ([proposal 0013](proposals/0013-fan-out-config-on-node-event.md))
+- **observability §5.4 Fan-out span attributes — editorial cross-reference paragraph.** Sources the four fan-out node-span attributes from the new graph-engine §6 `fan_out_config` field, and notes that §4's per-instance fan-out instance span layout applies regardless of detached mode (already true in §4's prose; the cross-reference makes it explicit for §5.4 readers). No new normative behavior in §5.4.
+
+### Notes
+
+- **Additive change to the §6 `NodeEvent` shape (pre-1.0 MINOR).** Existing observers that ignore the new field continue to function unchanged; the field is null on non-fan-out events. The change is backwards-compatible at the struct level.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.9.0 may target v0.10.0 directly without implementing v0.9.0 first.
+- **No new conformance fixtures.** Conformance fixture `observability/006-otel-fan-out-instance-attribution` already exercises both pieces of the change — the four fan-out node-span attributes (now sourced from `fan_out_config`) and the per-instance subgraph span layout (already required by §4).
+- Cross-spec impact verified: pipeline-utilities §9 fan-out node configuration unchanged (the new field is sourced from the existing config; no shape change at the configuration boundary). observability §4 per-instance layout requirement unchanged (this proposal cross-references it without altering it). llm-provider §1-§9 untouched.
+- Surfaced during Phase 6.1 PR-C.2 scoping in `openarmature-python` — the initially recommended implementation-private ContextVar pattern (per coordination thread `phase-6-1-pr-c-conformance-fixtures` round 06) does not survive the observer's worker-task boundary because async-runtime context-copy semantics freeze the worker's context at task creation. ContextVar mutations on the engine side after worker creation are invisible to the worker. The data must flow through the canonical event payload to cross the queue. Three alternatives considered (ContextVar, typed `pre_state` subclass, sidecar `extra` mapping); `fan_out_config` field on canonical `NodeEvent` chosen for typed, language-portable surfacing.
+
 ## [0.9.0] — 2026-05-09
 
 ### Changed

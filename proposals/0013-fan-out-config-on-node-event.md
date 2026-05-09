@@ -1,8 +1,9 @@
 # 0013: Graph Engine — Fan-Out Config on Node Event
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-09
+- **Accepted:** 2026-05-09
 - **Targets:** spec/graph-engine/spec.md (extends §6 NodeEvent shape);
   spec/observability/spec.md (small editorial cross-reference in §5.4)
 - **Related:** 0001, 0005, 0007, 0011
