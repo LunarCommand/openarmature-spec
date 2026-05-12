@@ -62,6 +62,9 @@ Replace with:
 > - workers MUST be cancelled or otherwise terminated such that the compiled graph remains usable
 >   for subsequent invocations — partial delivery state from one drain MUST NOT leak into the next
 >   invocation;
+> - observers SHOULD be written to be cancellation-safe (idempotent writes, try/finally cleanup)
+>   so that interruption by drain timeout does not leave partial side effects in an inconsistent
+>   state;
 >
 > drain MUST return a summary of the drain's outcome, in a form appropriate to the host language.
 > The summary MUST include at least: the count of undelivered events, and a boolean or equivalent
@@ -99,19 +102,20 @@ noting:
 
 ## Conformance test impact
 
-Add fixtures under `spec/graph-engine/conformance/`:
+Add fixtures under `spec/graph-engine/conformance/`. Each fixture is a pair
+(`NNN-name.yaml` + `NNN-name.md`) per the conformance README:
 
-- **`020-drain-timeout-elapses-with-undelivered.yaml`** — a graph with observers that
+- **`021-drain-timeout-elapses-with-undelivered`** — a graph with observers that
   intentionally sleep longer than the supplied timeout. Asserts drain returns within the timeout,
   the summary reports a non-zero undelivered count, and the timeout-reached flag is true.
-- **`021-drain-timeout-not-reached-fast-observers.yaml`** — same setup with fast observers that
+- **`022-drain-timeout-not-reached-fast-observers`** — same setup with fast observers that
   finish well within the timeout. Asserts timeout-reached flag is false and undelivered count is
   zero.
-- **`022-drain-timeout-clean-state-for-next-invocation.yaml`** — drain one invocation with a
-  timeout that elapses, then run a second invocation and drain it without a timeout. Assert the
+- **`023-drain-timeout-clean-state-for-next-invocation`** — drain one invocation with a
+  timeout that elapses, then run a second invocation and drain it without a timeout. Asserts the
   second drain returns cleanly and its observer events are delivered as if the first drain's
   truncation never happened. Verifies the "MUST NOT leak" requirement.
-- **`023-drain-no-timeout-waits-for-all.yaml`** — regression coverage: drain called with no
+- **`024-drain-no-timeout-waits-for-all`** — regression coverage: drain called with no
   timeout still blocks until every event lands, matching the v0.3.0 contract; the returned
   summary has `undelivered_count == 0` and `timeout_reached == false`.
 
@@ -137,12 +141,12 @@ Add fixtures under `spec/graph-engine/conformance/`:
 
 ## Open questions
 
-- **Cancellation semantics for an in-flight observer.** When the timeout elapses while an
-  observer is mid-call, MUST the implementation cancel that observer (e.g., `task.cancel()` in
-  Python) or wait for it to complete its current event before terminating? Cancellation is more
-  responsive but exposes observers to interruption mid-side-effect; a "finish current, then stop"
-  rule is gentler but means timeout is a soft floor, not a hard ceiling. Lean: implementation-
-  defined, documented per-impl.
+- **Cancellation mechanism for an in-flight observer.** When the timeout elapses while an
+  observer is mid-call, the implementation MUST terminate the call in time to honor the deadline.
+  *How* it does so — `task.cancel()` in Python, an `AbortSignal` in TypeScript, refusing to hand
+  the worker the next event once the deadline is within an observer's expected latency budget —
+  is implementation-defined and SHOULD be documented per-impl. The hard deadline itself is not
+  negotiable.
 - **Summary shape across languages.** A Python `dict`/dataclass and a TypeScript object will
   diverge in detail. The spec should require the fields above as a minimum and let each language
   pick the shape.
