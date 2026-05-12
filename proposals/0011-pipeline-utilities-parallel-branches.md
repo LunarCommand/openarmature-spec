@@ -3,7 +3,7 @@
 - **Status:** Draft
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-06
-- **Targets:** spec/pipeline-utilities/spec.md (adds §11)
+- **Targets:** spec/pipeline-utilities/spec.md (adds §11), spec/graph-engine/spec.md (§3 concurrency exception, §6 NodeEvent `branch_name`)
 - **Related:** 0001, 0002, 0003, 0004, 0005
 - **Supersedes:**
 
@@ -108,19 +108,22 @@ A future proposal MAY add a `concurrency` knob if real workloads demonstrate the
 
 #### 11.4 Per-branch projection (out)
 
-When a branch's subgraph finishes (END node reached), the engine projects branch state back
-into parent state by:
+When a branch's subgraph finishes (END node reached), the engine constructs a per-branch
+**contribution** — a mapping `parent_field → exit_value` built from the branch's `outputs`
+mapping (each named subgraph field is read from the branch's exit state). Subgraph fields
+not named in `outputs` are discarded (matching proposal 0002 outputs semantics).
 
-1. For each `outputs` mapping `parent_field → subgraph_field`: read `subgraph_field` from the
-   branch's exit state and merge into parent state at `parent_field` using the parent's
-   reducer for that field.
-2. Subgraph fields not named in `outputs` are discarded (matching proposal 0002 outputs
-   semantics).
+Contributions are **buffered**; no parent-state merging happens incrementally on branch
+completion. When the parallel-branches node itself completes (all branches succeeded under
+`fail_fast`, or `collect` ran to completion), the engine applies all buffered contributions
+to parent state in **branch insertion order** (§11.8), using each parent field's reducer for
+that field. This mirrors §9.3 fan-in: contributions are collected during dispatch and merged
+deterministically once at node completion.
 
 When two or more branches write the same parent field via `outputs`, the parent's reducer
-merges the contributions in **branch insertion order** (§11.8). For `last_write_wins`
-reducers, this means the last-listed branch wins. For `append` reducers, contributions are
-appended in branch order. For `merge` reducers, later branches' keys override earlier ones.
+applies the contributions in branch insertion order. For `last_write_wins` reducers, this
+means the last-listed branch wins. For `append` reducers, contributions are appended in
+branch order. For `merge` reducers, later branches' keys override earlier ones.
 
 Authors choosing parent fields and reducers SHOULD design for the merge semantics they want.
 A common pattern is using `merge` for fields multiple branches contribute to (each branch
@@ -133,9 +136,11 @@ Same shape as §9.5. Behavior at runtime:
 - **`fail_fast` (default).** First branch failure cancels every still-running branch (via the
   host language's idiomatic cancellation primitive — Python `asyncio.Task.cancel()`,
   TypeScript `AbortController`, etc.). The parallel-branches node raises a wrapped
-  `node_exception` carrying the failing branch's exception as `__cause__`; `recoverable_state`
-  is the parent state at the moment the parallel-branches node entered (i.e., before any
-  branch contributed).
+  `node_exception` carrying the failing branch's exception as `__cause__`. Per §11.4's
+  collect-then-apply semantics, no branch contributions have been applied to parent state at
+  this point; the buffered contributions are discarded. `recoverable_state` is therefore the
+  parent state at the moment the parallel-branches node entered — matching §9.5's fan-out
+  fail_fast.
 - **`collect`.** All branches run to completion regardless of individual failures. Successful
   branches' contributions merge per §11.4. Failed branches' errors are recorded in
   `errors_field` (when configured); their `outputs` projections do NOT fire. The node returns
@@ -186,10 +191,11 @@ parallel-branches primitive: scheduler nondeterminism affects timing but not sta
   completes.
 - **Graph-engine §6** (Observer hooks — node event shape). A new optional `branch_name`
   field is added — a non-empty string, populated only on events from nodes inside a
-  parallel-branches branch. The combination of `namespace`, `branch_name`, `attempt_index`,
-  and `phase` uniquely identifies an event source. `branch_name` is mutually exclusive with
-  `fan_out_index` (a node inside a fan-out cannot also be inside a parallel-branches branch
-  at the same level — composition happens via nested subgraphs, not at the same level).
+  parallel-branches branch. The combination of `namespace`, `branch_name`, `fan_out_index`,
+  `attempt_index`, and `phase` uniquely identifies an event source; any of `branch_name` /
+  `fan_out_index` MAY be absent depending on the surrounding topology, and both MAY be
+  present simultaneously when a fan-out node executes inside a parallel-branches branch
+  (and vice versa).
 - **Pipeline-utilities §6** (Canonical middleware). Branch middleware reuses the §6
   middleware seam — no new middleware shape; the existing `(state, next) -> partial_update`
   Protocol applies.
@@ -227,9 +233,11 @@ Existing categories that compose:
 - **`0NN-parallel-branches-basic.yaml`** — three heterogeneous branches with different state
   shapes; each writes a different parent field; assert all three branches run concurrently
   and their contributions land in parent state.
-- **`0NN+1-parallel-branches-fail-fast.yaml`** — three branches; the second fails; assert
-  the first branch's contribution is in `recoverable_state`, the third branch is cancelled,
-  and the parallel-branches node raises `parallel_branches_branch_failed`.
+- **`0NN+1-parallel-branches-fail-fast.yaml`** — three branches; the second fails after the
+  first has succeeded; assert `recoverable_state` equals the pre-entry parent-state snapshot
+  (none of the branches' contributions visible, including the first's), the still-running
+  third branch is cancelled, and the parallel-branches node raises
+  `parallel_branches_branch_failed`.
 - **`0NN+2-parallel-branches-collect.yaml`** — three branches; one fails; assert the two
   successful branches' contributions merge into parent state, the failure is recorded in
   `errors_field`, and the parent run continues.
@@ -253,8 +261,8 @@ Existing categories that compose:
   events fires from nodes inside a parallel-branches branch and is absent on outermost-graph
   events.
 
-(Fixture numbering deferred until proposals 0009 and 0010 lands fix their own numbering;
-this proposal's accept PR will pick the next available slot.)
+(Fixture numbering deferred until proposals 0009 and 0010 are Accepted with finalized
+fixture numbering; this proposal's accept PR will pick the next available slot.)
 
 ## Alternatives considered
 
