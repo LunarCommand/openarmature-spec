@@ -64,19 +64,39 @@ The "engine does NOT save during fan-out instance execution" rule from 0008 §10
 
 Replaces 0008 §10.7 atomic-restart with per-instance resume.
 
+Per-instance results are recorded into a **fan-out-local accumulator** (the per-instance
+`result` entries in `fan_out_progress`, defined in §10.11) as instances complete. Parent
+state is NOT mutated per-instance — the existing pipeline-utilities §9.3 contract (parent
+state mutations happen at the fan-in step after ALL instances complete) is preserved
+unchanged. The accumulator is durable across crashes via the `fan_out_progress` field on
+`CheckpointRecord`; it rolls forward on resume so that already-completed instances'
+contributions are not lost.
+
 On resume into a fan-out that was in flight at crash time, the engine consults the saved
 record's `fan_out_progress` field and treats each instance as one of three states:
 
-- **Completed and merged.** The instance ran in the prior execution, its result was merged
-  via reducer into outer state, and that merge is reflected in the saved `state`. On resume,
-  the engine MUST NOT re-run the instance and MUST NOT re-merge its result. The instance is
-  skipped entirely.
+- **Completed.** The instance ran to completion in the prior execution and recorded its
+  durable contribution into the fan-out accumulator (the entry's `result` field per §10.11).
+  The contribution is path-agnostic: a success result for the `target_field` bucket, or in
+  `collect` error_policy mode (per §9.5), a recorded error for the `errors_field` bucket.
+  On resume, the engine MUST NOT re-run the instance and MUST NOT record a second
+  accumulator entry. The instance is skipped; its accumulator entry rolls forward to the
+  fan-out's fan-in step (per §9.3) at fan-out completion.
 - **In-flight at save time.** The instance had begun execution (its first inner node fired
-  `started`) but had not completed and merged before the crash. On resume, the engine re-runs
-  the instance from its entry point with the same projected per-instance state as the
-  original run. The reducer fires when the re-run instance's terminal inner node completes,
-  contributing the result to outer `state` for the first time (the original attempt
-  contributed nothing because it never reached the merge).
+  `started`) at the moment of save AND no `completed` event for its terminal inner node had
+  fired yet, so no accumulator entry was recorded. On resume, the engine re-runs the
+  instance from its entry point with the same projected per-instance state as the original
+  run. The re-run instance's terminal inner node `completed` event records the contribution
+  into the accumulator for the first time (the original attempt contributed nothing because
+  it never reached the completed-and-recorded step).
+
+  `in_flight` is observable in the saved record only when a sibling instance's `completed`
+  event triggers a save during this instance's execution — that save snapshots all
+  concurrent instances' states, capturing the still-running ones with their accumulated
+  `completed_inner_positions`. If no sibling completes before the crash, the saved record
+  either does not exist (no save fired yet) or reflects the pre-fan-out save (all instances
+  `not_started`), and resume re-dispatches each instance normally; re-dispatch is
+  correctness-preserving because no accumulator entry was persisted.
 - **Not yet started.** The instance had not been dispatched at save time. On resume, the
   engine dispatches the instance normally.
 
@@ -93,35 +113,58 @@ fan-outs are in flight at save time). Each entry carries:
 - `instances` — a sequence of per-instance status entries indexed by `fan_out_index` (`0` to
   `instance_count - 1`). Each entry carries:
   - `state` — one of `completed`, `in_flight`, `not_started`.
-  - `completed_inner_positions` — for `in_flight` entries, the inner-node `completed_positions`
-    recorded inside this instance up to save time. Unused for `completed` and `not_started`.
+  - `result` — for `completed` entries, the instance's durable contribution to the fan-out
+    accumulator. For success (any error_policy), the value contributed to the `target_field`
+    bucket; for `collect`-mode failures, the error entry contributed to the `errors_field`
+    bucket. The value is typed per the parent state schema's `target_field` /
+    `errors_field`; the representation is implementation-defined. Unused for `in_flight` and
+    `not_started`.
+  - `completed_inner_positions` — for `in_flight` entries, a list of `NodePosition` entries
+    with the same shape as `CheckpointRecord.completed_positions` (the outer-graph contract
+    from proposal 0008's §10), but scoped to this fan-out instance's inner subgraph
+    execution rather than the outer graph. Empty when the instance is `in_flight` but no
+    inner node has yet completed within this instance's subgraph (e.g., a sibling-triggered
+    save fired right after this instance's first `started` event). Unused for `completed`
+    and `not_started`.
 
 `completed` is the load-bearing state. An instance's `completed` status MUST mean: the
-instance's reducer fire happened AND the resulting outer state is what the saved record's
-`state` field reflects. The atomicity contract is that the engine's per-instance "complete +
-merge + save" sequence MUST be ordered such that a crash between merge and save leaves the
-instance in `in_flight` state on the saved record (so resume re-runs it). A crash after the
-save has succeeded is reflected as `completed` and the instance is skipped. This is the same
-correctness model as the rest of §10 — work that hadn't been recorded as saved at crash time
-re-runs on resume.
+instance produced its durable contribution to the fan-out accumulator AND that contribution
+is reflected in the entry's `result` field on the saved record. The contribution is
+path-agnostic — a success result for the `target_field` bucket, or in `collect` error_policy
+mode (per §9.5), a recorded error for the `errors_field` bucket. (`fail_fast`-mode failures
+do NOT produce a `completed` state — the whole fan-out aborts in that mode.) The atomicity
+contract is that the engine's "produce contribution + record into accumulator + save"
+sequence MUST be ordered such that a crash between contribution and save leaves the
+instance in `in_flight` state on the saved record (so resume re-runs it). A crash after
+the save has succeeded is reflected as `completed`, the instance is skipped, and its
+accumulator entry rolls forward to the fan-in step at fan-out completion. This is the same
+correctness model as the rest of §10 — work that hadn't been recorded as saved at crash
+time re-runs on resume.
 
 ### Pipeline-utilities §10.11.1: Reducer interaction
 
-Per pipeline-utilities §1, fan-out results are merged via the parent state's reducer for the
-`target_field`. Per-instance resume preserves the reducer's effect:
+Per pipeline-utilities §9.3, fan-out results are merged into parent state via the parent's
+reducer for the `target_field` (with reducer definitions per graph-engine §2). Per-instance
+resume preserves the reducer's effect — the accumulator entries for `completed` instances
+roll forward and are merged exactly once at the fan-out's fan-in step:
 
-- `last_write_wins` — `completed` instances' results already overwrote whatever was there;
-  re-running them would no-op (the reducer would write the same value again, assuming
-  determinism under §5). Skipping them is correct.
-- `append` — `completed` instances' results are already appended to the list in saved
-  `state`. Re-running them would double-append, which is incorrect. Skipping is required for
-  correctness.
-- `merge` — `completed` instances' contributions are already merged into the dict-shaped
-  outer field. Re-running would re-merge the same keys (idempotent for `merge` semantics).
-  Skipping is correct and avoids redundant work.
+- `last_write_wins` — each `completed` instance has its result entry in the accumulator. At
+  fan-in, the reducer merges entries in instance-index order, with the last instance's value
+  winning. On resume, `completed` instances retain their original accumulator entries.
+  Re-running a `completed` instance would record a SECOND accumulator entry; under §5
+  determinism the values match, but the redundant entry is wasted work. Skipping is correct.
+- `append` — each `completed` instance has its result entry in the accumulator. At fan-in,
+  the reducer appends each entry to the target list in instance-index order. Re-running a
+  `completed` instance would record a SECOND accumulator entry, causing a double-append at
+  fan-in. Skipping is required for correctness.
+- `merge` — each `completed` instance has its result entry in the accumulator. At fan-in,
+  the reducer merges each entry into the dict-shaped outer field. Re-running a `completed`
+  instance would record a second accumulator entry; for pure `merge` semantics this is
+  idempotent but redundant. Skipping is correct and avoids the redundant work.
 
 The `append` reducer case is why per-instance resume cannot be a "best-effort, may double-
-contribute" model. The `completed` status is a correctness guarantee.
+contribute" model. The `completed` status is a correctness guarantee that there is exactly
+one accumulator entry per instance heading into the fan-in step.
 
 ### Pipeline-utilities §10.11.2: Composition with `error_policy`
 
@@ -134,10 +177,11 @@ Per pipeline-utilities §9.5, fan-out has two error policies:
   `not_started` state. All of these re-run on resume per §10.7. Instances that had completed
   and merged before the failure remain `completed` and are skipped.
 - **`collect`.** The fan-out runs all instances regardless of individual failures; failed
-  slots are recorded in `errors_field`. On resume, instances marked `completed` are skipped
-  per their normal contribution (whether successful or failed-and-recorded — the `errors_field`
-  contribution counts as a merge for `fan_out_progress` purposes). Instances in `in_flight` or
-  `not_started` re-run; if they fail again, the failure is again recorded in `errors_field`.
+  slots are recorded in `errors_field` at the fan-in step. On resume, instances marked
+  `completed` are skipped — their accumulator entry, either a success result for
+  `target_field` or a recorded error for `errors_field`, is preserved and rolls forward to
+  the fan-in step at fan-out completion. Instances in `in_flight` or `not_started` re-run;
+  if they fail again, the failure is again recorded into the accumulator as an error entry.
 
 ### Pipeline-utilities §10.11.3: Composition with `instance_middleware`
 
@@ -145,15 +189,25 @@ Per pipeline-utilities §9.7, `instance_middleware` (notably retry) wraps each i
 whole subgraph invocation as a unit. Per-instance resume composes with retry middleware as
 follows:
 
-- An instance whose retry middleware exhausted in the prior run produces a `fail_fast`
-  cancellation (or a `collect`-recorded failure) per §9.5. The instance's `fan_out_progress`
-  state at save time is `in_flight` (no successful merge ever happened — the engine never
-  saw a `completed` event for the terminal inner node).
-- On resume, the instance re-runs with `attempt_index` reset to `0` per §10.6 — the retry
-  budget restarts. This matches the "fresh execution attempt" semantics of resume.
-- An instance whose retry middleware succeeded mid-run (e.g., attempt 2 of 3 succeeded) saved
-  its `completed` state at the success. On resume, that instance is skipped — the retry
-  history is not preserved, but the result is.
+- An instance whose retry middleware exhausted in `fail_fast` mode aborts the whole
+  fan-out; the instance's `fan_out_progress` state at save time is `in_flight` (no
+  accumulator entry was recorded — the failure cancelled the rest of the fan-out before any
+  instance could save its `completed` state for the failed instance). All instances re-run
+  on resume.
+- An instance whose retry middleware exhausted in `collect` mode produces a recorded error
+  entry in the accumulator. If a save fires after the error record (triggered by a sibling's
+  `completed` event or by the fan-out's own completion), the instance's state is
+  `completed` and its accumulator `result` field holds the error entry. On resume, the
+  instance is skipped — the error contribution rolls forward to the fan-in step. If no save
+  captured the error before the crash, the state reads as `in_flight` and the instance
+  re-runs (potentially producing a different outcome the second time).
+- On resume of an `in_flight` retry-exhausted instance, the instance re-runs with
+  `attempt_index` reset to `0` per §10.6 — the retry budget restarts. This matches the
+  "fresh execution attempt" semantics of resume.
+- An instance whose retry middleware succeeded mid-run (e.g., attempt 2 of 3 succeeded)
+  saved its `completed` state at the success (with the success result in its accumulator
+  entry). On resume, that instance is skipped — the retry history is not preserved, but
+  the result is.
 
 ### Pipeline-utilities §10.11.4: Configurable batching for fan-out internal saves
 
@@ -225,11 +279,16 @@ workload's cost profile.
   list; abort during instance 2; on resume, assert outer list ends as `[10, 20, 30, 40]`
   with NO duplicate values from re-merging completed instances. This is the load-bearing
   correctness fixture for §10.11.1.
-- `034-checkpoint-fan-out-in-flight-instance-restart.yaml` — fan-out with 3 instances; one
-  instance is mid-execution (its first inner node `started` but second inner node not yet
-  fired) at save time; on resume, assert that instance restarts from its entry point (NOT
-  from its mid-execution position), runs to completion, and contributes its result via
-  reducer for the first time.
+- `034-checkpoint-fan-out-in-flight-instance-restart.yaml` — fan-out with 3 instances.
+  Instance 0 completes successfully, triggering a save. At that save, instance 1 has its
+  first inner node `started` but no inner node has yet completed within instance 1's
+  subgraph; instance 2 has not yet been dispatched. The save records `fan_out_progress`
+  with instance 0 → `completed` (accumulator `result` recorded), instance 1 → `in_flight`
+  with empty `completed_inner_positions`, instance 2 → `not_started`. Crash after save.
+  On resume, assert instance 0 is skipped (no `started` event), instance 1 restarts from
+  its entry point (NOT from a mid-execution position), instance 2 dispatches normally;
+  final state matches a successful uninterrupted run after the fan-in step merges all
+  three accumulator entries via reducer.
 - `035-checkpoint-fan-out-fail-fast-resume.yaml` — fan-out with 4 instances and
   `error_policy: fail_fast`; instance 1 fails causing siblings to cancel; abort the whole
   invocation; on resume, instance 0 (which completed before the failure) is skipped; failed
