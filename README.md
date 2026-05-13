@@ -1,27 +1,197 @@
-# openarmature-spec
+# OpenArmature Specification
 
-Language-agnostic specification for [OpenArmature](docs/openarmature.md) — a workflow framework for LLM pipelines and tool-calling agents.
+Language-agnostic behavioral specification for **OpenArmature**, a workflow
+framework for LLM pipelines and tool-calling agents. This repository holds the
+specification text, conformance fixtures, governance rules, and numbered
+RFC-style proposals. **No implementation code lives here.** Implementations
+are in sibling repositories.
 
-**Current spec version:** [v0.3.0](CHANGELOG.md). Pre-1.0; breaking changes may land in MINOR bumps. The only capability specified so far is `graph-engine`; additional capabilities listed in the charter are planned.
+**Current spec version:** [v0.10.0](CHANGELOG.md)
 
-This repo holds the spec, conformance fixtures, governance, and proposals. **No implementation code lives here.** Sibling repos:
+---
 
-- [`openarmature-python`](https://github.com/LunarCommand/openarmature-python) — Python reference implementation
-- `openarmature-typescript` — planned implementation
-- [`openarmature-examples`](https://github.com/LunarCommand/openarmature-examples) — end-to-end examples
+## Overview
 
-## Layout
+OpenArmature specifies a graph-engine-based workflow framework: typed state,
+async nodes, conditional routing, per-field reducers, subgraph composition,
+fan-out, middleware, checkpointing, and observer hooks. Behavior is defined
+here in prose and verified by canonical conformance fixtures; idiomatic
+implementations live in sibling repositories.
 
-- [`docs/openarmature.md`](docs/openarmature.md) — project charter (thesis, architecture, roadmap)
-- [`spec/`](spec/) — canonical behavioral specs, one directory per capability, with language-agnostic conformance fixtures
-- [`proposals/`](proposals/) — numbered RFC-style change proposals
-- [`GOVERNANCE.md`](GOVERNANCE.md) — how specs are written, versioned, and changed
-- [`CHANGELOG.md`](CHANGELOG.md) — SemVer-tracked spec history with links to driving proposals
+OpenArmature is **not**:
 
-## Contributing
+- A Python (or any other language) framework. The reference Python
+  implementation is at [openarmature-python](https://github.com/LunarCommand/openarmature-python).
+- A workflow orchestrator. For long-running, multi-process, multi-day
+  workflows, look at Temporal, Prefect, Dagster, or Airflow.
+- A model gateway. OpenArmature defines a thin LLM-provider abstraction for
+  use within graphs; it doesn't manage credentials, routing, or fallback
+  across providers.
+- A hosted product.
 
-Any change to a capability's behavior, public types, or conformance expectations requires a numbered proposal. See [`GOVERNANCE.md#proposal-lifecycle`](GOVERNANCE.md#proposal-lifecycle).
+---
+
+## Why OpenArmature
+
+Production LLM work splits awkwardly between two camps. Agent frameworks built
+around the tool-calling loop impose a conversation abstraction on
+non-conversation work, forcing deterministic multi-stage pipelines through
+message-list state and LLM-driven control flow. Pipeline orchestrators built
+for deterministic ETL have no LLM primitives, no prompt management, no LLM
+observability, no evaluation. The work in the middle (content analysis,
+multi-source research, structured extraction, large-scale enrichment) mostly
+ends up shoehorned into one camp or glued together from parts of both.
+
+The design insight is that pipelines and agents share primitives. Typed state
+evolving across async nodes, conditional and static edges, reducers,
+subgraphs, observability: both shapes need the same substrate and differ only
+in node content. A graph engine that's agnostic about whether control flow is
+LLM-driven or deterministic serves both equally.
+
+Both pipelines and tool-calling agents are first-class. An agent is a graph
+whose LLM-driven conditional edge loops back to the LLM node until a stop
+condition fires. Because agents are graphs and graphs compose as subgraphs, a
+"pipeline" in OpenArmature can be a sequence of deterministic stages, a
+single agent, or several agents running in sequence or in parallel through the
+same fan-out and middleware primitives.
+
+The specification is informed by seven production projects across content
+analysis, creator sourcing, multi-stage extraction, GPU ML pipelines,
+tool-calling agents, and MCP integration. The full thesis, distilled patterns,
+and architecture are in [`docs/openarmature.md`](docs/openarmature.md).
+
+---
+
+## Status
+
+### Accepted capabilities
+
+| Capability | Introduced | Latest | Scope |
+|---|---|---|---|
+| [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.10.0 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks |
+| [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.10.0 | Middleware (canonical retry + timing), parallel fan-out, checkpointing |
+| [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.10.0 | Stateless LLM-provider abstraction with canonical error categories and OpenAI-compatible wire mapping |
+| [observability](spec/observability/spec.md) | 0.7.0 | 0.10.0 | Cross-backend correlation IDs, OpenTelemetry mapping (spans, log correlation, detached trace mode) |
+
+### In the pipeline
+
+Proposals currently in flight. Status is Draft; contracts may change before
+they are Accepted.
+
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0009](proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md) | Draft | pipeline-utilities §10 | Per-instance fan-out resume (v2 successor to v1 atomic-restart) |
+| [0010](proposals/0010-drain-timeout.md) | Draft | graph-engine §6 | Bounded drain with caller-supplied timeout for observer-event delivery |
+| [0011](proposals/0011-pipeline-utilities-parallel-branches.md) | Draft | pipeline-utilities §11 | Parallel branches for M heterogeneous subgraphs running concurrently |
+
+See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
+
+---
+
+## Conformance
+
+Behavior is specified by both the prose spec text *and* a set of canonical
+test fixtures under `spec/<capability>/conformance/`. Each fixture is a pair:
+
+- `NNN-name.yaml`: declarative graph definition, initial state, and expected
+  outcome.
+- `NNN-name.md`: prose description of what the fixture verifies and which
+  spec sections it exercises.
+
+Implementations don't just read the spec; they run the fixtures. The Python
+reference implementation passes every fixture in its CI; new implementations
+validate the same way. Fixture additions land via the same proposal that
+introduces the behavior they verify, so the prose spec, the formal contract,
+and the conformance suite stay in lockstep.
+
+---
+
+## Implementations
+
+| Language | Status | Repository |
+|---|---|---|
+| Python | Shipping | [openarmature-python](https://github.com/LunarCommand/openarmature-python) (docs at [openarmature.ai](https://openarmature.ai)) |
+| TypeScript | Planned | not yet started |
+
+OpenArmature follows the pattern LangChain, LlamaIndex, and Vercel's AI SDK
+use: maintain a language-agnostic specification and conformance test suite
+that each implementation targets. Idiomatic implementations in each language;
+behavioral parity guaranteed by the fixtures. Each language gets to look like
+itself (Python decorators where idiomatic, TypeScript middleware where
+idiomatic) while the behavioral contract holds.
+
+The TypeScript implementation is gated on the conformance suite being complete
+enough to validate a parallel implementation against. That's meaningful work
+and not yet started; no committed date.
+
+---
+
+## Where it's going
+
+Active design areas. These are questions the next round of proposals will
+address, not scheduled deliverables.
+
+- **Per-instance fan-out resume.** v1 ships atomic-restart (a crash mid-fan-out
+  re-runs the entire fan-out on resume). Proposal 0009 drafts the v2 contract
+  where the engine saves at instance internal `completed` events and skips
+  already-completed instances on resume.
+- **Bounded drain.** Observer drain currently blocks until every queued event
+  delivers. Proposal 0010 drafts a caller-supplied timeout so hung observers
+  can't gate process exit.
+- **Parallel branches.** Fan-out covers N instances of one subgraph
+  (data-driven). Proposal 0011 drafts a topology-driven primitive for M
+  heterogeneous subgraphs running concurrently.
+
+Beyond the in-flight proposals, broader directions on the design horizon
+include a Langfuse backend mapping as a sibling section of the observability
+spec (analogous to the existing OpenTelemetry mapping), a prompt-management
+capability, and an evaluation framework with persistent history. Each lands
+when there's a clear behavior to specify, not before.
+
+---
+
+## Governance
+
+Spec changes go through a numbered RFC-style proposal lifecycle:
+
+1. **Draft.** Author opens a proposal at `proposals/NNNN-<slug>.md`. The
+   prose iterates via PR review (the Review stage). The spec, conformance
+   fixtures, and CHANGELOG are not touched yet.
+2. **Accepted.** Maintainer flips status when the proposal is ready to
+   merge. The proposal text is frozen. Spec text, conformance fixtures,
+   and CHANGELOG updates land in the same PR or in a follow-up PR, per
+   the author's preference.
+3. **Withdrawn** or **Superseded.** A Draft may be Withdrawn by its
+   author at any point. A later proposal that revises the same surface
+   declares `Supersedes: NNNN` in its header; the original stays in the
+   repository as historical record.
+
+Accepted proposals are immutable. Any change to behavior, public types, or
+conformance expectations requires a new proposal, even when the maintainer
+would otherwise just edit the spec text directly. Typos, formatting, and
+charter/governance edits do not need a proposal.
+
+See [`GOVERNANCE.md`](GOVERNANCE.md) for the full proposal template, required
+header fields, and review process.
+
+---
+
+## Where to start
+
+- **Curious about the design.** Read the [charter](docs/openarmature.md) for
+  the thesis, distilled patterns, architecture, and canonical examples.
+- **Implementing in a new language.** Start with `spec/<capability>/spec.md`
+  for the behavioral contract, then run the conformance fixtures in
+  `spec/<capability>/conformance/`. The Python implementation is a reference
+  for non-spec-mandated choices (idiomatic API shape, packaging, etc.).
+- **Contributing a proposal.** Read [`GOVERNANCE.md`](GOVERNANCE.md), then
+  browse recent `proposals/NNNN-*.md` for shape and style.
+- **Evaluating for adoption.** Read the Status table above, then visit
+  [openarmature.ai](https://openarmature.ai) for runnable code, the
+  Quickstart, and per-feature documentation.
+
+---
 
 ## License
 
-Apache-2.0. See [`LICENSE`](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).
