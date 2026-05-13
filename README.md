@@ -155,13 +155,15 @@ when there's a clear behavior to specify, not before.
 Spec changes go through a numbered RFC-style proposal lifecycle:
 
 1. **Draft.** Author opens a proposal at `proposals/NNNN-<slug>.md`. The
-   prose iterates via PR review; the spec, conformance fixtures, and
-   CHANGELOG are not touched yet.
-2. **Accepted.** Maintainer flips status. The proposal text is frozen.
-   The spec, conformance fixtures, and CHANGELOG land in the same PR
-   that flips status.
-3. **Superseded.** A later proposal that revises the same surface declares
-   `Supersedes: NNNN` in its header. The original proposal stays in the
+   prose iterates via PR review (the Review stage). The spec, conformance
+   fixtures, and CHANGELOG are not touched yet.
+2. **Accepted.** Maintainer flips status when the proposal is ready to
+   merge. The proposal text is frozen. Spec text, conformance fixtures,
+   and CHANGELOG updates land in the same PR or in a follow-up PR, per
+   the author's preference.
+3. **Withdrawn** or **Superseded.** A Draft may be Withdrawn by its
+   author at any point. A later proposal that revises the same surface
+   declares `Supersedes: NNNN` in its header; the original stays in the
    repository as historical record.
 
 Accepted proposals are immutable. Any change to behavior, public types, or

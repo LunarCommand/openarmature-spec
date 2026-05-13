@@ -10,8 +10,8 @@ proposed and accepted, how versions are tracked, and how multiple language imple
 This repository (`openarmature-spec`) holds the **language-agnostic specification** for OpenArmature. It does not
 contain implementation code. Implementations live in separate repositories:
 
-- `openarmature-python` (planned) — reference Python implementation
-- `openarmature-typescript` (planned) — reference TypeScript implementation
+- `openarmature-python` — reference Python implementation
+- `openarmature-typescript` — reference TypeScript implementation (planned; not yet started)
 
 Both implementations target the specs in this repo. Behavioral conformance is verified by the conformance test suite,
 also in this repo as language-agnostic test fixtures.
