@@ -1,0 +1,18 @@
+# Content blocks — system messages stay text-only. In v1, only `user`
+# messages support content-block sequences. A system message with content
+# as a content-block sequence MUST be rejected at pre-send validation
+# with provider_invalid_request, even if every block is well-formed.
+
+mock_provider:
+  responses: []
+
+calls:
+  - operation: complete
+    messages:
+      - role: system
+        content:
+          - {type: text, text: "you are a helpful assistant"}
+      - {role: user, content: "hi"}
+    expected:
+      raises:
+        category: provider_invalid_request

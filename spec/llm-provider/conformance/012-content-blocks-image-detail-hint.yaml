@@ -1,0 +1,70 @@
+# Content blocks — detail hint propagation. ImageBlock with detail="high"
+# gets propagated to OpenAI's image_url.detail field; omitting detail on
+# the spec block MUST also omit the field from the wire payload (default
+# is applied by the provider, not by the framework).
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-012-a
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message: {role: assistant, content: "ok"}
+            finish_reason: stop
+        usage: {prompt_tokens: 100, completion_tokens: 1, total_tokens: 101}
+    - status: 200
+      body:
+        id: chatcmpl-test-012-b
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message: {role: assistant, content: "ok"}
+            finish_reason: stop
+        usage: {prompt_tokens: 100, completion_tokens: 1, total_tokens: 101}
+
+calls:
+  # Call 1: detail="high" on the spec block.
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - type: image
+            source: {type: url, url: "https://example.com/x.png"}
+            detail: high
+    expected_wire_request:
+      model: test-model
+      messages:
+        - role: "user"
+          content:
+            - {type: "image_url", image_url: {url: "https://example.com/x.png", detail: "high"}}
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+
+  # Call 2: detail omitted on the spec block. Per 005's literal
+  # key-by-key comparison, omitting `detail` from the expected
+  # image_url body means the outbound MUST also omit it; if the
+  # implementation injects a default, the comparison fails.
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - type: image
+            source: {type: url, url: "https://example.com/x.png"}
+    expected_wire_request:
+      model: test-model
+      messages:
+        - role: "user"
+          content:
+            - {type: "image_url", image_url: {url: "https://example.com/x.png"}}
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop

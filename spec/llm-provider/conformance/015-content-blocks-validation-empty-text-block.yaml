@@ -1,0 +1,19 @@
+# Content blocks — empty text block validation. A user message whose
+# content-block sequence contains a TextBlock with text="" (empty string)
+# MUST be rejected at pre-send validation with provider_invalid_request,
+# even if the sequence itself is non-empty. Verifies §3.1.1's
+# "text MUST be a non-empty string" rule.
+
+mock_provider:
+  responses: []
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - {type: text, text: ""}
+          - {type: text, text: "real text"}
+    expected:
+      raises:
+        category: provider_invalid_request

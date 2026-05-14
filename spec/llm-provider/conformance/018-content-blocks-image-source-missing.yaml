@@ -1,0 +1,18 @@
+# Content blocks — image block with no source. §3.1.2 lists `source` as
+# required; §3.1.3's XOR rule mandates exactly one source variant. An
+# image block constructed without `source` MUST be rejected at pre-send
+# validation with provider_invalid_request.
+
+mock_provider:
+  responses: []
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - {type: image}
+          - {type: text, text: "describe"}
+    expected:
+      raises:
+        category: provider_invalid_request

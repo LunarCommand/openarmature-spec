@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-05-14
+
+### Added
+
+- **llm-provider §3.1 Content blocks.** New subsection defining text and image blocks for use in user-message content. Text blocks carry a single text string; image blocks carry a `source` (`url` or `inline` base64), a conditional `media_type` (required for inline sources, ignored for URL sources; required to be one of `image/png`, `image/jpeg`, `image/webp` at minimum), and an optional `detail` hint (`"auto"` / `"low"` / `"high"`). A user message MAY mix text and image blocks freely; block order is preserved through the wire. v1 scope: image input on user messages only — assistant-output images, audio, and video remain deferred. ([proposal 0015](proposals/0015-llm-provider-multimodal-images.md))
+- **llm-provider §7 — new error category `provider_unsupported_content_block`.** Raised when the bound model does not support a content block type used in the request (e.g., text-only model received an image block, or `media_type`/`source` variant unsupported). Pre-send validation or post-receive mapping; non-transient. ([proposal 0015](proposals/0015-llm-provider-multimodal-images.md))
+- **llm-provider §8.1.1 Content-block wire mapping.** Each spec content block maps to one OpenAI content-array entry: `TextBlock` → `{ "type": "text", ... }`; `ImageBlock` with URL source → `{ "type": "image_url", "image_url": { "url": ... } }`; `ImageBlock` with inline source → `{ "type": "image_url", "image_url": { "url": "data:<media_type>;base64,<base64_data>" } }` per RFC 2397. The `detail` hint maps to `image_url.detail`. Empty blocks rejected pre-send via `provider_invalid_request`. ([proposal 0015](proposals/0015-llm-provider-multimodal-images.md))
+- Conformance fixtures `009-content-blocks-text-only-equivalence` through `020-content-blocks-inline-image-missing-media-type` (llm-provider), covering text-only equivalence with the string form, URL-image and inline-base64 image mapping, the `detail` hint, mixed-order preservation, empty-sequence and empty-text-block validation, image-block-missing-source structural rejection, invalid detail-value enum rejection, inline-image-missing-media-type rejection, unsupported-by-model error routing, and the user-only restriction.
+
+### Changed
+
+- **llm-provider §3 Message shape — user-role content constraint.** `content` on user messages MAY be either a non-empty string (the v1 form) OR a non-empty ordered sequence of content blocks per §3.1. All other roles remain text-string-only in this version. ([proposal 0015](proposals/0015-llm-provider-multimodal-images.md))
+- **llm-provider §8.1 Request mapping — user row.** Updated to reflect the dual-shape input: string content maps directly to OpenAI's `content` string; content-block sequence maps to OpenAI's content-array form per §8.1.1. ([proposal 0015](proposals/0015-llm-provider-multimodal-images.md))
+- **llm-provider §10 Out of scope — multi-modal entry split.** The single "multi-modal content (image, audio, video inputs and outputs)" entry split into two: "Multi-modal audio and video" (audio and video each warrant their own proposal — formats, codecs, wire mappings differ enough) and "Image outputs" (assistant-message-borne images; v1 image support is user-input-only). Image *inputs* are now covered by §3.1. ([proposal 0015](proposals/0015-llm-provider-multimodal-images.md))
+
+### Notes
+
+- **Additive change to §3 user-message content shape (pre-1.0 MINOR).** Existing callers that pass `content` as a string continue to work unchanged; the new content-block sequence form is opt-in. Implementations that previously rejected non-string content via `provider_invalid_request` now accept the content-block sequence form when the message is a user message — an observable behavior change for that specific case, classified pre-1.0 MINOR.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.12.0 may target v0.13.0 directly without implementing v0.12.0 first.
+
 ## [0.12.0] — 2026-05-14
 
 ### Added

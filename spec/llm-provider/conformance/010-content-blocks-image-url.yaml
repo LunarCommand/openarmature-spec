@@ -1,0 +1,39 @@
+# Content blocks — image URL. User message with one ImageBlock (URL source)
+# followed by one TextBlock. Verifies §8.1.1 OpenAI wire mapping:
+# ImageBlock with url source → {type: "image_url", image_url: {url: ...}}.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-010
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message: {role: assistant, content: "A scenic landscape."}
+            finish_reason: stop
+        usage: {prompt_tokens: 100, completion_tokens: 4, total_tokens: 104}
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - type: image
+            source: {type: url, url: "https://example.com/a.png"}
+          - {type: text, text: "describe this"}
+    # Outbound wire content is a 2-element array with image_url first,
+    # text second (preserving block insertion order).
+    expected_wire_request:
+      model: test-model
+      messages:
+        - role: "user"
+          content:
+            - {type: "image_url", image_url: {url: "https://example.com/a.png"}}
+            - {type: "text", text: "describe this"}
+    expected:
+      response:
+        message: {role: assistant, content: "A scenic landscape.", tool_calls: null}
+        finish_reason: stop

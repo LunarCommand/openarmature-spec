@@ -1,0 +1,20 @@
+# Content blocks — invalid detail value. §3.1.2 constrains the `detail`
+# field to one of "auto", "low", "high". An image block with a value
+# outside this enum MUST be rejected at pre-send validation with
+# provider_invalid_request — the framework MUST NOT pass unsupported
+# hints through to providers.
+
+mock_provider:
+  responses: []
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - type: image
+            source: {type: url, url: "https://example.com/x.png"}
+            detail: ultra                # not in {"auto", "low", "high"}
+    expected:
+      raises:
+        category: provider_invalid_request

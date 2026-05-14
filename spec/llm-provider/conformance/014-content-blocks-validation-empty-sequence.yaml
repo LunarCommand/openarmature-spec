@@ -1,0 +1,18 @@
+# Content blocks — empty sequence validation. A user message with
+# content as an empty list MUST be rejected at pre-send validation with
+# provider_invalid_request. Verifies §3 per-role constraint that the
+# content-block sequence MUST be non-empty.
+
+mock_provider:
+  # The harness's mock provider is never reached — pre-send validation
+  # rejects the request before it leaves the implementation.
+  responses: []
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content: []
+    expected:
+      raises:
+        category: provider_invalid_request

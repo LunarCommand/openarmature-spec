@@ -1,0 +1,43 @@
+# Content blocks — image inline (base64). User message with one ImageBlock
+# whose source is inline base64. Verifies §8.1.1 OpenAI mapping for inline
+# images: spec ImageBlock { media_type, source: inline { base64_data } } →
+# OpenAI image_url entry with a data: URI constructed per RFC 2397.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-011
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message: {role: assistant, content: "A red square."}
+            finish_reason: stop
+        usage: {prompt_tokens: 100, completion_tokens: 3, total_tokens: 103}
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - type: image
+            media_type: "image/jpeg"
+            source:
+              type: inline
+              base64_data: "ABC123=="
+          - {type: text, text: "what's this"}
+    # Spec's inline block + media_type get composed into a single data:
+    # URL on the wire per RFC 2397.
+    expected_wire_request:
+      model: test-model
+      messages:
+        - role: "user"
+          content:
+            - {type: "image_url", image_url: {url: "data:image/jpeg;base64,ABC123=="}}
+            - {type: "text", text: "what's this"}
+    expected:
+      response:
+        message: {role: assistant, content: "A red square.", tool_calls: null}
+        finish_reason: stop

@@ -1,8 +1,9 @@
 # 0015: LLM Provider — Image Content Blocks for User Messages
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-13
+- **Accepted:** 2026-05-14
 - **Targets:** spec/llm-provider/spec.md (modifies §3 *Message shape*; adds §3.1 *Content blocks*; modifies §7 *Error semantics*; modifies §8.1 *Request mapping*; modifies §10 *Out of scope*)
 - **Related:** 0006 (LLM provider core)
 - **Supersedes:**
