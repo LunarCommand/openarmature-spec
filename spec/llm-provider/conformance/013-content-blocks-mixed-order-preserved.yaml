@@ -26,6 +26,7 @@ calls:
           - {type: image, source: {type: url, url: "https://example.com/2.png"}}
           - {type: text, text: "second"}
     expected_wire_request:
+      model: test-model
       messages:
         - role: "user"
           content:

@@ -1,0 +1,25 @@
+# Content blocks — inline image without media_type. §3.1.2 makes
+# media_type required when source is inline (the field is "conditional"
+# in the image-block table, "required when source is inline"). An
+# image block with an inline source but no media_type MUST be rejected
+# at pre-send validation with provider_invalid_request — otherwise
+# implementations could construct invalid data: URLs of the form
+# `data:;base64,...` (no media type), which providers will reject.
+
+mock_provider:
+  responses: []
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - type: image
+            source:
+              type: inline
+              base64_data: "ABC123=="
+            # media_type intentionally omitted
+          - {type: text, text: "describe"}
+    expected:
+      raises:
+        category: provider_invalid_request

@@ -38,6 +38,7 @@ calls:
             source: {type: url, url: "https://example.com/x.png"}
             detail: high
     expected_wire_request:
+      model: test-model
       messages:
         - role: "user"
           content:
@@ -58,6 +59,7 @@ calls:
           - type: image
             source: {type: url, url: "https://example.com/x.png"}
     expected_wire_request:
+      model: test-model
       messages:
         - role: "user"
           content:

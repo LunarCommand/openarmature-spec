@@ -27,6 +27,7 @@ calls:
     # Outbound wire content is a 2-element array with image_url first,
     # text second (preserving block insertion order).
     expected_wire_request:
+      model: test-model
       messages:
         - role: "user"
           content:

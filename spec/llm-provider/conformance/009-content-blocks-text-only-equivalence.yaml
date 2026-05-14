@@ -34,6 +34,7 @@ calls:
     messages:
       - {role: user, content: "hello"}
     expected_wire_request:
+      model: test-model
       messages:
         - {role: "user", content: "hello"}
     expected:
@@ -55,6 +56,7 @@ calls:
         content:
           - {type: text, text: "hello"}
     expected_wire_request:
+      model: test-model
       messages:
         - role: "user"
           content:

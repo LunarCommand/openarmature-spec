@@ -315,10 +315,10 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
   tool names, etc.). This category is raised by the implementation's pre-send validation.
 - `provider_unsupported_content_block` — the bound model does not support a content block type
   used in the request (e.g., a text-only model received an image block, or the model supports
-  images but not the requested `media_type` or `source` variant per §3.1.2). Raised by the
-  implementation's pre-send validation when the unsupported case is statically known (per the
-  provider's documented capabilities), or by the post-receive error mapping when the provider
-  itself rejects the request.
+  images but not the requested `media_type` (per §3.1.2) or `source` variant (per §3.1.3)).
+  Raised by the implementation's pre-send validation when the unsupported case is statically
+  known (per the provider's documented capabilities), or by the post-receive error mapping
+  when the provider itself rejects the request.
 
 Each error MUST expose a `category` identifier (matching the strings above, as an error class, error
 code, or tagged discriminant per the language's idiom). Provider-originated errors SHOULD preserve

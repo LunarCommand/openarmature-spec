@@ -31,6 +31,7 @@ calls:
     # Spec's inline block + media_type get composed into a single data:
     # URL on the wire per RFC 2397.
     expected_wire_request:
+      model: test-model
       messages:
         - role: "user"
           content:
