@@ -384,9 +384,9 @@ retry, cold-start handling, session lifecycle, schema conversion.
 ### 4.5 Prompt Management
 
 **Scope.** Dual-source prompt loading (Langfuse for production, local Jinja2 for development), variable injection with
-`StrictUndefined`, prompt-pair pattern for dual-observation tracing.
+`StrictUndefined`, prompt-group pattern for tracing related prompts together.
 
-**Core abstractions.** `PromptManager`, `Prompt`, `PromptResult`, `PromptPair`. Backends implement `PromptBackend`
+**Core abstractions.** `PromptManager`, `Prompt`, `PromptResult`, `PromptGroup`. Backends implement `PromptBackend`
 interface.
 
 **Key decisions.**
@@ -394,7 +394,7 @@ interface.
 - `StrictUndefined` by default — unbound variables raise immediately instead of rendering empty strings
 - Langfuse backend (sibling package) fetches by name and label; local backend reads from filesystem
 - Fallback: if Langfuse fetch fails, fall back to local template with warning
-- PromptPair: a classification prompt paired with a follow-up prompt, traced together under one parent span
+- PromptGroup: an ordered sequence of two or more related prompts (classifier + follow-up, multi-stage classification, RAG with reranking, self-correction loops), traced together under one shared `group_name`
 
 ### 4.6 Observability
 
