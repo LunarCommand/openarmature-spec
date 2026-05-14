@@ -1,0 +1,22 @@
+# PromptBackend.fetch — store unavailable. Backend simulates an
+# infrastructure failure (network unreachable, I/O error, etc.); MUST
+# raise prompt_store_unavailable. Distinct from prompt_not_found.
+
+backends:
+  - name: vendor
+    simulate_unavailable: true       # harness injects I/O error on fetch
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello!"
+        template_hash: "sha256:abc"
+
+calls:
+  - target: {backend: vendor}
+    operation: fetch
+    name: greeting
+    label: production
+    expected:
+      raises:
+        category: prompt_store_unavailable

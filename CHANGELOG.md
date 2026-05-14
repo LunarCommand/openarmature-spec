@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-05-14
+
+### Added
+
+- **New capability: prompt-management.** Creates `spec/prompt-management/spec.md`. Defines the contract by which named, versioned templates are fetched from one or more backends, rendered with caller-supplied variables, and turned into LLM-ready message sequences. Core abstractions: `Prompt` (unrendered template + identity metadata), `PromptResult` (rendered output + identity + content hashes), `PromptManager` (user-facing API; composes backends, fetches, renders), `PromptBackend` (fetch-only protocol; backends plug in), `PromptGroup` (tracing-grouping primitive for related prompts, N≥2 members). Specifies fetch/render separability with a convenience `get()`, strict-undefined-by-default variable handling (§7), composite-backend fallback semantics (§8 — fall back only on infrastructure failure, not on logical absence), three canonical error categories (`prompt_not_found`, `prompt_render_error`, `prompt_store_unavailable`), cross-spec touchpoints to llm-provider §3 (message shape) and observability §5.5 (prompt-identity span attributes including `prompt.name`/`version`/`label`/`template_hash`/`rendered_hash`/`group_name`), and a deterministic-render contract (§12). ([proposal 0017](proposals/0017-prompt-management-core.md))
+- Conformance fixtures `001-fetch-success` through `012-prompt-result-rendered-hash-stability` (prompt-management), covering local-backend fetch success, prompt-not-found, prompt-store-unavailable, render success, render-undefined-variable, render determinism, composite-manager fallback on infrastructure unavailability, composite-manager NO-fallback on prompt_not_found, composite-manager all-unavailable, the `get()` convenience equivalence, `PromptGroup` shape, and cross-implementation rendered_hash stability.
+
+### Notes
+
+- **New capability — no existing-behavior implications.** The prompt-management capability is wholly new; no existing capability changes. Implementations MAY adopt it incrementally.
+- The capability composes with llm-provider and observability via cross-spec touchpoints in §11; it does not modify either of those specs in this version. A follow-on observability proposal MAY tighten the `MAY` propagation guidance in §11 once cross-implementation propagation mechanisms settle.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.14.0 may target v0.15.0 directly without implementing v0.14.0 first.
+
 ## [0.14.0] — 2026-05-14
 
 ### Added

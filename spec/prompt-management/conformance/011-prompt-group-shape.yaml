@@ -1,0 +1,63 @@
+# PromptGroup — shape and N>2 support. Construct a PromptGroup with
+# three PromptResult instances and a group_name. Assert the group
+# record exposes the ordered members sequence and the group_name;
+# verify the N>2 case is supported (not just N=2 pair).
+
+backends:
+  - name: local
+    prompts:
+      - name: classify
+        label: production
+        version: v1
+        template: "Classify: {{ input }}"
+        template_hash: "sha256:cls"
+      - name: refine
+        label: production
+        version: v1
+        template: "Refine category: {{ category }}"
+        template_hash: "sha256:ref"
+      - name: answer
+        label: production
+        version: v1
+        template: "Answer in {{ category }}/{{ subcategory }}: {{ input }}"
+        template_hash: "sha256:ans"
+
+manager:
+  backends: [local]
+
+calls:
+  # Render three prompts, then construct a PromptGroup with all three.
+  - target: manager
+    operation: get
+    name: classify
+    label: production
+    variables: {input: "What's the weather?"}
+    capture_as: m1
+  - target: manager
+    operation: get
+    name: refine
+    label: production
+    variables: {category: "weather"}
+    capture_as: m2
+  - target: manager
+    operation: get
+    name: answer
+    label: production
+    variables:
+      category: "weather"
+      subcategory: "current"
+      input: "What's the weather?"
+    capture_as: m3
+
+  - target: construct_prompt_group
+    group_name: "multi_stage_classification"
+    members_refs: [m1, m2, m3]
+    capture_as: group
+
+expected:
+  prompt_group:
+    of: group
+    group_name: "multi_stage_classification"
+    member_count: 3
+    member_order_preserved: true     # m1 first, m2 second, m3 third
+    member_names: [classify, refine, answer]

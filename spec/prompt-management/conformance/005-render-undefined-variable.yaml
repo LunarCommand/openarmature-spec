@@ -1,0 +1,32 @@
+# PromptManager.render — undefined variable. The template references a
+# variable not in the variables mapping; render MUST raise
+# prompt_render_error under §7's strict-by-default rule.
+
+backends:
+  - name: local
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}! Today is {{ day }}."
+        template_hash: "sha256:abc"
+
+manager:
+  backends: [local]
+
+calls:
+  - target: manager
+    operation: render
+    fetched_prompt: {name: greeting, label: production}
+    # `day` is not provided; under §7 strict default, render raises.
+    variables: {user: "Alice"}
+    expected:
+      raises:
+        category: prompt_render_error
+        carries:
+          # The error MUST expose name/version/label and a description
+          # mentioning the missing variable name.
+          name: greeting
+          label: production
+          version: v1
+          description_mentions: "day"

@@ -1,0 +1,35 @@
+# PromptManager.render — happy path. Fetch a prompt, render it with
+# valid variables, assert the PromptResult has propagated identity
+# fields, a deterministic rendered_hash, and well-formed messages per
+# llm-provider §3.
+
+backends:
+  - name: local
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc123"
+
+manager:
+  backends: [local]
+
+calls:
+  - target: manager
+    operation: render
+    fetched_prompt: {name: greeting, label: production}
+    variables: {user: "Alice"}
+    expected:
+      prompt_result:
+        name: greeting
+        label: production
+        version: v1
+        template_hash: "sha256:abc123"
+        # rendered_hash is computed; harness asserts it's a non-empty
+        # string with the same hash function used for template_hash.
+        rendered_hash_present: true
+        rendered_hash_format: "sha256:*"
+        messages:
+          - {role: user, content: "Hello, Alice!"}
+        variables: {user: "Alice"}

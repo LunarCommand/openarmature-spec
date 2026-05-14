@@ -1,0 +1,52 @@
+# PromptResult.rendered_hash — cross-input stability. Two renders of
+# the same template with DIFFERENT variables MUST produce DIFFERENT
+# rendered_hash values. Two renders of the same template with the SAME
+# variables MUST produce the SAME rendered_hash (per §12 determinism).
+# This is the cache-key contract — rendered_hash is the equivalence
+# relation a memoization layer wants.
+
+backends:
+  - name: local
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc"
+
+manager:
+  backends: [local]
+
+calls:
+  - target: manager
+    operation: get
+    name: greeting
+    label: production
+    variables: {user: "Alice"}
+    capture_as: r_alice_1
+  - target: manager
+    operation: get
+    name: greeting
+    label: production
+    variables: {user: "Alice"}
+    capture_as: r_alice_2
+  - target: manager
+    operation: get
+    name: greeting
+    label: production
+    variables: {user: "Bob"}
+    capture_as: r_bob
+
+expected:
+  # Two renders with the same variables produce the same hash.
+  rendered_hash_equal:
+    - [r_alice_1, r_alice_2]
+  # Two renders with different variables produce different hashes.
+  rendered_hash_different:
+    - [r_alice_1, r_bob]
+  # Cross-implementation reproducibility (when the harness supports it):
+  # render the same template + variables in two implementations (e.g.,
+  # Python and a hypothetical TypeScript port) and assert the
+  # rendered_hash matches. Verifies §12's determinism guarantee extends
+  # across implementations sharing the same hash algorithm.
+  cross_implementation_rendered_hash_stable: true

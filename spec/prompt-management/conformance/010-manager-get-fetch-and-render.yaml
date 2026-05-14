@@ -1,0 +1,43 @@
+# PromptManager.get — convenience equivalence. manager.get(name, label,
+# variables) MUST be equivalent to render(await fetch(name, label),
+# variables). Per §6.
+
+backends:
+  - name: local
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc"
+
+manager:
+  backends: [local]
+
+calls:
+  # Call 1: fetch then render explicitly.
+  - target: manager
+    operation: fetch
+    name: greeting
+    label: production
+    capture_as: fetched
+  - target: manager
+    operation: render
+    fetched_prompt_ref: fetched
+    variables: {user: "Alice"}
+    capture_as: result_explicit
+  # Call 2: get() convenience.
+  - target: manager
+    operation: get
+    name: greeting
+    label: production
+    variables: {user: "Alice"}
+    capture_as: result_get
+
+expected:
+  # Both results equivalent on content fields. rendered_at MAY differ
+  # (timing); the equivalence is on what the call produced, not when.
+  result_equivalence:
+    of: [result_explicit, result_get]
+    fields_must_match: [name, version, label, template_hash, rendered_hash, messages, variables]
+    fields_may_differ: [rendered_at]

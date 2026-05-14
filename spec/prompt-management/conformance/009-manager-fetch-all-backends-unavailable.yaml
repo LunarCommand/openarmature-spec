@@ -1,0 +1,30 @@
+# PromptManager.fetch — all backends unavailable. Composite manager
+# with two backends; both raise prompt_store_unavailable. Manager MUST
+# raise prompt_store_unavailable after consulting all backends. Per §8.
+
+backends:
+  - name: primary
+    simulate_unavailable: true
+    prompts:
+      - {name: greeting, label: production, version: v1, template: "Hi", template_hash: "sha256:a"}
+  - name: secondary
+    simulate_unavailable: true
+    prompts:
+      - {name: greeting, label: production, version: v1, template: "Hi", template_hash: "sha256:b"}
+
+manager:
+  backends: [primary, secondary]
+
+calls:
+  - target: manager
+    operation: fetch
+    name: greeting
+    label: production
+    expected:
+      raises:
+        category: prompt_store_unavailable
+      # Both backends MUST have been consulted before the manager
+      # raises (consult in order; raise only after exhausting all).
+      backend_call_counts:
+        primary: 1
+        secondary: 1
