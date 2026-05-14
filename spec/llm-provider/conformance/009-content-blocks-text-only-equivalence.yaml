@@ -33,27 +33,33 @@ calls:
   - operation: complete
     messages:
       - {role: user, content: "hello"}
+    expected_wire_request:
+      messages:
+        - {role: "user", content: "hello"}
     expected:
       response:
         message: {role: assistant, content: "ack", tool_calls: null}
         finish_reason: stop
-      wire_check:
-        # The outbound HTTP body's user-message content is the string "hello".
-        user_content_is_string: "hello"
 
   # Call 2: content as a single-element content-block sequence with one
   # TextBlock. Per §3.1.1, normatively equivalent to call 1.
+  #
+  # Implementations MAY map a single-TextBlock content to EITHER the
+  # string form (matching call 1's wire) OR the content-array form. Both
+  # are equivalent per §3.1.1. The harness MAY accept the string form OR
+  # the single-element array form against this expected_wire_request;
+  # the canonical form below is the array form (the more explicit shape).
   - operation: complete
     messages:
       - role: user
         content:
           - {type: text, text: "hello"}
+    expected_wire_request:
+      messages:
+        - role: "user"
+          content:
+            - {type: "text", text: "hello"}
     expected:
       response:
         message: {role: assistant, content: "ack", tool_calls: null}
         finish_reason: stop
-      wire_check:
-        # Implementations MAY map a single-TextBlock content to either the
-        # string form OR the content-array form on the wire. Both are
-        # equivalent per §3.1.1; the harness accepts either.
-        user_content_equivalent_to: "hello"

@@ -25,13 +25,15 @@ calls:
           - {type: text, text: "first"}
           - {type: image, source: {type: url, url: "https://example.com/2.png"}}
           - {type: text, text: "second"}
+    expected_wire_request:
+      messages:
+        - role: "user"
+          content:
+            - {type: "image_url", image_url: {url: "https://example.com/1.png"}}
+            - {type: "text", text: "first"}
+            - {type: "image_url", image_url: {url: "https://example.com/2.png"}}
+            - {type: "text", text: "second"}
     expected:
       response:
         message: {role: assistant, content: "ack", tool_calls: null}
         finish_reason: stop
-      wire_check:
-        user_content_array:
-          - {type: "image_url", image_url: {url: "https://example.com/1.png"}}
-          - {type: "text", text: "first"}
-          - {type: "image_url", image_url: {url: "https://example.com/2.png"}}
-          - {type: "text", text: "second"}

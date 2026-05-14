@@ -24,13 +24,15 @@ calls:
           - type: image
             source: {type: url, url: "https://example.com/a.png"}
           - {type: text, text: "describe this"}
+    # Outbound wire content is a 2-element array with image_url first,
+    # text second (preserving block insertion order).
+    expected_wire_request:
+      messages:
+        - role: "user"
+          content:
+            - {type: "image_url", image_url: {url: "https://example.com/a.png"}}
+            - {type: "text", text: "describe this"}
     expected:
       response:
         message: {role: assistant, content: "A scenic landscape.", tool_calls: null}
         finish_reason: stop
-      wire_check:
-        # Outbound wire content is a 2-element array with image_url first,
-        # text second (preserving block insertion order).
-        user_content_array:
-          - {type: "image_url", image_url: {url: "https://example.com/a.png"}}
-          - {type: "text", text: "describe this"}

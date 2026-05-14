@@ -37,28 +37,32 @@ calls:
           - type: image
             source: {type: url, url: "https://example.com/x.png"}
             detail: high
+    expected_wire_request:
+      messages:
+        - role: "user"
+          content:
+            - {type: "image_url", image_url: {url: "https://example.com/x.png", detail: "high"}}
     expected:
       response:
         message: {role: assistant, content: "ok", tool_calls: null}
         finish_reason: stop
-      wire_check:
-        user_content_array:
-          - {type: "image_url", image_url: {url: "https://example.com/x.png", detail: "high"}}
 
-  # Call 2: detail omitted on the spec block.
+  # Call 2: detail omitted on the spec block. Per 005's literal
+  # key-by-key comparison, omitting `detail` from the expected
+  # image_url body means the outbound MUST also omit it; if the
+  # implementation injects a default, the comparison fails.
   - operation: complete
     messages:
       - role: user
         content:
           - type: image
             source: {type: url, url: "https://example.com/x.png"}
+    expected_wire_request:
+      messages:
+        - role: "user"
+          content:
+            - {type: "image_url", image_url: {url: "https://example.com/x.png"}}
     expected:
       response:
         message: {role: assistant, content: "ok", tool_calls: null}
         finish_reason: stop
-      wire_check:
-        # Outbound image_url MUST NOT include the `detail` key — the
-        # provider applies its own default.
-        user_content_array:
-          - {type: "image_url", image_url: {url: "https://example.com/x.png"}}
-        image_url_detail_absent: true

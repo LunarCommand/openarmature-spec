@@ -70,7 +70,7 @@ A message is a record with the following fields:
 | Field | Required | Description |
 |---|---|---|
 | `role` | yes | One of `"system"`, `"user"`, `"assistant"`, `"tool"`. Discriminator. |
-| `content` | conditional (see below) | Text content of the message. |
+| `content` | conditional (see below) | Text content of the message, OR — for `user` role only — a non-empty ordered sequence of content blocks per §3.1. |
 | `tool_calls` | only on `assistant` | Ordered list of `ToolCall` records the model is requesting. |
 | `tool_call_id` | required on `tool` | The `id` of the matching `assistant` tool call. |
 
@@ -159,7 +159,7 @@ An image block is a record:
 |---|---|---|
 | `type` | yes | The literal string `"image"`. |
 | `source` | yes | One of `url` or `inline` (per §3.1.3). |
-| `media_type` | conditional | Required when `source` is `inline`; ignored when `source` is `url` (the provider infers the media type from the URL's payload). MUST be one of the IANA media types `image/png`, `image/jpeg`, `image/webp`. Implementations MAY accept additional media types; portable users SHOULD restrict to these three. |
+| `media_type` | conditional | Required when `source` is `inline`; ignored when `source` is `url` (the provider infers the media type from the URL's payload). Implementations MUST accept the IANA media types `image/png`, `image/jpeg`, and `image/webp` at minimum, and MAY accept additional `image/*` media types they document support for. Portable users SHOULD restrict to the three guaranteed types. |
 | `detail` | optional | A hint to the provider about the desired image-processing fidelity. One of `"auto"`, `"low"`, `"high"`. Default is `"auto"`. Providers that do not honor a detail hint MUST ignore it without error. |
 
 #### 3.1.3 Image source
@@ -427,6 +427,7 @@ A successful OpenAI response maps onto a §6 `Response` as follows:
 | HTTP 503 with model-loading body | `provider_model_not_loaded` |
 | HTTP 429 | `provider_rate_limit` |
 | HTTP 5xx (other), connection error, timeout | `provider_unavailable` |
+| HTTP 400 with body indicating the bound model rejected a content block (e.g., image/audio/media-type rejection, unsupported `source` variant) | `provider_unsupported_content_block` |
 | HTTP 400 (malformed request, schema violation) | `provider_invalid_request` |
 | Successful HTTP response that fails to parse into §6 shape | `provider_invalid_response` |
 

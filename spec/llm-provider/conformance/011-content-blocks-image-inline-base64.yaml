@@ -28,13 +28,15 @@ calls:
               type: inline
               base64_data: "ABC123=="
           - {type: text, text: "what's this"}
+    # Spec's inline block + media_type get composed into a single data:
+    # URL on the wire per RFC 2397.
+    expected_wire_request:
+      messages:
+        - role: "user"
+          content:
+            - {type: "image_url", image_url: {url: "data:image/jpeg;base64,ABC123=="}}
+            - {type: "text", text: "what's this"}
     expected:
       response:
         message: {role: assistant, content: "A red square.", tool_calls: null}
         finish_reason: stop
-      wire_check:
-        # Spec's inline block + media_type get composed into a single
-        # data: URL on the wire per RFC 2397.
-        user_content_array:
-          - {type: "image_url", image_url: {url: "data:image/jpeg;base64,ABC123=="}}
-          - {type: "text", text: "what's this"}

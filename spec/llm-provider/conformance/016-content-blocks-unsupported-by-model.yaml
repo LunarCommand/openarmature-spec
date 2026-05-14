@@ -5,10 +5,21 @@
 # rejects). Verifies the new §7 error category.
 
 mock_provider:
-  # Model declared as text-only.
+  # Model declared as text-only. Implementations that perform a static
+  # capability check reject pre-send and never consume any response below.
   capabilities:
     supports_image_input: false
-  responses: []
+  # Implementations that take the post-receive mapping path send the
+  # request and get this 400 back; §8.3 maps the content-rejection body
+  # to provider_unsupported_content_block. Either path produces the same
+  # expected category.
+  responses:
+    - status: 400
+      body:
+        error:
+          message: "This model does not support image inputs."
+          type: "invalid_request_error"
+          code: "image_content_not_supported"
 
 calls:
   - operation: complete

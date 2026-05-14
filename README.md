@@ -6,7 +6,7 @@ specification text, conformance fixtures, governance rules, and numbered
 RFC-style proposals. **No implementation code lives here.** Implementations
 are in sibling repositories.
 
-**Current spec version:** [v0.10.0](CHANGELOG.md)
+**Current spec version:** [v0.13.0](CHANGELOG.md)
 
 ---
 
