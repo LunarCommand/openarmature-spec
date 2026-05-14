@@ -37,8 +37,11 @@ calls:
       response_format:
         type: json_schema
         json_schema:
-          # name is implementation-derived; harness asserts presence,
-          # not value.
+          # `name` is implementation-derived per §8.5. The literal string
+          # "*" in expected_wire_request is a harness wildcard: the key
+          # MUST be present with a non-empty string value, but the
+          # specific value is exempted from literal comparison.
+          name: "*"
           strict: true
           schema:
             type: object
