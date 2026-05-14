@@ -1,0 +1,105 @@
+# Parallel branches — fail_fast: three branches, the second raises after the
+# first has succeeded. Verifies §11.5 fail_fast semantics:
+#
+#   - The parallel-branches node raises parallel_branches_branch_failed.
+#   - Per §11.4 collect-then-apply: NO branch contributions have been applied
+#     to parent state (including the first branch's successful result).
+#     `recoverable_state` equals the parent state at the moment the
+#     parallel-branches node entered.
+#   - The third branch is cancelled (its work does NOT land in parent state
+#     and its slow inner node never completes).
+
+subgraphs:
+  fast_success:
+    state:
+      fields:
+        a_out:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update: {a_out: 1}
+    edges:
+      - {from: a, to: END}
+
+  failing:
+    state:
+      fields:
+        b_out:
+          type: int
+          default: 0
+    entry: b
+    nodes:
+      b:
+        raises: "branch beta failed"
+    edges:
+      - {from: b, to: END}
+
+  slow:
+    state:
+      fields:
+        c_out:
+          type: int
+          default: 0
+    entry: c
+    nodes:
+      c:
+        # Slow enough that the failure cancels it before completion.
+        sleep_ms: 5000
+        update: {c_out: 3}
+    edges:
+      - {from: c, to: END}
+
+state:
+  fields:
+    alpha_result:
+      type: int
+      default: 0
+    beta_result:
+      type: int
+      default: 0
+    gamma_result:
+      type: int
+      default: 0
+
+entry: dispatcher
+
+nodes:
+  dispatcher:
+    parallel_branches:
+      branches:
+        alpha:
+          subgraph: fast_success
+          outputs:
+            alpha_result: a_out
+        beta:
+          subgraph: failing
+          outputs:
+            beta_result: b_out
+        gamma:
+          subgraph: slow
+          outputs:
+            gamma_result: c_out
+      error_policy: fail_fast
+
+edges:
+  - {from: dispatcher, to: END}
+
+initial_state: {}
+
+expected:
+  # The graph run does NOT complete successfully.
+  expected_error:
+    category: parallel_branches_branch_failed
+    branch_name: beta
+    cause_message: "branch beta failed"
+
+  # Per §11.4 + §11.5 fail_fast: NO branch contributions are visible in
+  # recoverable_state, including the first branch's successful work. This is
+  # the buffer-and-apply semantic — buffered contributions are discarded on
+  # fail_fast.
+  recoverable_state:
+    alpha_result: 0
+    beta_result: 0
+    gamma_result: 0

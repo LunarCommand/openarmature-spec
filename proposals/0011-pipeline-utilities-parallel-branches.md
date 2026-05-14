@@ -1,8 +1,9 @@
 # 0011: Pipeline Utilities — Parallel Branches
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-06
+- **Accepted:** 2026-05-13
 - **Targets:** spec/pipeline-utilities/spec.md (adds §11), spec/graph-engine/spec.md (§3 concurrency exception, §6 NodeEvent `branch_name`)
 - **Related:** 0001, 0002, 0003, 0004, 0005
 - **Supersedes:**

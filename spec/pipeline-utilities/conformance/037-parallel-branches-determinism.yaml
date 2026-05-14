@@ -1,0 +1,103 @@
+# Parallel branches — determinism: three branches with deliberately
+# randomized inner-node completion timing (varying sleep durations). Two of
+# the branches contribute to the same parent dict field via the `merge`
+# reducer. Verifies §11.8: the branch dispatch order on the §6 observer
+# stream and the parent-field merge order are BOTH determined by branches'
+# insertion order, NOT by completion order.
+
+subgraphs:
+  alpha:
+    state:
+      fields:
+        contributions:
+          type: dict
+          default: {}
+    entry: a
+    nodes:
+      a:
+        sleep_ms: 50
+        update: {contributions: {key: "alpha_value"}}
+    edges:
+      - {from: a, to: END}
+
+  beta:
+    state:
+      fields:
+        contributions:
+          type: dict
+          default: {}
+    entry: b
+    nodes:
+      b:
+        sleep_ms: 5
+        update: {contributions: {key: "beta_value"}}
+    edges:
+      - {from: b, to: END}
+
+  gamma:
+    state:
+      fields:
+        result:
+          type: int
+          default: 0
+    entry: c
+    nodes:
+      c:
+        sleep_ms: 25
+        update: {result: 42}
+    edges:
+      - {from: c, to: END}
+
+state:
+  fields:
+    merged_dict:
+      type: dict
+      reducer: merge
+      default: {}
+    gamma_result:
+      type: int
+      default: 0
+
+entry: dispatcher
+
+nodes:
+  dispatcher:
+    parallel_branches:
+      branches:
+        # Insertion order: alpha (slow, 50ms), beta (fast, 5ms), gamma (medium, 25ms).
+        # Completion order at runtime: beta, gamma, alpha. The deterministic
+        # behavior asserts that the engine's projection-back order is
+        # branch-insertion order, NOT completion order.
+        alpha:
+          subgraph: alpha
+          outputs:
+            merged_dict: contributions
+        beta:
+          subgraph: beta
+          outputs:
+            merged_dict: contributions
+        gamma:
+          subgraph: gamma
+          outputs:
+            gamma_result: result
+
+edges:
+  - {from: dispatcher, to: END}
+
+initial_state: {}
+
+expected:
+  # Both alpha and beta contribute {key: ...}. The `merge` reducer applies
+  # them in branch insertion order (alpha first, then beta), so beta's
+  # value overrides alpha's for the same key.
+  final_state:
+    merged_dict: {key: "beta_value"}
+    gamma_result: 42
+
+  execution_order: [dispatcher]
+
+  # Branch dispatch (started events) order on the observer stream is the
+  # insertion order of the `branches` mapping — alpha, beta, gamma —
+  # regardless of which inner node finishes first.
+  observer_event_invariants:
+    branch_started_event_order: [alpha, beta, gamma]

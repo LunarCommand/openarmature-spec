@@ -1,0 +1,118 @@
+# Parallel branches — three subgraphs with deliberately distinct state
+# schemas (different field counts, different types, no shared field names).
+# Verifies §11.1.1's claim that branches MAY reference different compiled
+# subgraphs with different state schemas — the engine must handle each
+# branch's state independently without coercing to a shared shape.
+
+subgraphs:
+  numeric:
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+        y:
+          type: int
+          default: 0
+        sum:
+          type: int
+          default: 0
+    entry: compute
+    nodes:
+      compute:
+        update: {sum: 42}
+    edges:
+      - {from: compute, to: END}
+
+  textual:
+    state:
+      fields:
+        message:
+          type: string
+          default: ""
+    entry: greet
+    nodes:
+      greet:
+        update: {message: "hello"}
+    edges:
+      - {from: greet, to: END}
+
+  collection:
+    state:
+      fields:
+        items:
+          type: list<string>
+          reducer: append
+          default: []
+        count:
+          type: int
+          default: 0
+        labels:
+          type: dict
+          default: {}
+    entry: collect
+    nodes:
+      collect:
+        update:
+          items: ["a", "b"]
+          count: 2
+          labels: {primary: "alpha", secondary: "beta"}
+    edges:
+      - {from: collect, to: END}
+
+state:
+  fields:
+    numeric_sum:
+      type: int
+      default: 0
+    text_message:
+      type: string
+      default: ""
+    collected_items:
+      type: list<string>
+      reducer: append
+      default: []
+    collected_count:
+      type: int
+      default: 0
+    collected_labels:
+      type: dict
+      default: {}
+
+entry: dispatcher
+
+nodes:
+  dispatcher:
+    parallel_branches:
+      branches:
+        numeric:
+          subgraph: numeric
+          outputs:
+            numeric_sum: sum
+        textual:
+          subgraph: textual
+          outputs:
+            text_message: message
+        collection:
+          subgraph: collection
+          outputs:
+            collected_items: items
+            collected_count: count
+            collected_labels: labels
+
+edges:
+  - {from: dispatcher, to: END}
+
+initial_state: {}
+
+expected:
+  # Each branch contributes its outputs to its mapped parent fields. The
+  # heterogeneous schemas must not interfere with each other.
+  final_state:
+    numeric_sum: 42
+    text_message: "hello"
+    collected_items: ["a", "b"]
+    collected_count: 2
+    collected_labels: {primary: "alpha", secondary: "beta"}
+
+  execution_order: [dispatcher]

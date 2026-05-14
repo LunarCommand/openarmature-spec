@@ -1,0 +1,110 @@
+# Parallel branches — composition with fan-out: one branch's subgraph
+# contains a fan-out node, the other branch is a plain subgraph. Verifies
+# §11 + §9 composition and the graph-engine §6 invariant that
+# `branch_name` and `fan_out_index` are independent — both populated
+# simultaneously on inner-node events inside a fan-out inside a branch.
+
+subgraphs:
+  doubler:
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+        result:
+          type: int
+          default: 0
+    entry: compute
+    nodes:
+      compute:
+        update_from_field: {result: x, multiplier: 2}
+    edges:
+      - {from: compute, to: END}
+
+  fan_out_branch:
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30]
+        scores:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: fan
+    nodes:
+      fan:
+        fan_out:
+          subgraph: doubler
+          items_field: items
+          item_field: x
+          collect_field: result
+          target_field: scores
+    edges:
+      - {from: fan, to: END}
+
+  plain_branch:
+    state:
+      fields:
+        value:
+          type: int
+          default: 0
+    entry: v
+    nodes:
+      v:
+        update: {value: 100}
+    edges:
+      - {from: v, to: END}
+
+state:
+  fields:
+    fan_out_scores:
+      type: list<int>
+      reducer: append
+      default: []
+    plain_value:
+      type: int
+      default: 0
+
+entry: dispatcher
+
+nodes:
+  dispatcher:
+    parallel_branches:
+      branches:
+        with_fan_out:
+          subgraph: fan_out_branch
+          outputs:
+            fan_out_scores: scores
+        plain:
+          subgraph: plain_branch
+          outputs:
+            plain_value: value
+
+edges:
+  - {from: dispatcher, to: END}
+
+initial_state: {}
+
+observers:
+  - {name: obs, attach: graph, target: outer, behavior: record}
+
+expected:
+  # The fan-out branch produces [20, 40, 60] from [10, 20, 30] doubled,
+  # in input order. The plain branch contributes 100.
+  final_state:
+    fan_out_scores: [20, 40, 60]
+    plain_value: 100
+
+  execution_order: [dispatcher]
+
+  # Inner-node events from inside the fan-out inside the with_fan_out
+  # branch MUST carry BOTH `branch_name` ("with_fan_out") AND
+  # `fan_out_index` (0, 1, 2). The plain branch's inner-node events
+  # carry `branch_name` ("plain") but no `fan_out_index`.
+  observer_event_invariants:
+    fan_out_inner_events_carry_both_branch_name_and_fan_out_index: true
+    fan_out_inner_branch_name_seen: with_fan_out
+    fan_out_inner_fan_out_indices_seen: [0, 1, 2]
+    plain_inner_events_carry_branch_name_but_no_fan_out_index: true
+    plain_inner_branch_name_seen: plain

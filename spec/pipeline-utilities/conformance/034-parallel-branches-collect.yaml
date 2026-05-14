@@ -1,0 +1,104 @@
+# Parallel branches — collect: three branches, the middle branch raises;
+# the other two run to completion. Verifies §11.5 collect semantics:
+#
+#   - Successful branches' contributions merge into parent state per §11.4.
+#   - Failed branches' errors are recorded in `errors_field`; their `outputs`
+#     projections do NOT fire (so beta_result stays at its default).
+#   - The parallel-branches node returns normally; the parent run continues.
+
+subgraphs:
+  ok_a:
+    state:
+      fields:
+        a_out:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update: {a_out: 1}
+    edges:
+      - {from: a, to: END}
+
+  failing:
+    state:
+      fields:
+        b_out:
+          type: int
+          default: 0
+    entry: b
+    nodes:
+      b:
+        raises: "branch beta failed"
+    edges:
+      - {from: b, to: END}
+
+  ok_c:
+    state:
+      fields:
+        c_out:
+          type: int
+          default: 0
+    entry: c
+    nodes:
+      c:
+        update: {c_out: 3}
+    edges:
+      - {from: c, to: END}
+
+state:
+  fields:
+    alpha_result:
+      type: int
+      default: 0
+    beta_result:
+      type: int
+      default: 0
+    gamma_result:
+      type: int
+      default: 0
+    branch_errors:
+      type: list<dict>
+      reducer: append
+      default: []
+
+entry: dispatcher
+
+nodes:
+  dispatcher:
+    parallel_branches:
+      branches:
+        alpha:
+          subgraph: ok_a
+          outputs:
+            alpha_result: a_out
+        beta:
+          subgraph: failing
+          outputs:
+            beta_result: b_out
+        gamma:
+          subgraph: ok_c
+          outputs:
+            gamma_result: c_out
+      error_policy: collect
+      errors_field: branch_errors
+
+edges:
+  - {from: dispatcher, to: END}
+
+initial_state: {}
+
+expected:
+  # The graph runs to completion; the parent state reflects:
+  #   - alpha's and gamma's contributions applied
+  #   - beta_result at its default (failed branch's outputs do NOT fire)
+  #   - branch_errors carrying the beta failure record
+  final_state:
+    alpha_result: 1
+    beta_result: 0
+    gamma_result: 3
+    branch_errors:
+      - {branch_name: beta, category: node_exception}
+
+  # The parent's view of execution: a single dispatcher step.
+  execution_order: [dispatcher]

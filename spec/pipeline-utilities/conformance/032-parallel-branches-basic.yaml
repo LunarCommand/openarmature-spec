@@ -1,0 +1,93 @@
+# Parallel branches: three heterogeneous subgraphs writing different parent
+# fields. Each branch has its own state schema and writes back via outputs to
+# a distinct parent field. Verifies §11.1 configuration, §11.2 per-branch
+# projection in (defaults only — no inputs declared), §11.3 concurrent
+# execution, §11.4 per-branch projection out, §11.8 determinism.
+
+subgraphs:
+  alpha:
+    state:
+      fields:
+        a_out:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update: {a_out: 1}
+    edges:
+      - {from: a, to: END}
+
+  beta:
+    state:
+      fields:
+        b_out:
+          type: int
+          default: 0
+    entry: b
+    nodes:
+      b:
+        update: {b_out: 2}
+    edges:
+      - {from: b, to: END}
+
+  gamma:
+    state:
+      fields:
+        c_out:
+          type: int
+          default: 0
+    entry: c
+    nodes:
+      c:
+        update: {c_out: 3}
+    edges:
+      - {from: c, to: END}
+
+state:
+  fields:
+    alpha_result:
+      type: int
+      default: 0
+    beta_result:
+      type: int
+      default: 0
+    gamma_result:
+      type: int
+      default: 0
+
+entry: dispatcher
+
+nodes:
+  dispatcher:
+    parallel_branches:
+      branches:
+        alpha:
+          subgraph: alpha
+          outputs:
+            alpha_result: a_out
+        beta:
+          subgraph: beta
+          outputs:
+            beta_result: b_out
+        gamma:
+          subgraph: gamma
+          outputs:
+            gamma_result: c_out
+
+edges:
+  - {from: dispatcher, to: END}
+
+initial_state: {}
+
+expected:
+  # All three branches' contributions land in disjoint parent fields.
+  final_state:
+    alpha_result: 1
+    beta_result: 2
+    gamma_result: 3
+
+  # Outer-level execution treats the parallel-branches node as a single
+  # dispatch — the inner branch nodes don't appear in the outer execution
+  # order (matching §11.6).
+  execution_order: [dispatcher]
