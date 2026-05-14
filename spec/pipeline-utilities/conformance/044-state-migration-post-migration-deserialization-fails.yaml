@@ -1,0 +1,53 @@
+# State migration — post-migration deserialization fails. Saved record at
+# v1, current schema at v2, registered v1 -> v2 migration produces output
+# that does NOT match the v2 state class's deserialization contract (e.g.,
+# a required v2 field is missing in the migration's output). The engine
+# MUST raise checkpoint_record_invalid (per §10.10's amended description
+# and §10.12.4), NOT checkpoint_state_migration_missing — the migration
+# system did its job; the post-migration shape is the actual failure.
+
+cases:
+  - name: post_migration_deserialization_failure_routes_correctly
+    description: |
+      A registered migration ran successfully but produced output the
+      current state class can't deserialize. §10.12.4 routes this to
+      checkpoint_record_invalid, NOT checkpoint_state_migration_missing
+      (because a migration ran) and NOT checkpoint_state_migration_failed
+      (because the migration function itself didn't raise).
+    state:
+      schema_version: "v2"
+      fields:
+        x:
+          type: int
+          default: 0
+        required_v2_field:                # MUST be present after migration
+          type: string
+          required: true
+    entry: noop
+    nodes:
+      noop:
+        update_pure: {}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    checkpointer: sqlite
+    seeded_record:
+      schema_version: "v1"
+      state: {x: 9}
+      completed_positions: []
+    migrations:
+      - from_version: "v1"
+        to_version: "v2"
+        # Buggy migration: doesn't add the required v2 field.
+        migrate: identity_passthrough
+    resume:
+      from_seeded_record: true
+      expected_error:
+        category: checkpoint_record_invalid
+        # The error description SHOULD identify the missing/invalid
+        # required field — implementation-defined wording, but the
+        # harness asserts the category routing first.
+      # Confirm the routing chose checkpoint_record_invalid (not migration_missing
+      # or migration_failed).
+      invariants:
+        error_category_not: [checkpoint_state_migration_missing, checkpoint_state_migration_failed]

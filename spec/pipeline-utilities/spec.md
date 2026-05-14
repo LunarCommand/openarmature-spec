@@ -9,6 +9,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §9 Parallel fan-out added; §6.1 Retry middleware simplified (manual event dispatch removed in coordination with graph-engine §6's pair model) by [proposal 0005](../../proposals/0005-pipeline-utilities-parallel-fan-out.md)
   - §10 Checkpointing added by [proposal 0008](../../proposals/0008-pipeline-utilities-checkpointing.md)
   - §11 Parallel branches added by [proposal 0011](../../proposals/0011-pipeline-utilities-parallel-branches.md)
+  - §10.2 `schema_version` reframed as user-facing; §10.10 `checkpoint_record_invalid` description amended and two new error categories (`checkpoint_state_migration_missing`, `checkpoint_state_migration_failed`) added; §10.12 State migrations added by [proposal 0014](../../proposals/0014-pipeline-utilities-state-migration.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -771,8 +772,19 @@ The `CheckpointRecord` carries:
   semantics; preserved across resume so the engine can re-enter the subgraph correctly.
 - `last_saved_at` — timestamp. Implementation-defined precision; SHOULD be monotonic per
   invocation (later saves have later timestamps).
-- `schema_version` — string. Implementation-defined; lets backends evolve the record shape
-  without breaking older saved records.
+- `schema_version` — string. Carries the version identifier of the user's state schema at the
+  time the record was saved. The state definition MAY expose a stable, user-controlled
+  `schema_version` identifier (the surface for declaring it is per-language ergonomic — e.g.,
+  a class attribute in Python, a constant in TypeScript). When declared, the framework reads
+  `schema_version` from the state definition at save time and writes it onto the record.
+  State classes that do not declare a `schema_version` are treated as carrying an
+  implementation-defined sentinel value (typically the empty string), and are not
+  migration-eligible until they declare one. Users intending to evolve their schema across
+  deploys MUST declare an explicit `schema_version` so that migrations (per §10.12) can be
+  registered against it. The framework does not constrain the version identifier's syntax;
+  users MAY use semver, integer counters, date stamps, or content hashes — whatever makes
+  sense for their evolution discipline. Two distinct identifiers are treated as distinct
+  versions; identical identifiers are treated as the same version.
 
 ### 10.3 Save granularity — every `completed` event
 
@@ -965,10 +977,44 @@ is implementation-defined: implementations MAY treat save failure as a transient
 up via standard middleware (allowing user retry middleware to reattempt), or MAY raise to the
 caller of `invoke()` immediately. Implementations MUST document their choice.
 
-New canonical runtime category: `checkpoint_record_invalid` — raised when
+Canonical runtime category: `checkpoint_record_invalid` — raised when
 `Checkpointer.load(X)` returns a record whose schema is incompatible with the current graph
-(state shape mismatch, missing required fields, incompatible `schema_version`). Non-
-transient.
+(state shape mismatch, missing required fields, a post-migration state that fails to
+deserialize against the current state class per §10.12.4, OR a version mismatch on a
+Checkpointer backend that cannot support state migration per §10.12.1). Non-transient.
+(Prior to proposal 0014, "incompatible `schema_version`" appeared in this list as a
+generic reason; raw `schema_version` mismatches now route through
+`checkpoint_state_migration_missing` or `checkpoint_state_migration_failed` per §10.12 on
+migration-capable backends, and only fall back to `checkpoint_record_invalid` when the
+backend itself cannot expose the class-independent intermediate the migration system
+requires.)
+
+New canonical runtime category: `checkpoint_state_migration_missing` — raised on
+`invoke(resume_invocation=X)` when the loaded record's `schema_version` does not match the
+current state schema's `schema_version` AND no chain of registered migrations connects the
+two. Non-transient. The error MUST carry at least the record's `schema_version`, the
+current schema's `schema_version`, and a description of the registered migration set (in a
+form appropriate to the host language) so the user can see what migrations would need to be
+added.
+
+New canonical runtime category: `checkpoint_state_migration_failed` — raised when a
+user-supplied migration function raises during chain application (per §10.12.2).
+Non-transient (a buggy migration is deterministic; retrying without changing the migration
+code will not succeed). The error MUST carry the failing migration's `from_version` and
+`to_version`, and the underlying exception as cause (per the language's idiom).
+
+The three migration-related categories — `checkpoint_record_invalid`,
+`checkpoint_state_migration_missing`, `checkpoint_state_migration_failed` — are mutually
+exclusive on any given resume: the engine evaluates version compatibility first (routing
+through `checkpoint_state_migration_missing` if no chain exists), then applies the chain
+(routing through `checkpoint_state_migration_failed` if a migration raises), then attempts
+deserialization (routing through `checkpoint_record_invalid` if the post-migration state
+cannot deserialize).
+
+Version mismatches on Checkpointer backends that cannot support state migration (per
+§10.12.1) bypass the migration system entirely and route directly to
+`checkpoint_record_invalid` — the migration_missing/migration_failed branch is reachable
+only on backends that can expose the required class-independent intermediate form.
 
 ### 10.11 Reference implementations and backend layering
 
@@ -1002,6 +1048,113 @@ Sibling-package adapters (informative, NOT specified by this section):
 
 Each adapter package MAY add its own configuration ergonomics on top of the Checkpointer
 protocol (e.g., Temporal namespace selection); none change the protocol's behavioral contract.
+
+### 10.12 State migrations
+
+#### 10.12.1 Migration registration
+
+A compiled graph MAY register zero or more **state migrations**. Each migration is described
+by three pieces:
+
+- `from_version` — the `schema_version` identifier the migration accepts as input.
+- `to_version` — the `schema_version` identifier the migration produces as output.
+- A **migration function** that, given a serialized state representation at `from_version`,
+  returns a serialized state representation at `to_version`. The serialized form is whatever
+  shape the active Checkpointer round-trips (per §10.1's "backends pick their own
+  serialization"); the framework SHOULD pass the migration the most-deserialized form that is
+  still independent of the current state class (e.g., a plain dict in Python, an
+  `unknown`-shaped object in TypeScript) so the migration is not constrained by the user's
+  current state-class definitions.
+
+Migration support requires the active Checkpointer to be able to expose a structural
+intermediate form of the loaded state (a plain dict, a JSON tree, or similar) that is
+independent of the current state class definition. Backends using JSON, msgpack, or similar
+schema-independent encodings naturally satisfy this; the SQLiteCheckpointer reference
+implementation (per §10.11) does so by default. Backends using class-bound serialization
+(Python pickle of state class instances) or live in-memory references to typed state objects
+(the InMemoryCheckpointer reference implementation) cannot expose a class-independent
+intermediate. When such a backend encounters a version mismatch on load AND one or more
+migrations are registered, it MUST raise `checkpoint_record_invalid` per §10.10 with the
+version mismatch in the error description; the migration registry has no opportunity to
+bridge versions in that case. Implementations MUST document whether their Checkpointer
+backend supports state migration.
+
+The registration surface is per-language ergonomic. Python implementations are expected to
+expose this on `GraphBuilder` (e.g., `with_state_migration(...)`); TypeScript implementations
+may expose it on the builder or as a configuration object. The registration concept is what
+this section mandates: migrations are bound to the compiled graph and consulted during
+checkpoint load.
+
+A compiled graph's migration set is **ordered by `(from_version, to_version)` pair**. The
+order of registration does not affect chain resolution; chains are resolved by version pair,
+not by registration order. Two migrations with the same `from_version` and same `to_version`
+MUST raise a configuration-time error (the chain is ambiguous). Two migrations with the same
+`from_version` and different `to_version` define a branched migration graph; chain resolution
+(§10.12.2) is responsible for picking a path.
+
+#### 10.12.2 Chain resolution
+
+When `Checkpointer.load(invocation_id)` returns a record whose `schema_version` does not
+match the current state schema's `schema_version`, the engine MUST attempt to resolve a
+**migration chain** from the record's version to the current version using the graph's
+registered migrations.
+
+Chain resolution proceeds:
+
+1. Build a directed graph over registered migrations: each migration is an edge from its
+   `from_version` to its `to_version`.
+2. Find the shortest path (fewest edges) from the record's `schema_version` to the current
+   state schema's `schema_version`. Implementations MUST resolve by shortest-path (BFS is
+   the natural algorithm). When multiple distinct shortest paths exist (same edge count,
+   different edge sequences), this is an ambiguous chain and the engine MUST raise a
+   configuration-time error — the same category §10.12.1 raises for duplicate
+   `(from_version, to_version)` pairs. The user MUST restructure their migration graph to
+   leave a single canonical shortest path between every reachable version pair.
+   Implementations SHOULD detect ambiguity at compile time when feasible (by scanning the
+   registered migration graph); load-time detection is acceptable when compile-time
+   analysis is not.
+3. If at least one path exists, apply the migrations along the path in order: each
+   migration's output becomes the next migration's input. The final serialized state is
+   passed to the current state class's deserialization step (per §10.1 round-trip integrity).
+4. If no path exists, raise `checkpoint_state_migration_missing` (per §10.10).
+
+If a migration function itself raises during step 3 (chain application), the engine MUST
+wrap the raised exception as `checkpoint_state_migration_failed` (per §10.10) and propagate
+it to the caller. The migration's exception is preserved as the cause per the language's
+idiom (`__cause__` in Python). Subsequent migrations in the chain MUST NOT run; the engine
+abandons the chain at the failing migration and the resume attempt fails as a whole.
+
+Migrations MUST be pure functions of their input (no I/O, no implicit state, deterministic
+output for a given input). The framework does not enforce purity — users who violate the
+contract risk non-deterministic resume, but the contract mirrors §10.5's idempotency stance:
+documented, not policed. The engine MAY consult the migration registry multiple times during
+a single resume — for example, when subgraph parent states (§10.2 `parent_states`) also need
+migration. Implementations MUST apply the same chain resolution to each parent-state entry;
+in the absence of per-parent version metadata, parent states MUST be treated as carrying the
+same `schema_version` as the outer record. (A future proposal may add per-parent versioning
+if subgraph state schemas evolve independently of the outer schema; for now the outer
+record's `schema_version` is authoritative.)
+
+#### 10.12.3 No-op when versions match
+
+When the loaded record's `schema_version` equals the current state schema's
+`schema_version`, the engine MUST NOT consult the migration registry; the record is loaded
+directly per §10.4. This is the common-case fast path and incurs no migration overhead.
+
+#### 10.12.4 Composition with `checkpoint_record_invalid`
+
+§10.10's `checkpoint_record_invalid` covers structural incompatibility a migration cannot
+fix — e.g., the serialized record itself is corrupt, or the post-migration state fails the
+current state class's deserialization. After a migration chain runs, if the final
+deserialized state still raises `checkpoint_record_invalid`, that error propagates
+unchanged. Migrations are an opportunity to *avoid* `checkpoint_record_invalid` on
+schema-version mismatches; they are not a recovery mechanism for arbitrary record
+corruption.
+
+If no migrations are registered for a graph and a loaded record's `schema_version` does not
+match the current schema, the engine MUST raise `checkpoint_state_migration_missing`, NOT
+`checkpoint_record_invalid`. Distinguishing the two categories matters: the former is
+actionable ("register a migration"); the latter is not ("the record is broken").
 
 ## 11. Parallel branches
 

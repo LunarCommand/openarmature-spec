@@ -1,0 +1,54 @@
+# State migration — no path in registry. Saved record at v1, current
+# schema at v2, BUT the registered migrations don't form a chain from v1
+# to v2 (e.g., a v3 -> v4 migration is registered, unrelated to the v1->v2
+# path). Same error category as the empty-registry case
+# (checkpoint_state_migration_missing) but with a non-empty migration-set
+# description.
+
+cases:
+  - name: unhelpful_registered_migrations_still_missing
+    description: |
+      Migrations exist but none form a chain from the stored version to
+      the current version. Per §10.12.2 step 4, this raises
+      checkpoint_state_migration_missing — same category as the
+      empty-registry case, but the error's migration-set description
+      lists the registered (but unhelpful) migrations so the user can see
+      what IS available. Complements 041 to verify the category surfaces
+      uniformly across both empty and no-path-found registry states.
+    state:
+      schema_version: "v2"
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: noop
+    nodes:
+      noop:
+        update_pure: {}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    checkpointer: sqlite
+    seeded_record:
+      schema_version: "v1"
+      state: {x: 4}
+      completed_positions: []
+    migrations:
+      # Migration registered, but unrelated to the v1 -> v2 path the
+      # engine needs to bridge.
+      - from_version: "v3"
+        to_version: "v4"
+        migrate: irrelevant
+    resume:
+      from_seeded_record: true
+      expected_error:
+        category: checkpoint_state_migration_missing
+        carries:
+          from_version: "v1"
+          to_version: "v2"
+          # Error description lists the registered migrations so the user
+          # sees what's available. Harness asserts the description
+          # reflects ONE registered migration with from_version="v3"
+          # to_version="v4" (or its equivalent in the implementation's
+          # error-payload shape).
+          registered_migrations_count: 1

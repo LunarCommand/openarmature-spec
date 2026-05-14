@@ -1,0 +1,50 @@
+# State migration — additive field. A saved record exists at schema_version
+# "v1" carrying a state that lacks an optional field added in v2. One
+# migration registered: v1 -> v2 populates the new field with its default.
+# Resume the prior invocation; assert the migration runs once and the
+# resumed run sees the populated default.
+
+cases:
+  - name: additive_field_v1_to_v2
+    description: |
+      Saved record at v1 missing the field added in v2; v1->v2 migration
+      populates it; resume succeeds with the migrated state.
+    state:
+      schema_version: "v2"
+      fields:
+        x:
+          type: int
+          default: 0
+        new_field:                       # added in v2
+          type: string
+          default: "v2_default"
+        completed:
+          type: bool
+          default: false
+    entry: continue_node
+    nodes:
+      continue_node:
+        update_pure: {completed: true}
+    edges:
+      - {from: continue_node, to: END}
+    initial_state: {}
+    checkpointer: sqlite                  # structural-intermediate backend (§10.12.1)
+    # Seed a checkpoint record from a hypothetical prior run at schema v1.
+    # The record's state lacks `new_field` entirely (it didn't exist in v1).
+    seeded_record:
+      schema_version: "v1"
+      state: {x: 7, completed: false}
+      completed_positions: []             # resume from the start
+    migrations:
+      - from_version: "v1"
+        to_version: "v2"
+        migrate: add_new_field_default    # harness mock: adds {new_field: "v2_default"}
+    resume:
+      from_seeded_record: true
+      expected:
+        # After migration, new_field is populated with the v2 default; x
+        # passes through unchanged; continue_node runs.
+        final_state: {x: 7, new_field: "v2_default", completed: true}
+        migrations_run: ["v1->v2"]
+      invariants:
+        single_migration_invocation: true

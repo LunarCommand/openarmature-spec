@@ -1,8 +1,9 @@
 # 0014: Pipeline Utilities — State Migration Hooks for Checkpoints
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-13
+- **Accepted:** 2026-05-14
 - **Targets:** spec/pipeline-utilities/spec.md (adds §10.12 *State migrations*; modifies §10.2, §10.10)
 - **Related:** 0008 (checkpointing contract reserving `schema_version`), 0001
 - **Supersedes:**

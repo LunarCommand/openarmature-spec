@@ -1,0 +1,56 @@
+# State migration — chain. Saved record at v1; current schema at v3; two
+# migrations registered (v1 -> v2 and v2 -> v3); chain resolution applies
+# both in order; resume succeeds at the final v3 shape.
+
+cases:
+  - name: chain_v1_to_v3_via_v2
+    description: |
+      Two-hop migration chain: v1 -> v2 -> v3. Both must run in order;
+      v2 -> v3's input is v1 -> v2's output.
+    state:
+      schema_version: "v3"
+      fields:
+        x:
+          type: int
+          default: 0
+        v2_field:
+          type: string
+          default: "v2_default"
+        v3_field:
+          type: string
+          default: "v3_default"
+        completed:
+          type: bool
+          default: false
+    entry: continue_node
+    nodes:
+      continue_node:
+        update_pure: {completed: true}
+    edges:
+      - {from: continue_node, to: END}
+    initial_state: {}
+    checkpointer: sqlite
+    seeded_record:
+      schema_version: "v1"
+      state: {x: 5, completed: false}
+      completed_positions: []
+    migrations:
+      - from_version: "v1"
+        to_version: "v2"
+        migrate: add_v2_field             # harness mock: adds {v2_field: "v2_default"}
+      - from_version: "v2"
+        to_version: "v3"
+        migrate: add_v3_field             # harness mock: adds {v3_field: "v3_default"}
+    resume:
+      from_seeded_record: true
+      expected:
+        final_state:
+          x: 5
+          v2_field: "v2_default"
+          v3_field: "v3_default"
+          completed: true
+        migrations_run: ["v1->v2", "v2->v3"]
+      invariants:
+        # Both migrations ran exactly once, in the right order.
+        migration_count: 2
+        migration_order_matches_chain: true
