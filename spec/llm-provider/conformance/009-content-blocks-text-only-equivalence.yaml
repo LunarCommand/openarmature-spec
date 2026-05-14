@@ -1,0 +1,59 @@
+# Content blocks — text-only equivalence. A user message constructed with a
+# single TextBlock is normatively equivalent to the same user message
+# constructed with content as a string. Both produce identical OpenAI wire
+# payloads (modulo allowed representational variation per §3.1.1).
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-009-a
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message: {role: assistant, content: "ack"}
+            finish_reason: stop
+        usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    - status: 200
+      body:
+        id: chatcmpl-test-009-b
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message: {role: assistant, content: "ack"}
+            finish_reason: stop
+        usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+
+calls:
+  # Call 1: content as a string (the v1 form).
+  - operation: complete
+    messages:
+      - {role: user, content: "hello"}
+    expected:
+      response:
+        message: {role: assistant, content: "ack", tool_calls: null}
+        finish_reason: stop
+      wire_check:
+        # The outbound HTTP body's user-message content is the string "hello".
+        user_content_is_string: "hello"
+
+  # Call 2: content as a single-element content-block sequence with one
+  # TextBlock. Per §3.1.1, normatively equivalent to call 1.
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - {type: text, text: "hello"}
+    expected:
+      response:
+        message: {role: assistant, content: "ack", tool_calls: null}
+        finish_reason: stop
+      wire_check:
+        # Implementations MAY map a single-TextBlock content to either the
+        # string form OR the content-array form on the wire. Both are
+        # equivalent per §3.1.1; the harness accepts either.
+        user_content_equivalent_to: "hello"

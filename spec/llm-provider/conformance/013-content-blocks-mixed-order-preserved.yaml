@@ -1,0 +1,37 @@
+# Content blocks — mixed order preserved. A user message with blocks in
+# the order [image, text, image, text] MUST produce a wire content-array
+# in exactly that order. Verifies §3.1.4 block-order preservation.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-013
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message: {role: assistant, content: "ack"}
+            finish_reason: stop
+        usage: {prompt_tokens: 200, completion_tokens: 1, total_tokens: 201}
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - {type: image, source: {type: url, url: "https://example.com/1.png"}}
+          - {type: text, text: "first"}
+          - {type: image, source: {type: url, url: "https://example.com/2.png"}}
+          - {type: text, text: "second"}
+    expected:
+      response:
+        message: {role: assistant, content: "ack", tool_calls: null}
+        finish_reason: stop
+      wire_check:
+        user_content_array:
+          - {type: "image_url", image_url: {url: "https://example.com/1.png"}}
+          - {type: "text", text: "first"}
+          - {type: "image_url", image_url: {url: "https://example.com/2.png"}}
+          - {type: "text", text: "second"}

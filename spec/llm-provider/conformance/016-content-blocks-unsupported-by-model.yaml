@@ -1,0 +1,23 @@
+# Content blocks — unsupported by model. The bound model is configured
+# as text-only (no image capability). A user message containing an image
+# block MUST raise provider_unsupported_content_block — either at
+# pre-send validation (static capability check) or post-receive (provider
+# rejects). Verifies the new §7 error category.
+
+mock_provider:
+  # Model declared as text-only.
+  capabilities:
+    supports_image_input: false
+  responses: []
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - type: image
+            source: {type: url, url: "https://example.com/x.png"}
+          - {type: text, text: "describe"}
+    expected:
+      raises:
+        category: provider_unsupported_content_block

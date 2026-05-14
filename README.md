@@ -70,7 +70,7 @@ and architecture are in [`docs/openarmature.md`](docs/openarmature.md).
 |---|---|---|---|
 | [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.11.0 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks |
 | [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.12.0 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (with state migration), parallel branches |
-| [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.10.0 | Stateless LLM-provider abstraction with canonical error categories and OpenAI-compatible wire mapping |
+| [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.13.0 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, and OpenAI-compatible wire mapping |
 | [observability](spec/observability/spec.md) | 0.7.0 | 0.10.0 | Cross-backend correlation IDs, OpenTelemetry mapping (spans, log correlation, detached trace mode) |
 
 ### In the pipeline
@@ -82,7 +82,6 @@ they are Accepted.
 |---|---|---|---|
 | [0009](proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md) | Draft | pipeline-utilities §10 | Per-instance fan-out resume (v2 successor to v1 atomic-restart) |
 | [0010](proposals/0010-drain-timeout.md) | Draft | graph-engine §6 | Bounded drain with caller-supplied timeout for observer-event delivery |
-| [0015](proposals/0015-llm-provider-multimodal-images.md) | Draft | llm-provider §3 | Image content blocks for user messages (multimodal input via content arrays) |
 | [0016](proposals/0016-llm-provider-structured-output.md) | Draft | llm-provider §5, §6 | Structured output via `response_schema` parameter on `complete()` |
 | [0017](proposals/0017-prompt-management-core.md) | Draft | prompt-management (new) | Prompt management capability: `PromptBackend`, `PromptManager`, `PromptGroup` |
 
