@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-05-14
+
+### Added
+
+- **llm-provider §5 — `response_schema` parameter on `complete()`.** Optional JSON Schema describing the expected output shape. When `None`/absent, the call behaves as in v0.4.0 (free-form text content; no parsed value). When present, the top-level schema MUST be an object schema (`type: "object"` at the root), matching §4 `Tool.parameters` and OpenAI's strict-mode wire format. Single-method design — same `complete()` operation handles both free-form and structured-output calls; the response carries a new `parsed` field when applicable. ([proposal 0016](proposals/0016-llm-provider-structured-output.md))
+- **llm-provider §6 — `parsed` field on `Response`.** Holds the parsed-and-validated structured value when the call supplied a `response_schema` and the model returned structured content. Absent on free-form calls and on `finish_reason: "tool_calls"` responses (regardless of whether `message.content` is also populated, per the §3 assistant-message contract). `message.content` carries the provider's content string preserved verbatim — implementations MUST NOT re-serialize `parsed` back into `message.content`. ([proposal 0016](proposals/0016-llm-provider-structured-output.md))
+- **llm-provider §7 — new error category `structured_output_invalid`.** Raised when `complete()` was called with a `response_schema` and the provider returned content that could not be parsed as JSON OR did not validate against the schema. The error MUST expose the requested schema, the raw response content, and a description of the parse/validation failure. **Non-transient by default** — a model that fails schema compliance on a given prompt usually fails the same way on retry; users wanting retry semantics MAY include the category in a `RetryMiddleware` classifier's transient set. Distinct from `provider_invalid_response` (which covers wire-shape malformation, not content validation against the caller's schema). ([proposal 0016](proposals/0016-llm-provider-structured-output.md))
+- **llm-provider §8.5 Structured output wire mapping.** OpenAI request body includes a `response_format: { type: "json_schema", json_schema: { name, schema, strict } }` field when `response_schema` is supplied. `strict: true` enables OpenAI's schema-constrained decoding when the schema satisfies strict-mode constraints; implementations SHOULD fall back to `strict: false` otherwise. §8.5.1 specifies a prompt-augmentation fallback for providers without native `response_format` support (construct a modified copy of the message list with a JSON-only directive — caller's `messages` MUST NOT be mutated). §8.5.2 documents the response mapping (`message.content` verbatim; `parsed` is its deserialization against `response_schema`). ([proposal 0016](proposals/0016-llm-provider-structured-output.md))
+- Conformance fixtures `021-structured-output-success` through `028-structured-output-no-schema-regression` (llm-provider), covering happy-path success, JSON-parse failure routing, schema-validation failure routing, non-transient retry classification, tool-calls path with schema set (parsed absent), native wire-format mapping, prompt-augmentation fallback path, and the no-schema regression (v0.4.0 behavior preserved when `response_schema` is absent).
+
+### Changed
+
+- **llm-provider §10 Out of scope — structured output deferral removed.** The single "Structured output — JSON mode, schema-constrained decoding, response_format" entry is removed; §5/§6/§7/§8.5 collectively cover the capability. Other §10 entries (streaming, audio/video, token counting, provider-native wire formats, agent loop, retry/rate-limit, prompt template rendering, embeddings) unchanged. ([proposal 0016](proposals/0016-llm-provider-structured-output.md))
+
+### Notes
+
+- **Additive change to `complete()` signature and `Response` shape (pre-1.0 MINOR).** Existing callers that don't supply `response_schema` see no behavior change — the `parsed` field is absent on free-form responses, and the wire body MUST NOT include `response_format`. The new structured-output path is fully opt-in.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.13.0 may target v0.14.0 directly without implementing v0.13.0 first.
+
 ## [0.13.0] — 2026-05-14
 
 ### Added

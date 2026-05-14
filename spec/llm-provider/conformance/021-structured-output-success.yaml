@@ -1,0 +1,60 @@
+# Structured output — success. complete() called with a response_schema;
+# the provider returns valid JSON matching the schema. Response.parsed
+# carries the parsed value; Response.message.content carries the raw
+# bytes; finish_reason is "stop".
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-021
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message:
+              role: assistant
+              content: '{"name":"Alice","age":30}'
+            finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Generate a person record."}
+    response_schema:
+      type: object
+      properties:
+        name: {type: string}
+        age: {type: integer}
+      required: [name, age]
+      additionalProperties: false
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: "user", content: "Generate a person record."}
+      response_format:
+        type: json_schema
+        json_schema:
+          # `name` is implementation-derived per §8.5. The literal string
+          # "*" in expected_wire_request is a harness wildcard: the key
+          # MUST be present with a non-empty string value, but the
+          # specific value is exempted from literal comparison.
+          name: "*"
+          strict: true
+          schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    expected:
+      response:
+        message:
+          role: assistant
+          content: '{"name":"Alice","age":30}'
+          tool_calls: null
+        finish_reason: stop
+        parsed: {name: "Alice", age: 30}
