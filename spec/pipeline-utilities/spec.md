@@ -7,6 +7,8 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
 - **History:**
   - created by [proposal 0004](../../proposals/0004-pipeline-utilities-middleware.md)
   - §9 Parallel fan-out added; §6.1 Retry middleware simplified (manual event dispatch removed in coordination with graph-engine §6's pair model) by [proposal 0005](../../proposals/0005-pipeline-utilities-parallel-fan-out.md)
+  - §10 Checkpointing added by [proposal 0008](../../proposals/0008-pipeline-utilities-checkpointing.md)
+  - §11 Parallel branches added by [proposal 0011](../../proposals/0011-pipeline-utilities-parallel-branches.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1000,3 +1002,170 @@ Sibling-package adapters (informative, NOT specified by this section):
 
 Each adapter package MAY add its own configuration ergonomics on top of the Checkpointer
 protocol (e.g., Temporal namespace selection); none change the protocol's behavioral contract.
+
+## 11. Parallel branches
+
+A **parallel branches** node holds a mapping from branch name to **branch spec** (§11.1.1).
+At dispatch time, the engine projects parent state into each branch's per-branch state via
+`inputs`, runs all branches concurrently (with optional per-branch middleware), and projects
+each branch's exit state back into parent state via `outputs`. Different branches MAY write
+different parent fields; when two branches write the same parent field, the parent's
+reducer for that field merges the contributions per its semantics.
+
+Parallel branches complements §9 fan-out. Fan-out is **data-driven**: N items, one
+subgraph, instantiated N times. Parallel branches is **topology-driven**: M heterogeneous
+compiled subgraphs, declared statically, run concurrently within a single parent invocation.
+
+### 11.1 Configuration
+
+A parallel-branches node carries:
+
+- `branches` — a mapping from `branch_name` (non-empty string) to a **branch spec** (§11.1.1).
+  Insertion order is preserved and is the order observer events for branch dispatch fire,
+  regardless of completion timing (§11.8).
+- `error_policy` — one of `"fail_fast"` (default) or `"collect"`. Same semantics as §9.5.
+- `errors_field` — optional parent state field name receiving per-branch errors when
+  `error_policy: "collect"`. Implementation-defined record shape; SHOULD include the failing
+  `branch_name` and the error category.
+
+#### 11.1.1 Branch spec
+
+Each branch spec carries:
+
+- `subgraph` — a compiled subgraph reference. Different branches MAY reference different
+  compiled subgraphs with different state schemas.
+- `inputs` — optional mapping `subgraph_field → parent_field` (same shape as the §4
+  subgraph `inputs`). At branch entry, each named subgraph field is initialized from the
+  named parent field. Subgraph fields not in `inputs` use the subgraph's declared defaults.
+- `outputs` — optional mapping `parent_field → subgraph_field` (same shape as the §4
+  subgraph `outputs`). At branch exit, each named parent field receives the named subgraph
+  field's exit value, merged via the parent's reducer for that field.
+- `middleware` — optional list of middlewares wrapping the whole branch invocation as a unit
+  (§11.7). Heterogeneous across branches — branch A's middleware MAY differ from branch B's.
+
+### 11.2 Per-branch projection (in)
+
+At dispatch entry, each branch's initial subgraph state is constructed by:
+
+1. Starting from the branch's subgraph schema's declared field defaults.
+2. Overlaying `inputs` mappings: each subgraph field named on the LHS is set to the value of
+   the corresponding parent field on the RHS, read from the parent state at dispatch time.
+
+The mapping is the same shape as §4's subgraph `inputs`. References to undeclared subgraph
+fields or undeclared parent fields are compile-time errors per §4's
+`mapping_references_undeclared_field` category.
+
+### 11.3 Concurrent execution
+
+All branches dispatch simultaneously when the engine enters a parallel-branches node. This
+is the second exception to graph-engine §3's single-threaded execution rule (alongside §9
+fan-out's first exception); single-threaded execution resumes for the parent run after the
+parallel-branches node completes.
+
+This section does NOT include a configurable concurrency bound. The number of branches M
+is expected to be small (typically 3–10), and per-branch concurrency tuning is rare in
+practice. A future proposal MAY add a `concurrency` knob if real workloads demonstrate the
+need.
+
+### 11.4 Per-branch projection (out)
+
+When a branch's subgraph finishes (END node reached), the engine constructs a per-branch
+**contribution** — a mapping `parent_field → exit_value` built from the branch's `outputs`
+mapping (each named subgraph field is read from the branch's exit state). Subgraph fields
+not named in `outputs` are discarded (matching §4 outputs semantics).
+
+Contributions are **buffered**; no parent-state merging happens incrementally on branch
+completion. When the parallel-branches node itself completes (all branches succeeded under
+`fail_fast`, or `collect` ran to completion), the engine applies all buffered contributions
+to parent state in **branch insertion order** (§11.8), using each parent field's reducer
+for that field. This mirrors §9.3 fan-in: contributions are collected during dispatch and
+merged deterministically once at node completion.
+
+When two or more branches write the same parent field via `outputs`, the parent's reducer
+applies the contributions in branch insertion order. For `last_write_wins` reducers, this
+means the last-listed branch wins. For `append` reducers, contributions are appended in
+branch order. For `merge` reducers, later branches' keys override earlier ones.
+
+Authors choosing parent fields and reducers SHOULD design for the merge semantics they
+want. A common pattern is using `merge` for fields multiple branches contribute to (each
+branch writes its own keys) or `last_write_wins` with branches that write disjoint fields.
+
+### 11.5 Error policy
+
+Same shape as §9.5. Behavior at runtime:
+
+- **`fail_fast` (default).** First branch failure cancels every still-running branch (via
+  the host language's idiomatic cancellation primitive — Python `asyncio.Task.cancel()`,
+  TypeScript `AbortController`, etc.). The parallel-branches node raises a wrapped
+  `node_exception` carrying the failing branch's exception as `__cause__`. Per §11.4's
+  collect-then-apply semantics, no branch contributions have been applied to parent state at
+  this point; the buffered contributions are discarded. `recoverable_state` is therefore the
+  parent state at the moment the parallel-branches node entered — matching §9.5's fan-out
+  fail_fast.
+- **`collect`.** All branches run to completion regardless of individual failures.
+  Successful branches' contributions merge per §11.4. Failed branches' errors are recorded
+  in `errors_field` (when configured); their `outputs` projections do NOT fire. The node
+  returns normally; the parent run continues.
+
+Implementations MAY surface partial-completion telemetry (which branches succeeded, which
+failed) via observer events (graph-engine §6).
+
+### 11.6 Composition with parent middleware
+
+Per-graph and per-node middleware applied to the parallel-branches node wrap it as a SINGLE
+dispatch — exactly mirroring §9.6's contract for fan-out. From the parent's middleware
+view, the parallel-branches node looks like any other node: one `started` event, one
+`completed` event around the whole operation. The parent's retry middleware, if any,
+retries the whole parallel-branches node (re-dispatching all M branches), not individual
+branches.
+
+Per-branch internal events (the branches' subgraph nodes' started/completed pairs) come
+from the branches' subgraph executions and carry the new `branch_name` field (§11.7,
+graph-engine §6).
+
+### 11.7 Branch middleware
+
+Each branch's `middleware` (§11.1.1) wraps the branch's entire subgraph invocation as a
+unit — directly mirroring §9.7's `instance_middleware` contract. The branch's whole
+subgraph runs inside the middleware chain; failures in any inner node propagate up to the
+branch's middleware. Retry middleware applied at the branch level retries the whole
+branch's subgraph.
+
+Branch middleware composition is heterogeneous. Branch A may have `[retry, timing]`; branch
+B may have `[]`; branch C may have `[custom_breaker]`. Each branch's chain is independent.
+
+### 11.8 Determinism
+
+The branch dispatch order — and therefore the order branches' `started` events fire on the
+graph-engine §6 observer stream — is the **insertion order of the `branches` mapping**.
+This holds regardless of which branch's first inner node finishes first.
+
+Branch fan-in (§11.4) is deterministic: when two branches write the same parent field, the
+reducer applies their contributions in branch insertion order, not completion order.
+
+This preserves graph-engine §5's "same input → same output" determinism guarantee through
+the parallel-branches primitive: scheduler nondeterminism affects timing but not state.
+
+### 11.9 Errors
+
+New canonical categories:
+
+- `parallel_branches_no_branches` — compile-time error. The `branches` mapping is empty.
+  Non-transient.
+- `parallel_branches_branch_failed` — runtime category. Raised by the engine when a
+  branch's subgraph raises under `error_policy: "fail_fast"`. Wraps the inner exception as
+  `__cause__`; carries the failing `branch_name` as a structured field. Non-transient by
+  default; inherits transient classification from the wrapped exception per §6.1.
+
+Existing categories that compose:
+
+- `mapping_references_undeclared_field` (§4) — raised at compile time when an `inputs` or
+  `outputs` mapping in a branch spec names a field not declared on the relevant side.
+- `node_exception` (graph-engine §4) — the `parallel_branches_branch_failed` category is a
+  `node_exception` subtype attached at the parallel-branches node's level.
+
+Composition with §10 checkpointing: the parallel-branches node fires graph-engine §6
+events that the §10 Checkpointer captures per its existing rules. v1 atomic-restart
+semantics for fan-out (§10.7) apply analogously to parallel branches: a crash mid-dispatch
+re-runs the whole parallel-branches node on resume. Per-branch resume is deferred to a
+follow-on alongside per-instance fan-out resume.

@@ -1,0 +1,110 @@
+# Parallel branches — one branch wraps its subgraph with retry middleware.
+# Branch A's subgraph raises a transient exception on its first attempt and
+# succeeds on the second; branches B and C complete normally on first try.
+# Verifies §11.7 branch middleware: per-branch retry works without affecting
+# sibling branches.
+
+subgraphs:
+  flaky_a:
+    state:
+      fields:
+        a_out:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        flaky:
+          failure_sequence:
+            - {transient: true, category: provider_rate_limit, message: "throttle"}
+          success_update: {a_out: 1}
+    edges:
+      - {from: a, to: END}
+
+  steady_b:
+    state:
+      fields:
+        b_out:
+          type: int
+          default: 0
+    entry: b
+    nodes:
+      b:
+        update: {b_out: 2}
+    edges:
+      - {from: b, to: END}
+
+  steady_c:
+    state:
+      fields:
+        c_out:
+          type: int
+          default: 0
+    entry: c
+    nodes:
+      c:
+        update: {c_out: 3}
+    edges:
+      - {from: c, to: END}
+
+state:
+  fields:
+    alpha_result:
+      type: int
+      default: 0
+    beta_result:
+      type: int
+      default: 0
+    gamma_result:
+      type: int
+      default: 0
+
+entry: dispatcher
+
+nodes:
+  dispatcher:
+    parallel_branches:
+      branches:
+        alpha:
+          subgraph: flaky_a
+          outputs:
+            alpha_result: a_out
+          middleware:
+            - type: retry
+              max_attempts: 3
+              backoff: {type: deterministic, seconds: 0}
+        beta:
+          subgraph: steady_b
+          outputs:
+            beta_result: b_out
+        gamma:
+          subgraph: steady_c
+          outputs:
+            gamma_result: c_out
+
+edges:
+  - {from: dispatcher, to: END}
+
+initial_state: {}
+
+observers:
+  - {name: obs, attach: graph, target: outer, behavior: record}
+
+expected:
+  # Alpha succeeds after one retry; beta and gamma complete normally on
+  # their first attempt. All three contributions land.
+  final_state:
+    alpha_result: 1
+    beta_result: 2
+    gamma_result: 3
+
+  execution_order: [dispatcher]
+
+  # Branch alpha's inner node executes twice (attempt_index 0 raised,
+  # attempt_index 1 succeeded). Branches beta and gamma execute their
+  # inner node exactly once. Per-branch middleware retry is independent
+  # of sibling branches' execution.
+  observer_event_invariants:
+    alpha_inner_attempt_indices_seen: [0, 1]
+    beta_inner_attempt_indices_seen: [0]
+    gamma_inner_attempt_indices_seen: [0]

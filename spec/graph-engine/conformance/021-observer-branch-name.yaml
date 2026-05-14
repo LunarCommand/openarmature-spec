@@ -1,0 +1,90 @@
+# Observer hooks — branch_name field on NodeEvent.
+#
+# Verifies the new optional `branch_name` field added to NodeEvent by
+# proposal 0011: populated on events from nodes inside a parallel-branches
+# branch, ABSENT on events from outermost-graph nodes (and from any node
+# not inside any parallel-branches branch).
+
+subgraphs:
+  alpha:
+    state:
+      fields:
+        a_out:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update: {a_out: 1}
+    edges:
+      - {from: a, to: END}
+
+  beta:
+    state:
+      fields:
+        b_out:
+          type: int
+          default: 0
+    entry: b
+    nodes:
+      b:
+        update: {b_out: 2}
+    edges:
+      - {from: b, to: END}
+
+state:
+  fields:
+    a_result:
+      type: int
+      default: 0
+    b_result:
+      type: int
+      default: 0
+
+entry: outer_pre
+
+nodes:
+  outer_pre:
+    update: {a_result: 0}
+  dispatcher:
+    parallel_branches:
+      branches:
+        alpha:
+          subgraph: alpha
+          outputs:
+            a_result: a_out
+        beta:
+          subgraph: beta
+          outputs:
+            b_result: b_out
+  outer_post:
+    update: {a_result: 0}
+
+edges:
+  - {from: outer_pre,  to: dispatcher}
+  - {from: dispatcher, to: outer_post}
+  - {from: outer_post, to: END}
+
+initial_state: {}
+
+observers:
+  - {name: obs, attach: graph, target: outer, behavior: record}
+
+expected:
+  final_state:
+    a_result: 0
+    b_result: 2
+
+  execution_order: [outer_pre, dispatcher, outer_post]
+
+  # Three classes of events:
+  #   1. Outermost-graph nodes (outer_pre, dispatcher, outer_post) —
+  #      branch_name MUST be absent (these are not inside any branch).
+  #   2. Branch alpha's inner node `a` — branch_name MUST be "alpha".
+  #   3. Branch beta's inner node `b` — branch_name MUST be "beta".
+  observer_event_invariants:
+    outermost_events_have_no_branch_name:
+      nodes: [outer_pre, dispatcher, outer_post]
+    inner_events_carry_correct_branch_name:
+      a: alpha
+      b: beta

@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-05-13
+
+### Added
+
+- **pipeline-utilities §11 Parallel branches.** A topology-driven concurrency primitive: a parallel-branches node dispatches M heterogeneous compiled subgraphs concurrently within a single parent invocation. Each branch is a separately compiled subgraph with potentially different state schema, different middleware, and different topology; per-branch projection in (`inputs`) and out (`outputs`) lets each branch read and write parent-state fields. Complements the §9 fan-out primitive (data-driven, N instances of one subgraph). Specifies configuration (§11.1, §11.1.1), per-branch projection (§11.2, §11.4), concurrent execution (§11.3), error policy (§11.5), composition with parent and per-branch middleware (§11.6, §11.7), determinism (§11.8), and the new error categories `parallel_branches_no_branches` (compile-time) and `parallel_branches_branch_failed` (runtime, non-transient) (§11.9). ([proposal 0011](proposals/0011-pipeline-utilities-parallel-branches.md))
+- **graph-engine §3 Execution model — concurrency exception extended to parallel branches.** The single-threaded execution rule now carves out two bounded exceptions: fan-out (§9) and parallel-branches (§11). Both may execute multiple subgraphs concurrently; single-threaded execution resumes for the parent run after the concurrent node completes. ([proposal 0011](proposals/0011-pipeline-utilities-parallel-branches.md))
+- **graph-engine §6 Observer hooks — `branch_name` field on `NodeEvent`.** Optional non-empty string, populated only on events from nodes inside a parallel-branches branch. Carries the branch's name as declared in the parallel-branches node's `branches` mapping. The event-source uniqueness invariant is extended to include `branch_name`: the combination of `namespace`, `branch_name`, `fan_out_index`, `attempt_index`, and `phase` uniquely identifies an event source. `branch_name` and `fan_out_index` are independent and MAY both be present simultaneously when a fan-out node executes inside a parallel-branches branch (or vice versa). ([proposal 0011](proposals/0011-pipeline-utilities-parallel-branches.md))
+- Conformance fixtures `032-parallel-branches-basic` through `038-parallel-branches-compose-with-fan-out` (pipeline-utilities) and `021-observer-branch-name` (graph-engine).
+
+### Notes
+
+- **Additive change to the §6 `NodeEvent` shape (pre-1.0 MINOR).** Existing observers that ignore the new `branch_name` field continue to function unchanged; the field is absent on events from nodes not inside any parallel-branches branch. The change is backwards-compatible at the struct level.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.10.0 may target v0.11.0 directly without implementing v0.10.0 first.
+
 ## [0.10.0] — 2026-05-09
 
 ### Added

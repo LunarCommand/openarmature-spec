@@ -10,6 +10,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 Observer hooks promoted from informative to normative by [proposal 0003](../../proposals/0003-node-boundary-observer-hooks.md)
   - §6 Observer hooks gained `attempt_index` field and middleware-dispatched events by [proposal 0004](../../proposals/0004-pipeline-utilities-middleware.md)
   - §3 Execution model carved out a fan-out concurrency exception; §6 Observer hooks replaced single-event-per-attempt with started/completed pairs, added per-observer phase subscription, added `fan_out_index` field, and removed the "Middleware-dispatched events" subsection by [proposal 0005](../../proposals/0005-pipeline-utilities-parallel-fan-out.md)
+  - §3 Execution model concurrency exception extended to also cover parallel-branches; §6 Observer hooks gained `branch_name` field and updated event-source uniqueness invariant to include it by [proposal 0011](../../proposals/0011-pipeline-utilities-parallel-branches.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -141,10 +142,12 @@ identifiers (as an error class, error code, or tagged discriminant, per the lang
 5. If the destination is `END`, execution halts and the final state is returned.
 6. Otherwise, repeat from step 2 with the destination node.
 
-Execution is single-threaded per invocation **except inside a fan-out node** (pipeline-utilities §9): one
-node is active at a time within a given graph run, with the bounded exception that a fan-out node may
-execute multiple subgraph instances concurrently. After a fan-out node completes, single-threaded execution
-resumes for the rest of the parent run.
+Execution is single-threaded per invocation **except inside a fan-out node** (pipeline-utilities §9) **or
+inside a parallel-branches node** (pipeline-utilities §11): one node is active at a time within a given
+graph run, with the bounded exceptions that a fan-out node may execute multiple subgraph instances
+concurrently and a parallel-branches node may execute multiple heterogeneous compiled subgraphs
+concurrently. After a fan-out or parallel-branches node completes, single-threaded execution resumes for
+the rest of the parent run.
 
 ## 4. Error semantics
 
@@ -277,8 +280,19 @@ observers receiving events for an in-flight invocation is fixed at the point the
   inside a fan-out instance (pipeline-utilities §9). The 0-based index of this fan-out instance among
   its siblings (in `items_field` mode, matching the position of the corresponding item; in `count`
   mode, `0..count-1`). When the same node name appears in multiple fan-out instances, the
-  combination of `namespace`, `fan_out_index`, `attempt_index`, and `phase` uniquely identifies the
-  event source. Absent for events from nodes that are not inside any fan-out instance.
+  combination of `namespace`, `branch_name`, `fan_out_index`, `attempt_index`, and `phase` uniquely
+  identifies the event source. Absent for events from nodes that are not inside any fan-out instance.
+- `branch_name` — optional non-empty string. Populated only for events from nodes that execute inside
+  a parallel-branches branch (pipeline-utilities §11). Carries the branch's name as declared in the
+  parallel-branches node's `branches` mapping. When the same node name appears in multiple branches'
+  subgraphs, the combination of `namespace`, `branch_name`, `fan_out_index`, `attempt_index`, and
+  `phase` uniquely identifies the event source. `branch_name` and `fan_out_index` are independent and
+  MAY both be present simultaneously when a fan-out node executes inside a parallel-branches branch
+  (or a parallel-branches node executes inside a fan-out instance). Absent for events from nodes that
+  are not inside any parallel-branches branch. In the uniqueness tuple, an absent field participates
+  as a distinct slot: `branch_name = absent` and `branch_name = "alpha"` identify different events;
+  the same applies to `fan_out_index`. This matches the convention `fan_out_index` followed
+  pre-amendment.
 - `fan_out_config` — optional structured value, populated on EVERY `started` and `completed`
   event for a fan-out node (i.e., events whose `node_name` resolves to a fan-out node per
   pipeline-utilities §9), including retried attempts of the fan-out node itself
