@@ -26,10 +26,13 @@ calls:
         label: production
         version: v1
         template_hash: "sha256:abc123"
-        # rendered_hash is computed; harness asserts it's a non-empty
-        # string with the same hash function used for template_hash.
+        # rendered_hash is computed. §4 leaves the hash algorithm
+        # implementation-defined (SHOULD use the same function as
+        # template_hash), so the fixture only asserts presence and
+        # non-empty string. Determinism (same inputs → same hash) is
+        # covered separately by fixture 006.
         rendered_hash_present: true
-        rendered_hash_format: "sha256:*"
+        rendered_hash_non_empty_string: true
         messages:
           - {role: user, content: "Hello, Alice!"}
         variables: {user: "Alice"}

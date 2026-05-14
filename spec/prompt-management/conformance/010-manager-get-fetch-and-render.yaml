@@ -35,9 +35,11 @@ calls:
     capture_as: result_get
 
 expected:
-  # Both results equivalent on content fields. rendered_at MAY differ
-  # (timing); the equivalence is on what the call produced, not when.
+  # Both results equivalent on content fields. fetched_at and
+  # rendered_at MAY differ (each path runs its own fetch + render at
+  # different call times); the equivalence is on what the call
+  # produced, not when.
   result_equivalence:
     of: [result_explicit, result_get]
     fields_must_match: [name, version, label, template_hash, rendered_hash, messages, variables]
-    fields_may_differ: [rendered_at]
+    fields_may_differ: [fetched_at, rendered_at]

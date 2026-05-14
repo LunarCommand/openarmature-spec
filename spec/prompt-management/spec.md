@@ -179,9 +179,9 @@ benefits and would needlessly couple the operation to the host's event loop.
 
 ### `get(name, label="production", variables=None)`
 
-Convenience. Equivalent to `render(await fetch(name, label), variables)`. Implementations
-SHOULD provide this as a convenience for the common single-shot path; users wanting
-fetch/render separation use `fetch` and `render` directly.
+Async. Convenience equivalent to `render(await fetch(name, label), variables)`.
+Implementations SHOULD provide this as a convenience for the common single-shot path;
+users wanting fetch/render separation use `fetch` and `render` directly.
 
 ## 7. Variable injection
 
@@ -246,7 +246,7 @@ A `PromptGroup` record:
 | Field | Description |
 |---|---|
 | `group_name` | String. A stable identifier for this group pattern. Used by observability §5.5 cross-reference (per §11) so all spans under the group share an `openarmature.prompt.group_name` attribute. |
-| `members` | An ordered, non-empty sequence of `PromptResult` instances. Order matches the application's intended call sequence (first member runs first); the spec does not require sequential execution, but observability tools MAY use member order to lay out the group visually. |
+| `members` | An ordered sequence of at least two `PromptResult` instances. Order matches the application's intended call sequence (first member runs first); the spec does not require sequential execution, but observability tools MAY use member order to lay out the group visually. |
 
 The group is a hint to observability, not a control-flow primitive. User code is
 responsible for executing each member's LLM call in whatever sequence the application
