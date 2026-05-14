@@ -6,9 +6,14 @@ different variables produces different hashes. This is the
 equivalence relation a memoization layer wants — two calls that
 would produce the same LLM output share a hash.
 
-Cross-implementation stability is also asserted (when the harness
-supports it) to lock in the determinism guarantee across language
-ports.
+Cross-implementation stability is NOT verified here. The v1 spec
+guarantees within-implementation determinism (§12) but does not
+mandate a normative hash algorithm or canonical serialization, so
+two conforming implementations could produce different
+`rendered_hash` values for the same rendered messages. A
+follow-on proposal can tighten those (e.g., SHA-256 hex over
+RFC 8785 JCS) when cross-implementation cache-key portability
+becomes a concrete need.
 
 **Spec sections exercised:**
 
@@ -23,12 +28,9 @@ ports.
 **What passes:**
 
 - `r_alice_1.rendered_hash == r_alice_2.rendered_hash` (same template,
-  same variables).
+  same variables — within-implementation determinism per §12).
 - `r_alice_1.rendered_hash != r_bob.rendered_hash` (same template,
   different variables).
-- Cross-implementation: the same template + variables across two
-  implementations produces the same rendered_hash (when the harness
-  exercises the cross-implementation case).
 
 **What fails:**
 
@@ -38,7 +40,3 @@ ports.
 - Different inputs produce identical hashes — would mean variables
   weren't actually folded into the hash, defeating the cache-key
   purpose.
-- Cross-implementation hashes differ for canonical test inputs — would
-  mean implementations diverged on the hash algorithm or canonical
-  serialization (the spec recommends SHA-256 over canonical
-  serialization; implementations must agree on both).

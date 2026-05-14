@@ -85,6 +85,7 @@ A `Prompt` record:
 | `label` | String. The label under which the prompt was fetched (e.g., `"production"`, `"latest"`, `"variant-a"`). Backends MAY support multiple labels per prompt; the label is part of the fetch query. |
 | `template` | The unrendered template, in the implementation's chosen template representation (a Jinja2 `Template` instance, a string, an AST, etc.). The spec does not constrain the in-memory representation; it constrains the render contract (§7). |
 | `template_hash` | String. A stable content-derived hash of the unrendered template. Implementations SHOULD use a cryptographic hash (e.g., SHA-256 hex) over the canonical serialization of the template. The hash MUST be deterministic for identical template content. |
+| `fetched_at` | Timestamp of when this Prompt was fetched from its backend. Implementation-defined precision. When the backend serves a cached result, `fetched_at` MUST reflect the original fetch time, not the cache hit time (matching §5's "caching MUST NOT break content-addressing" intent). |
 | `metadata` | Optional implementation-defined mapping of additional backend-supplied metadata (e.g., Langfuse tags, file path of origin). The spec does not constrain shape. |
 
 The `name + version + label` triple identifies a prompt; the `template_hash` lets two
@@ -101,7 +102,7 @@ A `PromptResult` record:
 | `version` | String. Propagated from the source `Prompt.version`. |
 | `label` | String. Propagated from the source `Prompt.label`. |
 | `template_hash` | String. Propagated from the source `Prompt.template_hash`. |
-| `rendered_hash` | String. A stable content-derived hash of the rendered output (the concatenation of all `messages` content). Implementations SHOULD use the same hash function as `template_hash`. |
+| `rendered_hash` | String. A stable content-derived hash of the rendered output, computed over a canonical serialization of the full `messages` sequence that includes message boundaries, roles, content (preserving content-block structure per llm-provider §3.1 when present), and `tool_calls` (when present). The canonical serialization is implementation-defined but MUST be deterministic — two renders of the same `Prompt` with the same variables MUST produce identical canonical bytes and thus identical `rendered_hash`. Implementations SHOULD use the same hash function as `template_hash`. |
 | `messages` | An ordered, non-empty sequence of `Message` records, per llm-provider §3. Ready to pass to `Provider.complete()`. |
 | `variables` | The variable mapping that was used to render. Implementations MAY redact or omit values that contain sensitive content; the keys MUST be present so audit trails can identify what variables were applied. |
 | `fetched_at` | Timestamp of when the source `Prompt` was fetched. Implementation-defined precision. When the `Prompt` came from a cache (§6), `fetched_at` MUST reflect the original fetch time, not the cache hit time. |
@@ -167,10 +168,8 @@ Render semantics:
   template's structure (templates MAY produce multiple messages — e.g., a system +
   user split — when the template language supports it).
 - `variables` (the input) are recorded on the result.
-- `rendered_at` is set to the call time; `fetched_at` is propagated from the prompt's
-  fetch time (the prompt MUST carry its fetch time per §3 implementation note — see
-  the §3 `metadata` field where implementations MAY stash this, OR per-language
-  ergonomics MAY add a `fetched_at` accessor on `Prompt`).
+- `rendered_at` is set to the call time; `fetched_at` is propagated from `Prompt.fetched_at`
+  (per §3).
 - `rendered_hash` is computed from the rendered messages.
 - Variable handling follows §7.
 
@@ -246,7 +245,7 @@ A `PromptGroup` record:
 
 | Field | Description |
 |---|---|
-| `group_name` | String. A stable identifier for this group pattern. Used by observability §5.5 cross-reference (per §11) so all spans under the group share a `prompt.group_name` attribute. |
+| `group_name` | String. A stable identifier for this group pattern. Used by observability §5.5 cross-reference (per §11) so all spans under the group share an `openarmature.prompt.group_name` attribute. |
 | `members` | An ordered, non-empty sequence of `PromptResult` instances. Order matches the application's intended call sequence (first member runs first); the spec does not require sequential execution, but observability tools MAY use member order to lay out the group visually. |
 
 The group is a hint to observability, not a control-flow primitive. User code is
@@ -269,10 +268,11 @@ Implementations MAY ship higher-level helpers that automate specific group shape
 two-step classifier+follow-up helper, a self-correction loop helper, etc.), but those
 helpers are ergonomics on top of this spec, not part of the spec.
 
-Empty groups (`members` of length zero) are spec-invalid. A single-member group is
-permitted; in that case the `group_name` propagates to one span and the group is
-equivalent to attaching a tag to one PromptResult, which is rarely useful but not
-forbidden.
+Empty groups and single-member groups are both spec-invalid; `members` MUST contain at
+least two elements. (Single-prompt tagging is already served by the per-prompt
+observability attributes in §11 — `openarmature.prompt.name`,
+`openarmature.prompt.version`, `openarmature.prompt.label` —
+without needing a degenerate group-of-one.)
 
 ## 10. Errors
 
@@ -317,16 +317,17 @@ that conform to llm-provider's contract and are directly consumable by
 When an LLM call is made with messages produced by a managed prompt (i.e., messages
 sourced from a `PromptResult`), implementations MAY surface the prompt's identity on
 the LLM call's observability span by adding the following attributes to the LLM-call
-span (sibling to existing `llm.model`, `llm.finish_reason`, etc.):
+span (sibling to existing `openarmature.llm.model`, `openarmature.llm.finish_reason`,
+etc., per observability §5.5):
 
-- `prompt.name` — `PromptResult.name`
-- `prompt.version` — `PromptResult.version`
-- `prompt.label` — `PromptResult.label`
-- `prompt.template_hash` — `PromptResult.template_hash`
-- `prompt.rendered_hash` — `PromptResult.rendered_hash`
-- `prompt.group_name` — when the call was part of a `PromptGroup`, the group's
-  `group_name` propagates to every member span so trace UIs can render them as a
-  single grouping.
+- `openarmature.prompt.name` — `PromptResult.name`
+- `openarmature.prompt.version` — `PromptResult.version`
+- `openarmature.prompt.label` — `PromptResult.label`
+- `openarmature.prompt.template_hash` — `PromptResult.template_hash`
+- `openarmature.prompt.rendered_hash` — `PromptResult.rendered_hash`
+- `openarmature.prompt.group_name` — when the call was part of a `PromptGroup`, the
+  group's `group_name` propagates to every member span so trace UIs can render them as
+  a single grouping.
 
 The propagation mechanism (e.g., a context variable holding the `PromptResult`, an
 explicit observer event the manager fires on render) is implementation-defined. The

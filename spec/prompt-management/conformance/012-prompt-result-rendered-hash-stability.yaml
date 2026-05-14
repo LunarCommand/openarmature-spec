@@ -44,9 +44,9 @@ expected:
   # Two renders with different variables produce different hashes.
   rendered_hash_different:
     - [r_alice_1, r_bob]
-  # Cross-implementation reproducibility (when the harness supports it):
-  # render the same template + variables in two implementations (e.g.,
-  # Python and a hypothetical TypeScript port) and assert the
-  # rendered_hash matches. Verifies §12's determinism guarantee extends
-  # across implementations sharing the same hash algorithm.
-  cross_implementation_rendered_hash_stable: true
+  # Cross-implementation rendered_hash stability is NOT asserted here:
+  # the v1 spec (§4, §12) guarantees within-implementation determinism
+  # but does not mandate a normative hash algorithm or canonical
+  # serialization. A follow-on proposal can tighten those (e.g., SHA-256
+  # hex over RFC 8785 JCS) when cross-impl cache-key portability becomes
+  # a concrete need.
