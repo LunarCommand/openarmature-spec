@@ -180,7 +180,7 @@ Each spec content block maps to one OpenAI content-array entry:
 |---|---|
 | `TextBlock { text }` | `{ "type": "text", "text": <text> }` |
 | `ImageBlock` with `source: url { url }` | `{ "type": "image_url", "image_url": { "url": <url> } }`. The `detail` hint, when set on the spec block, becomes `image_url.detail`. |
-| `ImageBlock` with `source: inline { base64_data, media_type }` | `{ "type": "image_url", "image_url": { "url": "data:<media_type>;base64,<base64_data>" } }`. OpenAI's inline-image path goes through the same `image_url` entry shape with a `data:` URL; implementations MUST construct the data URI per RFC 2397. The `detail` hint, when set, becomes `image_url.detail`. |
+| `ImageBlock { media_type, source: inline { base64_data } }` | `{ "type": "image_url", "image_url": { "url": "data:<media_type>;base64,<base64_data>" } }`. OpenAI's inline-image path goes through the same `image_url` entry shape with a `data:` URL; implementations MUST construct the data URI per RFC 2397, reading `media_type` from the ImageBlock and `base64_data` from its inline source. The `detail` hint, when set, becomes `image_url.detail`. |
 
 Empty content blocks (e.g., a text block with empty `text`, or an image block with both
 sources absent) are spec-invalid and MUST be rejected at pre-send validation per §3 /
@@ -228,7 +228,7 @@ Add fixtures under `spec/llm-provider/conformance/`. Each fixture is a pair
 (`NNN-name.yaml` + `NNN-name.md`) per the conformance README:
 
 - **`009-content-blocks-text-only-equivalence.yaml`** — construct a user message as
-  `content_blocks: [TextBlock(text="hello")]` and an equivalent message as
+  `content: [TextBlock(text="hello")]` and an equivalent message as
   `content: "hello"`. Assert both serialize to identical OpenAI wire payloads (the
   string-content form is preferred when blocks contain only text, OR both forms are
   accepted on the wire — implementation choice; assert wire-shape equivalence regardless).
@@ -245,7 +245,7 @@ Add fixtures under `spec/llm-provider/conformance/`. Each fixture is a pair
 - **`013-content-blocks-mixed-order-preserved.yaml`** — user message with blocks in the
   order `[image, text, image, text]`. Assert the OpenAI wire payload preserves the order.
 - **`014-content-blocks-validation-empty-sequence.yaml`** — attempt to construct a user
-  message with `content_blocks: []`. Assert the implementation raises
+  message with `content: []`. Assert the implementation raises
   `provider_invalid_request` at pre-send validation (per §3 the sequence MUST be non-empty).
 - **`015-content-blocks-validation-empty-text-block.yaml`** — user message with a `TextBlock(text="")`
   block in an otherwise non-empty sequence. Assert pre-send validation raises
