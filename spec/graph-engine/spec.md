@@ -289,7 +289,10 @@ observers receiving events for an in-flight invocation is fixed at the point the
   `phase` uniquely identifies the event source. `branch_name` and `fan_out_index` are independent and
   MAY both be present simultaneously when a fan-out node executes inside a parallel-branches branch
   (or a parallel-branches node executes inside a fan-out instance). Absent for events from nodes that
-  are not inside any parallel-branches branch.
+  are not inside any parallel-branches branch. In the uniqueness tuple, an absent field participates
+  as a distinct slot: `branch_name = absent` and `branch_name = "alpha"` identify different events;
+  the same applies to `fan_out_index`. This matches the convention `fan_out_index` followed
+  pre-amendment.
 - `fan_out_config` — optional structured value, populated on EVERY `started` and `completed`
   event for a fan-out node (i.e., events whose `node_name` resolves to a fan-out node per
   pipeline-utilities §9), including retried attempts of the fan-out node itself

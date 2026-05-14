@@ -86,6 +86,9 @@ edges:
 
 initial_state: {}
 
+observers:
+  - {name: obs, attach: graph, target: outer, behavior: record}
+
 expected:
   # Both alpha and beta contribute {key: ...}. The `merge` reducer applies
   # them in branch insertion order (alpha first, then beta), so beta's
