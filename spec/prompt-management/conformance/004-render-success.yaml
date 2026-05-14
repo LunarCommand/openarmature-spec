@@ -1,0 +1,38 @@
+# PromptManager.render — happy path. Fetch a prompt, render it with
+# valid variables, assert the PromptResult has propagated identity
+# fields, a deterministic rendered_hash, and well-formed messages per
+# llm-provider §3.
+
+backends:
+  - name: local
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc123"
+
+manager:
+  backends: [local]
+
+calls:
+  - target: manager
+    operation: render
+    fetched_prompt: {name: greeting, label: production}
+    variables: {user: "Alice"}
+    expected:
+      prompt_result:
+        name: greeting
+        label: production
+        version: v1
+        template_hash: "sha256:abc123"
+        # rendered_hash is computed. §4 leaves the hash algorithm
+        # implementation-defined (SHOULD use the same function as
+        # template_hash), so the fixture only asserts presence and
+        # non-empty string. Determinism (same inputs → same hash) is
+        # covered separately by fixture 006.
+        rendered_hash_present: true
+        rendered_hash_non_empty_string: true
+        messages:
+          - {role: user, content: "Hello, Alice!"}
+        variables: {user: "Alice"}

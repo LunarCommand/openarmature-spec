@@ -1,0 +1,34 @@
+# PromptBackend.fetch — happy path. A backend with a known prompt
+# returns the expected Prompt record on fetch(name, label).
+#
+# Conformance harness contract for prompt-management fixtures:
+#
+#   - The harness instantiates one or more mock PromptBackend instances
+#     preloaded with the prompts in each `backends[i].prompts` list.
+#   - A `manager:` block specifies the composition order of backends
+#     for fixtures that exercise composite-backend behavior.
+#   - `calls` lists operations to perform against the backend or manager.
+#     Each entry specifies the target (`backend: <name>` or `manager`),
+#     operation (`fetch`, `render`, `get`), inputs, and expected outcome.
+
+backends:
+  - name: local
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc123"
+
+calls:
+  - target: {backend: local}
+    operation: fetch
+    name: greeting
+    label: production
+    expected:
+      prompt:
+        name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc123"

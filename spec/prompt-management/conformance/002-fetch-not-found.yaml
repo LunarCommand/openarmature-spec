@@ -1,0 +1,15 @@
+# PromptBackend.fetch — not found. Backend has no prompt matching the
+# requested (name, label); MUST raise prompt_not_found.
+
+backends:
+  - name: local
+    prompts: []                  # empty — no prompts available
+
+calls:
+  - target: {backend: local}
+    operation: fetch
+    name: missing
+    label: production
+    expected:
+      raises:
+        category: prompt_not_found

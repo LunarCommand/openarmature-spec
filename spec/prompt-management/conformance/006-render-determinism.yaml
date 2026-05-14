@@ -1,0 +1,37 @@
+# PromptManager.render — determinism. Rendering the same Prompt with
+# the same variables twice MUST produce PromptResults whose messages
+# and rendered_hash are bytewise identical. Per §12.
+
+backends:
+  - name: local
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc"
+
+manager:
+  backends: [local]
+
+calls:
+  # Two renders of the same prompt with identical variables.
+  - target: manager
+    operation: render
+    fetched_prompt: {name: greeting, label: production}
+    variables: {user: "Alice"}
+    capture_as: result1
+  - target: manager
+    operation: render
+    fetched_prompt: {name: greeting, label: production}
+    variables: {user: "Alice"}
+    capture_as: result2
+
+expected:
+  # Bytewise identical messages and rendered_hash across the two
+  # renders. fetched_at and rendered_at MAY differ (timing); the
+  # determinism contract applies to render output, not timestamps.
+  result_equivalence:
+    of: [result1, result2]
+    fields_must_match: [messages, rendered_hash, name, version, label, template_hash]
+    fields_may_differ: [rendered_at]

@@ -1,0 +1,31 @@
+# PromptManager.fetch — NO fallback on logical absence. Composite
+# manager with two backends; primary raises prompt_not_found (logical
+# absence); secondary HAS the prompt. The manager MUST NOT fall back —
+# it MUST raise prompt_not_found and NOT return the secondary's prompt.
+# Per §8: not-found stops the chain.
+
+backends:
+  - name: primary
+    prompts: []                      # no prompts — raises prompt_not_found
+  - name: secondary
+    prompts:
+      - name: greeting
+        label: production
+        version: v1-local
+        template: "Hello from secondary!"
+        template_hash: "sha256:secondary"
+
+manager:
+  backends: [primary, secondary]
+
+calls:
+  - target: manager
+    operation: fetch
+    name: greeting
+    label: production
+    expected:
+      raises:
+        category: prompt_not_found
+      # Critical: the secondary backend's fetch MUST NOT have been
+      # called. The primary's prompt_not_found stops the chain.
+      secondary_backend_call_count: 0

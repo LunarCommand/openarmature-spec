@@ -1,0 +1,35 @@
+# PromptManager.fetch — fallback on infrastructure failure. Composite
+# manager with two backends; primary raises prompt_store_unavailable;
+# secondary has the prompt. Manager MUST fall back per §8 and return
+# the secondary's prompt without raising.
+
+backends:
+  - name: primary
+    simulate_unavailable: true       # raises prompt_store_unavailable on fetch
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello (primary)!"
+        template_hash: "sha256:primary"
+  - name: secondary
+    prompts:
+      - name: greeting
+        label: production
+        version: v1-local
+        template: "Hello (secondary)!"
+        template_hash: "sha256:secondary"
+
+manager:
+  backends: [primary, secondary]      # primary first, secondary fallback
+
+calls:
+  - target: manager
+    operation: fetch
+    name: greeting
+    label: production
+    expected:
+      prompt:
+        # Secondary's prompt served; primary's was unreachable.
+        version: v1-local
+        template_hash: "sha256:secondary"
