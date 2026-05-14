@@ -1,0 +1,54 @@
+# Structured output — prompt-augmentation fallback for providers without
+# native response_format. The provider is configured as NOT supporting
+# response_format; the implementation MUST fall back per §8.5.1.
+#
+# The fallback construct a MODIFIED COPY of the message list with a
+# JSON-only directive appended; sends without response_format; parses
+# and validates the response against the user's schema. The caller's
+# original messages MUST NOT be mutated.
+
+mock_provider:
+  capabilities:
+    supports_native_response_format: false
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-027
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"value":42}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 50, completion_tokens: 4, total_tokens: 54}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Generate."}
+    response_schema:
+      type: object
+      properties:
+        value: {type: integer}
+      required: [value]
+      additionalProperties: false
+    expected_wire_request:
+      model: test-model
+      # The fallback adds a system directive (or extends an existing one)
+      # instructing the model to return only valid JSON matching the
+      # schema. The harness asserts:
+      #   1. response_format is NOT present (native path bypassed).
+      #   2. A system message is present in the modified copy whose
+      #      content references the schema or "JSON only" directive.
+      #   3. The caller's original messages list remains unchanged
+      #      after the call returns.
+      response_format_absent: true
+      contains_system_directive_referencing_schema: true
+    expected:
+      response:
+        message: {role: assistant, content: '{"value":42}', tool_calls: null}
+        finish_reason: stop
+        # parsed is still populated — fallback validates post-receive.
+        parsed: {value: 42}
+      caller_messages_unmodified: true

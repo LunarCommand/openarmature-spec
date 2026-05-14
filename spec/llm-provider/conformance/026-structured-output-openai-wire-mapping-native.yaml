@@ -1,0 +1,53 @@
+# Structured output — native OpenAI wire mapping. Verifies §8.5: when
+# response_schema is supplied, the outbound HTTP request body includes
+# response_format: { type: "json_schema", json_schema: { name, schema,
+# strict } } with the spec's response_schema passed verbatim under
+# json_schema.schema and strict: true.
+
+mock_provider:
+  capabilities:
+    supports_native_response_format: true
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-026
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"value":42}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 10, completion_tokens: 4, total_tokens: 14}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Generate."}
+    response_schema:
+      type: object
+      properties:
+        value: {type: integer}
+      required: [value]
+      additionalProperties: false
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: "user", content: "Generate."}
+      response_format:
+        type: json_schema
+        json_schema:
+          # name is implementation-derived; harness asserts presence,
+          # not value.
+          strict: true
+          schema:
+            type: object
+            properties:
+              value: {type: integer}
+            required: [value]
+            additionalProperties: false
+    expected:
+      response:
+        message: {role: assistant, content: '{"value":42}', tool_calls: null}
+        finish_reason: stop
+        parsed: {value: 42}

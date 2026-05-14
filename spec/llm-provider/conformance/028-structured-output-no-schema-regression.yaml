@@ -1,0 +1,43 @@
+# Structured output — no-schema regression. complete() called WITHOUT
+# response_schema; the v0.4.0 behavior MUST be preserved exactly:
+# Response.parsed is absent, wire body MUST NOT include response_format,
+# and the call succeeds with text content regardless of whether the
+# content looks like JSON.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-028
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            # Content that LOOKS like JSON, but the call did NOT request
+            # structured output. parsed MUST still be absent.
+            message: {role: assistant, content: '{"this":"is just text"}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 10, completion_tokens: 8, total_tokens: 18}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Say something."}
+    # response_schema intentionally omitted.
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: "user", content: "Say something."}
+      # Wire body MUST NOT include response_format. The literal
+      # comparison enforces absence.
+    expected:
+      response:
+        message:
+          role: assistant
+          content: '{"this":"is just text"}'
+          tool_calls: null
+        finish_reason: stop
+        # parsed MUST be absent — even though the content happens to
+        # look like JSON. The call didn't ask for it.
+        parsed: null

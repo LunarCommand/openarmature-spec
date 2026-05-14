@@ -1,8 +1,9 @@
 # 0016: LLM Provider — Structured Output
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-13
+- **Accepted:** 2026-05-14
 - **Targets:** spec/llm-provider/spec.md (modifies §5 *Provider interface*; modifies §6 *Response and configuration*; modifies §7 *Error semantics*; adds §8.5 *Structured output wire mapping*; modifies §10 *Out of scope*)
 - **Related:** 0006 (LLM provider core)
 - **Supersedes:**

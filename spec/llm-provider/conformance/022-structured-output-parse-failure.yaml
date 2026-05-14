@@ -1,0 +1,42 @@
+# Structured output — JSON parse failure. complete() called with a
+# response_schema; the provider returns content that is not valid JSON
+# (truncated body). Implementation MUST raise structured_output_invalid
+# with the schema, raw content, and a parse-failure description in the
+# error payload.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-022
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message:
+              role: assistant
+              # Truncated/malformed JSON — missing closing brace and value.
+              content: '{"name":"Alice","age":'
+            finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 8, total_tokens: 28}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Generate a person record."}
+    response_schema:
+      type: object
+      properties:
+        name: {type: string}
+        age: {type: integer}
+      required: [name, age]
+      additionalProperties: false
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          # The error MUST expose these so the user can debug.
+          response_schema_present: true
+          raw_response_content: '{"name":"Alice","age":'
+          failure_description_present: true

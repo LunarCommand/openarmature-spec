@@ -1,0 +1,45 @@
+# Structured output — non-transient classification. The default
+# pipeline-utilities RetryMiddleware classifier MUST NOT retry
+# structured_output_invalid — a model that fails schema compliance on a
+# given prompt usually fails the same way on retry. Verifies §7's
+# non-transient-by-default retry classification.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-024
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Alice"}'}  # missing age
+            finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Generate a person record."}
+    response_schema:
+      type: object
+      properties:
+        name: {type: string}
+        age: {type: integer}
+      required: [name, age]
+      additionalProperties: false
+    # The harness wraps this call in a RetryMiddleware with default
+    # classifier. The structured_output_invalid raised by complete()
+    # MUST propagate unchanged — the default classifier MUST NOT match
+    # it to the transient set.
+    retry_middleware:
+      max_attempts: 3
+      classifier: default
+    expected:
+      raises:
+        category: structured_output_invalid
+      # Critical: the call MUST have been invoked exactly once. If the
+      # default classifier mistakenly included structured_output_invalid
+      # in the transient set, the harness would see N calls instead.
+      provider_call_count: 1

@@ -1,0 +1,56 @@
+# Structured output — with tool calls. complete() called with both
+# `tools` and `response_schema` populated; the model returns tool_calls
+# instead of structured content. Per §5/§6, Response.parsed MUST be
+# absent (the tool-call path takes precedence per finish_reason), and
+# Response.message.tool_calls MUST be populated.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-025
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message:
+              role: assistant
+              content: null
+              tool_calls:
+                - id: call_001
+                  type: function
+                  function: {name: get_weather, arguments: '{"city":"SF"}'}
+            finish_reason: tool_calls
+        usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "What's the weather in SF?"}
+    tools:
+      - name: get_weather
+        description: "Get current weather for a city."
+        parameters:
+          type: object
+          properties:
+            city: {type: string}
+          required: [city]
+    response_schema:
+      type: object
+      properties:
+        summary: {type: string}
+      required: [summary]
+      additionalProperties: false
+    expected:
+      response:
+        message:
+          role: assistant
+          tool_calls:
+            - id: call_001
+              name: get_weather
+              arguments: {city: "SF"}
+        finish_reason: tool_calls
+        # parsed MUST be absent on tool_calls responses, even when
+        # response_schema was supplied. Per §6's mutual-exclusion rule.
+        parsed: null

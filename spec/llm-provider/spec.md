@@ -7,6 +7,7 @@ Canonical behavioral specification for the OpenArmature LLM provider abstraction
 - **History:**
   - created by [proposal 0006](../../proposals/0006-llm-provider-core.md)
   - §3 Message shape extended (user content MAY be a sequence of content blocks); §3.1 Content blocks added (text and image blocks; image input only on user messages); §7 gained `provider_unsupported_content_block` error category; §8.1 user-row updated and §8.1.1 content-block wire mapping added; §10 multi-modal entry split (image input now covered; audio/video and image outputs remain deferred) by [proposal 0015](../../proposals/0015-llm-provider-multimodal-images.md)
+  - §5 `complete()` extended with optional `response_schema` parameter; §6 Response gained `parsed` field; §7 gained `structured_output_invalid` error category (non-transient by default); §8.5 structured output wire mapping added (with §8.5.1 prompt-augmentation fallback and §8.5.2 response mapping); §10 structured output deferral removed by [proposal 0016](../../proposals/0016-llm-provider-structured-output.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -233,9 +234,10 @@ distinguishes "model in registry" from "model loaded" SHOULD be preferred over a
 `ready()` is a pre-flight check intended for fail-fast on startup or warmup polling. It MUST NOT
 be called automatically by `complete()`; callers decide when (or whether) to invoke it.
 
-### `complete(messages, tools=None, config=None)`
+### `complete(messages, tools=None, config=None, response_schema=None)`
 
-Async. Performs a single completion call.
+Async. Performs a single completion call. When `response_schema` is supplied, the call
+additionally constrains the model's output to conform to the schema.
 
 - `messages` — non-empty ordered sequence of messages. The first message MAY be `system`; otherwise
   the message list begins with `user`. The last message before the call MUST be `user` or `tool` (the
@@ -244,12 +246,39 @@ Async. Performs a single completion call.
 - `tools` — optional ordered sequence of `Tool` records. When present and non-empty, the model is
   permitted to return `tool_calls`. Tool names MUST be unique within the list.
 - `config` — optional `RuntimeConfig` (§6). Per-call sampling parameters and budget hints.
+- `response_schema` — optional JSON Schema describing the expected output shape. When `None` /
+  absent, the call behaves as in v0.4.0: free-form text content; no parsed value. When present,
+  MUST be a valid JSON Schema. The top-level schema MUST be an object schema (`type: "object"` at
+  the root) — this matches §4 `Tool.parameters` and OpenAI's strict-mode wire format. Non-object
+  top-level schemas are out of scope for this version; a follow-on MAY relax this if cross-provider
+  demand warrants. Implementations SHOULD validate at call time. The JSON Schema convention matches
+  §4 — see §4's note on language-native schema constructors compiling to JSON Schema.
 
 Returns: a `Response` (§6).
 
+When `response_schema` is set and the model returns content (not tool calls):
+
+- `Response.parsed` is the parsed-and-validated structured value per `response_schema`.
+- `Response.message.content` is the JSON-serialized string form of the structured output (preserved
+  verbatim from the provider per §6).
+
+When `response_schema` is set and `finish_reason` is `"tool_calls"`, `Response.parsed` MUST be
+absent regardless of whether `message.content` is also populated (the §3 contract allows assistant
+messages to carry both `tool_calls` and non-empty `content`, and this section does not change that).
+`message.content` preserves the model's output verbatim per §6; the `parsed` slot only populates
+when the model returned structured content (typically `finish_reason: "stop"`).
+
+When `tools` and `response_schema` are both supplied, the model decides which path to take,
+signaled by `finish_reason`. If `finish_reason` is `"tool_calls"`, the user handles tool execution
+and may make a follow-on `complete()`; if `finish_reason` is `"stop"`, the user reads `parsed`
+and/or `message.content`.
+
+When `response_schema` is `None` / absent, `Response.parsed` is absent regardless of content. The
+v0.4.0 behavior is preserved exactly.
+
 Operation semantics:
 
-- `complete()` MUST NOT mutate `messages`, `tools`, or `config`.
+- `complete()` MUST NOT mutate `messages`, `tools`, `config`, or `response_schema`.
 - `complete()` MUST be reentrant: multiple concurrent calls on the same provider are permitted.
   Implementations MUST NOT serialize concurrent calls internally.
 - `complete()` does NOT loop on tool calls. If the response's `finish_reason` is `"tool_calls"`,
@@ -257,6 +286,9 @@ Operation semantics:
   follow-on `complete()`.
 - `complete()` does NOT retry on transient errors. Errors propagate; retry policy belongs above this
   layer.
+- When `response_schema` is set and the model produces output that successfully parses as JSON but
+  fails to validate against `response_schema`, OR fails to parse as JSON at all, `complete()`
+  raises `structured_output_invalid` (§7).
 
 ## 6. Response and configuration
 
@@ -268,6 +300,7 @@ A `Response` record:
 | `finish_reason` | One of `"stop"`, `"length"`, `"tool_calls"`, `"content_filter"`, `"error"`. See below. |
 | `usage` | A record `{prompt_tokens, completion_tokens, total_tokens}`. Each field is a non-negative integer or `null`. If the provider does not report usage, all three MUST be `null`. |
 | `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Carries everything the provider returned — including fields the spec does not normalize (logprobs, content-filter details, provider-specific extensions). The normalized fields above are derived from `raw`; the two views MUST be consistent (modifying one does not affect the other, since both are immutable from the caller's perspective). |
+| `parsed` | The parsed and validated structured value when the call supplied a `response_schema` and the model returned structured content. The value conforms to the supplied `response_schema`. Absent (`null` / `None` / `undefined`, per the language's idiom) on calls that did not supply a `response_schema`, and on responses whose `finish_reason` is `"tool_calls"` (regardless of whether `message.content` is also populated, per the §3 assistant-message contract). |
 
 `finish_reason` semantics:
 
@@ -280,6 +313,27 @@ A `Response` record:
   per §7); `finish_reason: "error"` signals a degraded but parseable response. The response MAY
   carry `tool_calls`, possibly with malformed `arguments`; see §3 "Validation under
   `finish_reason: \"error\"`" for handling.
+
+`parsed` semantics. The `parsed` field is the language-idiomatic deserialized form of the
+structured value (e.g., a Python `dict[str, Any]` populated per the JSON Schema, or a TypeScript
+`unknown` typed at the call site via a generic). Implementations MAY offer ergonomic typed
+accessors on top (e.g., Python users supplying a Pydantic model class instead of a raw JSON
+Schema and receiving a validated model instance, surfaced via per-language overloads or generics
+so that the static type of `parsed` reflects the supplied schema) — those are per-language
+ergonomics, not normative spec.
+
+`message.content` carries the provider's content string preserved verbatim — the bytes the model
+returned, UTF-8 decoded. Implementations MUST NOT re-serialize `parsed` back into
+`message.content`; doing so would mask formatting differences (whitespace, key ordering, number
+representation) and break conformance assertions that rely on byte-level equivalence. `parsed`
+and `message.content` MUST be consistent in the following sense: deserializing `message.content`
+as JSON and validating against `response_schema` produces `parsed`. The reverse operation
+(serializing `parsed` and comparing) is NOT required to round-trip bytewise, because the model's
+serialization may differ from the framework's.
+
+When `finish_reason: "tool_calls"`, `parsed` is absent regardless of whether `response_schema`
+was supplied. The tool-call path and the structured-content path are mutually exclusive at the
+response level.
 
 A `RuntimeConfig` record:
 
@@ -319,20 +373,31 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
   Raised by the implementation's pre-send validation when the unsupported case is statically
   known (per the provider's documented capabilities), or by the post-receive error mapping
   when the provider itself rejects the request.
+- `structured_output_invalid` — `complete()` was called with a `response_schema` (§5), and the
+  provider returned content that could not be parsed as JSON OR did not validate against the
+  supplied schema. The error MUST expose the requested `response_schema`, the raw response
+  content (the bytes the model produced), and a description of the validation or parse failure
+  (the wrapped exception's message, the failing JSON Pointer, or the language's idiomatic
+  equivalent). Non-transient by default — a model that fails to produce schema-compliant output
+  on a given prompt usually fails the same way on retry. Users wanting retry-on-validation-failure
+  semantics MAY include `structured_output_invalid` in a pipeline-utilities `RetryMiddleware`
+  classifier's transient set, but the category is NOT transient by default at the spec level.
+  Distinct from `provider_invalid_response` (which covers wire-shape malformation, not content
+  validation against the caller's schema).
 
 Each error MUST expose a `category` identifier (matching the strings above, as an error class, error
 code, or tagged discriminant per the language's idiom). Provider-originated errors SHOULD preserve
 the underlying provider exception as cause (`__cause__` in Python, `cause` in TypeScript).
 
-These eight categories are the minimum required surface. Implementations MAY raise additional
+These nine categories are the minimum required surface. Implementations MAY raise additional
 provider-specific categories for cases not covered above; users MAY catch by category to implement
 retry policy.
 
 **Retry classification.** The categories `provider_unavailable`, `provider_rate_limit`,
 `provider_model_not_loaded`, and `finish_reason: "error"` are *transient* — a retry MAY succeed.
 The categories `provider_authentication`, `provider_invalid_model`, `provider_invalid_request`,
-`provider_invalid_response`, and `provider_unsupported_content_block` are *non-transient* —
-retrying without changing the request will not succeed.
+`provider_invalid_response`, `provider_unsupported_content_block`, and `structured_output_invalid`
+are *non-transient* — retrying without changing the request will not succeed.
 
 ## 8. OpenAI-compatible wire format
 
@@ -438,6 +503,69 @@ hosted APIs do not. Implementations MUST NOT add a serialization layer; concurre
 go to the wire concurrently. Providers that benefit from client-side concurrency limits use the
 pipeline-utilities rate limiter or middleware, not this layer.
 
+### 8.5 Structured output
+
+When `complete()` is called with a `response_schema`, the OpenAI-compatible request body includes
+a `response_format` field:
+
+```
+{
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "<implementation-derived identifier>",
+      "schema": <response_schema verbatim>,
+      "strict": true
+    }
+  }
+}
+```
+
+The `name` field is required by OpenAI but does not affect output semantics; implementations
+SHOULD derive a stable identifier from the schema (e.g., a hash, or the schema's `title` field
+when present). The `strict: true` flag enables OpenAI's schema-constrained decoding path;
+implementations SHOULD pass `strict: true` when the supplied schema satisfies the strict-mode
+constraints (no `additionalProperties: true`, all properties listed in `required`, etc.), and
+SHOULD fall back to `strict: false` when the schema does not satisfy the constraints. The
+behavioral contract at the spec layer is identical regardless of `strict`: validation happens
+post-receive against `response_schema`; failures raise `structured_output_invalid` (§7).
+
+When `complete()` is called without `response_schema` (or with `response_schema=None`), the
+request body MUST NOT include `response_format`. The v0.4.0 wire shape is preserved unchanged
+for free-form calls.
+
+#### 8.5.1 Fallback for providers without native structured output
+
+OpenAI-compatible servers that do not implement `response_format` (older vLLM versions, some
+LM Studio releases, some local-server wrappers) raise an error or silently ignore the field.
+Implementations SHOULD detect this — either statically (via provider capability metadata) or
+dynamically (a first-call attempt that returns an error) — and fall back to a prompt-augmentation
+strategy:
+
+1. Construct a modified copy of the message list with a system directive appended (or with the
+   existing system message's content extended) instructing the model to return only valid JSON
+   matching the `response_schema`. The directive SHOULD include the schema serialized as part
+   of the prompt. The caller's original `messages` list MUST be left unchanged — the §5
+   mutation rule applies to fallback paths the same as native paths.
+2. Issue the underlying request without `response_format`.
+3. Parse and validate the response content against `response_schema` per §6 `parsed`.
+4. On validation failure, raise `structured_output_invalid` per §7.
+
+Fallback behavior is implementation-defined. Implementations MUST document whether `complete()`
+with `response_schema` uses native `response_format` or prompt-augmentation, and SHOULD expose
+a way for callers to inspect or override the path chosen.
+
+#### 8.5.2 Response mapping
+
+When the response carries structured content (not tool calls):
+
+- `message.content` is the response body's content string, verbatim.
+- `parsed` is the deserialization of `message.content` against `response_schema`.
+- `finish_reason` is mapped per §8.2 (typically `"stop"`).
+
+When the response carries tool calls instead, the mapping follows §8.2 unchanged: `parsed` is
+absent, `tool_calls` is populated, `finish_reason` is `"tool_calls"`.
+
 ## 9. Determinism
 
 LLM completions are not deterministic by default. Even with `temperature=0` and a fixed `seed`,
@@ -464,7 +592,6 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - **Image outputs** — assistant-message-borne images (e.g., DALL-E-style image generation).
   v1 image support is user-input-only; assistant-output image content would need a separate
   proposal and is not common in tool-using agent workloads.
-- **Structured output** — JSON mode, schema-constrained decoding, response_format.
 - **Token counting before the call** — tokenizer access for budget-aware prompt assembly.
 - **Provider-native wire formats** — Anthropic Messages, Google Vertex, AWS Bedrock. Each adds a new
   §8-style mapping section to this spec via a follow-on proposal.

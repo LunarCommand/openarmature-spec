@@ -1,0 +1,44 @@
+# Structured output — schema validation failure. complete() called with
+# a response_schema; provider returns valid JSON, but the JSON fails to
+# validate against the schema (missing required field). Implementation
+# MUST raise structured_output_invalid with the failing field
+# identifiable in the description.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: chatcmpl-test-023
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - index: 0
+            message:
+              role: assistant
+              # Valid JSON, but missing the required "age" field.
+              content: '{"name":"Alice"}'
+            finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Generate a person record."}
+    response_schema:
+      type: object
+      properties:
+        name: {type: string}
+        age: {type: integer}
+      required: [name, age]
+      additionalProperties: false
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          raw_response_content: '{"name":"Alice"}'
+          # The failure description SHOULD identify the failing field
+          # (the missing "age"); implementation-defined wording is
+          # acceptable, but the harness asserts the field name appears.
+          failure_description_mentions: "age"
