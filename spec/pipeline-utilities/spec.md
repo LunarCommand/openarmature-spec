@@ -979,11 +979,15 @@ caller of `invoke()` immediately. Implementations MUST document their choice.
 
 Canonical runtime category: `checkpoint_record_invalid` — raised when
 `Checkpointer.load(X)` returns a record whose schema is incompatible with the current graph
-(state shape mismatch, missing required fields, OR a post-migration state that fails to
-deserialize against the current state class per §10.12.4). Non-transient. (Prior to
-proposal 0014, "incompatible `schema_version`" appeared in this list; raw `schema_version`
-mismatches now route through `checkpoint_state_migration_missing` or
-`checkpoint_state_migration_failed` per §10.12.)
+(state shape mismatch, missing required fields, a post-migration state that fails to
+deserialize against the current state class per §10.12.4, OR a version mismatch on a
+Checkpointer backend that cannot support state migration per §10.12.1). Non-transient.
+(Prior to proposal 0014, "incompatible `schema_version`" appeared in this list as a
+generic reason; raw `schema_version` mismatches now route through
+`checkpoint_state_migration_missing` or `checkpoint_state_migration_failed` per §10.12 on
+migration-capable backends, and only fall back to `checkpoint_record_invalid` when the
+backend itself cannot expose the class-independent intermediate the migration system
+requires.)
 
 New canonical runtime category: `checkpoint_state_migration_missing` — raised on
 `invoke(resume_invocation=X)` when the loaded record's `schema_version` does not match the
@@ -1006,6 +1010,11 @@ through `checkpoint_state_migration_missing` if no chain exists), then applies t
 (routing through `checkpoint_state_migration_failed` if a migration raises), then attempts
 deserialization (routing through `checkpoint_record_invalid` if the post-migration state
 cannot deserialize).
+
+Version mismatches on Checkpointer backends that cannot support state migration (per
+§10.12.1) bypass the migration system entirely and route directly to
+`checkpoint_record_invalid` — the migration_missing/migration_failed branch is reachable
+only on backends that can expose the required class-independent intermediate form.
 
 ### 10.11 Reference implementations and backend layering
 
@@ -1094,9 +1103,16 @@ Chain resolution proceeds:
 
 1. Build a directed graph over registered migrations: each migration is an edge from its
    `from_version` to its `to_version`.
-2. Find any path from the record's `schema_version` to the current state schema's
-   `schema_version`. Implementations MAY use any reasonable search (BFS for shortest path is
-   recommended).
+2. Find the shortest path (fewest edges) from the record's `schema_version` to the current
+   state schema's `schema_version`. Implementations MUST resolve by shortest-path (BFS is
+   the natural algorithm). When multiple distinct shortest paths exist (same edge count,
+   different edge sequences), this is an ambiguous chain and the engine MUST raise a
+   configuration-time error — the same category §10.12.1 raises for duplicate
+   `(from_version, to_version)` pairs. The user MUST restructure their migration graph to
+   leave a single canonical shortest path between every reachable version pair.
+   Implementations SHOULD detect ambiguity at compile time when feasible (by scanning the
+   registered migration graph); load-time detection is acceptable when compile-time
+   analysis is not.
 3. If at least one path exists, apply the migrations along the path in order: each
    migration's output becomes the next migration's input. The final serialized state is
    passed to the current state class's deserialization step (per §10.1 round-trip integrity).
