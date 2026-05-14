@@ -1,0 +1,41 @@
+# State migration — missing (empty registry). Saved record at v1, current
+# schema at v2, NO migrations registered. Resume MUST raise
+# checkpoint_state_migration_missing, NOT checkpoint_record_invalid.
+
+cases:
+  - name: empty_registry_version_mismatch
+    description: |
+      No migrations registered. The engine MUST raise
+      checkpoint_state_migration_missing (per §10.10) so the user gets an
+      actionable error pointing at the missing migration registration,
+      rather than the (uninformative) checkpoint_record_invalid.
+    state:
+      schema_version: "v2"
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: noop
+    nodes:
+      noop:
+        update_pure: {}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    checkpointer: sqlite
+    seeded_record:
+      schema_version: "v1"
+      state: {x: 7}
+      completed_positions: []
+    # No migrations registered.
+    resume:
+      from_seeded_record: true
+      expected_error:
+        category: checkpoint_state_migration_missing
+        carries:
+          from_version: "v1"
+          to_version: "v2"
+          # Empty registry described per §10.10 wording — implementation-
+          # specific shape; the harness asserts the description reflects
+          # an empty registry.
+          registered_migrations_count: 0

@@ -1,0 +1,45 @@
+# State migration — versions match: no-op. Saved record at v2, current
+# schema at v2; the engine MUST NOT consult the migration registry. The
+# record loads via the §10.4 fast path.
+
+cases:
+  - name: matching_versions_no_migration_consulted
+    description: |
+      Per §10.12.3, when the loaded record's schema_version equals the
+      current state schema's schema_version, the migration registry is
+      NOT consulted — regardless of what's registered. Common-case fast
+      path with no migration overhead.
+    state:
+      schema_version: "v2"
+      fields:
+        x:
+          type: int
+          default: 0
+        completed:
+          type: bool
+          default: false
+    entry: continue_node
+    nodes:
+      continue_node:
+        update_pure: {completed: true}
+    edges:
+      - {from: continue_node, to: END}
+    initial_state: {}
+    checkpointer: sqlite
+    seeded_record:
+      schema_version: "v2"
+      state: {x: 11, completed: false}
+      completed_positions: []
+    # A migration is registered, but the engine MUST NOT invoke it because
+    # the versions match.
+    migrations:
+      - from_version: "v1"
+        to_version: "v2"
+        migrate: should_not_run           # harness mock that fails if called
+    resume:
+      from_seeded_record: true
+      expected:
+        final_state: {x: 11, completed: true}
+        migrations_run: []                # MUST be empty
+      invariants:
+        migration_registry_not_consulted: true

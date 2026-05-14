@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-05-14
+
+### Added
+
+- **pipeline-utilities §10.12 State migrations.** Activates the `schema_version` field that proposal 0008 reserved on `CheckpointRecord` and adds a registration surface for user-supplied transformations that run on checkpoint load when the stored record's `schema_version` does not match the current state schema's version. Specifies migration registration (§10.12.1, including backend-constraint requirements for class-bound serialization formats and the deterministic-tie-breaker rule on duplicate `(from_version, to_version)` pairs), chain resolution (§10.12.2, including migration-function-failure handling), no-op fast path on matching versions (§10.12.3), and composition with `checkpoint_record_invalid` (§10.12.4). ([proposal 0014](proposals/0014-pipeline-utilities-state-migration.md))
+- **pipeline-utilities §10.10 — two new error categories.** `checkpoint_state_migration_missing` (raised on version mismatch when no migration chain connects stored to current; non-transient; carries the registered migration set in the error description) and `checkpoint_state_migration_failed` (raised when a registered migration function itself raises; non-transient; preserves the underlying exception as cause). The three migration-related categories (`checkpoint_record_invalid`, `..._missing`, `..._failed`) are mutually exclusive on any given resume per the §10.10 ordering. ([proposal 0014](proposals/0014-pipeline-utilities-state-migration.md))
+- Conformance fixtures `039-state-migration-additive-field` through `046-state-migration-function-raises` (pipeline-utilities), covering additive-field migration, chain application, missing/no-path registry, no-op when versions match, parent-state migration, post-migration deserialization failure routing to `checkpoint_record_invalid`, and migration-function-raise routing to `checkpoint_state_migration_failed`.
+
+### Changed
+
+- **pipeline-utilities §10.2 `schema_version` description.** Reframed as a user-facing identifier carried on the user's state schema, not an implementation-internal backend version. State classes that do not declare a `schema_version` carry an implementation-defined sentinel and are not migration-eligible. Users intending to evolve their schema across deploys MUST declare an explicit identifier so migrations can register against it. ([proposal 0014](proposals/0014-pipeline-utilities-state-migration.md))
+- **pipeline-utilities §10.10 `checkpoint_record_invalid` description.** Removed "incompatible `schema_version`" from the list of structural-failure reasons; raw `schema_version` mismatches now route through the migration system per §10.12. Added "post-migration state that fails to deserialize against the current state class per §10.12.4" as a covered case. The category remains non-transient. ([proposal 0014](proposals/0014-pipeline-utilities-state-migration.md))
+
+### Notes
+
+- **Additive change to §10.10's category list (pre-1.0 MINOR).** Implementations that don't register migrations see no behavior change. Implementations that previously raised `checkpoint_record_invalid` on raw `schema_version` mismatch now route through `checkpoint_state_migration_missing` instead — an observable behavior change for that specific case, classified pre-1.0 MINOR.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.11.0 may target v0.12.0 directly without implementing v0.11.0 first.
+
 ## [0.11.0] — 2026-05-13
 
 ### Added

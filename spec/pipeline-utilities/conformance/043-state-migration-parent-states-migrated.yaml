@@ -1,0 +1,88 @@
+# State migration — parent states. The saved record was taken at a
+# subgraph-internal save point; `parent_states` is populated with one
+# outer-graph state at v1. Current schema at v2 with one registered
+# v1 -> v2 migration. The migration MUST run once for the outer record's
+# `state` AND once for each entry in `parent_states` (per §10.12.2's
+# parent-state migration rule).
+
+cases:
+  - name: parent_states_migrated_uniformly
+    description: |
+      Saved at a subgraph-internal save point; parent_states carries the
+      outer state at v1. Both the inner state and the parent_states entry
+      receive the migration; the resumed subgraph re-enters correctly
+      with the migrated parent state.
+    subgraphs:
+      inner:
+        state:
+          schema_version: "v2"
+          fields:
+            inner_x:
+              type: int
+              default: 0
+            new_field:
+              type: string
+              default: "v2_default"
+            inner_done:
+              type: bool
+              default: false
+        entry: inner_node
+        nodes:
+          inner_node:
+            update_pure: {inner_done: true}
+        edges:
+          - {from: inner_node, to: END}
+    state:
+      schema_version: "v2"
+      fields:
+        outer_x:
+          type: int
+          default: 0
+        new_field:
+          type: string
+          default: "v2_default"
+        outer_done:
+          type: bool
+          default: false
+    entry: outer_pre
+    nodes:
+      outer_pre:
+        update_pure: {}
+      sub:
+        subgraph: inner
+      outer_post:
+        update_pure: {outer_done: true}
+    edges:
+      - {from: outer_pre,  to: sub}
+      - {from: sub,        to: outer_post}
+      - {from: outer_post, to: END}
+    initial_state: {}
+    checkpointer: sqlite
+    # Seeded record: save point inside the inner subgraph; parent_states
+    # carries the outer state at v1.
+    seeded_record:
+      schema_version: "v1"
+      state: {inner_x: 3}                                # inner state at v1
+      parent_states:
+        - {outer_x: 5}                                   # outer state at v1
+      completed_positions:
+        - {namespace: [sub], node_name: inner_node, step: 1, attempt_index: 0}
+    migrations:
+      - from_version: "v1"
+        to_version: "v2"
+        migrate: add_new_field_default                   # adds {new_field: "v2_default"}
+    resume:
+      from_seeded_record: true
+      expected:
+        # After migration applied to outer state AND to parent_states[0],
+        # both inner and outer carry new_field == "v2_default" before
+        # resume continues at outer_post.
+        final_state:
+          outer_x: 5
+          new_field: "v2_default"
+          outer_done: true
+      invariants:
+        # Migration ran twice: once for the outer record state, once for
+        # the single parent_states entry. (Inner state at the save point
+        # is the record state itself; parent_states[0] is the outer.)
+        migration_invocation_count: 2

@@ -1,0 +1,51 @@
+# State migration — function raises. Saved record at v1, current schema
+# at v2, registered v1 -> v2 migration function raises a KeyError mid-
+# execution (simulating a buggy user-supplied migration). The engine MUST
+# raise checkpoint_state_migration_failed (per §10.12.2 + §10.10),
+# preserve the raised exception as cause, and NOT raise
+# checkpoint_record_invalid.
+
+cases:
+  - name: buggy_migration_routes_to_failed_category
+    description: |
+      A user-supplied migration function raises during chain application.
+      Per §10.12.2, the engine wraps the exception as
+      checkpoint_state_migration_failed and propagates it. Subsequent
+      migrations in the chain MUST NOT run; the resume fails as a whole.
+    state:
+      schema_version: "v2"
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: noop
+    nodes:
+      noop:
+        update_pure: {}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    checkpointer: sqlite
+    seeded_record:
+      schema_version: "v1"
+      state: {x: 0}
+      completed_positions: []
+    migrations:
+      - from_version: "v1"
+        to_version: "v2"
+        # Harness mock that raises KeyError mid-execution.
+        migrate: raises_keyerror
+    resume:
+      from_seeded_record: true
+      expected_error:
+        category: checkpoint_state_migration_failed
+        carries:
+          from_version: "v1"
+          to_version: "v2"
+        cause:
+          exception_type: KeyError
+      invariants:
+        # Verify the engine did NOT route to checkpoint_record_invalid
+        # or to checkpoint_state_migration_missing — the migration
+        # function itself raised, which has its own dedicated category.
+        error_category_not: [checkpoint_record_invalid, checkpoint_state_migration_missing]
