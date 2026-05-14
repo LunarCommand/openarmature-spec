@@ -12,7 +12,7 @@
 Extend the existing `complete()` operation with an optional `response_schema` parameter that
 constrains the model's output to a caller-supplied JSON Schema. Augment `Response` with a
 `parsed` field that carries the validated structured value when `response_schema` was
-supplied. Introduce a new error category `structured_output_invalid` (terminal by default)
+supplied. Introduce a new error category `structured_output_invalid` (non-transient by default)
 for the case where the model's output cannot be parsed or validated against the requested
 schema. Specify the OpenAI wire mapping for structured output via `response_format`, with
 prompt-augmentation-plus-post-parse as a fallback for providers that do not natively
@@ -73,10 +73,13 @@ additionally constrains the model's output to conform to the schema.
   `provider_invalid_request` (§7).
 - `tools` — optional ordered sequence of `Tool` records. Constraints unchanged.
 - `config` — optional `RuntimeConfig` (§6). Constraints unchanged.
-- `response_schema` — optional JSON Schema (object schema) describing the expected output
-  shape. When `None` / absent, the call behaves as in v0.4.0: free-form text content; no
-  parsed value. When present, MUST be a valid JSON Schema; implementations SHOULD validate
-  at call time. The JSON Schema convention matches §4 `Tool.parameters` — see §4's note on
+- `response_schema` — optional JSON Schema describing the expected output shape. When
+  `None` / absent, the call behaves as in v0.4.0: free-form text content; no parsed value.
+  When present, MUST be a valid JSON Schema. The top-level schema MUST be an object schema
+  (`type: "object"` at the root) — this matches §4 `Tool.parameters` and OpenAI's
+  strict-mode wire format. Non-object top-level schemas are out of scope for this proposal;
+  a follow-on MAY relax this if cross-provider demand warrants. Implementations SHOULD
+  validate at call time. The JSON Schema convention matches §4 — see §4's note on
   language-native schema constructors compiling to JSON Schema.
 
 Returns: a `Response` (§6).
@@ -86,10 +89,17 @@ When `response_schema` is set and the model returns content (not tool calls):
 - `Response.parsed` is the parsed-and-validated structured value per `response_schema`.
 - `Response.message.content` is the JSON-serialized string form of the structured output.
 
-When `response_schema` is set and the model returns tool calls instead, `Response.parsed`
-is absent, `Response.message.tool_calls` is populated, `finish_reason` is `"tool_calls"`.
-The structured-output and tool-call paths are mutually exclusive at the response level;
-when `tools` and `response_schema` are both supplied, the model decides which path to take.
+When `response_schema` is set and `finish_reason` is `"tool_calls"`, `Response.parsed`
+MUST be absent regardless of whether `message.content` is also populated (the existing §3
+contract allows assistant messages to carry both `tool_calls` and non-empty `content`, and
+this proposal does not change that). `message.content` preserves the model's output
+verbatim per §6; the parsed slot only populates when the model returned structured content
+(typically `finish_reason: "stop"`).
+
+When `tools` and `response_schema` are both supplied, the model decides which path to
+take, signaled by `finish_reason`. If `finish_reason` is `"tool_calls"`, the user handles
+tool execution and may make a follow-on `complete()` (per §5); if `finish_reason` is
+`"stop"`, the user reads `parsed` and/or `message.content`.
 
 When `response_schema` is `None` / absent, `Response.parsed` is absent regardless of
 content. The v0.4.0 behavior is preserved exactly.
@@ -110,7 +120,7 @@ Amend the §6 `Response` record by adding one field:
 
 | Field | Description |
 |---|---|
-| `parsed` | The parsed and validated structured value when the call supplied a `response_schema` and the model returned content (not tool calls). The value conforms to the supplied `response_schema`. Absent (`null` / `None` / `undefined`, per the language's idiom) on calls that did not supply a `response_schema`, and on responses whose `finish_reason` is `"tool_calls"`. |
+| `parsed` | The parsed and validated structured value when the call supplied a `response_schema` and the model returned structured content. The value conforms to the supplied `response_schema`. Absent (`null` / `None` / `undefined`, per the language's idiom) on calls that did not supply a `response_schema`, and on responses whose `finish_reason` is `"tool_calls"` (regardless of whether `message.content` is also populated, per the §3 assistant-message contract). |
 
 The `parsed` field is the language-idiomatic deserialized form of the structured value
 (e.g., a Python `dict[str, Any]` populated per the JSON Schema, or a TypeScript `unknown`
@@ -120,10 +130,14 @@ receiving a validated model instance, surfaced via per-language overloads or gen
 that the static type of `parsed` reflects the supplied schema) — those are per-language
 ergonomics, not normative spec.
 
-`message.content` continues to carry the JSON-serialized string form of the structured
-output (the bytes the model returned, normalized to a UTF-8 string). `parsed` and
-`message.content` MUST be consistent: `parsed` is what `message.content` deserializes to
-under `response_schema`.
+`message.content` carries the provider's content string preserved verbatim — the bytes the
+model returned, UTF-8 decoded. Implementations MUST NOT re-serialize `parsed` back into
+`message.content`; doing so would mask formatting differences (whitespace, key ordering,
+number representation) and break conformance assertions that rely on byte-level
+equivalence. `parsed` and `message.content` MUST be consistent in the following sense:
+deserializing `message.content` as JSON and validating against `response_schema` produces
+`parsed`. The reverse operation (serializing `parsed` and comparing) is NOT required to
+round-trip bytewise, because the model's serialization may differ from the framework's.
 
 When `finish_reason: "tool_calls"`, `parsed` is absent regardless of whether
 `response_schema` was supplied. The tool-call path and the structured-content path are
@@ -203,9 +217,12 @@ Implementations SHOULD detect this — either statically (via provider capabilit
 dynamically (a first-call attempt that returns an error) — and fall back to a
 prompt-augmentation strategy:
 
-1. Append a system message (or extend the existing system message) with a directive
-   instructing the model to return only valid JSON matching the `response_schema`. The
-   directive SHOULD include the schema serialized as part of the prompt.
+1. Construct a modified copy of the message list with a system directive appended (or
+   with the existing system message's content extended) instructing the model to return
+   only valid JSON matching the `response_schema`. The directive SHOULD include the
+   schema serialized as part of the prompt. The caller's original `messages` list MUST
+   be left unchanged — the §5 mutation rule applies to fallback paths the same as
+   native paths.
 2. Issue the underlying request without `response_format`.
 3. Parse and validate the response content against `response_schema` per §6 `parsed`.
 4. On validation failure, raise `structured_output_invalid` per §7.
