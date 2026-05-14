@@ -13,9 +13,11 @@ Activate the `schema_version` field that proposal 0008 reserved on `CheckpointRe
 registration surface for **state migrations**: user-supplied transformations that run on
 checkpoint load when a saved record's `schema_version` does not match the current state schema's
 `schema_version`. A compiled graph MAY register an ordered set of migrations; the engine walks
-them on load to project a stored record's state into the current shape. A new canonical error
-category `checkpoint_state_migration_missing` covers the case where no chain of registered
-migrations connects the stored version to the current version.
+them on load to project a stored record's state into the current shape. Two new canonical error
+categories cover migration-related failures: `checkpoint_state_migration_missing` (no
+chain of registered migrations connects the stored version to the current version) and
+`checkpoint_state_migration_failed` (a registered migration function raised during chain
+application).
 
 ## Motivation
 
@@ -60,13 +62,15 @@ text:
 Replace with:
 
 > `schema_version` — string. Carries the version identifier of the user's state schema at the
-> time the record was saved. Implementations MUST require the state definition to expose a
-> stable, user-controlled `schema_version` identifier (the surface for declaring it is
-> per-language ergonomic — e.g., a class attribute in Python, a constant in TypeScript). The
-> framework reads `schema_version` from the state definition at save time and writes it onto
-> the record. Implementations MAY define a sensible default identifier (e.g., the empty string
-> or a fixed sentinel) for state classes that do not declare one explicitly; users intending
-> to evolve their schema across deploys SHOULD declare an explicit identifier.
+> time the record was saved. The state definition MAY expose a stable, user-controlled
+> `schema_version` identifier (the surface for declaring it is per-language ergonomic — e.g.,
+> a class attribute in Python, a constant in TypeScript). When declared, the framework reads
+> `schema_version` from the state definition at save time and writes it onto the record.
+> State classes that do not declare a `schema_version` are treated as carrying an
+> implementation-defined sentinel value (typically the empty string), and are not
+> migration-eligible until they declare one. Users intending to evolve their schema across
+> deploys MUST declare an explicit `schema_version` so that migrations (per §10.12) can be
+> registered against it.
 
 The framework does not constrain the version identifier's syntax. Users MAY use semver, integer
 counters, date stamps, or content hashes — whatever makes sense for their evolution discipline.
@@ -90,6 +94,19 @@ by three pieces:
   `unknown`-shaped object in TypeScript) so the migration is not constrained by the user's
   current state-class definitions.
 
+Migration support requires the active Checkpointer to be able to expose a structural
+intermediate form of the loaded state (a plain dict, a JSON tree, or similar) that is
+independent of the current state class definition. Backends using JSON, msgpack, or
+similar schema-independent encodings naturally satisfy this; the SQLiteCheckpointer
+reference implementation (per §10.11) does so by default. Backends using class-bound
+serialization (Python pickle of state class instances) or live in-memory references to
+typed state objects (the InMemoryCheckpointer reference implementation) cannot expose a
+class-independent intermediate. When such a backend encounters a version mismatch on load
+AND one or more migrations are registered, it MUST raise `checkpoint_record_invalid` per
+§10.10 with the version mismatch in the error description; the migration registry has no
+opportunity to bridge versions in that case. Implementations MUST document whether their
+Checkpointer backend supports state migration.
+
 The registration surface is per-language ergonomic. Python implementations are expected to
 expose this on `GraphBuilder` (e.g., `with_state_migration(...)`); TypeScript implementations
 may expose it on the builder or as a configuration object. The registration concept is what
@@ -99,7 +116,7 @@ checkpoint load.
 A compiled graph's migration set is **ordered by `(from_version, to_version)` pair**. The
 order of registration does not affect chain resolution; chains are resolved by version pair,
 not by registration order. Two migrations with the same `from_version` and same `to_version`
-SHOULD raise a configuration-time error (the chain is ambiguous). Two migrations with the
+MUST raise a configuration-time error (the chain is ambiguous). Two migrations with the
 same `from_version` and different `to_version` define a branched migration graph; chain
 resolution (§10.12.2) is responsible for picking a path.
 
@@ -121,6 +138,12 @@ Chain resolution proceeds:
    migration's output becomes the next migration's input. The final serialized state is
    passed to the current state class's deserialization step (per §10.1 round-trip integrity).
 4. If no path exists, raise `checkpoint_state_migration_missing` (per §10.10 below).
+
+If a migration function itself raises during step 3 (chain application), the engine MUST
+wrap the raised exception as `checkpoint_state_migration_failed` (per §10.10) and propagate
+it to the caller. The migration's exception is preserved as the cause per the language's
+idiom (`__cause__` in Python). Subsequent migrations in the chain MUST NOT run; the engine
+abandons the chain at the failing migration and the resume attempt fails as a whole.
 
 Migrations MUST be pure functions of their input (no I/O, no implicit state, deterministic
 output for a given input). The framework does not enforce purity — users who violate the
@@ -167,12 +190,32 @@ Add to §10.10:
 > (in a form appropriate to the host language) so the user can see what migrations would
 > need to be added.
 
-The existing `checkpoint_record_invalid` category (§10.10) remains and continues to cover
-structural failures the migration registry cannot address. The two categories are
-mutually exclusive on any given resume: the engine evaluates version compatibility first
-(potentially routing through `checkpoint_state_migration_missing` or successful
-migration), then attempts deserialization (potentially routing through
-`checkpoint_record_invalid`).
+> New canonical runtime category: `checkpoint_state_migration_failed` — raised when a
+> user-supplied migration function raises during chain application (per §10.12.2).
+> Non-transient (a buggy migration is deterministic; retrying without changing the
+> migration code will not succeed). The error MUST carry the failing migration's
+> `from_version` and `to_version`, and the underlying exception as cause (per the
+> language's idiom).
+
+Replace the existing §10.10 `checkpoint_record_invalid` description with:
+
+> Canonical runtime category: `checkpoint_record_invalid` — raised when
+> `Checkpointer.load(X)` returns a record whose schema is incompatible with the current
+> graph (state shape mismatch, missing required fields, OR a post-migration state that
+> fails to deserialize against the current state class per §10.12.4). Non-transient.
+
+The "incompatible `schema_version`" reason from the original §10.10 text is removed;
+raw `schema_version` mismatches now route through `checkpoint_state_migration_missing`
+per §10.12 (or through `checkpoint_state_migration_failed` if a migration is registered
+but raises).
+
+The amended `checkpoint_record_invalid` category covers structural failures and
+post-migration deserialization failures. The three categories are mutually exclusive on
+any given resume: the engine evaluates version compatibility first (routing through
+`checkpoint_state_migration_missing` if no chain exists), then applies the chain (routing
+through `checkpoint_state_migration_failed` if a migration raises), then attempts
+deserialization (routing through `checkpoint_record_invalid` if the post-migration state
+cannot deserialize).
 
 ### Cross-spec touchpoints
 
@@ -196,34 +239,52 @@ This proposal does not modify llm-provider.
 Add fixtures under `spec/pipeline-utilities/conformance/`. Each fixture is a pair
 (`NNN-name.yaml` + `NNN-name.md`) per the conformance README:
 
-- **`032-state-migration-additive-field.yaml`** — state class declares
+- **`0NN-state-migration-additive-field.yaml`** — state class declares
   `schema_version = "v2"`. A saved record exists at `schema_version = "v1"` carrying a
   state that lacks an optional field added in v2. One migration registered: `v1 → v2`
   populates the new field with its default. Call `invoke(resume_invocation=...)`; assert
   the migration runs once, the resumed invocation sees the populated default, and
   execution proceeds normally.
-- **`033-state-migration-chain.yaml`** — state class at `schema_version = "v3"`. A saved
-  record exists at `v1`. Two migrations registered: `v1 → v2` and `v2 → v3`. Assert both
-  run in order on resume and the resumed invocation sees the final v3 shape.
-- **`034-state-migration-missing.yaml`** — state class at `v2`, saved record at `v1`, no
-  migrations registered. Assert resume raises `checkpoint_state_migration_missing` (NOT
-  `checkpoint_record_invalid`); assert the error carries `from_version=v1`,
+- **`0NN+1-state-migration-chain.yaml`** — state class at `schema_version = "v3"`. A
+  saved record exists at `v1`. Two migrations registered: `v1 → v2` and `v2 → v3`.
+  Assert both run in order on resume and the resumed invocation sees the final v3 shape.
+- **`0NN+2-state-migration-missing.yaml`** — state class at `v2`, saved record at `v1`,
+  no migrations registered. Assert resume raises `checkpoint_state_migration_missing`
+  (NOT `checkpoint_record_invalid`); assert the error carries `from_version=v1`,
   `to_version=v2`, and an empty migration-set description.
-- **`035-state-migration-versions-match-no-op.yaml`** — record at `v2`, state class at
-  `v2`. Assert resume does NOT consult the migration registry (no migration runs, no
+- **`0NN+3-state-migration-versions-match-no-op.yaml`** — record at `v2`, state class
+  at `v2`. Assert resume does NOT consult the migration registry (no migration runs, no
   migration event fires) and the record loads via the §10.4 fast path.
-- **`036-state-migration-parent-states-migrated.yaml`** — saved record was taken at a
+- **`0NN+4-state-migration-parent-states-migrated.yaml`** — saved record was taken at a
   subgraph-internal save point; `parent_states` is populated with one outer-graph state
   at `v1`. State class at `v2` with one registered `v1 → v2` migration. Assert the
   migration runs once for the outer record's `state` AND once for each entry in
   `parent_states`, and the resumed subgraph re-enters correctly with the migrated
   parent state.
-- **`037-state-migration-post-migration-deserialization-fails.yaml`** — record at `v1`,
-  state class at `v2`, registered `v1 → v2` migration produces output that does not
-  match the v2 state class's deserialization contract (e.g., a required field is
+- **`0NN+5-state-migration-post-migration-deserialization-fails.yaml`** — record at
+  `v1`, state class at `v2`, registered `v1 → v2` migration produces output that does
+  not match the v2 state class's deserialization contract (e.g., a required field is
   missing). Assert resume raises `checkpoint_record_invalid` (per §10.10's existing
   contract), NOT `checkpoint_state_migration_missing`. Verifies the §10.12.4
   category-distinction rule.
+- **`0NN+6-state-migration-no-path-in-registry.yaml`** — state class at `v2`, saved
+  record at `v1`, migrations registered but none form a chain from `v1` to `v2` (e.g.,
+  a `v3 → v4` migration is registered, unrelated to the v1→v2 path). Assert resume
+  raises `checkpoint_state_migration_missing` (same category as the empty-registry
+  case); assert the error carries `from_version=v1`, `to_version=v2`, and a
+  migration-set description listing the registered (but unhelpful) migrations so the
+  user can see what IS available. Complements `0NN+2` to verify the error category
+  surfaces uniformly across both empty and no-path-found registry states.
+- **`0NN+7-state-migration-function-raises.yaml`** — state class at `v2`, saved record
+  at `v1`, registered `v1 → v2` migration function raises a `KeyError` mid-execution
+  (simulating a buggy user-supplied migration). Assert resume raises
+  `checkpoint_state_migration_failed`; assert the error exposes the underlying
+  `KeyError` as cause, and carries `from_version=v1` and `to_version=v2`. Verifies
+  the §10.12.2 contract that a raising migration aborts the chain and propagates as
+  the dedicated category (NOT `checkpoint_record_invalid`).
+
+(Fixture numbering deferred until proposals 0009 and 0011 are Accepted with finalized
+fixture numbering; this proposal's accept PR will pick the next available slot.)
 
 ## Alternatives considered
 
