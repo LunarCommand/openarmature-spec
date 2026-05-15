@@ -8,6 +8,13 @@ symlinked locations — this hook rewrites them on the fly during the
 docs build so links resolve correctly in the rendered site. The repo
 files themselves are not modified; the rewrites are confined to the
 in-memory markdown that MkDocs processes.
+
+Author constraint: source files MUST NOT contain the literal substrings
+``](../../proposals/`` or ``](../GOVERNANCE.md`` inside code samples
+(fenced blocks or inline code), since the hook uses plain substring
+replacement and will mutate them indiscriminately. If a future code
+sample needs to quote one of those paths verbatim, switch to a regex-
+based hook that excludes fenced blocks.
 """
 
 from __future__ import annotations
