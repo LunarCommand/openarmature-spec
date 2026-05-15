@@ -1,0 +1,353 @@
+/* ===== Footer meta row (mode-agnostic structural fix) =====
+ * Compact, vertically-centered, single-row at all viewport widths.
+ * Material's default leaves the copyright text and social icons at
+ * different baselines because each side has its own intrinsic
+ * padding, AND stacks them at narrow widths. Force flex row with
+ * centering + nowrap so the bar reads as one line on mobile too. */
+.md-footer-meta__inner {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  align-items: center;
+  padding-block: 5px;
+}
+
+.md-copyright,
+.md-social {
+  padding: 0;
+  margin: 0;
+}
+
+.md-social__link {
+  padding-block: 0;
+}
+
+/* ===== Header shadow (mode-agnostic) =====
+ * Remove Material's default drop shadow under the top nav so the bar
+ * sits flat against the 1px divider line below it. */
+.md-header,
+.md-header[data-md-state="shadow"] {
+  box-shadow: none;
+}
+
+/* ===== Landing CTAs (mode-agnostic) =====
+ * Both buttons on the landing — "Get started" and "View on GitHub" —
+ * render identically, primary class or not. Material's default
+ * primary fills the bg with primary-fg color; override both classes
+ * so they behave as outline buttons with a hover-fill.
+ *
+ * Default: ``#9d4edd`` outline + matching purple text + transparent
+ * background (so the surface color shows through, dark or light).
+ * Hover / focus: solid ``#9d4edd`` fill + white text + light-gray
+ * outline as the hover indicator. */
+.md-typeset .md-button,
+.md-typeset .md-button--primary {
+  background-color: transparent;
+  color: #9d4edd;
+  border-color: #9d4edd;
+}
+
+/* Hover/focus split per theme so each theme's body text color is
+ * applied explicitly — the mode-agnostic ``var(--md-default-fg-color)``
+ * variant resolved invisibly on the purple bg in practice. The
+ * scheme-attribute selector also raises specificity over Material's
+ * default ``.md-typeset .md-button:hover`` so the rule wins
+ * unambiguously regardless of cascade order. */
+[data-md-color-scheme="default"] .md-typeset .md-button:focus,
+[data-md-color-scheme="default"] .md-typeset .md-button:hover,
+[data-md-color-scheme="default"] .md-typeset .md-button--primary:focus,
+[data-md-color-scheme="default"] .md-typeset .md-button--primary:hover {
+  background-color: #9d4edd;
+  color: hsla(0, 0%, 0%, 0.87);
+  border-color: #2e2f35;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button:focus,
+[data-md-color-scheme="slate"] .md-typeset .md-button:hover,
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary:focus,
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary:hover {
+  background-color: #9d4edd;
+  color: hsla(225, 15%, 90%, 0.82);
+  border-color: #2e2f35;
+}
+
+/* The landing's feature cards (``<div class="grid cards">``) are
+ * static — they don't link anywhere — so Material's default hover
+ * effect (border dissolves + elevation shadow) gives a misleading
+ * "I'm clickable" affordance. Pin the hover state to match the
+ * default to suppress the change entirely. */
+.md-typeset .grid.cards > ol > li:focus-within,
+.md-typeset .grid.cards > ol > li:hover,
+.md-typeset .grid.cards > ul > li:focus-within,
+.md-typeset .grid.cards > ul > li:hover {
+  box-shadow: none;
+  border-color: var(--md-default-fg-color--lightest);
+}
+
+/* ``.two-col`` modifier on a grid-cards block forces a strict 2-column
+ * layout on desktop (Material's default ``auto-fit`` packs 3+ cards per
+ * row when there's room). Used by the landing's "What sets it apart"
+ * section so its four cards render as 2×2 instead of 3+1. Mobile and
+ * narrow viewports still stack to one column via the media query. */
+@media (min-width: 60em) {
+  .md-typeset .grid.cards.two-col {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Reference-implementation admonition on the landing — recolor the
+ * default ``abstract`` blue to the OpenArmature green
+ * (``rgb(47, 177, 112)``). Targets the border, the title-bar fill, and
+ * the title-icon fill so all three accent surfaces shift together. */
+.md-typeset .admonition.abstract,
+.md-typeset details.abstract {
+  border-color: rgb(47, 177, 112);
+}
+
+.md-typeset .abstract > .admonition-title,
+.md-typeset .abstract > summary {
+  background-color: rgba(47, 177, 112, 0.1);
+}
+
+.md-typeset .abstract > .admonition-title::before,
+.md-typeset .abstract > summary::before {
+  background-color: rgb(47, 177, 112);
+}
+
+/* ===== Dark-theme styling =====
+ * All rules below are scoped to ``[data-md-color-scheme="slate"]`` so
+ * the light theme keeps Material's defaults until we tackle it
+ * separately. */
+
+/* Unified surface color: all major sections share the footer-nav strip
+ * color (the bar just above the meta footer with prev/next arrows).
+ *
+ * Brand highlight: ``#9d4edd`` (vivid purple). Drives link color,
+ * hover treatment, and the selected/active nav indicator — the same
+ * variable Material's prev/next links use for their hover, so the
+ * rollover language is consistent everywhere. */
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: var(--md-footer-bg-color);
+  --md-accent-fg-color: #9d4edd;
+  --md-typeset-a-color: #9d4edd;
+  /* Inline code renders in a light lavender that pairs with the
+   * ``#9d4edd`` accent — the Material default was a pale blue that
+   * fought the brand colour. Fenced code blocks keep Material's
+   * default per-token syntax highlighting (keywords / strings /
+   * comments etc. via ``--md-code-hl-*``); they're not overridden
+   * here because the lavender shift looked too purple-heavy when
+   * applied across every token. */
+  --md-code-fg-color: #e4c1f9;
+}
+
+/* Inside fenced code blocks, the base ``--md-code-fg-color`` is what
+ * un-classified tokens fall back to (names / identifiers / etc.) —
+ * the lavender we want for inline code reads as too pink there.
+ * Re-scope the variable inside ``pre`` to the dark-theme body text
+ * tone so identifiers in code blocks read neutral while inline code
+ * stays lavender. */
+[data-md-color-scheme="slate"] .md-typeset pre {
+  --md-code-fg-color: rgba(226, 228, 233, 0.82);
+}
+
+/* Backstop: explicitly colour the Pygments ``name`` / ``constant``
+ * token classes inside slate-theme code blocks. These ordinarily
+ * read ``var(--md-code-hl-name-color)`` which defaults to
+ * ``var(--md-code-fg-color)`` — covered by the override above — but
+ * binding the colour directly here protects against any cascade
+ * order where the variable isn't picked up. */
+[data-md-color-scheme="slate"] .md-typeset pre .n,
+[data-md-color-scheme="slate"] .md-typeset pre .kc {
+  color: rgba(226, 228, 233, 0.82);
+}
+
+/* Active left-nav item: purple text to indicate the current page. */
+[data-md-color-scheme="slate"] .md-nav__link--active,
+[data-md-color-scheme="slate"] .md-nav__item--active > .md-nav__link {
+  color: #9d4edd;
+}
+
+/* Content-area link color — Material's slate scheme resolves
+ * ``--md-typeset-a-color`` from primary (black in our config), then
+ * patches it to a built-in blue via a slate-only override. Target the
+ * link selector directly to win against that override. */
+[data-md-color-scheme="slate"] .md-typeset a,
+[data-md-color-scheme="slate"] .md-typeset a:hover,
+[data-md-color-scheme="slate"] .md-typeset a:focus,
+[data-md-color-scheme="slate"] .md-typeset a:active {
+  color: #9d4edd;
+}
+
+/* Inline code inside a link (e.g., the ``openarmature.graph`` /
+ * ``openarmature.llm`` etc. links on the API Reference index): render
+ * in mid-saturation lavender in the default state. Hover/focus is
+ * left to Material's existing cascade. */
+[data-md-color-scheme="slate"] .md-typeset a code {
+  color: #cd8bf4;
+}
+
+/* Hide the default Material book-icon logo next to the site name; the
+ * site-name wordmark in the header serves as the home link instead
+ * (wired up by ``javascripts/header-link.js`` — Material's default
+ * leaves the title as plain text). */
+.md-header__button.md-logo {
+  display: none;
+}
+
+/* Site-name wordmark in the header: render as a plain link inheriting
+ * Material's title styling. No hover or focus state — the title
+ * functions as a home link but should read as a static wordmark. */
+.md-header__title-link,
+.md-header__title-link:hover,
+.md-header__title-link:focus,
+.md-header__title-link:active {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Hide Material's auto-generated site-name header at the top of the
+ * primary sidebar — we have an explicit ``OpenArmature: index.md``
+ * entry in the nav config which serves as the home link. */
+.md-nav--primary > .md-nav__title {
+  display: none;
+}
+
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-footer-meta {
+  background-color: var(--md-footer-bg-color);
+}
+
+/* 1px subtle gray dividers between sections. Translucent white reads
+ * as gray on the dark surface and adapts if surface tone changes. */
+[data-md-color-scheme="slate"] .md-header {
+  border-bottom: 1px solid hsla(0, 0%, 100%, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-sidebar--primary {
+  border-right: 1px solid hsla(0, 0%, 100%, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-sidebar--secondary {
+  border-left: 1px solid hsla(0, 0%, 100%, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-footer-nav {
+  border-top: 1px solid hsla(0, 0%, 100%, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-footer-meta {
+  border-top: 1px solid hsla(0, 0%, 100%, 0.1);
+}
+
+/* Search box: 1px gray outline + slightly rounded corners, matching
+ * the divider language. */
+[data-md-color-scheme="slate"] .md-search__form {
+  border: 1px solid hsla(0, 0%, 100%, 0.2);
+  border-radius: 0.4rem;
+}
+
+/* ===== Light-theme styling =====
+ * Mirrors the dark-theme structure. Unified surface color ``#f5f5f5``
+ * (near-white with a hint of green); 1px translucent-black dividers
+ * (15% black reads as a soft gray line); same ``#9d4edd`` highlight
+ * for links + active nav items; same rounded outline on search.
+ *
+ * Material's ``primary: custom`` (set in mkdocs.yml for this scheme)
+ * delegates the brand color to CSS variables — we point both
+ * ``--md-primary-fg-color`` (header bg) and ``--md-default-bg-color``
+ * (page bg) at ``#f5f5f5`` so the entire surface is one tone.
+ * ``--md-primary-bg-color`` is the text color *on* the primary
+ * surface; dark text reads well on the light sage. */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #f5f5f5;
+  --md-primary-bg-color: hsla(0, 0%, 0%, 0.87);
+  --md-primary-bg-color--light: hsla(0, 0%, 0%, 0.54);
+  --md-default-bg-color: #f5f5f5;
+  --md-footer-bg-color: #f5f5f5;
+  --md-accent-fg-color: #9d4edd;
+
+  /* Material's footer-fg variables default to white-on-dark; flip to
+   * dark-on-light so any element that reads them (icons, secondary
+   * footer text) renders against our light surface. */
+  --md-footer-fg-color: hsla(0, 0%, 0%, 0.87);
+  --md-footer-fg-color--light: hsla(0, 0%, 0%, 0.54);
+  --md-footer-fg-color--lighter: hsla(0, 0%, 0%, 0.32);
+
+  /* Code blocks (and inline code) sit on a slightly darker tone than
+   * the surrounding page so they read as distinct from body text
+   * without a hard border. */
+  --md-code-bg-color: #e9e9e9;
+}
+
+[data-md-color-scheme="default"] .md-header,
+[data-md-color-scheme="default"] .md-footer-meta {
+  background-color: #f5f5f5;
+}
+
+[data-md-color-scheme="default"] .md-header {
+  border-bottom: 1px solid hsla(0, 0%, 0%, 0.15);
+}
+
+[data-md-color-scheme="default"] .md-sidebar--primary {
+  border-right: 1px solid hsla(0, 0%, 0%, 0.15);
+}
+
+[data-md-color-scheme="default"] .md-sidebar--secondary {
+  border-left: 1px solid hsla(0, 0%, 0%, 0.15);
+}
+
+[data-md-color-scheme="default"] .md-footer-nav {
+  border-top: 1px solid hsla(0, 0%, 0%, 0.15);
+}
+
+[data-md-color-scheme="default"] .md-footer-meta {
+  border-top: 1px solid hsla(0, 0%, 0%, 0.15);
+}
+
+[data-md-color-scheme="default"] .md-nav__link--active,
+[data-md-color-scheme="default"] .md-nav__item--active > .md-nav__link {
+  color: #9d4edd;
+}
+
+[data-md-color-scheme="default"] .md-typeset a,
+[data-md-color-scheme="default"] .md-typeset a:hover,
+[data-md-color-scheme="default"] .md-typeset a:focus,
+[data-md-color-scheme="default"] .md-typeset a:active {
+  color: #9d4edd;
+}
+
+[data-md-color-scheme="default"] .md-search__form {
+  border: 1px solid hsla(0, 0%, 0%, 0.2);
+  border-radius: 0.4rem;
+}
+
+/* Inline code inside a link (e.g., the ``openarmature.graph`` /
+ * ``openarmature.llm`` etc. links on the API Reference index):
+ * render in the same mid-saturation lavender as the dark theme so
+ * the visual treatment is consistent across schemes. */
+[data-md-color-scheme="default"] .md-typeset a code {
+  color: #cd8bf4;
+}
+
+/* Prev/next footer-nav link text matches the content heading color
+ * (same as body text — headings only differ by weight). */
+[data-md-color-scheme="default"] .md-footer__link,
+[data-md-color-scheme="default"] .md-footer__title,
+[data-md-color-scheme="default"] .md-footer__direction {
+  color: var(--md-default-fg-color);
+}
+
+/* Copyright text matches body text color. Material wraps the
+ * copyright in ``.md-copyright__highlight`` with its own color rule,
+ * so target both. */
+[data-md-color-scheme="default"] .md-copyright,
+[data-md-color-scheme="default"] .md-copyright__highlight {
+  color: var(--md-default-fg-color);
+}
+
+/* GH logo in the footer social row — inherit the dark body color so
+ * it's visible against the near-white bg. */
+[data-md-color-scheme="default"] .md-social__link {
+  color: var(--md-default-fg-color);
+}

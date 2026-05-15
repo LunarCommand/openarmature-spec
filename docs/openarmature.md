@@ -8,40 +8,6 @@ framework for both deterministic LLM pipelines and tool-calling agents.
 
 ---
 
-## Table of Contents
-
-- [1. Thesis](#1-thesis)
-  - [1.1 The Gap: LLM Pipelines Have No Home](#11-the-gap-llm-pipelines-have-no-home)
-  - [1.2 The Insight: Pipelines and Agents Share Primitives](#12-the-insight-pipelines-and-agents-share-primitives)
-  - [1.3 What OpenArmature Proposes](#13-what-openarmature-proposes)
-- [2. Evidence](#2-evidence)
-  - [2.1 Projects Behind the Design](#21-projects-behind-the-design)
-  - [2.2 Distilled Patterns](#22-distilled-patterns)
-- [3. Architecture](#3-architecture)
-  - [3.1 Design Principles](#31-design-principles)
-  - [3.2 Package Structure](#32-package-structure)
-  - [3.3 Architecture Diagram](#33-architecture-diagram)
-- [4. Module Specifications](#4-module-specifications)
-  - [4.1 Graph Engine](#41-graph-engine)
-  - [4.2 Pipeline Utilities](#42-pipeline-utilities)
-  - [4.3 LLM Provider Abstraction](#43-llm-provider-abstraction)
-  - [4.4 Tool System and MCP](#44-tool-system-and-mcp)
-  - [4.5 Prompt Management](#45-prompt-management)
-  - [4.6 Observability](#46-observability)
-  - [4.7 Evaluation](#47-evaluation)
-  - [4.8 Logging](#48-logging)
-- [5. Canonical Examples](#5-canonical-examples)
-  - [5.1 LLM Pipeline (Content Analysis)](#51-llm-pipeline-content-analysis)
-  - [5.2 Tool-Calling Agent](#52-tool-calling-agent)
-  - [5.3 Hybrid (Pipeline with Agent Step)](#53-hybrid-pipeline-with-agent-step)
-- [6. Multi-Language Strategy](#6-multi-language-strategy)
-- [7. Implementation Plan](#7-implementation-plan)
-  - [7.1 Phasing](#71-phasing)
-  - [7.2 Risks](#72-risks)
-  - [7.3 What Is Hard](#73-what-is-hard)
-
----
-
 ## 1. Thesis
 
 ### 1.1 The Gap: LLM Pipelines Have No Home

@@ -1,0 +1,76 @@
+name: Docs
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "spec/**"
+      - "proposals/**"
+      - "GOVERNANCE.md"
+      - "CHANGELOG.md"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "spec/**"
+      - "proposals/**"
+      - "GOVERNANCE.md"
+      - "CHANGELOG.md"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
+
+# Least-privilege: read code for the build; ``deployments: write`` lets
+# the Cloudflare Pages action attach a deployment status to the commit.
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    # Bind the secret-presence check to a job-level env var so the
+    # deploy step's ``if:`` can gate on it. Protects against a missing
+    # or rotated CF secret turning the main branch's status red.
+    env:
+      HAS_CF_SECRETS: ${{ secrets.CF_API_TOKEN != '' && secrets.CF_ACCOUNT_ID != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Sync deps (docs group)
+        # ``--frozen`` requires the lockfile to be up-to-date and refuses
+        # to update it during sync — guarantees reproducible CI builds.
+        run: uv sync --frozen --group docs
+
+      - name: Build site (strict)
+        # ``--strict`` fails the build on any warning. Catches broken
+        # internal links, missing nav references, plugin misconfig
+        # early — before the deploy step.
+        run: uv run mkdocs build --strict
+
+      - name: Deploy to Cloudflare Pages
+        # Only deploy on pushes to main, and only when the CF secrets
+        # are configured. PR builds prove the site builds but do not
+        # deploy. If secrets are missing, skip rather than fail — the
+        # build step above is the source of truth for "does the site
+        # compile cleanly."
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HAS_CF_SECRETS == 'true'
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0  # v4.0.0
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: pages deploy site --project-name=openarmature-spec-docs --branch=main

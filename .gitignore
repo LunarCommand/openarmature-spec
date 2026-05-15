@@ -1,1 +1,8 @@
 .claude/
+
+# MkDocs build output (rendered docs site).
+site/
+
+# Python tooling for the docs build (uv venv).
+.venv/
+__pycache__/

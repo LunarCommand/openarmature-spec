@@ -1,0 +1,18 @@
+# Minimal project file for the docs build only. The spec repo ships no
+# implementation code — this exists so ``uv sync --group docs`` can
+# install the MkDocs Material toolchain to build the docs site.
+
+[project]
+name = "openarmature-spec-docs"
+version = "0.0.0"
+description = "Build tooling for the openarmature-spec MkDocs site."
+requires-python = ">=3.11"
+
+[dependency-groups]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5,<10",
+    "pymdown-extensions>=10.0,<11",
+    "mkdocs-glightbox>=0.4,<1",
+    "mkdocs-llmstxt>=0.1,<1",
+]

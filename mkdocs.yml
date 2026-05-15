@@ -1,0 +1,132 @@
+site_name: OpenArmature Specification
+site_url: https://openarmature.org/
+site_description: Language-agnostic specification for the OpenArmature workflow framework — RFC-style proposals, normative capability specs, and conformance fixtures.
+copyright: "©OpenArmature 2026"
+
+# Local ``mkdocs serve`` binds here. 8765 is the project convention
+# (matches openarmature-python).
+dev_addr: "127.0.0.1:8765"
+
+# docs_dir defaults to ``docs/``. Files outside that tree (capability
+# specs under ``spec/``, proposals, GOVERNANCE.md, CHANGELOG.md) are
+# surfaced via symlinks under ``docs/`` pointing at their canonical
+# locations. Symlinks keep the repo's existing structure intact while
+# letting MkDocs render the existing markdown in place.
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tracking
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+hooks:
+  - mkdocs_hooks.py
+
+plugins:
+  - search
+  - glightbox
+  # /llms.txt + /llms-full.txt for AI coding assistants. Plain-text
+  # versions of the docs that assistants can ingest in one shot —
+  # matches openarmature-python's setup and the "agent-friendly"
+  # framing of the framework itself.
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Overview:
+          - index.md
+        Charter:
+          - openarmature.md
+        Governance:
+          - governance.md
+        Capabilities:
+          - capabilities/*.md
+        Proposals:
+          - proposals/*.md
+        Changelog:
+          - changelog.md
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - admonition
+  - attr_list
+  - md_in_html
+  - footnotes
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - OpenArmature: index.md
+  - Charter: openarmature.md
+  - Governance: governance.md
+  - Capabilities:
+    - Graph Engine: capabilities/graph-engine.md
+    - Pipeline Utilities: capabilities/pipeline-utilities.md
+    - LLM Provider: capabilities/llm-provider.md
+    - Observability: capabilities/observability.md
+    - Prompt Management: capabilities/prompt-management.md
+  - Proposals: proposals.md
+  - Changelog: changelog.md
+
+# Per-proposal pages live under ``docs/proposals/`` (symlinked from
+# ``../proposals/``). They're reachable via the index table on
+# ``proposals.md`` rather than as individual nav entries — keeps the
+# sidebar manageable as the proposal count grows.
+not_in_nav: |
+  proposals/*.md
+
+extra:
+  # Hide the "Made with Material for MkDocs" footer (matches python repo).
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/LunarCommand/
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  # Sortable tables on the Proposals index page. Material's data-tables
+  # docs document this exact integration. ``tablesort.min.js`` is
+  # vendored under ``docs/javascripts/`` (Tablesort 5.3.0) rather than
+  # loaded from a CDN — eliminates the supply-chain risk of a public
+  # third-party script with no SRI.
+  - javascripts/tablesort.min.js
+  - javascripts/tablesort.js
+  # Wrap the header site-name wordmark in a link to the site root —
+  # Material's default markup leaves it as plain text.
+  - javascripts/header-link.js

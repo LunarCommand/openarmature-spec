@@ -1,0 +1,28 @@
+# Proposals
+
+OpenArmature evolves through numbered RFC-style proposals. Each proposal targets a capability spec and
+moves through a `Draft → Accepted` lifecycle. Once `Accepted`, a proposal's text is **immutable** — further
+changes happen via new proposals that supersede the prior. See [Governance](governance.md) for the full
+lifecycle and the proposal template.
+
+| #    | Title                                       | Capability          | Status   |
+|------|---------------------------------------------|---------------------|----------|
+| [0001](proposals/0001-graph-engine-foundation.md) | Foundation                                  | graph-engine        | Accepted |
+| [0002](proposals/0002-subgraph-explicit-mapping.md) | Subgraph explicit I/O mapping               | graph-engine        | Accepted |
+| [0003](proposals/0003-node-boundary-observer-hooks.md) | Node-boundary observer hooks                | graph-engine        | Accepted |
+| [0004](proposals/0004-pipeline-utilities-middleware.md) | Middleware                                  | pipeline-utilities  | Accepted |
+| [0005](proposals/0005-pipeline-utilities-parallel-fan-out.md) | Parallel fan-out                            | pipeline-utilities  | Accepted |
+| [0006](proposals/0006-llm-provider-core.md) | Core abstraction (OpenAI-compatible)        | llm-provider        | Accepted |
+| [0007](proposals/0007-observability-otel-span-mapping.md) | OpenTelemetry span mapping                  | observability       | Accepted |
+| [0008](proposals/0008-pipeline-utilities-checkpointing.md) | Checkpointing                               | pipeline-utilities  | Accepted |
+| [0009](proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md) | Per-instance fan-out resume                 | pipeline-utilities  | Draft    |
+| [0010](proposals/0010-drain-timeout.md) | Bounded drain — configurable timeout        | graph-engine        | Draft    |
+| [0011](proposals/0011-pipeline-utilities-parallel-branches.md) | Parallel branches                           | pipeline-utilities  | Accepted |
+| [0012](proposals/0012-graph-engine-completed-event-after-edges.md) | Completed event fires after edge evaluation | graph-engine        | Accepted |
+| [0013](proposals/0013-fan-out-config-on-node-event.md) | Fan-out config on node event                | graph-engine        | Accepted |
+| [0014](proposals/0014-pipeline-utilities-state-migration.md) | State migration hooks for checkpoints       | pipeline-utilities  | Accepted |
+| [0015](proposals/0015-llm-provider-multimodal-images.md) | Image content blocks for user messages      | llm-provider        | Accepted |
+| [0016](proposals/0016-llm-provider-structured-output.md) | Structured output                           | llm-provider        | Accepted |
+| [0017](proposals/0017-prompt-management-core.md) | Prompt management core                      | prompt-management   | Accepted |
+
+Click any column header to sort.
