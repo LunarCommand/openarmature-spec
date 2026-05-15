@@ -1,0 +1,130 @@
+site_name: OpenArmature Spec
+site_url: https://openarmature.org/
+site_description: Language-agnostic specification for the OpenArmature workflow framework — RFC-style proposals, normative capability specs, and conformance fixtures.
+copyright: "©OpenArmature 2026"
+
+# Local ``mkdocs serve`` binds here. 8765 is the project convention
+# (matches openarmature-python).
+dev_addr: "127.0.0.1:8765"
+
+# docs_dir defaults to ``docs/``. Files outside that tree (capability
+# specs under ``spec/``, proposals, GOVERNANCE.md, CHANGELOG.md) are
+# surfaced via symlinks under ``docs/`` pointing at their canonical
+# locations. Symlinks keep the repo's existing structure intact while
+# letting MkDocs render the existing markdown in place.
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tracking
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+hooks:
+  - mkdocs_hooks.py
+
+plugins:
+  - search
+  - glightbox
+  # /llms.txt + /llms-full.txt for AI coding assistants. Plain-text
+  # versions of the docs that assistants can ingest in one shot —
+  # matches openarmature-python's setup and the "agent-friendly"
+  # framing of the framework itself.
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Overview:
+          - index.md
+        Charter:
+          - openarmature.md
+        Governance:
+          - governance.md
+        Capabilities:
+          - capabilities/*.md
+        Proposals:
+          - proposals/*.md
+        Changelog:
+          - changelog.md
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - admonition
+  - attr_list
+  - md_in_html
+  - footnotes
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - OpenArmature Spec: index.md
+  - Charter: openarmature.md
+  - Governance: governance.md
+  - Capabilities:
+    - Graph Engine: capabilities/graph-engine.md
+    - Pipeline Utilities: capabilities/pipeline-utilities.md
+    - LLM Provider: capabilities/llm-provider.md
+    - Observability: capabilities/observability.md
+    - Prompt Management: capabilities/prompt-management.md
+  - Proposals:
+    - "0001 — Graph Engine Foundation": proposals/0001-graph-engine-foundation.md
+    - "0002 — Subgraph Explicit Mapping": proposals/0002-subgraph-explicit-mapping.md
+    - "0003 — Node Boundary Observer Hooks": proposals/0003-node-boundary-observer-hooks.md
+    - "0004 — Pipeline Utilities Middleware": proposals/0004-pipeline-utilities-middleware.md
+    - "0005 — Pipeline Utilities Parallel Fan-Out": proposals/0005-pipeline-utilities-parallel-fan-out.md
+    - "0006 — LLM Provider Core": proposals/0006-llm-provider-core.md
+    - "0007 — Observability OTel Span Mapping": proposals/0007-observability-otel-span-mapping.md
+    - "0008 — Pipeline Utilities Checkpointing": proposals/0008-pipeline-utilities-checkpointing.md
+    - "0009 — Per-Instance Fan-Out Resume (Draft)": proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md
+    - "0010 — Drain Timeout (Draft)": proposals/0010-drain-timeout.md
+    - "0011 — Pipeline Utilities Parallel Branches": proposals/0011-pipeline-utilities-parallel-branches.md
+    - "0012 — Completed Event After Edges": proposals/0012-graph-engine-completed-event-after-edges.md
+    - "0013 — Fan-Out Config on Node Event": proposals/0013-fan-out-config-on-node-event.md
+    - "0014 — Pipeline Utilities State Migration": proposals/0014-pipeline-utilities-state-migration.md
+    - "0015 — LLM Provider Multimodal Images": proposals/0015-llm-provider-multimodal-images.md
+    - "0016 — LLM Provider Structured Output": proposals/0016-llm-provider-structured-output.md
+    - "0017 — Prompt Management Core": proposals/0017-prompt-management-core.md
+  - Changelog: changelog.md
+
+extra:
+  # Hide the "Made with Material for MkDocs" footer (matches python repo).
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/LunarCommand/openarmature-spec
+
+extra_css:
+  - stylesheets/extra.css
