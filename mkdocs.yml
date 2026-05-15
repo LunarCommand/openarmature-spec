@@ -99,25 +99,15 @@ nav:
     - LLM Provider: capabilities/llm-provider.md
     - Observability: capabilities/observability.md
     - Prompt Management: capabilities/prompt-management.md
-  - Proposals:
-    - "0001 — Graph Engine Foundation": proposals/0001-graph-engine-foundation.md
-    - "0002 — Subgraph Explicit Mapping": proposals/0002-subgraph-explicit-mapping.md
-    - "0003 — Node Boundary Observer Hooks": proposals/0003-node-boundary-observer-hooks.md
-    - "0004 — Pipeline Utilities Middleware": proposals/0004-pipeline-utilities-middleware.md
-    - "0005 — Pipeline Utilities Parallel Fan-Out": proposals/0005-pipeline-utilities-parallel-fan-out.md
-    - "0006 — LLM Provider Core": proposals/0006-llm-provider-core.md
-    - "0007 — Observability OTel Span Mapping": proposals/0007-observability-otel-span-mapping.md
-    - "0008 — Pipeline Utilities Checkpointing": proposals/0008-pipeline-utilities-checkpointing.md
-    - "0009 — Per-Instance Fan-Out Resume (Draft)": proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md
-    - "0010 — Drain Timeout (Draft)": proposals/0010-drain-timeout.md
-    - "0011 — Pipeline Utilities Parallel Branches": proposals/0011-pipeline-utilities-parallel-branches.md
-    - "0012 — Completed Event After Edges": proposals/0012-graph-engine-completed-event-after-edges.md
-    - "0013 — Fan-Out Config on Node Event": proposals/0013-fan-out-config-on-node-event.md
-    - "0014 — Pipeline Utilities State Migration": proposals/0014-pipeline-utilities-state-migration.md
-    - "0015 — LLM Provider Multimodal Images": proposals/0015-llm-provider-multimodal-images.md
-    - "0016 — LLM Provider Structured Output": proposals/0016-llm-provider-structured-output.md
-    - "0017 — Prompt Management Core": proposals/0017-prompt-management-core.md
+  - Proposals: proposals.md
   - Changelog: changelog.md
+
+# Per-proposal pages live under ``docs/proposals/`` (symlinked from
+# ``../proposals/``). They're reachable via the index table on
+# ``proposals.md`` rather than as individual nav entries — keeps the
+# sidebar manageable as the proposal count grows.
+not_in_nav: |
+  proposals/*.md
 
 extra:
   # Hide the "Made with Material for MkDocs" footer (matches python repo).
@@ -128,3 +118,9 @@ extra:
 
 extra_css:
   - stylesheets/extra.css
+
+extra_javascript:
+  # Sortable tables on the Proposals index page. Material's data-tables
+  # docs document this exact integration.
+  - https://cdnjs.cloudflare.com/ajax/libs/tablesort/5.3.0/tablesort.min.js
+  - javascripts/tablesort.js
