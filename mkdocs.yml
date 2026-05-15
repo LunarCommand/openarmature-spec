@@ -1,4 +1,4 @@
-site_name: OpenArmature Spec
+site_name: OpenArmature Specification
 site_url: https://openarmature.org/
 site_description: Language-agnostic specification for the OpenArmature workflow framework — RFC-style proposals, normative capability specs, and conformance fixtures.
 copyright: "©OpenArmature 2026"
@@ -90,7 +90,7 @@ markdown_extensions:
       custom_checkbox: true
 
 nav:
-  - OpenArmature Spec: index.md
+  - OpenArmature: index.md
   - Charter: openarmature.md
   - Governance: governance.md
   - Capabilities:
@@ -114,7 +114,7 @@ extra:
   generator: false
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/LunarCommand/openarmature-spec
+      link: https://github.com/LunarCommand/
 
 extra_css:
   - stylesheets/extra.css
@@ -124,3 +124,6 @@ extra_javascript:
   # docs document this exact integration.
   - https://cdnjs.cloudflare.com/ajax/libs/tablesort/5.3.0/tablesort.min.js
   - javascripts/tablesort.js
+  # Wrap the header site-name wordmark in a link to the site root —
+  # Material's default markup leaves it as plain text.
+  - javascripts/header-link.js
