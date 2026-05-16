@@ -4,7 +4,7 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
-## [0.15.1] — 2026-05-15
+## [0.16.0] — 2026-05-15
 
 **Added**
 
@@ -19,8 +19,8 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 **Notes**
 
-- **Pre-1.0 PATCH bump.** The new category names a behavior already mandated by §10.12.1 and §10.12.2 in v0.15.0 ("a configuration-time error"); no new normative behavior, just a canonical identifier and conformance coverage. Implementations that already raise an arbitrary configuration error for migration ambiguity surface the new category to pass fixture 047 without other code changes.
-- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.15.0 may target v0.15.1 directly without implementing v0.15.0 first.
+- **Pre-1.0 MINOR bump.** Although v0.15.0 already mandated "a configuration-time error" for both ambiguity cases, naming a canonical category that didn't exist before is implementation-visible: implementations that previously raised an arbitrary configuration error (a language-native `ValueError`, a generic `Error`, etc.) must now surface `checkpoint_state_migration_chain_ambiguous` to pass fixture 047. Matches the precedent set by proposal 0014's category additions (`checkpoint_state_migration_missing` / `_failed`), which shipped as the v0.12.0 MINOR bump. The change is small in scope (rename the category surfaced for one specific case) but is correctly classified MINOR per pre-1.0 SemVer.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.15.0 may target v0.16.0 directly without implementing v0.15.0 first.
 
 ## [0.15.0] — 2026-05-14
 

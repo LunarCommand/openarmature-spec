@@ -34,15 +34,18 @@ cases:
     initial_state: {}
     checkpointer: sqlite
     migrations:
-      # Two distinct migration functions registered against the same
-      # (from, to) pair. Either function alone would be valid; the
-      # engine cannot pick deterministically between them.
+      # Two migrations registered against the same (from, to) pair.
+      # Duplicate-pair detection is independent of function identity
+      # per §10.12.1 — both reference the same `should_not_run` mock
+      # because the ambiguity check fires before either function is
+      # ever invoked. If `should_not_run` is somehow called, an
+      # implementation has missed the ambiguity check.
       - from_version: "v1"
         to_version: "v2"
-        migrate: add_new_field_default
+        migrate: should_not_run
       - from_version: "v1"
         to_version: "v2"
-        migrate: bumps_field_x
+        migrate: should_not_run
     expected_chain_ambiguity_error: checkpoint_state_migration_chain_ambiguous
 
   - name: ambiguous_shortest_paths_at_resolution
@@ -78,16 +81,16 @@ cases:
       # from v1 to v4 have length 2.
       - from_version: "v1"
         to_version: "v2"
-        migrate: bumps_field_x
+        migrate: should_not_run
       - from_version: "v2"
         to_version: "v4"
-        migrate: bumps_field_x
+        migrate: should_not_run
       - from_version: "v1"
         to_version: "v3"
-        migrate: bumps_field_x
+        migrate: should_not_run
       - from_version: "v3"
         to_version: "v4"
-        migrate: bumps_field_x
+        migrate: should_not_run
     resume:
       from_seeded_record: true
       expected_chain_ambiguity_error: checkpoint_state_migration_chain_ambiguous
