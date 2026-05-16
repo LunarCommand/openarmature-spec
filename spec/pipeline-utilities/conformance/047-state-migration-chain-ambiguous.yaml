@@ -1,0 +1,84 @@
+# State migration — chain ambiguity. Two cases:
+# (1) Two migrations with identical (from_version, to_version) registered
+#     against the same compiled graph (per §10.12.1).
+# (2) A diamond migration graph yielding multiple distinct shortest paths
+#     between a source / target version pair (per §10.12.2).
+# Both MUST raise the canonical configuration-time category
+# `checkpoint_state_migration_chain_ambiguous` (per §10.10).
+
+cases:
+  - name: duplicate_pair_at_registration
+    description: |
+      Two migrations register with the same (from_version, to_version)
+      pair. Per §10.12.1, the engine MUST raise
+      `checkpoint_state_migration_chain_ambiguous` at registration or
+      compile time, before any resume attempt. The error surfaces via
+      `expected_compile_error` because migrations are bound to the
+      compiled graph.
+    state:
+      schema_version: "v2"
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: noop
+    nodes:
+      noop:
+        update_pure: {}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    checkpointer: sqlite
+    migrations:
+      # Two distinct migration functions registered against the same
+      # (from, to) pair. Either function alone would be valid; the
+      # engine cannot pick deterministically between them.
+      - from_version: "v1"
+        to_version: "v2"
+        migrate: add_new_field_default
+      - from_version: "v1"
+        to_version: "v2"
+        migrate: bumps_field_x
+    expected_compile_error: checkpoint_state_migration_chain_ambiguous
+
+  - name: ambiguous_shortest_paths_at_resolution
+    description: |
+      A diamond migration graph: v1 -> v2 -> v4 AND v1 -> v3 -> v4. Both
+      paths from v1 to v4 have edge count 2; neither is canonically
+      shortest. Per §10.12.2, the engine MUST raise
+      `checkpoint_state_migration_chain_ambiguous`. Implementations
+      SHOULD detect this at compile time by scanning the registered
+      migration graph; this fixture asserts the compile-time path. A
+      load-time-only implementation would be spec-conformant per
+      §10.12.2's "load-time detection is acceptable" but is currently
+      outside this fixture's assertion scope.
+    state:
+      schema_version: "v4"
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: noop
+    nodes:
+      noop:
+        update_pure: {}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    checkpointer: sqlite
+    migrations:
+      # Diamond: v1 -> v2 -> v4 AND v1 -> v3 -> v4. Both shortest paths
+      # from v1 to v4 have length 2.
+      - from_version: "v1"
+        to_version: "v2"
+        migrate: bumps_field_x
+      - from_version: "v2"
+        to_version: "v4"
+        migrate: bumps_field_x
+      - from_version: "v1"
+        to_version: "v3"
+        migrate: bumps_field_x
+      - from_version: "v3"
+        to_version: "v4"
+        migrate: bumps_field_x
+    expected_compile_error: checkpoint_state_migration_chain_ambiguous
