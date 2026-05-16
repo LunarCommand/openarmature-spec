@@ -85,15 +85,18 @@ categories):
 > `(from_version, to_version)` pair (for the registration case) or
 > the source / target version pair and a description of the
 > conflicting paths (for the resolution case) in a form appropriate
-> to the host language. The migration system's three other
-> categories — `checkpoint_state_migration_missing`,
+> to the host language. The four migration-related categories —
+> `checkpoint_record_invalid`, `checkpoint_state_migration_missing`,
 > `checkpoint_state_migration_failed`, and
 > `checkpoint_state_migration_chain_ambiguous` — are mutually
-> exclusive on any given resume.
+> exclusive on any given resume: chain-ambiguous fires at build or
+> load time before either migration runs or post-migration
+> deserialization is attempted, so it cannot co-occur with
+> migration-failed or record-invalid.
 
 Update the §10.10 final paragraph (the migration-categories
 mutual-exclusion paragraph) to list the new category alongside the
-existing two.
+existing three migration-related categories.
 
 ### Pipeline-utilities §10.12.1: name the category
 
@@ -134,40 +137,60 @@ Two cases under one fixture:
 
 - **`duplicate_pair_at_registration`** — register two migrations
   with the same `(from_version, to_version)` pair (`(v1, v2,
-  fn_a)` and `(v1, v2, fn_b)`). Compilation MUST fail with
-  `expected_compile_error: checkpoint_state_migration_chain_ambiguous`.
+  fn_a)` and `(v1, v2, fn_b)`). The named category MUST surface
+  with the new `expected_chain_ambiguity_error` primitive (defined
+  below).
 - **`ambiguous_shortest_paths_at_resolution`** — register a diamond
   migration graph: `v1→v2`, `v2→v4`, `v1→v3`, `v3→v4`. State at
-  v4, seeded record at v1. Compilation MUST fail with
-  `expected_compile_error: checkpoint_state_migration_chain_ambiguous`
-  (per the spec's SHOULD-detect-at-compile-time guidance; an
-  implementation that defers detection to load time is conformant
-  but currently outside this fixture's scope — see Alternatives).
+  v4, seeded record at v1. The named category MUST surface with
+  the new `expected_chain_ambiguity_error` primitive.
 
-The fixture uses the same harness primitives as fixture 045 plus
-the `expected_compile_error` primitive established by graph-engine
-fixture 007. No new harness primitives are required.
+### New harness primitive: `expected_chain_ambiguity_error`
 
-The companion `.md` describes both cases against §10.12.1 and
-§10.12.2 and notes the load-time-detection accommodation as a
-follow-on if real impls need it.
+This proposal also introduces a new conformance harness primitive,
+`expected_chain_ambiguity_error: <category>`, that asserts the
+named category surfaces *at either build time or during resume*.
+This preserves §10.12.2's carve-out that compile-time detection is
+SHOULD-not-MUST: an implementation that detects the ambiguity at
+build/compile time satisfies the assertion via the build-step
+exception; an implementation that defers detection to load time
+satisfies the assertion via the resume-step exception. Both paths
+are spec-conformant under §10.12.2; the harness accepts either.
+
+Existing primitives `expected_compile_error` (graph-engine fixture
+007) and `expected_error` (resume blocks, e.g. fixture 045) commit
+the assertion to one timing or the other; neither is the right
+shape for an error category whose timing is implementation-defined
+per the spec.
+
+The harness primitive's semantics are part of what acceptance
+ships, alongside the category name and the fixture YAMLs.
+
+The companion fixture `.md` cross-references §10.12.1 and §10.12.2
+and documents the OR-acceptance shape so reviewers can see how the
+fixture preserves spec flexibility.
 
 ## Conformance test impact
 
 - New fixture `spec/pipeline-utilities/conformance/047-state-migration-chain-ambiguous.{yaml,md}`
   with two cases.
+- New harness primitive `expected_chain_ambiguity_error`
+  recognized by the conformance harness, accepting the named
+  category at either build or resume time.
 - Implementations that currently silently pick a path (or silently
   use registration order) when faced with multi-shortest-path
-  ambiguity will fail the resolution case until they add detection.
+  ambiguity will fail the resolution case until they add detection
+  at either build or load time.
 - Implementations that currently silently overwrite on duplicate
   `(from, to)` registration will fail the registration case until
   they add detection.
 
-The python reference implementation's PR-4 (proposal 0014) plan
-includes the registration-time duplicate-pair check; the
-multi-shortest-path check was flagged as a gap in the spec-side
-plan-cleared response and will be added before PR-4 merges. So this
-fixture is expected to pass python on day one of acceptance.
+The reference implementation in `openarmature-python` is expected
+to surface ambiguity at build time as part of its 0014
+implementation; this fixture exercises that path. A future
+implementation that defers detection to load time will pass the
+same fixture via the alternate timing leg of
+`expected_chain_ambiguity_error`.
 
 ## Alternatives considered
 
@@ -182,11 +205,19 @@ fixture is expected to pass python on day one of acceptance.
   (ambiguous chain), and §10.12.2 already says they share the
   category. Splitting would require a §10.12 rewrite and add an
   unnecessary distinction for callers.
-- **Fixture asserts via load-time error path** rather than
-  compile-time. Rejected: the spec SHOULDs compile-time detection,
-  so the fixture should reward that path. A follow-on can add a
-  harness primitive accepting either compile-time or load-time
-  detection if implementations surface a need.
+- **Fixture asserts via `expected_compile_error` only.** Rejected:
+  spec §10.12.2 explicitly accepts load-time detection
+  ("load-time detection is acceptable when compile-time analysis is
+  not"). A compile-time-only fixture would make a spec-conformant
+  load-time-detecting implementation fail conformance — fixture and
+  spec disagreeing. The new `expected_chain_ambiguity_error`
+  primitive accepts either timing leg, preserving §10.12.2's
+  carve-out.
+- **Tighten spec to MUST compile-time detection.** Rejected:
+  removes the §10.12.2 carve-out for implementations whose binding
+  semantics or graph-construction model doesn't support compile-time
+  scanning. The carve-out exists for a reason; conformance coverage
+  shouldn't strip it.
 - **Skip the fixture; trust implementations.** Rejected: the gap
   is real (no current fixture exercises either §10.12.1 ambiguity
   or §10.12.2 ambiguity); without conformance coverage, drift is
