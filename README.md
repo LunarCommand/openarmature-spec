@@ -6,7 +6,7 @@ specification text, conformance fixtures, governance rules, and numbered
 RFC-style proposals. **No implementation code lives here.** Implementations
 are in sibling repositories.
 
-**Current spec version:** [v0.15.0](CHANGELOG.md)
+**Current spec version:** [v0.16.0](CHANGELOG.md)
 
 ---
 
@@ -69,7 +69,7 @@ and architecture are in [`docs/openarmature.md`](docs/openarmature.md).
 | Capability | Introduced | Latest | Fixtures | Scope |
 |---|---|---|---|---|
 | [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.11.0 | 21 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks |
-| [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.12.0 | 46 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (with state migration), parallel branches |
+| [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.16.0 | 47 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (with state migration), parallel branches |
 | [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.14.0 | 28 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, structured output via `response_schema`, and OpenAI-compatible wire mapping |
 | [observability](spec/observability/spec.md) | 0.7.0 | 0.10.0 | 11 | Cross-backend correlation IDs, OpenTelemetry mapping (spans, log correlation, detached trace mode) |
 | [prompt-management](spec/prompt-management/spec.md) | 0.15.0 | 0.15.0 | 12 | Named/versioned template fetch + render; composite backends with infrastructure-only fallback; PromptGroup tracing primitive; strict-undefined-by-default variable injection |

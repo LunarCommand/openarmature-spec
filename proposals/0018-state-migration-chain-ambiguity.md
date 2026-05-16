@@ -1,9 +1,9 @@
 # 0018: Pipeline Utilities — State Migration Chain Ambiguity Category and Fixture
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-15
-- **Accepted:**
+- **Accepted:** 2026-05-15
 - **Targets:** spec/pipeline-utilities/spec.md (modifies §10.10 to add error category; modifies §10.12.1 and §10.12.2 to reference the category by name); spec/pipeline-utilities/conformance/ (adds fixture 047)
 - **Related:** 0014 (state-migration hooks)
 - **Supersedes:**

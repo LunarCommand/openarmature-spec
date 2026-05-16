@@ -125,7 +125,7 @@ drift.
 
     ---
 
-    118 conformance fixtures across five capabilities. Implementations run
+    119 conformance fixtures across five capabilities. Implementations run
     them; if they pass, behavior matches every other conforming runtime.
     No "implementation-defined" footguns.
 

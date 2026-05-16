@@ -10,6 +10,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §10 Checkpointing added by [proposal 0008](../../proposals/0008-pipeline-utilities-checkpointing.md)
   - §11 Parallel branches added by [proposal 0011](../../proposals/0011-pipeline-utilities-parallel-branches.md)
   - §10.2 `schema_version` reframed as user-facing; §10.10 `checkpoint_record_invalid` description amended and two new error categories (`checkpoint_state_migration_missing`, `checkpoint_state_migration_failed`) added; §10.12 State migrations added by [proposal 0014](../../proposals/0014-pipeline-utilities-state-migration.md)
+  - §10.10 gained canonical configuration-time category `checkpoint_state_migration_chain_ambiguous`; §10.12.1 and §10.12.2 updated to reference the category by name; mutual-exclusion paragraph rewritten for four migration-related categories by [proposal 0018](../../proposals/0018-state-migration-chain-ambiguity.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1003,13 +1004,35 @@ Non-transient (a buggy migration is deterministic; retrying without changing the
 code will not succeed). The error MUST carry the failing migration's `from_version` and
 `to_version`, and the underlying exception as cause (per the language's idiom).
 
-The three migration-related categories — `checkpoint_record_invalid`,
-`checkpoint_state_migration_missing`, `checkpoint_state_migration_failed` — are mutually
-exclusive on any given resume: the engine evaluates version compatibility first (routing
+New canonical configuration-time category: `checkpoint_state_migration_chain_ambiguous` —
+raised when the registered migration set contains an ambiguity that prevents the engine
+from picking a unique chain. Two cases trigger this category:
+
+- **At registration (per §10.12.1).** Two migrations registered with the same
+  `from_version` AND the same `to_version`. The engine MUST raise this category at
+  registration time (or at compile time when migrations are bound to the compiled graph,
+  per the host language's binding semantics) so the configuration error surfaces before
+  any resume attempt.
+- **At chain resolution (per §10.12.2).** A request to resolve a chain from
+  `from_version` A to `to_version` B finds two or more distinct shortest paths (same
+  edge count, different edge sequences). Implementations SHOULD detect this at compile
+  time when feasible by scanning the registered migration graph; load-time detection
+  is acceptable when compile-time analysis is not.
+
+Non-transient. The error MUST identify the offending `(from_version, to_version)` pair
+(for the registration case) or the source / target version pair and a description of the
+conflicting paths (for the resolution case), in a form appropriate to the host language.
+
+The four migration-related categories — `checkpoint_record_invalid`,
+`checkpoint_state_migration_missing`, `checkpoint_state_migration_failed`, and
+`checkpoint_state_migration_chain_ambiguous` — are mutually exclusive on any given resume:
+the engine evaluates registry well-formedness first (routing through
+`checkpoint_state_migration_chain_ambiguous` if a duplicate-pair or multi-shortest-path
+ambiguity is detected at build or load time), then version compatibility (routing
 through `checkpoint_state_migration_missing` if no chain exists), then applies the chain
-(routing through `checkpoint_state_migration_failed` if a migration raises), then attempts
-deserialization (routing through `checkpoint_record_invalid` if the post-migration state
-cannot deserialize).
+(routing through `checkpoint_state_migration_failed` if a migration raises), then
+attempts deserialization (routing through `checkpoint_record_invalid` if the
+post-migration state cannot deserialize).
 
 Version mismatches on Checkpointer backends that cannot support state migration (per
 §10.12.1) bypass the migration system entirely and route directly to
@@ -1088,9 +1111,10 @@ checkpoint load.
 A compiled graph's migration set is **ordered by `(from_version, to_version)` pair**. The
 order of registration does not affect chain resolution; chains are resolved by version pair,
 not by registration order. Two migrations with the same `from_version` and same `to_version`
-MUST raise a configuration-time error (the chain is ambiguous). Two migrations with the same
-`from_version` and different `to_version` define a branched migration graph; chain resolution
-(§10.12.2) is responsible for picking a path.
+MUST raise `checkpoint_state_migration_chain_ambiguous` (per §10.10) at registration or
+compile time, before any resume attempt. Two migrations with the same `from_version` and
+different `to_version` define a branched migration graph; chain resolution (§10.12.2) is
+responsible for picking a path.
 
 #### 10.12.2 Chain resolution
 
@@ -1106,13 +1130,12 @@ Chain resolution proceeds:
 2. Find the shortest path (fewest edges) from the record's `schema_version` to the current
    state schema's `schema_version`. Implementations MUST resolve by shortest-path (BFS is
    the natural algorithm). When multiple distinct shortest paths exist (same edge count,
-   different edge sequences), this is an ambiguous chain and the engine MUST raise a
-   configuration-time error — the same category §10.12.1 raises for duplicate
-   `(from_version, to_version)` pairs. The user MUST restructure their migration graph to
-   leave a single canonical shortest path between every reachable version pair.
-   Implementations SHOULD detect ambiguity at compile time when feasible (by scanning the
-   registered migration graph); load-time detection is acceptable when compile-time
-   analysis is not.
+   different edge sequences), this is an ambiguous chain and the engine MUST raise
+   `checkpoint_state_migration_chain_ambiguous` (per §10.10). The user MUST restructure
+   their migration graph to leave a single canonical shortest path between every reachable
+   version pair. Implementations SHOULD detect ambiguity at compile time when feasible (by
+   scanning the registered migration graph); load-time detection is acceptable when
+   compile-time analysis is not.
 3. If at least one path exists, apply the migrations along the path in order: each
    migration's output becomes the next migration's input. The final serialized state is
    passed to the current state class's deserialization step (per §10.1 round-trip integrity).

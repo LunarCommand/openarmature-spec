@@ -24,5 +24,6 @@ lifecycle and the proposal template.
 | [0015](proposals/0015-llm-provider-multimodal-images.md) | Image content blocks for user messages      | llm-provider        | Accepted |
 | [0016](proposals/0016-llm-provider-structured-output.md) | Structured output                           | llm-provider        | Accepted |
 | [0017](proposals/0017-prompt-management-core.md) | Prompt management core                      | prompt-management   | Accepted |
+| [0018](proposals/0018-state-migration-chain-ambiguity.md) | State migration chain ambiguity             | pipeline-utilities  | Accepted |
 
 Click any column header to sort.
