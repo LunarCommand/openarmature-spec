@@ -4,6 +4,24 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.15.1] — 2026-05-15
+
+**Added**
+
+- **pipeline-utilities §10.10 — new canonical configuration-time category `checkpoint_state_migration_chain_ambiguous`.** Raised when the registered migration set contains an ambiguity that prevents the engine from picking a unique chain. Two cases trigger the category: a duplicate `(from_version, to_version)` pair at registration (per §10.12.1) and multiple distinct shortest paths between a source / target version pair at chain resolution (per §10.12.2). Non-transient. Mutually exclusive with the other three migration-related categories (`checkpoint_record_invalid`, `checkpoint_state_migration_missing`, `checkpoint_state_migration_failed`) on any given resume; chain-ambiguous routes first because it fires at build or load time before any migration runs or deserialization is attempted. ([proposal 0018](proposals/0018-state-migration-chain-ambiguity.md))
+- Conformance fixture `047-state-migration-chain-ambiguous` (pipeline-utilities), covering both the duplicate-pair-at-registration case and the ambiguous-shortest-paths-at-resolution case via the new `expected_chain_ambiguity_error` harness primitive. The primitive accepts the named category surfacing at either build time or during resume, preserving §10.12.2's compile-time-SHOULD / load-time-acceptable carve-out so implementations detecting ambiguity at either point pass the same fixture.
+
+**Changed**
+
+- **pipeline-utilities §10.12.1 — duplicate-pair sentence names the category.** "MUST raise a configuration-time error (the chain is ambiguous)" → "MUST raise `checkpoint_state_migration_chain_ambiguous` (per §10.10) at registration or compile time, before any resume attempt." ([proposal 0018](proposals/0018-state-migration-chain-ambiguity.md))
+- **pipeline-utilities §10.12.2 step 2 — multi-shortest-path clause names the category.** "MUST raise a configuration-time error — the same category §10.12.1 raises for duplicate `(from_version, to_version)` pairs" → "MUST raise `checkpoint_state_migration_chain_ambiguous` (per §10.10)." The "Implementations SHOULD detect ambiguity at compile time when feasible" guidance immediately following remains unchanged. ([proposal 0018](proposals/0018-state-migration-chain-ambiguity.md))
+- **pipeline-utilities §10.10 — mutual-exclusion paragraph rewritten** to list all four migration-related categories with the new routing precedence (registry well-formedness → version compatibility → chain application → deserialization). ([proposal 0018](proposals/0018-state-migration-chain-ambiguity.md))
+
+**Notes**
+
+- **Pre-1.0 PATCH bump.** The new category names a behavior already mandated by §10.12.1 and §10.12.2 in v0.15.0 ("a configuration-time error"); no new normative behavior, just a canonical identifier and conformance coverage. Implementations that already raise an arbitrary configuration error for migration ambiguity surface the new category to pass fixture 047 without other code changes.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.15.0 may target v0.15.1 directly without implementing v0.15.0 first.
+
 ## [0.15.0] — 2026-05-14
 
 **Added**
