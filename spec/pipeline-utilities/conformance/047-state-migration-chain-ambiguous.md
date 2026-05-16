@@ -32,9 +32,12 @@ compile-time.
 
 - **`duplicate_pair_at_registration`** — the
   `expected_chain_ambiguity_error` assertion fires when two
-  migrations register the same `(v1, v2)` pair with different
-  migration functions. Implementations that detect at registration
-  time satisfy the assertion via the build-step exception.
+  migrations register the same `(v1, v2)` pair. Duplicate-pair
+  detection is independent of function identity per §10.12.1, so
+  both migrations reference the same `should_not_run` mock; the
+  ambiguity check fires before either function is invoked.
+  Implementations that detect at registration time satisfy the
+  assertion via the build-step exception.
 - **`ambiguous_shortest_paths_at_resolution`** — the
   `expected_chain_ambiguity_error` assertion fires when the
   registered migration set forms a diamond (`v1 → v2 → v4` AND
