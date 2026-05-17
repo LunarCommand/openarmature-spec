@@ -269,10 +269,16 @@ observers receiving events for an in-flight invocation is fixed at the point the
   graph's state, and so on; the last entry is the immediate parent's state. The invariant
   `len(parent_states) == len(namespace) - 1` MUST hold.
 - `attempt_index` — non-negative integer, default `0`. The 0-based index of this attempt among any
-  retries of the same node within a single invocation. For nodes not wrapped by retry middleware
-  (pipeline-utilities §6.1), `attempt_index` MUST be `0`. For nodes wrapped by retry middleware that
-  re-attempts execution, `attempt_index` increments per attempt: `0` for the first attempt, `1` for
-  the second, and so on through the final attempt. Combined with `node_name` and `namespace`, the
+  retries of the same node within a single invocation. `attempt_index` increments per attempt
+  (`0` for the first, `1` for the second, and so on through the final attempt) for nodes whose
+  execution is wrapped by retry middleware that re-attempts execution — including both **direct**
+  wrapping (the node's own per-node middleware chain, per pipeline-utilities §6.1) and **transitive**
+  wrapping (middleware on a containing subgraph that the node is part of, per pipeline-utilities
+  §9.7 instance middleware and §11.7 branch middleware). When a wrapping retry re-invokes a
+  containing subgraph, the inner nodes' events MUST emit the wrapping retry's current attempt
+  index — the retry counter propagates through the wrapping chain to event emissions from anything
+  re-executed as part of the retried unit. For nodes with NO re-attempting middleware anywhere in
+  the wrapping chain, `attempt_index` MUST be `0`. Combined with `node_name` and `namespace`, the
   field uniquely identifies each event from a retried node. The §6 invariant
   `len(parent_states) == len(namespace) - 1` is unaffected; `attempt_index` is independent of the
   namespace chain and parent-state list.

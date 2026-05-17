@@ -184,11 +184,16 @@ deliberately (e.g., a circuit-breaker middleware that raises after N consecutive
 engine treats this identically to a node raising.
 
 **The §6 observer event pair** for a node execution is dispatched once per *attempt* (per the §6
-pair model). For nodes wrapped by middleware that re-attempts (such as retry), each attempt
-produces its own started/completed pair with `attempt_index` set. The engine dispatches all events
-— middleware does not dispatch directly. For nodes not wrapped by re-attempting middleware, every
-attempt is a single execution that still produces a started/completed pair, with `attempt_index ==
-0`.
+pair model). For nodes whose execution is wrapped by middleware that re-attempts (such as retry)
+— including both **direct** wrapping (the node's per-node middleware chain) and **transitive**
+wrapping (middleware on a containing subgraph: §9.7 instance middleware, §11.7 branch middleware)
+— each attempt produces its own started/completed pair with `attempt_index` set per graph-engine
+§6. The engine dispatches all events — middleware does not dispatch directly. The mechanism by
+which a wrapping retry's attempt counter propagates to inner-node event emissions is implementation-
+defined (Python: a `contextvars.ContextVar` set by the retry middleware before each `next` call;
+TypeScript: `AsyncLocalStorage` or equivalent). For nodes with no re-attempting middleware anywhere
+in the wrapping chain, every attempt is a single execution that still produces a started/completed
+pair, with `attempt_index == 0`.
 
 **Recoverable state semantics** (graph-engine §4) are unchanged. If a middleware exception
 ultimately propagates, the engine's `node_exception` carries the pre-merge state, identical to the

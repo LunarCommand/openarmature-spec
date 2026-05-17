@@ -4,6 +4,18 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.16.1] — 2026-05-16
+
+**Changed**
+
+- **graph-engine §6 `attempt_index` description clarified.** The original text ("For nodes not wrapped by retry middleware … `attempt_index` MUST be `0`. For nodes wrapped by retry middleware that re-attempts execution, `attempt_index` increments per attempt…") was ambiguous on whether "wrapped" included transitive wrapping via middleware on a containing subgraph. Tightened to make explicit that `attempt_index` increments per attempt for nodes wrapped by retry middleware EITHER directly (the node's own per-node middleware chain) OR transitively (via §9.7 instance middleware or §11.7 branch middleware). Fixture 036 (`pipeline-utilities/036-parallel-branches-with-branch-middleware-retry`) already encoded the transitive-wrapping reading via its `alpha_inner_attempt_indices_seen: [0, 1]` invariant and its companion `.md` prose; the spec text now matches what the fixture has required since v0.11.0.
+- **pipeline-utilities §6.1 attempt-index paragraph clarified.** Parallel tightening to the graph-engine §6 change. Also notes that the propagation mechanism is implementation-defined (Python `contextvars.ContextVar` set by the retry middleware before each `next` call, TypeScript `AsyncLocalStorage` or equivalent) so the retry middleware can publish its current attempt counter to events emitted from inner nodes of any subgraph the retry re-invokes.
+
+**Notes**
+
+- **Pre-1.0 PATCH bump.** Spec-text clarification to match existing fixture behavior. Implementations that already passed fixture 036 (`alpha_inner_attempt_indices_seen: [0, 1]`) under v0.11.0 see no behavior change. Implementations that read the §6 text as direct-wrapping-only — and therefore would have failed fixture 036 — need to add transitive propagation of the retry's attempt counter through the wrapping chain. The spec text now explicitly mandates what the fixture already required.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.16.0 may target v0.16.1 directly without implementing v0.16.0 first.
+
 ## [0.16.0] — 2026-05-15
 
 **Added**
