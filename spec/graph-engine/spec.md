@@ -281,14 +281,19 @@ observers receiving events for an in-flight invocation is fixed at the point the
   the wrapping chain, `attempt_index` MUST be `0`. When multiple retry middlewares apply to the
   same node — whether by stacking on the per-node middleware chain or by composing direct with
   transitive wrapping — `attempt_index` reflects the **innermost** retry's counter (the retry
-  closest to the node in the wrapping chain). Outer retries' attempt counters surface on the outer
-  retry's own dispatch events (the containing subgraph / branch / instance node's spans) but do
-  NOT propagate through inner retry middleware to events below it. This matches the natural
-  semantics of ContextVar-style propagation (innermost set shadows outer); implementations using
-  explicit-threading mechanisms SHOULD preserve the same precedence. `attempt_index` is one
-  component of the per-event uniqueness tuple — see the `branch_name` and `fan_out_index` entries
-  below for the full identification scheme (`namespace`, `branch_name`, `fan_out_index`,
-  `attempt_index`, and `phase` jointly). The §6 invariant
+  closest to the node in the wrapping chain). Outer retries' attempt counters do NOT propagate
+  through inner retry middleware to events below it; the outer counter is internal to the outer
+  retry's runtime state and is not surfaced on §6 events from the shadowed node. (Observability
+  layers MAY expose outer-retry context via span attributes on synthesized spans for containing
+  subgraph / branch / fan-out instance constructs per observability §4's mapping; that is an
+  observability-layer concern outside the §6 event shape.) This matches the natural semantics
+  of ContextVar-style propagation (innermost set shadows outer); implementations using
+  explicit-threading mechanisms SHOULD preserve the same precedence. `attempt_index` is part of
+  the **event-source identification tuple** alongside `namespace`, `branch_name`, `fan_out_index`,
+  and `phase` — see the `branch_name` and `fan_out_index` entries below for how this tuple
+  distinguishes events from the same node name appearing in different fan-out instances or
+  branches. Within a single source, `step` orders individual events emitted across multiple
+  invocations (e.g., agent-loop iterations of the same node). The §6 invariant
   `len(parent_states) == len(namespace) - 1` is unaffected; `attempt_index` is independent of the
   namespace chain and parent-state list.
 - `fan_out_index` — optional non-negative integer. Populated only for events from nodes that execute
