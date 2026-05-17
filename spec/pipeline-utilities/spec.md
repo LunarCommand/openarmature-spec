@@ -191,9 +191,11 @@ wrapping (middleware on a containing subgraph: §9.7 instance middleware, §11.7
 §6. The engine dispatches all events — middleware does not dispatch directly. The mechanism by
 which a wrapping retry's attempt counter propagates to inner-node event emissions is implementation-
 defined (Python: a `contextvars.ContextVar` set by the retry middleware before each `next` call;
-TypeScript: `AsyncLocalStorage` or equivalent). For nodes with no re-attempting middleware anywhere
-in the wrapping chain, every attempt is a single execution that still produces a started/completed
-pair, with `attempt_index == 0`.
+TypeScript: `AsyncLocalStorage` or equivalent). When multiple retry middlewares wrap the same
+execution (e.g., a per-node retry directly on the node combined with a branch-level retry on a
+containing subgraph), the innermost retry's counter wins per graph-engine §6's precedence rule.
+For nodes with no re-attempting middleware anywhere in the wrapping chain, every attempt is a
+single execution that still produces a started/completed pair, with `attempt_index == 0`.
 
 **Recoverable state semantics** (graph-engine §4) are unchanged. If a middleware exception
 ultimately propagates, the engine's `node_exception` carries the pre-merge state, identical to the

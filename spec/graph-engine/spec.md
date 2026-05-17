@@ -278,8 +278,17 @@ observers receiving events for an in-flight invocation is fixed at the point the
   containing subgraph, the inner nodes' events MUST emit the wrapping retry's current attempt
   index — the retry counter propagates through the wrapping chain to event emissions from anything
   re-executed as part of the retried unit. For nodes with NO re-attempting middleware anywhere in
-  the wrapping chain, `attempt_index` MUST be `0`. Combined with `node_name` and `namespace`, the
-  field uniquely identifies each event from a retried node. The §6 invariant
+  the wrapping chain, `attempt_index` MUST be `0`. When multiple retry middlewares apply to the
+  same node — whether by stacking on the per-node middleware chain or by composing direct with
+  transitive wrapping — `attempt_index` reflects the **innermost** retry's counter (the retry
+  closest to the node in the wrapping chain). Outer retries' attempt counters surface on the outer
+  retry's own dispatch events (the containing subgraph / branch / instance node's spans) but do
+  NOT propagate through inner retry middleware to events below it. This matches the natural
+  semantics of ContextVar-style propagation (innermost set shadows outer); implementations using
+  explicit-threading mechanisms SHOULD preserve the same precedence. `attempt_index` is one
+  component of the per-event uniqueness tuple — see the `branch_name` and `fan_out_index` entries
+  below for the full identification scheme (`namespace`, `branch_name`, `fan_out_index`,
+  `attempt_index`, and `phase` jointly). The §6 invariant
   `len(parent_states) == len(namespace) - 1` is unaffected; `attempt_index` is independent of the
   namespace chain and parent-state list.
 - `fan_out_index` — optional non-negative integer. Populated only for events from nodes that execute
