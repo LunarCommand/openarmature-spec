@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.16.1] — 2026-05-16
+
+**Fixed**
+
+- Conformance fixture `036-parallel-branches-with-branch-middleware-retry` (pipeline-utilities) asserted `attempt_index` values `[0, 1]` on events from the inner node `a`, but graph-engine §6 mandates that nodes not wrapped DIRECTLY by retry middleware emit `attempt_index = 0`. Branch middleware (per pipeline-utilities §11.7) wraps the whole subgraph invocation as a unit — the inner node is wrapped by the subgraph, not by the retry middleware itself, so its events MUST carry `attempt_index = 0` even when the wrapping retry re-runs the subgraph. Replaced the `*_attempt_indices_seen` invariants with event-count invariants (`alpha_inner_a_event_count: 4`, `beta_inner_b_event_count: 2`, `gamma_inner_c_event_count: 2`) that verify the retry mechanism (inner node ran twice for alpha, once each for beta/gamma) without asserting §6-violating attempt-index values. Matches fixture 021's pattern for the analogous fan-out `instance_middleware` case. Fixture-only correction; no spec text or contract changes.
+
+**Notes**
+
+- **Pre-1.0 PATCH bump.** Fixture-only correction to align with existing spec text. Same shape as the v0.3.1 and v0.8.2 PATCH bumps. An implementation that already followed graph-engine §6 (the spec-conformant `attempt_index = 0` for non-directly-wrapped nodes) would have failed the broken invariant on fixture 036; with this fix, conformant implementations pass it.
+
 ## [0.16.0] — 2026-05-15
 
 **Added**

@@ -100,11 +100,24 @@ expected:
 
   execution_order: [dispatcher]
 
-  # Branch alpha's inner node executes twice (attempt_index 0 raised,
-  # attempt_index 1 succeeded). Branches beta and gamma execute their
-  # inner node exactly once. Per-branch middleware retry is independent
-  # of sibling branches' execution.
+  # Branch alpha's inner node executes twice (first attempt raised,
+  # second attempt succeeded under the branch's retry middleware).
+  # Branches beta and gamma execute their inner node exactly once.
+  # Per-branch middleware retry is independent of sibling branches'
+  # execution.
+  #
+  # We assert event counts rather than `attempt_index` values: per
+  # graph-engine §6, `attempt_index` increments only on events from
+  # nodes wrapped DIRECTLY by retry middleware. The branch's retry
+  # middleware wraps the WHOLE subgraph invocation (per §11.7),
+  # not the inner node itself — so inner-node events MUST emit with
+  # `attempt_index = 0` even when the wrapping retry re-runs the
+  # subgraph. The retry is observable here as a count of inner-node
+  # events (alpha's `a` fires 2 attempts × 2 phases = 4 events;
+  # beta and gamma fire 1 attempt × 2 phases = 2 events each).
+  # Matches fixture 021's pattern for the analogous fan-out
+  # `instance_middleware` case.
   observer_event_invariants:
-    alpha_inner_attempt_indices_seen: [0, 1]
-    beta_inner_attempt_indices_seen: [0]
-    gamma_inner_attempt_indices_seen: [0]
+    alpha_inner_a_event_count: 4
+    beta_inner_b_event_count: 2
+    gamma_inner_c_event_count: 2
