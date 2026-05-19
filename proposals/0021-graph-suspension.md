@@ -10,17 +10,22 @@
 
 ## Summary
 
-Create the `suspension` capability spec. Introduces `suspend(signal_descriptor)`
-as a node-side operation that intentionally pauses an invocation, persists its
-state to a durable store, and returns control to the caller with a typed
-suspended outcome. Resume happens via `invoke(resume_invocation=...,
-signal_payload=...)` from any worker with persistence access; the supplied
-signal payload merges into invocation state before the graph resumes from the
-node that suspended. Signal descriptors are typed metadata describing what the
-invocation is waiting for; the spec defines a minimal descriptor shape and
-allows applications to extend it. Generalizes human-in-the-loop, long-running
-async work, scheduled wakeups, and external-event-await as flavors of one
-primitive.
+Create the `suspension` capability spec. Introduces
+`suspend(descriptor, mark_node_completed=True)` as a node-side
+operation that intentionally pauses an invocation, persists its state
+to a durable store, and returns control to the caller with a typed
+suspended outcome. The `mark_node_completed` parameter (default
+`True`) controls resume behavior: under the default, the engine
+continues with the node AFTER the suspending node on resume; the
+opt-in `False` re-invokes the suspending node body with the signal
+payload merged into state. Resume happens via
+`invoke(resume_invocation=..., signal_payload=...)` from any worker
+with persistence access. Signal descriptors are typed records
+(`signal_id` + optional application-typed `metadata`) describing what
+the invocation is waiting for; applications supply typed metadata
+schemas (Pydantic / zod) at their discretion. Generalizes
+human-in-the-loop, long-running async work, scheduled wakeups, and
+external-event-await as flavors of one primitive.
 
 ## Motivation
 
@@ -59,8 +64,8 @@ A spec'd suspension primitive lifts the pattern into the engine:
   application / harness uses the descriptor to subscribe to the awaited
   signal (a queue topic, an event type, a callback URL slot, a scheduled
   trigger, etc.). Signal descriptors are spec-defined at the protocol level
-  (id + type + optional metadata); application-specific descriptor types
-  layer on top.
+  (`signal_id` + optional application-typed `metadata`); applications supply
+  typed metadata schemas (Pydantic / zod) at their discretion.
 - **A uniform resume API.** `invoke(resume_invocation=..., signal_payload=...)`
   works the same way whether the resume is triggered by a human's approval,
   a job-completion event, a scheduled wakeup, or any other signal.
@@ -252,9 +257,24 @@ paused-invocation record (or extends the existing one with a new
 descriptor — implementation choice). Multiple resume cycles per node are
 permitted.
 
-`suspend()` MUST NOT raise under normal operation. If persistence fails,
-the engine MAY raise a typed `suspension_persistence_failed` category;
-otherwise the failure path is the same as any unhandled error.
+`suspend()` is the node body's terminal action for the current
+attempt. The engine MAY implement this via an internal control-flow
+exception (raised from `suspend()` and propagated up through any
+wrapping middleware to the engine, per §9.4) or via an out-of-band
+sentinel return — implementation choice. Implementations MUST document
+the exact mechanism. In either case the user-visible contract is
+identical: control returns to `invoke()`'s caller via the `suspended`
+outcome, and **user code (including middleware) MUST NOT attempt to
+catch or suppress the suspension**. Implementations using the
+control-flow-exception mechanism SHOULD use an internal exception type
+that is not part of the public API; well-formed user code MUST NOT
+wrap `suspend()` in a bare `try / except` clause that would intercept
+such a type.
+
+Persistence failure at suspend time is a separate concern: the engine
+raises `suspension_persistence_failed` (§10) as a normal, catchable
+exception that user code MAY handle. The suspension control flow and
+the persistence-failure exception are distinct mechanisms.
 
 **Where `suspend()` can be called:**
 
@@ -722,21 +742,35 @@ New fixtures under `spec/suspension/conformance/`:
   invocation_id; raises `suspension_record_invalid`.
 - **`005-suspend-in-subgraph`** — subgraph node suspends; outer invocation
   suspends; resume re-enters at the subgraph's node.
-- **`006-suspend-in-fan-out-fail-fast`** — one fan-out instance suspends;
-  siblings cancel; outer invocation suspends with descriptor referencing
-  the instance.
-- **`007-suspend-in-fan-out-collect`** — one fan-out instance suspends;
-  siblings run to completion; aggregate descriptor in outer suspension.
-- **`008-suspend-in-parallel-branches`** — same shape, branches.
-- **`009-suspend-observability-event`** — observer sees a `suspended`
+- **`006-suspend-in-fan-out-fail-fast`** — one fan-out instance suspends
+  under the default `error_policy="fail_fast"`; siblings cancel; outer
+  invocation suspends with descriptor referencing the instance
+  (`fan_out_index` annotated in metadata).
+- **`007-suspend-in-fan-out-collect-rejected`** — one fan-out instance
+  configured with `error_policy="collect"` calls `suspend()`; engine
+  raises `suspension_in_unsupported_context` per §9.2 (collect + suspend
+  is incompatible in v1).
+- **`008-suspend-in-parallel-branches-fail-fast`** — one branch suspends
+  under `fail_fast`; siblings cancel; outer invocation suspends with
+  descriptor referencing the branch (`branch_name` annotated in
+  metadata).
+- **`009-suspend-in-parallel-branches-collect-rejected`** — one branch
+  configured with `error_policy="collect"` calls `suspend()`; engine
+  raises `suspension_in_unsupported_context` per §9.3.
+- **`010-suspend-observability-event`** — observer sees a `suspended`
   phase NodeEvent with the descriptor.
-- **`010-suspend-span-status`** — OTel span closes with suspended status.
-- **`011-suspend-with-sessions`** — session state saves at suspend;
+- **`011-suspend-span-status`** — OTel span closes with suspended status.
+- **`012-suspend-with-sessions`** — session state saves at suspend;
   resume sees the saved session state.
-- **`012-suspend-with-checkpointer`** — paused-invocation record persists
+- **`013-suspend-with-checkpointer`** — paused-invocation record persists
   via the configured checkpointer backend.
-- **`013-suspend-mid-middleware`** — middleware wraps a suspending node;
-  post-`next` middleware code does not execute on the suspending attempt.
+- **`014-suspend-wrapped-by-middleware`** — middleware wraps a node that
+  itself calls `suspend()`; the middleware's pre-`next()` block runs
+  normally; the post-`next()` block does NOT execute on the suspending
+  attempt.
+- **`015-suspend-in-middleware-rejected`** — middleware itself calls
+  `suspend()` (rather than its wrapped node doing so); engine raises
+  `suspension_in_unsupported_context` per §9.4.
 
 ## Alternatives considered
 
