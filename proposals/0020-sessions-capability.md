@@ -406,7 +406,7 @@ suspension proposal specifies the integration; this proposal anticipates it.
 
 ### 10. Errors
 
-Four canonical error categories:
+Five canonical error categories:
 
 - **`session_load_failed`** — `SessionStore.load()` raised an unrecoverable
   error. The invoke MUST NOT proceed.
