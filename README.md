@@ -84,6 +84,7 @@ they are Accepted.
 | [0009](proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md) | Draft | pipeline-utilities §10 | Per-instance fan-out resume (v2 successor to v1 atomic-restart) |
 | [0010](proposals/0010-drain-timeout.md) | Draft | graph-engine §6 | Bounded drain with caller-supplied timeout for observer-event delivery |
 | [0019](proposals/0019-llm-provider-multi-provider-extension.md) | Draft | llm-provider §8 | Reframe §8 as a multi-provider wire-format catalog; in-spec by default for cross-language mappings |
+| [0020](proposals/0020-sessions-capability.md) | Draft | spec/sessions/spec.md (new), observability §5, pipeline-utilities §10 | Sessions capability — typed cross-invocation state under a stable caller-supplied identity |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
@@ -147,14 +148,17 @@ address, not scheduled deliverables.
   can't gate process exit.
 
 Beyond the in-flight proposals, broader directions on the design horizon
-include cross-invocation session state (durable agent memory keyed by
-caller-supplied identity), graph suspension and external-signal resume
-(generalizing human-in-the-loop + async-job-wait + scheduled wakeups), a
-harness contract specifying how deployment runtimes wrap the engine, a
-Langfuse backend mapping as a sibling section of the observability spec
-(analogous to the existing OpenTelemetry mapping), and an evaluation
-framework with persistent history. Each lands when there's a clear behavior
-to specify, not before.
+include cross-invocation session state (typed durable state keyed by a
+stable caller-supplied identity), graph suspension and external-signal
+resume (generalizing human-in-the-loop + async-job-wait + scheduled
+wakeups), a harness contract specifying how deployment runtimes wrap the
+engine, agent memory (cross-session knowledge stores — per-user profiles,
+episodic / semantic / procedural memory — distinct from sessions and
+queried mid-graph rather than loaded at invoke entry), a Langfuse backend
+mapping as a sibling section of the observability spec (analogous to the
+existing OpenTelemetry mapping), and an evaluation framework with
+persistent history. Each lands when there's a clear behavior to specify,
+not before.
 
 ---
 
