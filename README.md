@@ -83,6 +83,7 @@ they are Accepted.
 |---|---|---|---|
 | [0009](proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md) | Draft | pipeline-utilities §10 | Per-instance fan-out resume (v2 successor to v1 atomic-restart) |
 | [0010](proposals/0010-drain-timeout.md) | Draft | graph-engine §6 | Bounded drain with caller-supplied timeout for observer-event delivery |
+| [0019](proposals/0019-llm-provider-multi-provider-extension.md) | Draft | llm-provider §8 | Reframe §8 as a multi-provider wire-format catalog; in-spec by default for cross-language mappings |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
@@ -131,6 +132,12 @@ and not yet started; no committed date.
 Active design areas. These are questions the next round of proposals will
 address, not scheduled deliverables.
 
+- **Multi-provider wire-format mappings.** Today §8 of llm-provider specifies
+  the OpenAI-compatible wire format only. Proposal 0019 reframes §8 as a
+  catalog of per-provider mappings (OpenAI, with Anthropic / Gemini / Mistral
+  to follow as their own proposals) and establishes the rule that any
+  mapping intended for cross-language implementation lives in spec — wire-
+  format consistency is part of OA's cross-language promise.
 - **Per-instance fan-out resume.** v1 ships atomic-restart (a crash mid-fan-out
   re-runs the entire fan-out on resume). Proposal 0009 drafts the v2 contract
   where the engine saves at instance internal `completed` events and skips
@@ -138,15 +145,16 @@ address, not scheduled deliverables.
 - **Bounded drain.** Observer drain currently blocks until every queued event
   delivers. Proposal 0010 drafts a caller-supplied timeout so hung observers
   can't gate process exit.
-- **Parallel branches.** Fan-out covers N instances of one subgraph
-  (data-driven). Proposal 0011 drafts a topology-driven primitive for M
-  heterogeneous subgraphs running concurrently.
 
 Beyond the in-flight proposals, broader directions on the design horizon
-include a Langfuse backend mapping as a sibling section of the observability
-spec (analogous to the existing OpenTelemetry mapping), a prompt-management
-capability, and an evaluation framework with persistent history. Each lands
-when there's a clear behavior to specify, not before.
+include cross-invocation session state (durable agent memory keyed by
+caller-supplied identity), graph suspension and external-signal resume
+(generalizing human-in-the-loop + async-job-wait + scheduled wakeups), a
+harness contract specifying how deployment runtimes wrap the engine, a
+Langfuse backend mapping as a sibling section of the observability spec
+(analogous to the existing OpenTelemetry mapping), and an evaluation
+framework with persistent history. Each lands when there's a clear behavior
+to specify, not before.
 
 ---
 
