@@ -1,0 +1,52 @@
+# gen_ai.system caller-set override: the OpenAI-compatible provider is
+# configured with gen_ai.system="vllm" to reflect that the endpoint is a
+# vLLM server, not OpenAI itself. Verifies §5.5.3's "Implementations MUST
+# allow the gen_ai.system value to be configurable per provider instance"
+# clause and confirms the override is honored on the emitted span.
+
+cases:
+  - name: vllm_override
+    description: |
+      Single LLM call against an OpenAI-compatible provider instance
+      configured with gen_ai.system="vllm". The LLM span carries
+      gen_ai.system: "vllm", not the "openai" default.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    provider:
+      type: openai_compatible
+      genai_system: "vllm"
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-20
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    gen_ai.system: "vllm"
+                    gen_ai.request.model: "test-model"
+                  children: []

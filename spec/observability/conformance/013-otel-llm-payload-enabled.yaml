@@ -1,0 +1,60 @@
+# OTel observer constructed with disable_llm_payload=False. Verifies the
+# §5.5.1 payload attributes emit and that openarmature.llm.input.messages
+# parses to the §3 message structure that was sent to the provider.
+
+cases:
+  - name: payload_enabled
+    description: |
+      Single LLM call with a two-turn conversation prefix sent to the
+      provider. disable_llm_payload=False on the observer. The
+      openarmature.llm.input.messages attribute carries a JSON-encoded
+      message list that parses to the §3 message structure. The
+      openarmature.llm.output.content attribute carries the assistant's
+      content verbatim. The request.extras attribute is absent (no
+      RuntimeConfig extras supplied).
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages:
+            - {role: system, content: "you are concise"}
+            - {role: user, content: "hi there"}
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-13
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello back"}, finish_reason: stop}
+          usage: {prompt_tokens: 7, completion_tokens: 2, total_tokens: 9}
+    disable_llm_payload: false
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.llm.model: "test-model"
+                    openarmature.llm.output.content: "hello back"
+                  attribute_parses_as_messages:
+                    openarmature.llm.input.messages:
+                      - {role: system, content: "you are concise"}
+                      - {role: user, content: "hi there"}
+                  attributes_absent:
+                    - "openarmature.llm.request.extras"
+                  children: []

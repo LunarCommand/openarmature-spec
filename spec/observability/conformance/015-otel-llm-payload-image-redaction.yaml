@@ -1,0 +1,81 @@
+# Inline-image redaction: a user message containing one inline image block
+# (per llm-provider §3.1.3) is serialized into openarmature.llm.input.messages
+# with the source replaced by the redacted placeholder. Verifies the §5.5.5
+# inline-image rule and confirms no base64 bytes appear in the attribute.
+
+cases:
+  - name: inline_image_redacted
+    description: |
+      Single LLM call with a user message containing one text block followed
+      by one inline image block (image/png, base64-encoded). Observer has
+      disable_llm_payload=False. The openarmature.llm.input.messages
+      attribute MUST replace the inline image's source with the redacted
+      placeholder shape carrying byte_count; media_type stays at the
+      image-block level per llm-provider §3.1.2. No base64 bytes appear
+      anywhere in the attribute value.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages:
+            - role: user
+              content:
+                - {type: text, text: "describe this image"}
+                - type: image
+                  source:
+                    type: inline
+                    # Harness primitive: synthesize a base64 blob of the
+                    # specified byte length (no real PNG data needed; the
+                    # redaction rule is about the SHAPE, not validity of
+                    # the bytes).
+                    base64_data_synthetic: {bytes: 4096}
+                  media_type: "image/png"
+                  detail: "auto"
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-15
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "a picture"}, finish_reason: stop}
+          usage: {prompt_tokens: 50, completion_tokens: 2, total_tokens: 52}
+    disable_llm_payload: false
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attribute_parses_as_messages:
+                    openarmature.llm.input.messages:
+                      - role: user
+                        content:
+                          - {type: text, text: "describe this image"}
+                          - type: image
+                            source:
+                              type: inline_redacted
+                              byte_count: 4096
+                            media_type: "image/png"
+                            detail: "auto"
+                  attribute_does_not_contain:
+                    openarmature.llm.input.messages:
+                      # The synthesized base64 blob's prefix MUST NOT appear
+                      # in the emitted attribute; the harness checks that
+                      # the original base64 data is not present anywhere in
+                      # the attribute string.
+                      forbidden_substring_kind: synthetic_base64_prefix
+                  children: []

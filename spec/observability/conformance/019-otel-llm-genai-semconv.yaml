@@ -1,0 +1,66 @@
+# GenAI semconv response attributes: a single LLM call against an
+# OpenAI-compatible provider. Verifies §5.5.3 — the full GenAI semconv
+# minimum set emits with correct values and types, alongside the v0.7.0
+# OA-namespaced baseline attributes (additions, not renames).
+
+cases:
+  - name: full_genai_set
+    description: |
+      Single LLM call against an OpenAI-compatible provider with no
+      gen_ai.system override (defaults to "openai"). The mock response
+      carries a non-null `id` and `model` so gen_ai.response.id and
+      gen_ai.response.model both populate. Verifies all seven §5.5.3
+      attributes plus the v0.7.0 baseline attributes are emitted.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-19
+          object: chat.completion
+          # Mock the provider returning a more specific response model
+          # than the bound request model. Per §5.5.3, gen_ai.response.model
+          # carries the response value while gen_ai.request.model mirrors
+          # the bound model.
+          model: "test-model-2026-05-22"
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    # v0.7.0 baseline — preserved alongside GenAI parallels
+                    openarmature.llm.model: "test-model"
+                    openarmature.llm.finish_reason: "stop"
+                    openarmature.llm.usage.prompt_tokens: 5
+                    openarmature.llm.usage.completion_tokens: 1
+                    openarmature.llm.usage.total_tokens: 6
+                    # §5.5.3 GenAI semconv response attributes
+                    gen_ai.system: "openai"
+                    gen_ai.request.model: "test-model"
+                    gen_ai.response.model: "test-model-2026-05-22"
+                    gen_ai.usage.input_tokens: 5
+                    gen_ai.usage.output_tokens: 1
+                    gen_ai.response.finish_reasons: ["stop"]
+                    gen_ai.response.id: "cc-19"
+                  children: []

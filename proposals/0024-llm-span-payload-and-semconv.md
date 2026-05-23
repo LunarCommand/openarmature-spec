@@ -1,9 +1,9 @@
 # 0024: Observability — LLM Span Payload, Request Parameters, and GenAI Semconv
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-22
-- **Accepted:**
+- **Accepted:** 2026-05-22
 - **Targets:** spec/observability/spec.md (modifies §5.5 *LLM provider attributes*)
 - **Related:** 0007 (observability OTel span mapping), 0006 (LLM provider core), 0016 (structured output), 0017 (prompt management), 0019 (multi-provider wire-format extension)
 - **Supersedes:**
@@ -298,12 +298,16 @@ the configured cap, the implementation:
 
 The resulting attribute is at most `configured_cap` bytes (may be
 strictly less if `N' < N` due to boundary backtracking). The marker is
-pure ASCII so it carries no boundary concerns of its own. The marker
-is appended **outside** any JSON encoding — the result of truncating a
-JSON-encoded attribute is not itself parseable JSON, which is the
-signal to backend code that the value was truncated. Backends
-performing custom parsing get a clean affordance to detect truncation
-without needing a separate flag attribute.
+a fixed UTF-8 string (its leading character is U+2026 HORIZONTAL
+ELLIPSIS, encoded as the 3-byte sequence `0xE2 0x80 0xA6`). It
+introduces no further UTF-8 boundary concerns beyond those step 4
+already handled, because the implementation appends the marker as a
+whole unit — never partially. The marker is appended **outside** any
+JSON encoding — the result of truncating a JSON-encoded attribute is
+not itself parseable JSON, which is the signal to backend code that
+the value was truncated. Backends performing custom parsing get a
+clean affordance to detect truncation without needing a separate flag
+attribute.
 
 **Minimum cap.** Implementations MUST reject cap configurations smaller
 than **256 bytes** at observer construction time. Rationale: 256 bytes
@@ -362,7 +366,7 @@ agree on:
 - The truncation marker string (`…[truncated, M bytes total]`, including the
   Unicode ellipsis character `…` U+2026, the brackets, the comma, the literal
   word "truncated", and the integer M).
-- The inline-image placeholder shape (the `{type: "image", source: {type: "inline_redacted", media_type, byte_count}}` record).
+- The inline-image placeholder shape (the `{type: "image", source: {type: "inline_redacted", byte_count}, media_type, detail?}` record — `media_type` at the image-block level per llm-provider §3.1.2, with `detail` preserved verbatim when present).
 - The default `disable_llm_payload: bool = True`, `disable_genai_semconv: bool = False`,
   `disable_llm_spans: bool = False` defaults.
 
