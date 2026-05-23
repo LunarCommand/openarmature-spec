@@ -199,9 +199,18 @@ Parameters:
 
 Behavior:
 
-1. Compute `existing_keys = {key(item) for item in existing}`.
-2. Filter update: keep only items where `key(item) NOT IN existing_keys`.
-3. Append filtered update to existing; return result.
+1. Initialize `seen_keys` with the key of every item in `existing`
+   (preserving the existing list unchanged in the result).
+2. Iterate through `update` in order. For each item, compute its
+   key. If the key is NOT in `seen_keys`, append the item to a
+   working `filtered_update` list and add the key to `seen_keys`.
+   Otherwise, skip the item.
+3. Return `existing + filtered_update`.
+
+This formulation ensures both behaviors hold uniformly: items whose
+key matches any item already in `existing` are filtered, and items
+whose key duplicates an earlier item in the same update are also
+filtered (first occurrence wins).
 
 Edge cases:
 
@@ -251,6 +260,17 @@ Edge cases:
 
 - **Duplicate keys within the update.** Last occurrence wins
   (consistent with how dict updates work for repeated keys).
+- **Duplicate keys within the existing list.** When `existing`
+  contains multiple items with the same key, the reducer treats
+  only the LAST occurrence as the target for an update item
+  sharing that key — i.e., step 1's `key_to_idx` MUST hold the
+  last index for each duplicate key, consistent with the within-
+  update last-wins semantics. Earlier duplicates in `existing`
+  are preserved in place; the reducer does NOT in-place dedupe
+  existing (parallel to `dedupe_append`'s "no in-place dedup of
+  existing" rule). Implementations whose native dict/map
+  construction uses first-wins semantics MUST iterate explicitly
+  to enforce last-wins.
 - **Empty update.** Returns the existing list unchanged.
 - **`key` callable raises.** Propagates as `reducer_error`.
 - **Missing `key` parameter.** Configuration-time error
@@ -265,6 +285,32 @@ Cross-impl semantics:
   dict-typed fields with shallow key-value semantics;
   `merge_by_key` operates on list-of-records fields with item-key
   semantics.
+
+### Extension to graph-engine §2 compile-time error categories
+
+Add `reducer_configuration_invalid` as a new canonical compile-time
+error category in graph-engine §2 (the canonical category list at
+the end of *Compiled graph*).
+
+- **`reducer_configuration_invalid`** — a reducer factory was
+  supplied invalid construction parameters (e.g.,
+  `bounded_append(max_len=0)`, `merge_by_key(key=None)`). Raised at
+  field registration / graph compilation time, before any node body
+  runs. Distinct from `conflicting_reducers`, which fires when more
+  than one reducer is declared on the same field —
+  `conflicting_reducers` is about the reducer-declaration shape;
+  `reducer_configuration_invalid` is about parameters supplied to a
+  single reducer factory.
+
+The new category sits alongside the v1 list (`no_declared_entry`,
+`unreachable_node`, `dangling_edge`, `multiple_outgoing_edges`,
+`conflicting_reducers`, `mapping_references_undeclared_field`). No
+existing category is renamed or repurposed.
+
+Errors raised at reducer invocation time (e.g., a `key` callable
+that raises on a specific item, a non-list update supplied to
+`bounded_append`) continue to surface as `reducer_error` (§4),
+unchanged.
 
 ### Composition with existing reducer model
 
