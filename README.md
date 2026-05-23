@@ -86,6 +86,9 @@ they are Accepted.
 | [0019](proposals/0019-llm-provider-multi-provider-extension.md) | Draft | llm-provider §8 | Reframe §8 as a multi-provider wire-format catalog; in-spec by default for cross-language mappings |
 | [0020](proposals/0020-sessions-capability.md) | Draft | spec/sessions/spec.md (new), observability §5, pipeline-utilities §10 | Sessions capability — typed cross-invocation state under a stable caller-supplied identity |
 | [0021](proposals/0021-graph-suspension.md) | Draft | spec/suspension/spec.md (new), graph-engine §3 + §6, observability §4 + §5, pipeline-utilities §10 | Graph suspension and external-signal resume — generalized pause primitive (HITL + async-job-wait + scheduled wakeup as flavors of one suspend) |
+| [0022](proposals/0022-harness-contract.md) | Draft | spec/harness/spec.md (new) | Harness contract — abstract behavioral contract for any harness wrapping the OA engine to serve a deployment runtime (three inbound dispatch paths, turn lifecycle, error categorization, runtime-neutral) |
+| [0023](proposals/0023-canonical-state-reducers.md) | Draft | graph-engine §2 | Canonical state reducers — extend baseline reducers with `bounded_append`, `dedupe_append`, `merge_by_key` (factory-style closures for chat-agent and tool-loop patterns) |
+| [0024](proposals/0024-llm-span-payload-and-semconv.md) | Draft | observability §5.5 | LLM span payload + GenAI semconv — input/output payload (default-off), request parameters under `gen_ai.request.*`, GenAI semconv response attributes for LLM-aware OTel backends |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 

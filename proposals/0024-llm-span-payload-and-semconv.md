@@ -115,8 +115,18 @@ emit the following attributes on the LLM provider span:
   blocks (per llm-provider §3.1) are serialized with the discriminator
   (`{type, text}` for text blocks, `{type, source, media_type?, detail?}` for
   image blocks) — but inline image bytes are replaced with a placeholder per
-  §5.5.5. The serialization MUST be deterministic for identical inputs (sorted
-  object keys, no insignificant whitespace).
+  §5.5.5. The serialization MUST be deterministic for identical inputs *within
+  an implementation* — i.e., the same implementation with the same input MUST
+  produce identical bytes. Cross-implementation bytewise stability (Python and
+  TypeScript producing identical bytes for the same input) is NOT required by
+  this proposal — JSON encoding rules vary across language standard libraries
+  (number formatting, string escaping, key-ordering details), and mandating
+  bytewise equality across implementations would require a canonical JSON
+  scheme like RFC 8785 JCS, which is out of scope here. Implementations MUST
+  sort object keys lexicographically and MUST emit UTF-8-encoded output
+  without insignificant whitespace; the §11 conformance fixtures assert that
+  the attribute parses to an equivalent §3 message structure rather than
+  bytewise equality.
 
 - `openarmature.llm.output.content` — string. The assistant's response content
   verbatim, as returned by the provider in the §6 `message.content` field.
@@ -266,23 +276,41 @@ variable, etc. — is implementation-defined). The byte length is measured on th
 UTF-8 encoding of the final attribute string, after JSON serialization and
 after inline-image redaction (below).
 
-**Truncation marker.** When an attribute's serialized value exceeds the
-configured cap, the implementation MUST emit the first N bytes of the value
-(N = configured cap minus marker length) followed by the literal suffix:
+**Truncation algorithm.** When an attribute's serialized value exceeds
+the configured cap, the implementation:
 
-```
-…[truncated, M bytes total]
-```
+1. Computes M, the pre-truncation byte length of the serialized value.
+2. Formats the truncation marker with M substituted:
 
-where M is the pre-truncation byte length (decimal integer). The marker is
-appended **outside** any JSON encoding — the result of truncating a
-JSON-encoded attribute is not itself parseable JSON, which is the signal to
-backend code that the value was truncated. Backends performing custom parsing
-get a clean affordance to detect truncation without needing a separate flag
-attribute.
+   ```
+   …[truncated, M bytes total]
+   ```
 
-The marker bytes count toward the cap: an attribute capped at 64 KiB and
-truncated will have at most 64 KiB total, including the marker.
+   and computes `L_marker`, the UTF-8 byte length of the marker string.
+3. Computes the target prefix size `N = configured_cap - L_marker`.
+4. Finds `N'` = the largest UTF-8 code-point boundary `≤ N` in the
+   serialized value. If `N` falls inside a multi-byte sequence, the
+   implementation MUST backtrack to the previous code-point boundary;
+   this prevents splitting multi-byte sequences (CJK, emoji, combining
+   marks) and emitting invalid UTF-8 that OTLP exporters may reject.
+5. Emits the first `N'` bytes of the serialized value followed by the
+   marker.
+
+The resulting attribute is at most `configured_cap` bytes (may be
+strictly less if `N' < N` due to boundary backtracking). The marker is
+pure ASCII so it carries no boundary concerns of its own. The marker
+is appended **outside** any JSON encoding — the result of truncating a
+JSON-encoded attribute is not itself parseable JSON, which is the
+signal to backend code that the value was truncated. Backends
+performing custom parsing get a clean affordance to detect truncation
+without needing a separate flag attribute.
+
+**Minimum cap.** Implementations MUST reject cap configurations smaller
+than **256 bytes** at observer construction time. Rationale: 256 bytes
+leaves room for the worst-case marker (~36 bytes) plus a diagnostically
+useful payload preview; caps below this would produce attributes that
+are almost entirely marker with little or no preview value. The 256-
+byte minimum is normative for cross-implementation consistency.
 
 **Inline-image redaction.** Image content blocks (per llm-provider §3.1.2)
 carry either a URL source or inline base64 bytes (per §3.1.3). The URL form is
@@ -292,15 +320,19 @@ very large (base64-encoded image bytes). When serializing messages for
 source records with a redacted placeholder before JSON encoding:
 
 ```
-{"type": "image", "source": {"type": "inline_redacted", "media_type": <mt>, "byte_count": <N>}}
+{"type": "image", "source": {"type": "inline_redacted", "byte_count": <N>}, "media_type": <mt>}
 ```
 
-where `<mt>` is the original `media_type` and `<N>` is the byte length of the
-original base64-encoded data. The placeholder preserves enough metadata for a
-reader to understand "an inline image of this type and approximate size was
-present" without inlining the bytes themselves. Implementations MUST NOT emit
-inline image bytes on the span under any configuration; this is a hard rule,
-not gated by `disable_llm_payload` or by the per-attribute cap.
+where `<mt>` is the original `media_type` (preserved at the image-block
+level per llm-provider §3.1.2) and `<N>` is the byte length of the
+original base64-encoded data. The image block's `detail` field (if
+present per §3.1.2) is preserved unchanged; only the `source` is
+replaced with the redacted variant. The placeholder preserves enough
+metadata for a reader to understand "an inline image of this type and
+approximate size was present" without inlining the bytes themselves.
+Implementations MUST NOT emit inline image bytes on the span under any
+configuration; this is a hard rule, not gated by `disable_llm_payload`
+or by the per-attribute cap.
 
 URL-form images are NOT redacted — the URL is a short string and is
 informative for trace readers (it points to the actual image asset). The
@@ -321,8 +353,12 @@ agree on:
 
 - Attribute names (exactly as specified above; case- and prefix-sensitive).
 - Attribute value types (string, int, double, string-array as specified).
-- JSON serialization shape for `input.messages` and `request.extras` (sorted
-  object keys, UTF-8 encoding, deterministic for identical inputs).
+- JSON serialization shape for `input.messages` and `request.extras` —
+  sorted object keys lexicographically, UTF-8 encoding, no insignificant
+  whitespace, within-implementation determinism per §5.5.1. Cross-
+  implementation bytewise stability is NOT required by this proposal; a
+  follow-on MAY adopt a canonical JSON scheme (e.g., RFC 8785 JCS) to
+  tighten this if cross-impl bytewise equality becomes load-bearing.
 - The truncation marker string (`…[truncated, M bytes total]`, including the
   Unicode ellipsis character `…` U+2026, the brackets, the comma, the literal
   word "truncated", and the integer M).
