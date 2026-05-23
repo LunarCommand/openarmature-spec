@@ -169,10 +169,18 @@ receives MUST be classified into exactly one of three paths:
 
 #### 3.1 New-session path
 
-The inbound transmission introduces a previously-unknown `session_id`
-(or omits it, in which case the harness assigns one). The harness:
+The inbound transmission begins a new session. Path 3.1 is classified
+by caller intent — the transport routes the transmission as a new-
+session start (e.g., a dedicated "start session" HTTP route, an event
+type meaning "begin work for this id", or simply the absence of any
+`session_id`). The harness does NOT verify whether a supplied id
+already exists in the session store; that check is the engine's
+responsibility per sessions §6.1.
 
-1. Resolves or generates `session_id`.
+The harness:
+
+1. Resolves `session_id` from the inbound payload, or assigns a fresh
+   one if absent.
 2. Constructs the initial state from the inbound payload per
    harness-implementation logic.
 3. Calls `invoke(initial_state, session_id=<id>)`.
@@ -180,19 +188,28 @@ The inbound transmission introduces a previously-unknown `session_id`
 
 #### 3.2 Existing-active-session path
 
-The inbound transmission carries a `session_id` for an existing session
-that is NOT currently in suspended state. The harness:
+The inbound transmission continues an existing session. Path 3.2 is
+classified by caller intent — the transport routes the transmission
+as a continuation of an ongoing session (e.g., a turn-on-existing-
+session HTTP route, an event continuing a prior thread), and the
+transmission carries a `session_id` naming that session. The harness
+does NOT verify whether the session exists or its state — that
+check is the engine's responsibility per sessions §6.1.
 
-1. Resolves `session_id`.
+The harness:
+
+1. Resolves `session_id` from the inbound payload.
 2. Constructs the next-turn state from the inbound payload. The
    session-state load happens inside `invoke()` per proposal 0020
    §6.1; the harness does NOT load session state itself.
 3. Calls `invoke(initial_state, session_id=<id>)`.
 4. Handles the outcome per §5.
 
-The distinction from 3.1 is the existence of prior session state. The
-contract treats both as "the session is the active scope for the turn";
-the engine handles the load-or-not via proposal 0020's semantics.
+The distinction from 3.1 is caller intent: 3.1 starts a new session,
+3.2 continues an existing one. The engine resolves any disagreement
+between intent and store state per proposal 0020's semantics — e.g.,
+a 3.2 transmission referencing a `session_id` that no engine-side
+record matches surfaces as a `session_load_failed` error per §7.
 
 #### 3.3 Signal-resume path
 
@@ -248,7 +265,7 @@ setup, and graph execution begin per proposal 0020 and graph-engine
 - **`completed`** — graph reached END. Final state is the return
   value. Session state auto-saves per proposal 0020 §6.1.
 - **`errored`** — a node raised. Per graph-engine §4 error
-  semantics. Session state state depends on the policy decision in
+  semantics. Session state depends on the policy decision in
   proposal 0020 (current proposal: session does NOT save on error
   unless an explicit mid-invoke save fired).
 - **`suspended`** — a node called `suspend()`. Per proposal 0021,
@@ -335,7 +352,8 @@ subscription; in that case the suspension converts to an error per
 
 ### 7. Error categorization at the turn boundary
 
-Engine errors propagating to the harness fall into three categories:
+Errors that surface at the turn boundary — whether propagated from the
+engine or raised by the harness itself — fall into three categories:
 
 **7.1 Session-terminating errors.** Errors indicating the session's
 state is corrupt or unsalvageable. Examples:
@@ -456,9 +474,10 @@ Canonical error categories introduced by this proposal:
 The harness is a control-flow layer; it does not affect deterministic
 execution within a single invocation. Two replays of the same inbound
 transmission against the same harness state should classify to the
-same path and produce the same `invoke()` call (modulo timestamps and
-engine-generated `invocation_id`s, which are non-deterministic by
-design — see graph-engine §5).
+same path and produce the same `invoke()` call (modulo timestamps,
+engine-generated `invocation_id`s, and harness-generated `session_id`s
+when §3.1 assigns a fresh one — all non-deterministic by design; see
+graph-engine §5).
 
 Cross-turn determinism is not part of the contract: subsequent
 turns observe the prior turn's saved session state, which means a
