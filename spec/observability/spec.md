@@ -6,6 +6,7 @@ Canonical behavioral specification for the OpenArmature observability capability
 - **Introduced:** spec version 0.7.0
 - **History:**
   - created by [proposal 0007](../../proposals/0007-observability-otel-span-mapping.md)
+  - §5.5 extended with LLM input/output payload attributes (default-off), `RuntimeConfig` request parameters under the OpenTelemetry GenAI semantic conventions, a minimum set of GenAI semconv response attributes, two new opt-out flags (`disable_llm_payload`, `disable_genai_semconv`), and a per-attribute truncation contract (64 KiB default cap, UTF-8-boundary-safe algorithm, 256-byte minimum, inline-image redaction) by [proposal 0024](../../proposals/0024-llm-span-payload-and-semconv.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -414,17 +415,259 @@ the openarmature-emitted LLM provider span — a configuration parameter on the 
 case where the user prefers their external auto-instrumentation library as the canonical source
 of LLM spans and wants openarmature to stay out of that lane. With the flag enabled, the OTel
 observer skips the §5.5 span entirely; all other spans (node, subgraph, fan-out, etc.) continue
-to emit normally per their respective rules.
+to emit normally per their respective rules. See §5.5.4 for the additional payload and GenAI
+semconv opt-out flags introduced by proposal 0024.
 
-The span's attributes include:
+The LLM provider span's parent is the node span of the node that invoked the provider. This
+provides direct attribution of LLM calls to the graph nodes they originate from.
+
+**Baseline attributes (v0.7.0).** The following attributes are emitted on every LLM provider
+span unless the span itself is suppressed via `disable_llm_spans`:
 
 - `openarmature.llm.model` — string. The model identifier the provider is bound to.
 - `openarmature.llm.finish_reason` — string. The llm-provider §6 `finish_reason` from the response.
 - `openarmature.llm.usage.prompt_tokens`, `openarmature.llm.usage.completion_tokens`,
   `openarmature.llm.usage.total_tokens` — int. From the response's usage record. Omit when null.
 
-The LLM provider span's parent is the node span of the node that invoked the provider. This
-provides direct attribution of LLM calls to the graph nodes they originate from.
+The remainder of §5.5 (subsections §5.5.1 through §5.5.6, introduced by proposal 0024) extends the
+attribute set with input/output payload (§5.5.1, default-off), `RuntimeConfig` request parameters
+under the OpenTelemetry GenAI semantic conventions (§5.5.2), a minimum set of GenAI semconv
+response attributes (§5.5.3), the two new opt-out flags governing payload and GenAI semconv
+emission (§5.5.4), the truncation contract governing payload byte length (§5.5.5), and
+cross-implementation consistency rules (§5.5.6). No existing attribute is renamed; all additions
+sit alongside the baseline list.
+
+#### 5.5.1 Input/output payload attributes (default-off)
+
+When the LLM payload-emission flag is enabled (per §5.5.4), implementations MUST emit the
+following attributes on the LLM provider span:
+
+- `openarmature.llm.input.messages` — string. The messages list sent to the provider,
+  JSON-encoded per the llm-provider §3 message shape. Each message is serialized as
+  `{role, content, tool_calls?, tool_call_id?}`. Content blocks (per llm-provider §3.1) are
+  serialized with the discriminator (`{type, text}` for text blocks,
+  `{type, source, media_type?, detail?}` for image blocks) — but inline image bytes are replaced
+  with a placeholder per §5.5.5. The serialization MUST be deterministic for identical inputs
+  *within an implementation* — i.e., the same implementation with the same input MUST produce
+  identical bytes. Cross-implementation bytewise stability (Python and TypeScript producing
+  identical bytes for the same input) is NOT required by this specification — JSON encoding rules
+  vary across language standard libraries (number formatting, string escaping, key-ordering
+  details), and mandating bytewise equality across implementations would require a canonical
+  JSON scheme like RFC 8785 JCS, which is out of scope here. Implementations MUST sort object keys
+  lexicographically and MUST emit UTF-8-encoded output without insignificant whitespace; the
+  conformance fixtures assert that the attribute parses to an equivalent §3 message structure
+  rather than bytewise equality.
+
+- `openarmature.llm.output.content` — string. The assistant's response content verbatim, as
+  returned by the provider in the §6 `message.content` field. Emitted only when `message.content`
+  is non-empty (assistant messages with only `tool_calls` and empty content MUST NOT emit this
+  attribute). When `Response.parsed` is populated (per llm-provider §6, structured output), this
+  attribute carries the unparsed `message.content` string, NOT a re-serialization of `parsed` —
+  matching the llm-provider §6 rule that `message.content` is verbatim.
+
+- `openarmature.llm.request.extras` — string. The `RuntimeConfig` extras mapping (the
+  `extra="allow"` pass-through fields permitted by llm-provider §6), JSON-encoded as an object.
+  Emitted only when the mapping is non-empty. This attribute is OA-shape (the extras bag is the
+  spec's structure, not the GenAI semconv's); it is grouped with payload because it MAY contain
+  provider-specific parameters that warrant the same default-off treatment as messages.
+  Implementations MAY choose to gate `request.extras` separately from `input.messages` /
+  `output.content`; the default is to gate all three under the same flag.
+
+All three attributes are subject to the §5.5.5 truncation contract.
+
+#### 5.5.2 Request parameters
+
+Implementations MUST emit the following attributes on the LLM provider span when the
+corresponding `RuntimeConfig` (§6 of llm-provider) field is set on the request, unless the GenAI
+semconv opt-out is enabled (per §5.5.4):
+
+- `gen_ai.request.temperature` — double. Mapped from `RuntimeConfig.temperature`.
+- `gen_ai.request.max_tokens` — int. Mapped from `RuntimeConfig.max_tokens`.
+- `gen_ai.request.top_p` — double. Mapped from `RuntimeConfig.top_p`.
+- `gen_ai.request.seed` — int. Mapped from `RuntimeConfig.seed`.
+
+When the corresponding `RuntimeConfig` field is not set (or `RuntimeConfig` is absent on the
+call), the implementation MUST NOT emit the attribute. The absence of an attribute means "the
+field was not supplied for this call," distinct from "the field was supplied with a zero value."
+
+These attributes use the GenAI semconv namespace directly (no `openarmature.llm.request.*`
+parallel). Rationale: `temperature`, `max_tokens`, `top_p`, and `seed` are cross-vendor LLM
+parameters with no OpenArmature-specific semantics. The GenAI semconv names for these are settled
+in the upstream specification and are the names every LLM-aware OTel backend reads. Adding
+OA-prefixed parallels would be pure duplication.
+
+This establishes a precedent that future cross-spec touchpoints follow: **the OpenArmature
+attribute namespace is normative for attributes encoding OA-specific state (correlation_id,
+prompt identity, error category, fan-out index, etc.); the GenAI semconv namespace is used
+directly for cross-vendor LLM parameters and response metadata when the semconv name is stable.**
+
+#### 5.5.3 GenAI semconv response attributes
+
+Implementations MUST emit the following attributes on the LLM provider span unless the GenAI
+semconv opt-out is enabled (per §5.5.4):
+
+- `gen_ai.system` — string. The LLM system identifier, per the GenAI semconv enum (`"openai"`,
+  `"anthropic"`, `"vllm"`, `"lm_studio"`, etc.). Implementations MUST allow this value to be
+  configurable per provider instance. The OpenAI-compatible provider (§8.1 of llm-provider) MUST
+  default this value to `"openai"`; callers using the OpenAI-compatible provider with a
+  non-OpenAI endpoint (vLLM, LM Studio, llama.cpp server, etc.) MUST be able to override this
+  default to the appropriate system identifier. Specific override mechanism (constructor
+  argument, factory method, environment variable) is implementation-defined; the behavioral
+  contract is that an override is available and effective.
+
+- `gen_ai.request.model` — string. The model the request was made against — the model
+  identifier bound to the provider. Mirrors `openarmature.llm.model`; both emit. Rationale: the
+  GenAI semconv requires this name for backend recognition; the OA-namespaced version is
+  preserved for backwards compatibility with v0.7.0 fixtures.
+
+- `gen_ai.response.model` — string. The model identifier the provider returned in the response
+  (the `model` field on the response body, when the provider populates it). Distinct from
+  `gen_ai.request.model` because providers MAY return a more specific model identifier than the
+  one requested (e.g., requested `gpt-4o`, response carries `gpt-4o-2024-08-06`). Emitted only
+  when the provider returns a non-null response model.
+
+- `gen_ai.usage.input_tokens` — int. The prompt token count from the response's usage record.
+  Mirrors `openarmature.llm.usage.prompt_tokens`; both emit. Omit when the response's usage
+  record is null.
+
+- `gen_ai.usage.output_tokens` — int. The completion token count from the response's usage
+  record. Mirrors `openarmature.llm.usage.completion_tokens`; both emit. Omit when null.
+
+- `gen_ai.response.finish_reasons` — string array. The `finish_reason` values from the response,
+  as a single-element array (the llm-provider §6 `Response.finish_reason` is a single string; the
+  GenAI semconv defines this as an array to accommodate providers returning multiple choices,
+  which OA's §6 shape collapses to one). Mirrors `openarmature.llm.finish_reason` as
+  string-scalar; both emit, with the GenAI version always wrapped in a one-element array.
+
+- `gen_ai.response.id` — string. The response identifier the provider returned (the `id` field
+  on the response body), when present. Useful for cross-referencing OA spans with provider-side
+  billing or audit logs. Emitted only when the provider returns a non-null id.
+
+#### 5.5.4 Opt-out flags
+
+Implementations MUST support the following observer-level configuration flags (specific
+ergonomics — constructor argument, builder method, etc. — are implementation-defined; flag names
+below are normative for cross-implementation consistency):
+
+- `disable_llm_payload: bool` — default `True`. When `True`, the §5.5.1 payload attributes
+  (`input.messages`, `output.content`, `request.extras`) are NOT emitted. When `False`, payload
+  attributes emit per §5.5.1, subject to the §5.5.5 truncation contract.
+
+- `disable_genai_semconv: bool` — default `False`. When `True`, the §5.5.2 request-parameter
+  attributes and the §5.5.3 response-attribute set are NOT emitted. When `False` (the default),
+  GenAI semconv attributes emit per §5.5.2 and §5.5.3.
+
+The existing `disable_llm_spans` flag (above) MUST continue to behave as specified: when `True`,
+the LLM provider span is not emitted at all, and none of the attributes specified in §5.5.1
+through §5.5.3 are emitted (they have no span to attach to).
+
+The three flags are independent. Typical configurations:
+
+| Configuration | `disable_llm_spans` | `disable_llm_payload` | `disable_genai_semconv` | Outcome |
+|---|---|---|---|---|
+| Default (out of the box) | `False` | `True` | `False` | LLM span emits with OA + GenAI semconv attributes; no payload. |
+| Maximum visibility | `False` | `False` | `False` | LLM span emits with full payload and all attributes. |
+| External auto-instrumentation is canonical | `True` | (irrelevant) | (irrelevant) | OA emits no LLM span; external library handles it. |
+| OA span without GenAI semconv | `False` | `True` | `True` | OA-namespaced attributes only; useful when an external library is the canonical GenAI emitter and OA's role is internal-only attribution. |
+
+#### 5.5.5 Truncation contract
+
+The §5.5.1 payload attributes (`openarmature.llm.input.messages`,
+`openarmature.llm.output.content`, `openarmature.llm.request.extras`) MAY be arbitrarily large in
+principle (a long conversation, a verbose model response, a multi-image user message). Emission
+without bounds would produce spans larger than typical OTLP exporters accept and inflate
+observability storage unbounded. The following contract applies:
+
+**Per-attribute byte cap.** Implementations MUST enforce a maximum byte length on each of the
+three payload attributes individually. The default cap is **65,536 bytes (64 KiB)** per
+attribute. Implementations MUST allow the cap to be configured per observer (specific mechanism —
+constructor argument, environment variable, etc. — is implementation-defined). The byte length
+is measured on the UTF-8 encoding of the final attribute string, after JSON serialization and
+after inline-image redaction (below).
+
+**Truncation algorithm.** When an attribute's serialized value exceeds the configured cap, the
+implementation:
+
+1. Computes M, the pre-truncation byte length of the serialized value.
+2. Formats the truncation marker with M substituted:
+
+   ```
+   …[truncated, M bytes total]
+   ```
+
+   and computes `L_marker`, the UTF-8 byte length of the marker string.
+3. Computes the target prefix size `N = configured_cap - L_marker`.
+4. Finds `N'` = the largest UTF-8 code-point boundary `≤ N` in the serialized value. If `N`
+   falls inside a multi-byte sequence, the implementation MUST backtrack to the previous
+   code-point boundary; this prevents splitting multi-byte sequences (CJK, emoji, combining
+   marks) and emitting invalid UTF-8 that OTLP exporters may reject.
+5. Emits the first `N'` bytes of the serialized value followed by the marker.
+
+The resulting attribute is at most `configured_cap` bytes (may be strictly less if `N' < N` due
+to boundary backtracking). The marker is pure ASCII so it carries no boundary concerns of its
+own. The marker is appended **outside** any JSON encoding — the result of truncating a
+JSON-encoded attribute is not itself parseable JSON, which is the signal to backend code that
+the value was truncated. Backends performing custom parsing get a clean affordance to detect
+truncation without needing a separate flag attribute.
+
+**Minimum cap.** Implementations MUST reject cap configurations smaller than **256 bytes** at
+observer construction time. Rationale: 256 bytes leaves room for the worst-case marker (~36
+bytes) plus a diagnostically useful payload preview; caps below this would produce attributes
+that are almost entirely marker with little or no preview value. The 256-byte minimum is
+normative for cross-implementation consistency.
+
+**Inline-image redaction.** Image content blocks (per llm-provider §3.1.2) carry either a URL
+source or inline base64 bytes (per §3.1.3). The URL form is a short string and passes through
+unchanged. The inline form is potentially very large (base64-encoded image bytes). When
+serializing messages for `openarmature.llm.input.messages`, implementations MUST replace
+inline-image source records with a redacted placeholder before JSON encoding:
+
+```
+{"type": "image", "source": {"type": "inline_redacted", "byte_count": <N>}, "media_type": <mt>}
+```
+
+where `<mt>` is the original `media_type` (preserved at the image-block level per llm-provider
+§3.1.2) and `<N>` is the byte length of the original base64-encoded data. The image block's
+`detail` field (if present per §3.1.2) is preserved unchanged; only the `source` is replaced
+with the redacted variant. The placeholder preserves enough metadata for a reader to understand
+"an inline image of this type and approximate size was present" without inlining the bytes
+themselves. Implementations MUST NOT emit inline image bytes on the span under any
+configuration; this is a hard rule, not gated by `disable_llm_payload` or by the per-attribute
+cap.
+
+URL-form images are NOT redacted — the URL is a short string and is informative for trace
+readers (it points to the actual image asset). The redaction rule applies only to
+`source.type == "inline"`.
+
+**Tool-call serialization.** Assistant `tool_calls` (per llm-provider §3) in
+`openarmature.llm.input.messages` are JSON-encoded as `[{"id", "name", "arguments"}, ...]` with
+`arguments` serialized verbatim from the parsed mapping. Tool-call argument content is subject
+only to the overall per-attribute byte cap; this specification does not specify a separate
+per-tool-call cap. (First-class tool-call observability is a separate forthcoming proposal.)
+
+#### 5.5.6 Cross-implementation consistency
+
+Implementations of §5.5.1 through §5.5.5 across languages (Python, TypeScript) MUST agree on:
+
+- Attribute names (exactly as specified above; case- and prefix-sensitive).
+- Attribute value types (string, int, double, string-array as specified).
+- JSON serialization shape for `input.messages` and `request.extras` — sorted object keys
+  lexicographically, UTF-8 encoding, no insignificant whitespace, within-implementation
+  determinism per §5.5.1. Cross-implementation bytewise stability is NOT required by this
+  specification; a follow-on MAY adopt a canonical JSON scheme (e.g., RFC 8785 JCS) to tighten
+  this if cross-impl bytewise equality becomes load-bearing.
+- The truncation marker string (`…[truncated, M bytes total]`, including the Unicode ellipsis
+  character `…` U+2026, the brackets, the comma, the literal word "truncated", and the integer
+  M).
+- The inline-image placeholder shape (the
+  `{type: "image", source: {type: "inline_redacted", byte_count}, media_type, detail?}` record —
+  `media_type` at the image-block level per llm-provider §3.1.2, with `detail` preserved
+  verbatim when present).
+- The default values: `disable_llm_payload = True`, `disable_genai_semconv = False`,
+  `disable_llm_spans = False`.
+
+Per-language ergonomics (constructor argument naming, builder patterns, environment-variable
+lookup) MAY differ. The above are the cross-impl behavioral surface.
 
 ### 5.6 Cross-cutting attributes
 

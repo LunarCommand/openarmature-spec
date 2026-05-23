@@ -71,7 +71,7 @@ and architecture are in [`docs/openarmature.md`](docs/openarmature.md).
 | [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.16.1 | 21 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks |
 | [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.16.1 | 47 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (with state migration), parallel branches |
 | [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.14.0 | 28 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, structured output via `response_schema`, and OpenAI-compatible wire mapping |
-| [observability](spec/observability/spec.md) | 0.7.0 | 0.10.0 | 11 | Cross-backend correlation IDs, OpenTelemetry mapping (spans, log correlation, detached trace mode) |
+| [observability](spec/observability/spec.md) | 0.7.0 | 0.17.0 | 21 | Cross-backend correlation IDs, OpenTelemetry mapping (spans, log correlation, detached trace mode), LLM-span payload + GenAI semconv attributes (default-off payload, request parameters under `gen_ai.request.*`, GenAI semconv response attributes for LLM-aware backends) |
 | [prompt-management](spec/prompt-management/spec.md) | 0.15.0 | 0.15.0 | 12 | Named/versioned template fetch + render; composite backends with infrastructure-only fallback; PromptGroup tracing primitive; strict-undefined-by-default variable injection |
 
 ### In the pipeline
@@ -88,7 +88,6 @@ they are Accepted.
 | [0021](proposals/0021-graph-suspension.md) | Draft | spec/suspension/spec.md (new), graph-engine §3 + §6, observability §4 + §5, pipeline-utilities §10 | Graph suspension and external-signal resume — generalized pause primitive (HITL + async-job-wait + scheduled wakeup as flavors of one suspend) |
 | [0022](proposals/0022-harness-contract.md) | Draft | spec/harness/spec.md (new) | Harness contract — abstract behavioral contract for any harness wrapping the OA engine to serve a deployment runtime (three inbound dispatch paths, turn lifecycle, error categorization, runtime-neutral) |
 | [0023](proposals/0023-canonical-state-reducers.md) | Draft | graph-engine §2 | Canonical state reducers — extend baseline reducers with `bounded_append`, `dedupe_append`, `merge_by_key` (factory-style closures for chat-agent and tool-loop patterns) |
-| [0024](proposals/0024-llm-span-payload-and-semconv.md) | Draft | observability §5.5 | LLM span payload + GenAI semconv — input/output payload (default-off), request parameters under `gen_ai.request.*`, GenAI semconv response attributes for LLM-aware OTel backends |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 

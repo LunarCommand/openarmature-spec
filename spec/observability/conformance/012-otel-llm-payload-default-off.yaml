@@ -1,0 +1,64 @@
+# Default observer config (no disable_llm_payload override). Verifies the
+# §5.5.4 default of `disable_llm_payload = True` and `disable_genai_semconv
+# = False`: the LLM provider span carries the v0.7.0 baseline OA attributes
+# plus the §5.5.2 / §5.5.3 GenAI semconv attributes, and does NOT carry the
+# §5.5.1 payload attributes.
+
+cases:
+  - name: default_payload_off
+    description: |
+      Single LLM call under default observer config. The §5.5 baseline
+      attributes (openarmature.llm.*) emit; the §5.5.2 / §5.5.3 GenAI
+      semconv attributes also emit; the §5.5.1 payload attributes do NOT.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-1
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.llm.model: "test-model"
+                    openarmature.llm.finish_reason: "stop"
+                    openarmature.llm.usage.prompt_tokens: 5
+                    openarmature.llm.usage.completion_tokens: 1
+                    openarmature.llm.usage.total_tokens: 6
+                    gen_ai.system: "openai"
+                    gen_ai.request.model: "test-model"
+                    gen_ai.response.model: "test-model"
+                    gen_ai.usage.input_tokens: 5
+                    gen_ai.usage.output_tokens: 1
+                    gen_ai.response.finish_reasons: ["stop"]
+                    gen_ai.response.id: "cc-1"
+                  attributes_absent:
+                    - "openarmature.llm.input.messages"
+                    - "openarmature.llm.output.content"
+                    - "openarmature.llm.request.extras"
+                  children: []

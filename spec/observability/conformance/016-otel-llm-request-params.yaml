@@ -1,0 +1,62 @@
+# Request parameters: RuntimeConfig carries all four §6 fields (temperature,
+# max_tokens, top_p, seed). Verifies §5.5.2 — gen_ai.request.* attributes
+# emit with the correct values; no openarmature.llm.request.* parallels
+# are emitted for these fields.
+
+cases:
+  - name: all_params
+    description: |
+      Single LLM call with RuntimeConfig supplying temperature, max_tokens,
+      top_p, and seed. The gen_ai.request.* attributes carry these values
+      with the types specified in §5.5.2 (double, int, double, int).
+      Implementations MUST NOT emit OA-prefixed parallels for these
+      cross-vendor parameters.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+          config:
+            temperature: 0.7
+            max_tokens: 256
+            top_p: 0.95
+            seed: 42
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-16
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    gen_ai.request.temperature: 0.7
+                    gen_ai.request.max_tokens: 256
+                    gen_ai.request.top_p: 0.95
+                    gen_ai.request.seed: 42
+                  attributes_absent:
+                    - "openarmature.llm.request.temperature"
+                    - "openarmature.llm.request.max_tokens"
+                    - "openarmature.llm.request.top_p"
+                    - "openarmature.llm.request.seed"
+                  children: []

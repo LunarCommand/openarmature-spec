@@ -1,0 +1,63 @@
+# Truncation contract: a single message whose JSON encoding exceeds the
+# default 64 KiB cap is truncated per the §5.5.5 algorithm. Verifies the
+# byte cap, the suffix marker shape, the UTF-8 boundary safety, and that
+# the bytes preceding the marker are a prefix of the full serialization.
+
+cases:
+  - name: truncation_default_cap
+    description: |
+      Single LLM call with a user message containing a payload large enough
+      that the JSON-encoded openarmature.llm.input.messages exceeds the
+      default 64 KiB cap. Observer has disable_llm_payload=False and the
+      default cap. The truncation algorithm produces an attribute whose
+      byte length is ≤ 64 KiB, ending with the marker
+      "…[truncated, M bytes total]" where M is the pre-truncation byte
+      length. The bytes preceding the marker are a prefix of the full
+      serialization that would have been emitted without truncation.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          # Harness primitive: synthesize a user message with a 100 KiB
+          # repeated-character body. Implementations expand this into a
+          # single user message with that-much content before dispatch.
+          messages:
+            - {role: user, content_repeat: {char: "x", bytes: 102400}}
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-14
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 25600, completion_tokens: 1, total_tokens: 25601}
+    disable_llm_payload: false
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.llm.model: "test-model"
+                  attribute_truncation:
+                    openarmature.llm.input.messages:
+                      max_bytes: 65536
+                      marker_pattern: "…\\[truncated, [0-9]+ bytes total\\]$"
+                      utf8_valid: true
+                      prefix_of_full_serialization: true
+                  children: []

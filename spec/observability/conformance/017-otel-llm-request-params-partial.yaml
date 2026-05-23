@@ -1,0 +1,54 @@
+# Request parameters absence semantics: RuntimeConfig supplies only
+# `temperature`; the other §5.5.2 fields are absent. Verifies the §5.5.2
+# absence rule — "the field was not supplied for this call" maps to
+# attribute absence, distinct from "the field was supplied with a zero
+# value."
+
+cases:
+  - name: temperature_only
+    description: |
+      Single LLM call with RuntimeConfig supplying only temperature. The
+      other three gen_ai.request.* fields (max_tokens, top_p, seed) MUST
+      NOT be emitted — their absence on the span signals "not supplied."
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+          config:
+            temperature: 0.0
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-17
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    gen_ai.request.temperature: 0.0
+                  attributes_absent:
+                    - "gen_ai.request.max_tokens"
+                    - "gen_ai.request.top_p"
+                    - "gen_ai.request.seed"
+                  children: []

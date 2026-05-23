@@ -1,9 +1,9 @@
 # 0024: Observability — LLM Span Payload, Request Parameters, and GenAI Semconv
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-22
-- **Accepted:**
+- **Accepted:** 2026-05-22
 - **Targets:** spec/observability/spec.md (modifies §5.5 *LLM provider attributes*)
 - **Related:** 0007 (observability OTel span mapping), 0006 (LLM provider core), 0016 (structured output), 0017 (prompt management), 0019 (multi-provider wire-format extension)
 - **Supersedes:**
@@ -362,7 +362,7 @@ agree on:
 - The truncation marker string (`…[truncated, M bytes total]`, including the
   Unicode ellipsis character `…` U+2026, the brackets, the comma, the literal
   word "truncated", and the integer M).
-- The inline-image placeholder shape (the `{type: "image", source: {type: "inline_redacted", media_type, byte_count}}` record).
+- The inline-image placeholder shape (the `{type: "image", source: {type: "inline_redacted", byte_count}, media_type, detail?}` record — `media_type` at the image-block level per llm-provider §3.1.2, with `detail` preserved verbatim when present).
 - The default `disable_llm_payload: bool = True`, `disable_genai_semconv: bool = False`,
   `disable_llm_spans: bool = False` defaults.
 
