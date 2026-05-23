@@ -298,12 +298,16 @@ the configured cap, the implementation:
 
 The resulting attribute is at most `configured_cap` bytes (may be
 strictly less if `N' < N` due to boundary backtracking). The marker is
-pure ASCII so it carries no boundary concerns of its own. The marker
-is appended **outside** any JSON encoding — the result of truncating a
-JSON-encoded attribute is not itself parseable JSON, which is the
-signal to backend code that the value was truncated. Backends
-performing custom parsing get a clean affordance to detect truncation
-without needing a separate flag attribute.
+a fixed UTF-8 string (its leading character is U+2026 HORIZONTAL
+ELLIPSIS, encoded as the 3-byte sequence `0xE2 0x80 0xA6`). It
+introduces no further UTF-8 boundary concerns beyond those step 4
+already handled, because the implementation appends the marker as a
+whole unit — never partially. The marker is appended **outside** any
+JSON encoding — the result of truncating a JSON-encoded attribute is
+not itself parseable JSON, which is the signal to backend code that
+the value was truncated. Backends performing custom parsing get a
+clean affordance to detect truncation without needing a separate flag
+attribute.
 
 **Minimum cap.** Implementations MUST reject cap configurations smaller
 than **256 bytes** at observer construction time. Rationale: 256 bytes
