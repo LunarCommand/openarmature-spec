@@ -1,7 +1,7 @@
 # 004 — Error Categories
 
 Table-style fixture: each case is a mock provider failure that maps to a specific §7 error
-category per the §8.3 OpenAI wire mapping. Verifies that the implementation classifies provider
+category per the §8.1.3 OpenAI wire mapping. Verifies that the implementation classifies provider
 errors correctly and that callers can branch on category.
 
 The fixture format is the table-style shape: each `cases:` entry has its own `mock_provider`,
@@ -11,7 +11,7 @@ The fixture format is the table-style shape: each `cases:` entry has its own `mo
 
 - §7 Error semantics — all six canonical categories from the §7 list, plus
   `provider_model_not_loaded`.
-- §8.3 OpenAI error mapping — HTTP status codes and bodies map to spec categories.
+- §8.1.3 OpenAI error mapping — HTTP status codes and bodies map to spec categories.
 - §7 Retry classification — implicitly verified by the categorization (downstream retry middleware
   consumes these categories per their transient/non-transient labels).
 

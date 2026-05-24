@@ -1,20 +1,20 @@
 # 026 — Structured Output Native OpenAI Wire Mapping
 
-Verifies §8.5 wire mapping: when `response_schema` is supplied, the
+Verifies §8.1.5 wire mapping: when `response_schema` is supplied, the
 outbound HTTP request body includes a `response_format` field carrying
 `type: "json_schema"`, the user's schema verbatim under
 `json_schema.schema`, and `strict: true`. The provider is configured
 as natively supporting `response_format` so the implementation takes
-the native path (not the §8.5.1 fallback).
+the native path (not the §8.1.5.1 fallback).
 
 **Spec sections exercised:**
 
-- §8.5 Structured output wire mapping — request body shape with
+- §8.1.5 Structured output wire mapping — request body shape with
   `response_format.json_schema.{name, schema, strict}`.
-- §8.5 `strict: true` is set when the supplied schema satisfies
+- §8.1.5 `strict: true` is set when the supplied schema satisfies
   strict-mode constraints (this test's schema does:
   `additionalProperties: false`, all properties in `required`).
-- §8.5 the supplied schema is passed verbatim under
+- §8.1.5 the supplied schema is passed verbatim under
   `json_schema.schema`.
 
 **What passes:**

@@ -1,9 +1,9 @@
 # 0019: LLM Provider — Multi-Provider Wire-Format Extension
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-17
-- **Accepted:**
+- **Accepted:** 2026-05-24
 - **Targets:** spec/llm-provider/spec.md (modifies §8 framing)
 - **Related:** 0006 (LLM provider core), 0015 (multimodal images), 0016 (structured output)
 - **Supersedes:**

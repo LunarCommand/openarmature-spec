@@ -70,7 +70,7 @@ and architecture are in [`docs/openarmature.md`](docs/openarmature.md).
 |---|---|---|---|---|
 | [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.16.1 | 21 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks |
 | [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.16.1 | 47 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (with state migration), parallel branches |
-| [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.14.0 | 28 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, structured output via `response_schema`, and OpenAI-compatible wire mapping |
+| [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.17.1 | 28 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, structured output via `response_schema`, and a wire-format-mapping catalog (§8.1 OpenAI-compatible; in-spec default for cross-language provider mappings) |
 | [observability](spec/observability/spec.md) | 0.7.0 | 0.17.0 | 21 | Cross-backend correlation IDs, OpenTelemetry mapping (spans, log correlation, detached trace mode), LLM-span payload + GenAI semconv attributes (default-off payload, request parameters under `gen_ai.request.*`, GenAI semconv response attributes for LLM-aware backends) |
 | [prompt-management](spec/prompt-management/spec.md) | 0.15.0 | 0.15.0 | 12 | Named/versioned template fetch + render; composite backends with infrastructure-only fallback; PromptGroup tracing primitive; strict-undefined-by-default variable injection |
 
@@ -83,7 +83,6 @@ they are Accepted.
 |---|---|---|---|
 | [0009](proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md) | Draft | pipeline-utilities §10 | Per-instance fan-out resume (v2 successor to v1 atomic-restart) |
 | [0010](proposals/0010-drain-timeout.md) | Draft | graph-engine §6 | Bounded drain with caller-supplied timeout for observer-event delivery |
-| [0019](proposals/0019-llm-provider-multi-provider-extension.md) | Draft | llm-provider §8 | Reframe §8 as a multi-provider wire-format catalog; in-spec by default for cross-language mappings |
 | [0020](proposals/0020-sessions-capability.md) | Draft | spec/sessions/spec.md (new), observability §5, pipeline-utilities §10 | Sessions capability — typed cross-invocation state under a stable caller-supplied identity |
 | [0021](proposals/0021-graph-suspension.md) | Draft | spec/suspension/spec.md (new), graph-engine §3 + §6, observability §4 + §5, pipeline-utilities §10 | Graph suspension and external-signal resume — generalized pause primitive (HITL + async-job-wait + scheduled wakeup as flavors of one suspend) |
 | [0022](proposals/0022-harness-contract.md) | Draft | spec/harness/spec.md (new) | Harness contract — abstract behavioral contract for any harness wrapping the OA engine to serve a deployment runtime (three inbound dispatch paths, turn lifecycle, error categorization, runtime-neutral) |
@@ -136,12 +135,13 @@ and not yet started; no committed date.
 Active design areas. These are questions the next round of proposals will
 address, not scheduled deliverables.
 
-- **Multi-provider wire-format mappings.** Today §8 of llm-provider specifies
-  the OpenAI-compatible wire format only. Proposal 0019 reframes §8 as a
-  catalog of per-provider mappings (OpenAI, with Anthropic / Gemini / Mistral
-  to follow as their own proposals) and establishes the rule that any
-  mapping intended for cross-language implementation lives in spec — wire-
-  format consistency is part of OA's cross-language promise.
+- **Per-provider wire-format mappings.** §8 of llm-provider is now a catalog
+  of wire-format mappings (§8.1 OpenAI-compatible is the first; the v0.17.1
+  reframing established the default rule that any mapping intended for
+  cross-language implementation lives in spec). Follow-on proposals will add
+  §8.2+ subsections for Anthropic Messages, Google Gemini, and Mistral as
+  their concrete implementations take shape — wire-format consistency across
+  language siblings is part of OA's cross-language promise.
 - **Per-instance fan-out resume.** v1 ships atomic-restart (a crash mid-fan-out
   re-runs the entire fan-out on resume). Proposal 0009 drafts the v2 contract
   where the engine saves at instance internal `completed` events and skips

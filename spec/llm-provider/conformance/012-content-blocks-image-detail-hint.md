@@ -10,7 +10,7 @@ the `detail` key (provider applies its own default).
 - §3.1.2 Image block — `detail` field; optional with default
   `"auto"`. Providers that don't honor the hint MUST ignore it without
   error.
-- §8.1.1 Content-block wire mapping — `detail` hint propagation:
+- §8.1.1.1 Content-block wire mapping — `detail` hint propagation:
   "The `detail` hint, when set on the spec block, becomes
   `image_url.detail`."
 

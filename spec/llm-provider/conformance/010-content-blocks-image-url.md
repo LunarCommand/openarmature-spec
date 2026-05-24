@@ -1,7 +1,7 @@
 # 010 — Content Blocks Image URL
 
 User message with one URL-sourced `ImageBlock` followed by one `TextBlock`.
-Verifies §8.1.1's OpenAI wire mapping for the URL image variant and the
+Verifies §8.1.1.1's OpenAI wire mapping for the URL image variant and the
 §3.1.4 block-order preservation rule.
 
 **Spec sections exercised:**
@@ -9,7 +9,7 @@ Verifies §8.1.1's OpenAI wire mapping for the URL image variant and the
 - §3.1.2 Image block — `type`, `source` fields.
 - §3.1.3 Image source — `url` variant: `{ type: "url", url: <string> }`.
 - §3.1.4 Mixing blocks — block order preserved through the wire.
-- §8.1.1 Content-block wire mapping — URL-source image block →
+- §8.1.1.1 Content-block wire mapping — URL-source image block →
   `{ "type": "image_url", "image_url": { "url": <url> } }`.
 
 **What passes:**

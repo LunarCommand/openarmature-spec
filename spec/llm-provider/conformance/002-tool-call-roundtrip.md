@@ -17,7 +17,7 @@ The fixture format is documented in fixture 001's `.md`.
   is non-trivial to expose any normalization the implementation might attempt.
 - §4 Tool definition — `parameters` as a JSON Schema object (type, properties, required).
 - §6 `finish_reason: "tool_calls"` — provider returned tool calls, awaiting results.
-- §8.1 OpenAI request mapping — `assistant` `tool_calls` and `tool` `tool_call_id` map to the
+- §8.1.1 OpenAI request mapping — `assistant` `tool_calls` and `tool` `tool_call_id` map to the
   OpenAI wire format with the verbatim id.
 
 **What passes:**
