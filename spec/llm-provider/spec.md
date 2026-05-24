@@ -8,6 +8,7 @@ Canonical behavioral specification for the OpenArmature LLM provider abstraction
   - created by [proposal 0006](../../proposals/0006-llm-provider-core.md)
   - §3 Message shape extended (user content MAY be a sequence of content blocks); §3.1 Content blocks added (text and image blocks; image input only on user messages); §7 gained `provider_unsupported_content_block` error category; §8.1 user-row updated and §8.1.1 content-block wire mapping added; §10 multi-modal entry split (image input now covered; audio/video and image outputs remain deferred) by [proposal 0015](../../proposals/0015-llm-provider-multimodal-images.md)
   - §5 `complete()` extended with optional `response_schema` parameter; §6 Response gained `parsed` field; §7 gained `structured_output_invalid` error category (non-transient by default); §8.5 structured output wire mapping added (with §8.5.1 prompt-augmentation fallback and §8.5.2 response mapping); §10 structured output deferral removed by [proposal 0016](../../proposals/0016-llm-provider-structured-output.md)
+  - §8 renamed from "OpenAI-compatible wire format" to "Wire-format mappings" and reorganized as a catalog of provider mappings; existing OpenAI-compatible body nested under new §8.1 "OpenAI-compatible mapping" (subsections §8.1 through §8.5 → §8.1.1 through §8.1.5); §8 framing paragraph added establishing the default placement rule (in-spec for any mapping with multi-language ambition; out-of-tree allowed only for single-language / opt-out / experimental cases) by [proposal 0019](../../proposals/0019-llm-provider-multi-provider-extension.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -175,7 +176,7 @@ The `source` field on an image block carries one of two variants:
   `{ type: "inline", base64_data: <string> }`. The `media_type` field on the image block
   (§3.1.2) MUST be present for inline images. Implementations MUST NOT inspect, transcode, or
   re-encode the bytes; they pass through to the wire encoded as the provider's wire format
-  expects (§8.1).
+  expects (§8.1.1.1).
 
 A single image block carries exactly one source — `url` XOR `inline`. The discriminator is
 the `type` field on the source itself.
@@ -399,21 +400,56 @@ The categories `provider_authentication`, `provider_invalid_model`, `provider_in
 `provider_invalid_response`, `provider_unsupported_content_block`, and `structured_output_invalid`
 are *non-transient* — retrying without changing the request will not succeed.
 
-## 8. OpenAI-compatible wire format
+## 8. Wire-format mappings
+
+The §5 Provider interface, §3 message shape, §4 Tool definition, §6 Response and configuration,
+and §7 error semantics are the normative cross-provider contract. Any provider implementation
+conforming to those sections satisfies the abstract spec, regardless of the underlying HTTP / RPC
+/ SDK wire format used to reach the model.
+
+This section catalogs concrete wire-format mappings for specific provider protocols. Each mapping
+specifies how the abstract §3 / §4 / §6 records translate to that provider's wire shape and how
+the provider's responses / errors map back to §3 / §6 / §7. §8.1 describes the OpenAI-compatible
+Chat Completions mapping, which is the broadest-compatibility option (the OpenAI hosted API,
+vLLM, LM Studio, llama.cpp server, and many other local servers all speak it). Future
+subsections (§8.2, §8.3, …) are reserved for provider-native formats whose shape diverges from
+the OpenAI mapping — Anthropic Messages API, Google Gemini, Mistral, etc. Each lands via its
+own follow-on proposal.
+
+**Default placement rule.** Any provider wire-format mapping intended for implementation across
+multiple OA language implementations (Python, TypeScript, …) MUST be specified in this section.
+The cross-language behavioral consistency that §3 / §5 / §7 provide for the abstract Provider
+interface extends to wire-format mappings whenever the same provider is targeted from multiple
+languages — without a shared spec, sibling packages like `openarmature-anthropic` (Python) and
+`openarmature-anthropic` (TypeScript) would diverge in subtle wire shape and break the
+cross-language promise.
+
+**Out-of-tree mappings.** Wire-format mappings NOT specified here remain valid but make NO
+cross-impl behavioral guarantee. Out-of-tree is appropriate for: (a) genuinely single-language
+specialty providers (a vendor-specific mapping with no anticipated TypeScript sibling),
+(b) vendor extensions that explicitly opt out of cross-impl consistency, or (c) experimental
+mappings still finding their shape before promotion to in-spec status. In all other cases the
+in-spec default applies.
+
+**Compliance label.** Provider implementations MAY opt into a mapping's compliance label
+(e.g., "OpenAI-compatible", "Anthropic Messages") only if they implement that mapping exactly
+per the §8.X subsection. A provider MAY implement multiple mappings (e.g., one implementation
+routing OpenAI-compatible requests through one path and Anthropic-native requests through
+another) and claim the corresponding labels independently.
+
+### 8.1 OpenAI-compatible mapping
 
 The OpenAI Chat Completions API (`POST /v1/chat/completions`) is the de facto standard for local
-LLM servers (vLLM, LM Studio, llama.cpp) as well as the OpenAI hosted API itself. A provider
-implementation MAY opt into an "OpenAI-compatible" label only if it implements the wire mapping
-below.
+LLM servers (vLLM, LM Studio, llama.cpp) as well as the OpenAI hosted API itself.
 
-### 8.1 Request mapping
+#### 8.1.1 Request mapping
 
 The §3 message list maps onto the OpenAI `messages` field:
 
 | Spec role | OpenAI role | Notes |
 |---|---|---|
 | `system` | `system` | Direct mapping. |
-| `user` | `user` | When `content` is a string, maps directly. When `content` is a content-block sequence (§3.1), maps to OpenAI's content-array form per §8.1.1. |
+| `user` | `user` | When `content` is a string, maps directly. When `content` is a content-block sequence (§3.1), maps to OpenAI's content-array form per §8.1.1.1. |
 | `assistant` (no tool calls) | `assistant` | `content` becomes OpenAI's `content`. |
 | `assistant` (with tool calls) | `assistant` | `content` becomes OpenAI's `content` (may be `null` per OpenAI's schema if empty). `tool_calls` becomes OpenAI's `tool_calls` array. |
 | `tool` | `tool` | `content` becomes OpenAI's `content`. `tool_call_id` becomes OpenAI's `tool_call_id`. |
@@ -448,7 +484,7 @@ A §4 `Tool` `{name, description, parameters}` maps to an OpenAI `tools` entry a
 The §6 `RuntimeConfig` fields map directly: `temperature`, `max_tokens`, `top_p`, `seed`. The bound
 model identifier becomes OpenAI's `model` field.
 
-#### 8.1.1 Content-block wire mapping
+##### 8.1.1.1 Content-block wire mapping
 
 Each spec content block maps to one OpenAI content-array entry:
 
@@ -468,7 +504,7 @@ wire shapes; their own §8-style mapping sections (added by future proposals per
 "Provider-native wire formats" deferral) will define their own block→wire mappings without
 disrupting this one.
 
-### 8.2 Response mapping
+#### 8.1.2 Response mapping
 
 A successful OpenAI response maps onto a §6 `Response` as follows:
 
@@ -483,7 +519,7 @@ A successful OpenAI response maps onto a §6 `Response` as follows:
   rewrite, or omit fields. Provider-specific extensions surface here unchanged (e.g.,
   `choices[0].logprobs`, vLLM's `prompt_logprobs`, LM Studio's runtime stats).
 
-### 8.3 Error mapping
+#### 8.1.3 Error mapping
 
 | OpenAI condition | Spec category |
 |---|---|
@@ -496,14 +532,14 @@ A successful OpenAI response maps onto a §6 `Response` as follows:
 | HTTP 400 (malformed request, schema violation) | `provider_invalid_request` |
 | Successful HTTP response that fails to parse into §6 shape | `provider_invalid_response` |
 
-### 8.4 Concurrency
+#### 8.1.4 Concurrency
 
 OpenAI-compatible servers vary in concurrency support — local servers may serialize internally,
 hosted APIs do not. Implementations MUST NOT add a serialization layer; concurrent `complete()` calls
 go to the wire concurrently. Providers that benefit from client-side concurrency limits use the
 pipeline-utilities rate limiter or middleware, not this layer.
 
-### 8.5 Structured output
+#### 8.1.5 Structured output
 
 When `complete()` is called with a `response_schema`, the OpenAI-compatible request body includes
 a `response_format` field:
@@ -534,7 +570,7 @@ When `complete()` is called without `response_schema` (or with `response_schema=
 request body MUST NOT include `response_format`. The v0.4.0 wire shape is preserved unchanged
 for free-form calls.
 
-#### 8.5.1 Fallback for providers without native structured output
+##### 8.1.5.1 Fallback for providers without native structured output
 
 OpenAI-compatible servers that do not implement `response_format` (older vLLM versions, some
 LM Studio releases, some local-server wrappers) raise an error or silently ignore the field.
@@ -555,15 +591,15 @@ Fallback behavior is implementation-defined. Implementations MUST document wheth
 with `response_schema` uses native `response_format` or prompt-augmentation, and SHOULD expose
 a way for callers to inspect or override the path chosen.
 
-#### 8.5.2 Response mapping
+##### 8.1.5.2 Response mapping
 
 When the response carries structured content (not tool calls):
 
 - `message.content` is the response body's content string, verbatim.
 - `parsed` is the deserialization of `message.content` against `response_schema`.
-- `finish_reason` is mapped per §8.2 (typically `"stop"`).
+- `finish_reason` is mapped per §8.1.2 (typically `"stop"`).
 
-When the response carries tool calls instead, the mapping follows §8.2 unchanged: `parsed` is
+When the response carries tool calls instead, the mapping follows §8.1.2 unchanged: `parsed` is
 absent, `tool_calls` is populated, `finish_reason` is `"tool_calls"`.
 
 ## 9. Determinism

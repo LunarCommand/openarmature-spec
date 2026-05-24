@@ -13,7 +13,7 @@ fixtures (002–008) reuse the same shape.
 - §5 `complete()` — single completion call, returns a `Response`.
 - §6 Response shape — `message`, `finish_reason`, `usage`, and `raw` populated.
 - §6 `finish_reason: "stop"` — the model produced a complete response naturally.
-- §8 OpenAI-compatible wire format — request mapping for `system`/`user` roles; response mapping
+- §8.1 OpenAI-compatible mapping — request mapping for `system`/`user` roles; response mapping
   from `choices[0]`.
 
 **What passes:**

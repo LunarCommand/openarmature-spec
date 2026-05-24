@@ -1,5 +1,5 @@
 # Content blocks — image inline (base64). User message with one ImageBlock
-# whose source is inline base64. Verifies §8.1.1 OpenAI mapping for inline
+# whose source is inline base64. Verifies §8.1.1.1 OpenAI mapping for inline
 # images: spec ImageBlock { media_type, source: inline { base64_data } } →
 # OpenAI image_url entry with a data: URI constructed per RFC 2397.
 

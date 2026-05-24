@@ -13,7 +13,7 @@ provider bytes verbatim, and `finish_reason` is `"stop"`.
   and the model returned structured content.
 - §6 `message.content` preservation — carries the provider's content
   string verbatim (NOT re-serialized from `parsed`).
-- §8.5 wire mapping — outbound request includes `response_format` with
+- §8.1.5 wire mapping — outbound request includes `response_format` with
   `json_schema` body.
 
 **What passes:**

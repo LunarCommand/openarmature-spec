@@ -10,7 +10,7 @@ mock_provider:
   capabilities:
     supports_image_input: false
   # Implementations that take the post-receive mapping path send the
-  # request and get this 400 back; §8.3 maps the content-rejection body
+  # request and get this 400 back; §8.1.3 maps the content-rejection body
   # to provider_unsupported_content_block. Either path produces the same
   # expected category.
   responses:

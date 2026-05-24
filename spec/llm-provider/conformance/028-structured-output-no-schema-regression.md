@@ -10,7 +10,7 @@ happens to return content that looks like JSON.
 
 - §5 — when `response_schema` is `None`/absent, the call behaves as
   in v0.4.0; `Response.parsed` is absent regardless of content.
-- §8.5 — when `complete()` is called without `response_schema`, the
+- §8.1.5 — when `complete()` is called without `response_schema`, the
   request body MUST NOT include `response_format`.
 
 **What passes:**

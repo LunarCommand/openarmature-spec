@@ -1,6 +1,6 @@
 # 005 — OpenAI Wire Mapping
 
-Verifies the §8 OpenAI-compatible wire format mapping bidirectionally: spec inputs translate to
+Verifies the §8.1 OpenAI-compatible wire format mapping bidirectionally: spec inputs translate to
 the expected OpenAI request body, and OpenAI response bodies translate back to the spec
 `Response` shape. Provider-specific extensions (logprobs, vendor stats) round-trip via
 `Response.raw` verbatim.
@@ -11,10 +11,10 @@ case. The harness MUST capture the implementation's outbound HTTP body and asser
 
 **Spec sections exercised:**
 
-- §8.1 Request mapping — message roles, tool_calls serialization, tools schema, runtime config.
-- §8.2 Response mapping — message extraction, finish_reason translation including `function_call`
+- §8.1.1 Request mapping — message roles, tool_calls serialization, tools schema, runtime config.
+- §8.1.2 Response mapping — message extraction, finish_reason translation including `function_call`
   legacy → `tool_calls`, usage extraction.
-- §8.2 `raw` — provider-specific extensions surface verbatim.
+- §8.1.2 `raw` — provider-specific extensions surface verbatim.
 - §6 RuntimeConfig — temperature, max_tokens, top_p, seed pass through unchanged.
 
 **Cases:**
@@ -23,14 +23,14 @@ case. The harness MUST capture the implementation's outbound HTTP body and asser
    role mapping and the required `model` field.
 2. `tool_call_with_serialized_arguments` — assistant `tool_calls` with mapping arguments.
    Verifies that arguments serialize to a JSON-encoded *string* on the wire (per OpenAI's
-   schema) while the spec stores the deserialized mapping. Also verifies the §8.1 wrapping of
+   schema) while the spec stores the deserialized mapping. Also verifies the §8.1.1 wrapping of
    tools as `{type: function, function: {...}}`.
 3. `runtime_config_passthrough` — temperature, max_tokens, top_p, seed map directly to OpenAI's
    request body fields.
 4. `function_call_legacy_finish_reason_mapping` — OpenAI's legacy `finish_reason:
    "function_call"` MUST map to the spec's `tool_calls`. The mock response also includes a
    provider-specific `logprobs` field; the implementation MUST preserve it in `Response.raw`
-   verbatim per §6 / §8.2.
+   verbatim per §6 / §8.1.2.
 
 **What passes:**
 

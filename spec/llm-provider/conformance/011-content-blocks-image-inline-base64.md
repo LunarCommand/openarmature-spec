@@ -1,7 +1,7 @@
 # 011 — Content Blocks Image Inline Base64
 
 User message with one inline-base64 `ImageBlock` followed by one `TextBlock`.
-Verifies §8.1.1's mapping for the inline image variant — the spec block's
+Verifies §8.1.1.1's mapping for the inline image variant — the spec block's
 `media_type` and inline `base64_data` get composed into a single `data:`
 URL on the wire per RFC 2397.
 
@@ -10,7 +10,7 @@ URL on the wire per RFC 2397.
 - §3.1.2 Image block — `media_type` field on the block; required when
   `source` is `inline`.
 - §3.1.3 Image source — `inline` variant: `{ type: "inline", base64_data: <string> }`.
-- §8.1.1 Content-block wire mapping — inline-source image block →
+- §8.1.1.1 Content-block wire mapping — inline-source image block →
   `{ "type": "image_url", "image_url": { "url": "data:<media_type>;base64,<base64_data>" } }`.
 
 **What passes:**

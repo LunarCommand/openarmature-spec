@@ -2,7 +2,7 @@
 # §7 category. Table-style.
 #
 # Verifies that the implementation classifies provider errors per §7 and that
-# the §8.3 OpenAI mapping is correct.
+# the §8.1.3 OpenAI mapping is correct.
 
 cases:
   - name: authentication_401

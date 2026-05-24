@@ -1,4 +1,4 @@
-# Structured output — native OpenAI wire mapping. Verifies §8.5: when
+# Structured output — native OpenAI wire mapping. Verifies §8.1.5: when
 # response_schema is supplied, the outbound HTTP request body includes
 # response_format: { type: "json_schema", json_schema: { name, schema,
 # strict } } with the spec's response_schema passed verbatim under
@@ -37,7 +37,7 @@ calls:
       response_format:
         type: json_schema
         json_schema:
-          # `name` is implementation-derived per §8.5. The literal string
+          # `name` is implementation-derived per §8.1.5. The literal string
           # "*" in expected_wire_request is a harness wildcard: the key
           # MUST be present with a non-empty string value, but the
           # specific value is exempted from literal comparison.

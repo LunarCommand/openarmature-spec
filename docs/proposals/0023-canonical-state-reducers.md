@@ -1,0 +1,1 @@
+../../proposals/0023-canonical-state-reducers.md

@@ -1,6 +1,6 @@
 # Structured output — prompt-augmentation fallback for providers without
 # native response_format. The provider is configured as NOT supporting
-# response_format; the implementation MUST fall back per §8.5.1.
+# response_format; the implementation MUST fall back per §8.1.5.1.
 #
 # The fallback constructs a MODIFIED COPY of the message list with a
 # JSON-only directive appended; sends without response_format; parses

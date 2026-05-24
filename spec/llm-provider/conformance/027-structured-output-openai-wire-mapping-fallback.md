@@ -1,6 +1,6 @@
 # 027 — Structured Output Prompt-Augmentation Fallback
 
-Verifies §8.5.1: when the provider does not natively support
+Verifies §8.1.5.1: when the provider does not natively support
 `response_format`, the implementation falls back to prompt augmentation.
 The fallback constructs a *modified copy* of the message list with a
 JSON-only system directive appended; sends without `response_format`;
@@ -9,9 +9,9 @@ post-receive. The caller's original messages MUST NOT be mutated.
 
 **Spec sections exercised:**
 
-- §8.5.1 Fallback for providers without native structured output —
+- §8.1.5.1 Fallback for providers without native structured output —
   prompt-augmentation strategy steps 1-4.
-- §8.5.1 message-list mutation rule — the caller's original `messages`
+- §8.1.5.1 message-list mutation rule — the caller's original `messages`
   MUST be left unchanged (matching §5's mutation rule).
 - §6 — `parsed` is still populated under the fallback path (validation
   happens post-receive).
@@ -31,4 +31,4 @@ post-receive. The caller's original messages MUST NOT be mutated.
   detection didn't fire even though the provider doesn't support it.
 - No system directive is added — would mean the fallback didn't
   construct the augmented prompt.
-- The caller's `messages` is mutated — violates §5/§8.5.1 mutation rule.
+- The caller's `messages` is mutated — violates §5/§8.1.5.1 mutation rule.

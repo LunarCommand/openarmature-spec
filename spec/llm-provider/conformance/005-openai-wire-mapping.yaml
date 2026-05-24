@@ -1,6 +1,6 @@
 # OpenAI wire format round-trip: spec input → wire JSON → spec Response.
 #
-# Verifies the §8 OpenAI-compatible mapping in both directions:
+# Verifies the §8.1 OpenAI-compatible mapping in both directions:
 #   - Request: spec Message/Tool/RuntimeConfig → OpenAI request body.
 #   - Response: OpenAI response body → spec Response (with `raw` carrying the
 #     original verbatim).
@@ -54,7 +54,7 @@ cases:
     description: |
       Assistant message with tool_calls, then a follow-up tool message.
       Verifies that `arguments` is serialized to a JSON-encoded string on the
-      wire (per §8.1) and that the spec stores the deserialized mapping.
+      wire (per §8.1.1) and that the spec stores the deserialized mapping.
     call:
       operation: complete
       messages:

@@ -4,6 +4,19 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.17.1] — 2026-05-24
+
+**Changed**
+
+- **llm-provider §8 reframed from "OpenAI-compatible wire format" to "Wire-format mappings".** The existing OpenAI-compatible body is now nested under §8.1 "OpenAI-compatible mapping"; its subsections renumber §8.1 (Request mapping) → §8.1.1, §8.2 (Response mapping) → §8.1.2, §8.3 (Error mapping) → §8.1.3, §8.4 (Concurrency) → §8.1.4, §8.5 (Structured output) → §8.1.5, with the deeper §8.1.1 (Content-block wire mapping) → §8.1.1.1, §8.5.1 (Fallback) → §8.1.5.1, §8.5.2 (Response mapping) → §8.1.5.2. A new §8 framing paragraph catalogs the wire-format mapping section as the home for cross-language provider mappings, establishes the **default placement rule** (any mapping intended for implementation across multiple OA language implementations MUST land in §8.X), reserves out-of-tree for genuinely single-language / opt-out / experimental cases, and carries over the "compliance label" opt-in. ([proposal 0019](proposals/0019-llm-provider-multi-provider-extension.md))
+- Conformance-fixture sidecars under `spec/llm-provider/conformance/` updated to reference the new section numbers (`§8.1.1`, `§8.1.2`, `§8.1.3`, `§8.1.5`, `§8.1.5.1`, `§8.1.1.1`). Fixture YAML and behavior are unchanged.
+
+**Notes**
+
+- **Pre-1.0 PATCH bump.** Purely textual reframing — no new types, no new error categories, no behavioral change. All v0.17.0 conformance fixtures pass under the renumbered structure without modification. Matches the v0.16.1 precedent (spec-text clarification with no fixture changes). The §3 / §4 / §5 / §6 / §7 contract remains the normative cross-provider surface; §8 is reorganized as a catalog of concrete mappings.
+- **Per-mapping subsection structure is not normatively prescribed.** §8.1 (the OpenAI-compatible mapping) uses Request / Response / Error / Concurrency / Structured-output subsections; follow-on proposals adding §8.2+ (Anthropic Messages, Google Gemini, Mistral, …) MAY mirror this structure or diverge per provider. The first follow-on may establish a recommended template if reviewer signal warrants.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.17.0 may target v0.17.1 directly.
+
 ## [0.17.0] — 2026-05-22
 
 **Added**
