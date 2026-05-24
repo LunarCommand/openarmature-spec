@@ -106,7 +106,7 @@ existing *Compliance label* paragraph and before §8.1:
 
 ### No behavioral change
 
-This proposal is purely structural recommendation. No new types, no
+This proposal is a purely structural recommendation. No new types, no
 new error categories, no changes to §3 / §4 / §5 / §6 / §7. All
 existing conformance fixtures pass unchanged. §8.1 already follows
 the template by construction — it IS the template source.
