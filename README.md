@@ -6,7 +6,7 @@ specification text, conformance fixtures, governance rules, and numbered
 RFC-style proposals. **No implementation code lives here.** Implementations
 are in sibling repositories.
 
-**Current spec version:** [v0.18.0](CHANGELOG.md)
+**Current spec version:** [v0.19.0](CHANGELOG.md)
 
 ---
 
@@ -68,7 +68,7 @@ and architecture are in [`docs/openarmature.md`](docs/openarmature.md).
 
 | Capability | Introduced | Latest | Fixtures | Scope |
 |---|---|---|---|---|
-| [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.16.1 | 21 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks |
+| [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.19.0 | 25 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks (with bounded `drain` — optional caller-supplied timeout + summary of undelivered events) |
 | [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.18.0 | 53 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (per-instance fan-out resume, state migration, configurable backend batching for fan-out internal saves), parallel branches |
 | [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.17.1 | 28 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, structured output via `response_schema`, and a wire-format-mapping catalog (§8.1 OpenAI-compatible; in-spec default for cross-language provider mappings) |
 | [observability](spec/observability/spec.md) | 0.7.0 | 0.17.0 | 21 | Cross-backend correlation IDs, OpenTelemetry mapping (spans, log correlation, detached trace mode), LLM-span payload + GenAI semconv attributes (default-off payload, request parameters under `gen_ai.request.*`, GenAI semconv response attributes for LLM-aware backends) |
@@ -81,7 +81,6 @@ they are Accepted.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| [0010](proposals/0010-drain-timeout.md) | Draft | graph-engine §6 | Bounded drain with caller-supplied timeout for observer-event delivery |
 | [0020](proposals/0020-sessions-capability.md) | Draft | spec/sessions/spec.md (new), observability §5, pipeline-utilities §10 | Sessions capability — typed cross-invocation state under a stable caller-supplied identity |
 | [0021](proposals/0021-graph-suspension.md) | Draft | spec/suspension/spec.md (new), graph-engine §3 + §6, observability §4 + §5, pipeline-utilities §10 | Graph suspension and external-signal resume — generalized pause primitive (HITL + async-job-wait + scheduled wakeup as flavors of one suspend) |
 | [0022](proposals/0022-harness-contract.md) | Draft | spec/harness/spec.md (new) | Harness contract — abstract behavioral contract for any harness wrapping the OA engine to serve a deployment runtime (three inbound dispatch paths, turn lifecycle, error categorization, runtime-neutral) |
@@ -141,22 +140,35 @@ address, not scheduled deliverables.
   §8.2+ subsections for Anthropic Messages, Google Gemini, and Mistral as
   their concrete implementations take shape — wire-format consistency across
   language siblings is part of OA's cross-language promise.
-- **Bounded drain.** Observer drain currently blocks until every queued event
-  delivers. Proposal 0010 drafts a caller-supplied timeout so hung observers
-  can't gate process exit.
+- **Observability backend mappings.** The observability spec currently
+  defines the OpenTelemetry mapping (§4). Backend-specific mappings —
+  Langfuse first, others as demand surfaces — would ship as sibling
+  sections of the observability spec, each mapping OA's normative event
+  stream onto the backend's native model. Follows the same pattern as
+  the per-provider wire-format catalog: one spec section per backend,
+  cross-language consistency guaranteed at the mapping layer.
+- **Multimodal LLM support — audio and video.** Proposal 0015 added image
+  content blocks (§3.1) and 0019's framing reserves §8.X subsections for
+  per-provider mappings. Audio and video each warrant their own follow-on
+  proposal (different wire shapes per provider, different format /
+  duration constraints, different streaming semantics for long video).
+  Input-only in v1, mirroring the image rollout; assistant-output audio /
+  video are separate, smaller workloads with their own scoping.
+- **Tool-call observability on LLM spans.** v0.17.0 (proposal 0024)
+  landed the LLM input/output payload + GenAI semconv attributes for
+  the request and response sides of an LLM call. The natural follow-on
+  is tool-call attributes on the same span — `gen_ai.tool.calls` style
+  attributes that capture which tools were invoked with what arguments
+  and what the results were, surfaced for LLM-aware OTel backends
+  (Langfuse, Phoenix, Honeycomb LLM lens) that already render tool-call
+  traces.
 
-Beyond the in-flight proposals, broader directions on the design horizon
-include cross-invocation session state (typed durable state keyed by a
-stable caller-supplied identity), graph suspension and external-signal
-resume (generalizing human-in-the-loop + async-job-wait + scheduled
-wakeups), a harness contract specifying how deployment runtimes wrap the
-engine, agent memory (cross-session knowledge stores — per-user profiles,
-episodic / semantic / procedural memory — distinct from sessions and
-queried mid-graph rather than loaded at invoke entry), a Langfuse backend
-mapping as a sibling section of the observability spec (analogous to the
-existing OpenTelemetry mapping), and an evaluation framework with
-persistent history. Each lands when there's a clear behavior to specify,
-not before.
+Beyond these active areas, broader directions on the design horizon
+include agent memory (cross-session knowledge stores — per-user
+profiles, episodic / semantic / procedural memory — distinct from
+sessions and queried mid-graph rather than loaded at invoke entry) and
+an evaluation framework with persistent history. Each lands when
+there's a clear behavior to specify, not before.
 
 ---
 

@@ -1,0 +1,65 @@
+# Drain timeout elapses with events still queued (§6 Drain): a graph
+# runs with an observer that sleeps longer than the supplied drain
+# timeout. Drain MUST return within the timeout, the summary MUST
+# report a non-zero undelivered count, and the timeout_reached flag
+# MUST be true.
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1}
+  b:
+    update: {v: 2}
+  c:
+    update: {v: 3}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+observers:
+  # Observer sleeps 200ms per event. The graph fires 6 observer events
+  # (3 nodes × 2 phases per §6). At 200ms each, total work is 1200ms.
+  # Drain timeout is 100ms — far less than the work; many events will
+  # remain undelivered when the timeout elapses.
+  - name: slow_obs
+    attach: graph
+    target: outer
+    behavior: record
+    sleep_ms_per_event: 200
+
+invoke:
+  drain:
+    timeout_seconds: 0.1
+
+expected:
+  final_state:
+    v: 3
+  execution_order: [a, b, c]
+
+  drain_summary:
+    timeout_reached: true
+    # The exact undelivered count depends on the implementation's
+    # worker scheduling and how many events the worker started before
+    # the timeout fired. At minimum, several events MUST remain
+    # undelivered (the per-event sleep is 200ms; the timeout is 100ms,
+    # so at most 0-1 events can fully deliver before the deadline).
+    undelivered_count_min: 4
+
+  invariants:
+    # The hard deadline is non-negotiable: drain MUST return no later
+    # than `timeout` seconds after the call begins.
+    drain_returned_within_timeout: true
+    # The compiled graph remains usable for subsequent invocations
+    # (verified more directly by fixture 024).
+    graph_state_intact_after_timeout: true

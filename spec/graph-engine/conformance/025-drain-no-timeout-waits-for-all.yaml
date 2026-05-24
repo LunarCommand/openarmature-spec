@@ -1,0 +1,67 @@
+# Drain without timeout waits for all (§6 Drain, regression coverage):
+# drain called with no timeout parameter still blocks until every event
+# delivers — matching the v0.3.0 contract. The returned summary still
+# has the consistent shape with undelivered_count=0 and
+# timeout_reached=false.
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1}
+  b:
+    update: {v: 2}
+  c:
+    update: {v: 3}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+observers:
+  # Observer with moderate per-event sleep (50ms × 6 events = 300ms
+  # total). No timeout supplied, so drain MUST wait the full 300ms.
+  - name: paced_obs
+    attach: graph
+    target: outer
+    behavior: record
+    sleep_ms_per_event: 50
+
+invoke:
+  drain: {}  # no timeout — explicit absence
+
+expected:
+  final_state:
+    v: 3
+  execution_order: [a, b, c]
+
+  drain_summary:
+    # v0.3.0 behavior preserved: no timeout, no truncation, complete
+    # delivery. The summary shape stays consistent across timed and
+    # untimed drains.
+    timeout_reached: false
+    undelivered_count: 0
+
+  observer_events:
+    paced_obs:
+      - {step: 0, phase: started,   node_name: a, namespace: [a]}
+      - {step: 0, phase: completed, node_name: a, namespace: [a]}
+      - {step: 1, phase: started,   node_name: b, namespace: [b]}
+      - {step: 1, phase: completed, node_name: b, namespace: [b]}
+      - {step: 2, phase: started,   node_name: c, namespace: [c]}
+      - {step: 2, phase: completed, node_name: c, namespace: [c]}
+
+  invariants:
+    # The v0.3.0 contract is preserved: drain without a timeout waits
+    # indefinitely (in practice, until all events deliver) and never
+    # truncates.
+    drain_waited_for_all_events: true

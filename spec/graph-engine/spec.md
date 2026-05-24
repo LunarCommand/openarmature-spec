@@ -11,6 +11,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 Observer hooks gained `attempt_index` field and middleware-dispatched events by [proposal 0004](../../proposals/0004-pipeline-utilities-middleware.md)
   - §3 Execution model carved out a fan-out concurrency exception; §6 Observer hooks replaced single-event-per-attempt with started/completed pairs, added per-observer phase subscription, added `fan_out_index` field, and removed the "Middleware-dispatched events" subsection by [proposal 0005](../../proposals/0005-pipeline-utilities-parallel-fan-out.md)
   - §3 Execution model concurrency exception extended to also cover parallel-branches; §6 Observer hooks gained `branch_name` field and updated event-source uniqueness invariant to include it by [proposal 0011](../../proposals/0011-pipeline-utilities-parallel-branches.md)
+  - §6 Observer hooks `drain` operation gained an optional caller-supplied `timeout` parameter and now MUST return a summary (`undelivered_count`, `timeout_reached`, with implementations permitted to add richer detail); under timeout, workers MUST be cancelled and graph state MUST remain usable for subsequent invocations by [proposal 0010](../../proposals/0010-drain-timeout.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -230,9 +231,35 @@ Python's `warnings.warn`, TypeScript's `console.warn`).
 
 **Drain.** The compiled graph MUST expose a `drain` operation that, when awaited, returns once all
 observer events produced by prior invocations of this graph have been delivered to every registered
-observer. Events produced by subgraphs during an invocation are part of that invocation and are covered
-by the parent graph's drain. Callers running in short-lived processes (scripts, serverless functions,
-CLIs) MUST use drain to avoid losing observer events that were dispatched but not yet delivered.
+observer, OR once an optional caller-supplied timeout elapses, whichever happens first. Events
+produced by subgraphs during an invocation are part of that invocation and are covered by the parent
+graph's drain. Callers running in short-lived processes (scripts, serverless functions, CLIs) MUST
+use drain to avoid losing observer events that were dispatched but not yet delivered.
+
+The `drain` operation MUST accept an optional **timeout** parameter (interpreted as a non-negative
+duration in seconds, mapped to the host language's idiomatic wait-bound type — for example, Python's
+`float` seconds). If the timeout is omitted or `None`, drain waits indefinitely (the existing v0.3.0
+behavior). If a timeout is supplied:
+
+- drain MUST return no later than `timeout` seconds after the call begins;
+- any observer events still queued or in-flight when the timeout is reached are considered
+  **undelivered** for the purposes of this invocation's drain;
+- workers MUST be cancelled or otherwise terminated such that the compiled graph remains usable for
+  subsequent invocations — partial delivery state from one drain MUST NOT leak into the next
+  invocation;
+- observers SHOULD be written to be cancellation-safe (idempotent writes, try/finally cleanup) so
+  that interruption by drain timeout does not leave partial side effects in an inconsistent state;
+
+drain MUST return a summary of the drain's outcome, in a form appropriate to the host language. The
+summary MUST include at least: the count of undelivered events, and a boolean or equivalent flag
+indicating whether the timeout was reached. Implementations MAY provide richer detail (per-observer
+counts, sampled event metadata). When called without a timeout, drain MUST still return a summary;
+in that case the undelivered count is `0` and the timeout-reached flag is `false`. Callers receive
+a consistent shape regardless of whether they supplied a timeout.
+
+Implementations SHOULD document drain's worst-case duration in the presence of slow observers and
+SHOULD recommend setting a timeout in short-lived process contexts (CLIs, scripts, serverless
+functions).
 
 Implementations MAY provide APIs to add or remove registered observers. Any change to the set of
 registered observers during a graph run MUST NOT take effect until the next invocation — the set of
