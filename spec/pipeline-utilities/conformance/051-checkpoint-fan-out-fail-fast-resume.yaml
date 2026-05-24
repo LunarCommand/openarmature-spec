@@ -1,0 +1,96 @@
+# Fail-fast composition (§10.11.2): a fail_fast-mode fan-out aborts when
+# one instance fails; sibling in-flight instances are cancelled. On
+# resume, completed instances (those that recorded their contributions
+# before the failure) skip; failed and cancelled instances re-run.
+
+subgraph:
+  name: scorer
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      out:
+        type: int
+        default: 0
+  entry: score
+  nodes:
+    score:
+      flaky_per_index:
+        # Instance 1 fails on first run; cancels siblings under fail_fast.
+        # All instances succeed on resume.
+        fail_first_run_indices: [1]
+        success_compute: {out: input}
+  edges:
+    - {from: score, to: END}
+
+cases:
+  - name: fail_fast_cancels_siblings_resume_re_runs_them
+    description: |
+      Fan-out with 4 instances [10, 20, 30, 40] under fail_fast. Instance
+      0 completes successfully, recording `result: 10` in fan_out_progress.
+      Instance 1 fails; fail_fast cancels in-flight siblings (instance 2
+      may have been mid-execution; instances 3 had not been dispatched).
+      The fan-out raises node_exception.
+
+      Saved record: instance 0 = `completed` (result preserved); instance 1
+      = `in_flight` (failure means no `completed` save); instance 2 =
+      `in_flight` OR `not_started` depending on dispatch timing; instance 3
+      = `not_started`.
+
+      On resume, instance 0 skipped; instances 1, 2, 3 all re-run with
+      `attempt_index` reset to 0 per §10.6. Mock allows them all to
+      succeed this time; final state reflects the full fan-out.
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30, 40]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: scorer
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+          concurrent_mode: serial
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: process
+    saved_record_assertions:
+      fan_out_progress:
+        process:
+          instance_count: 4
+          instances:
+            - {state: completed, result: 10}
+            - {state: in_flight}
+            # Under serial execution, instance 2 has not been dispatched
+            # when instance 1 fails; under concurrent execution, instance
+            # 2 might be in_flight. The fixture accepts either.
+            - state_one_of: [in_flight, not_started]
+            - {state: not_started}
+    resume:
+      from_first_run: true
+      expected:
+        final_state:
+          items: [10, 20, 30, 40]
+          results: [10, 20, 30, 40]
+        # Completed-before-failure instance is skipped.
+        instances_skipped_during_resume: [0]
+        # Failed-and-cancelled instances all re-run.
+        instances_executed_during_resume: [1, 2, 3]
+      invariants:
+        # Per §10.11.3 and §10.6: retry-exhausted instances re-run on
+        # resume with attempt_index reset.
+        instance_1_attempt_index_on_resume: 0

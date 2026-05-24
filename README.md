@@ -69,7 +69,7 @@ and architecture are in [`docs/openarmature.md`](docs/openarmature.md).
 | Capability | Introduced | Latest | Fixtures | Scope |
 |---|---|---|---|---|
 | [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.16.1 | 21 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks |
-| [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.16.1 | 47 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (with state migration), parallel branches |
+| [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.18.0 | 53 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (per-instance fan-out resume, state migration, configurable backend batching for fan-out internal saves), parallel branches |
 | [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.17.1 | 28 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, structured output via `response_schema`, and a wire-format-mapping catalog (§8.1 OpenAI-compatible; in-spec default for cross-language provider mappings) |
 | [observability](spec/observability/spec.md) | 0.7.0 | 0.17.0 | 21 | Cross-backend correlation IDs, OpenTelemetry mapping (spans, log correlation, detached trace mode), LLM-span payload + GenAI semconv attributes (default-off payload, request parameters under `gen_ai.request.*`, GenAI semconv response attributes for LLM-aware backends) |
 | [prompt-management](spec/prompt-management/spec.md) | 0.15.0 | 0.15.0 | 12 | Named/versioned template fetch + render; composite backends with infrastructure-only fallback; PromptGroup tracing primitive; strict-undefined-by-default variable injection |
@@ -81,7 +81,6 @@ they are Accepted.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| [0009](proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md) | Draft | pipeline-utilities §10 | Per-instance fan-out resume (v2 successor to v1 atomic-restart) |
 | [0010](proposals/0010-drain-timeout.md) | Draft | graph-engine §6 | Bounded drain with caller-supplied timeout for observer-event delivery |
 | [0020](proposals/0020-sessions-capability.md) | Draft | spec/sessions/spec.md (new), observability §5, pipeline-utilities §10 | Sessions capability — typed cross-invocation state under a stable caller-supplied identity |
 | [0021](proposals/0021-graph-suspension.md) | Draft | spec/suspension/spec.md (new), graph-engine §3 + §6, observability §4 + §5, pipeline-utilities §10 | Graph suspension and external-signal resume — generalized pause primitive (HITL + async-job-wait + scheduled wakeup as flavors of one suspend) |
@@ -142,10 +141,6 @@ address, not scheduled deliverables.
   §8.2+ subsections for Anthropic Messages, Google Gemini, and Mistral as
   their concrete implementations take shape — wire-format consistency across
   language siblings is part of OA's cross-language promise.
-- **Per-instance fan-out resume.** v1 ships atomic-restart (a crash mid-fan-out
-  re-runs the entire fan-out on resume). Proposal 0009 drafts the v2 contract
-  where the engine saves at instance internal `completed` events and skips
-  already-completed instances on resume.
 - **Bounded drain.** Observer drain currently blocks until every queued event
   delivers. Proposal 0010 drafts a caller-supplied timeout so hung observers
   can't gate process exit.

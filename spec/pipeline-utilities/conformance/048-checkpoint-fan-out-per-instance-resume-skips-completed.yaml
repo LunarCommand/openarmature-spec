@@ -1,0 +1,96 @@
+# Per-instance fan-out resume (§10.7, §10.11): fan-out with 5 instances;
+# instances 0, 1, 2 complete-and-record their contributions; abort during
+# instance 3's execution. On resume, the saved record's fan_out_progress
+# is consulted: instances 0-2 (state=completed) are skipped, instance 3
+# (state=in_flight) and instance 4 (state=not_started) execute.
+
+subgraph:
+  name: scorer
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      out:
+        type: int
+        default: 0
+  entry: score
+  nodes:
+    score:
+      flaky_per_index:
+        # Harness directive: instance 3 fails on first run; all instances
+        # succeed on resume.
+        fail_first_run_indices: [3]
+        success_compute: {out: input}
+  edges:
+    - {from: score, to: END}
+
+cases:
+  - name: completed_instances_skip_on_resume
+    description: |
+      Fan-out with 5 instances [10, 20, 30, 40, 50] under serial execution
+      (so the completion ordering is deterministic). Instances 0, 1, 2
+      complete and record their contributions into the accumulator.
+      Instance 3 fails; under fail_fast the fan-out aborts. The saved
+      record at the abort point has fan_out_progress with instances 0-2
+      as `completed` (their `result` fields populated), instance 3 as
+      `in_flight` (no accumulator entry), instance 4 as `not_started`.
+
+      On resume, instances 0-2 are skipped (their accumulator entries
+      roll forward unchanged); instances 3 and 4 execute normally. Final
+      state matches a successful uninterrupted run.
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30, 40, 50]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: scorer
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+          concurrent_mode: serial
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: process
+    saved_record_assertions:
+      # Per-instance progress field populated per §10.11.
+      fan_out_progress:
+        process:
+          instance_count: 5
+          instances:
+            - {state: completed, result: 10}
+            - {state: completed, result: 20}
+            - {state: completed, result: 30}
+            - {state: in_flight}
+            - {state: not_started}
+      # The fan-out node itself has no completed_positions entry — the
+      # fan-out as a whole never completed.
+      fan_out_node_in_completed_positions: false
+    resume:
+      from_first_run: true
+      expected:
+        final_state:
+          items: [10, 20, 30, 40, 50]
+          results: [10, 20, 30, 40, 50]
+        # Critical assertion: completed instances are NOT re-run on resume.
+        instances_executed_during_resume: [3, 4]
+        instances_skipped_during_resume: [0, 1, 2]
+      invariants:
+        # Already-recorded accumulator entries roll forward via reducer
+        # at fan-in (per §10.11.1) — append-reducer's results list shows
+        # exactly one entry per instance, in order.
+        no_duplicate_results: true

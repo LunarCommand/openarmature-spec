@@ -1,9 +1,10 @@
 # 0009: Pipeline Utilities — Per-Instance Fan-Out Resume
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-04
-- **Targets:** spec/pipeline-utilities/spec.md (revises §10.3, §10.7; adds §10.11)
+- **Accepted:** 2026-05-24
+- **Targets:** spec/pipeline-utilities/spec.md (revises §10.3, §10.7; adds §10.11; renumbers existing §10.11 → §10.13)
 - **Related:** 0005, 0008
 - **Supersedes:**
 

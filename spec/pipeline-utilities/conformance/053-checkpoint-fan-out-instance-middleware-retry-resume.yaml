@@ -1,0 +1,98 @@
+# Instance-middleware retry composition (§10.11.3): per-instance resume
+# composes with retry middleware applied at the instance level. A retry-
+# exhausted instance whose `in_flight` state was saved re-runs on resume
+# with `attempt_index` reset to 0 per §10.6.
+
+subgraph:
+  name: flaky_step
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      out:
+        type: int
+        default: 0
+  entry: work
+  nodes:
+    work:
+      flaky_per_index:
+        # Instance 1 fails all retry attempts on first run; succeeds on
+        # resume (fresh attempt_index, fresh mock).
+        fail_first_run_indices: [1]
+        success_compute: {out: input}
+  edges:
+    - {from: work, to: END}
+
+cases:
+  - name: retry_exhausted_instance_resumes_with_fresh_budget
+    description: |
+      Fan-out with 3 instances [10, 20, 30] and `instance_middleware:
+      [retry(max_attempts: 3)]`. Instance 0 succeeds on first attempt and
+      records `result: 10`. Instance 1's retry middleware exhausts all 3
+      attempts (the inner work raises every time); under fail_fast, the
+      retry-exhausted failure cancels siblings. Instance 1's state at
+      save time is `in_flight` (no accumulator entry — the retry
+      middleware's wrapped failure prevented the `completed` save from
+      firing).
+
+      Saved record: instance 0 = `completed` with `result: 10`;
+      instance 1 = `in_flight`; instance 2 = `in_flight` or
+      `not_started`.
+
+      On resume, instance 1 re-runs with `attempt_index` reset to 0
+      (fresh retry budget per §10.6). A different mock injection allows
+      the work to succeed on the first attempt. Instance 2 dispatches
+      normally. Final state reflects all instances succeeding.
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: flaky_step
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+          concurrent_mode: serial
+          instance_middleware:
+            - retry:
+                max_attempts: 3
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: process
+    saved_record_assertions:
+      fan_out_progress:
+        process:
+          instance_count: 3
+          instances:
+            - {state: completed, result: 10}
+            - {state: in_flight}
+            - state_one_of: [in_flight, not_started]
+    resume:
+      from_first_run: true
+      expected:
+        final_state:
+          items: [10, 20, 30]
+          results: [10, 20, 30]
+        instances_executed_during_resume: [1, 2]
+        instances_skipped_during_resume: [0]
+      invariants:
+        # Per §10.6 and §10.11.3: retry budget restarts on resume.
+        instance_1_attempt_index_on_resume_start: 0
+        # Instance 1 succeeds on first attempt of resumed run (no
+        # retries needed because the mock injection differs).
+        instance_1_resume_attempt_count: 1

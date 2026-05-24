@@ -1,0 +1,110 @@
+# Collect-mode composition (§10.11.2): under error_policy: collect, the
+# fan-out runs all instances regardless of individual failures. Failed
+# instances record their error into the accumulator's errors_field
+# bucket — and that error record IS a `completed` contribution under
+# §10.11. On resume, instances marked `completed` (whether success OR
+# recorded-error) are skipped.
+
+subgraph:
+  name: scorer
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      out:
+        type: int
+        default: 0
+  entry: score
+  nodes:
+    score:
+      flaky_per_index:
+        # Instance 2 fails on every run (deterministic failure recorded
+        # as error in errors_field). Other instances succeed.
+        always_fail_indices: [2]
+        success_compute: {out: input}
+  edges:
+    - {from: score, to: END}
+
+cases:
+  - name: collect_mode_preserves_completed_and_error_contributions
+    description: |
+      Fan-out with 5 instances [10, 20, 30, 40, 50] under
+      `error_policy: collect`. Instances 0, 1 succeed and record their
+      `result: 10` and `result: 20` into the accumulator (the
+      `target_field` bucket). Instance 2 fails; under collect, the
+      failure is captured as an error entry in the accumulator (the
+      `errors_field` bucket) — instance 2's state is `completed` with
+      `result` being the error record. Instances 3 and 4 had not yet
+      executed when the abort happened (simulated via a separate
+      abort directive that fires between instance 2's completion-save
+      and instance 3's dispatch).
+
+      Saved record: instances 0, 1, 2 all `completed` with their
+      respective `result` entries; instances 3, 4 `not_started`.
+
+      On resume, instances 0, 1, 2 are skipped — including instance 2
+      whose contribution is an error entry, not a success. Instances 3
+      and 4 dispatch normally. Final state has 4 success contributions
+      in `results` and 1 error entry in `errors`.
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30, 40, 50]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+        errors:
+          type: list<error_entry>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: scorer
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          errors_field: errors
+          error_policy: collect
+          concurrent_mode: serial
+          abort_after_instance: 2  # Harness directive: process-level abort.
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      # Process-level abort surfaces as node_exception from the harness.
+      category: node_exception
+      raised_from: process
+    saved_record_assertions:
+      fan_out_progress:
+        process:
+          instance_count: 5
+          instances:
+            - {state: completed, result: 10}
+            - {state: completed, result: 20}
+            # Instance 2's contribution is an error record under collect.
+            - {state: completed, result_kind: error}
+            - {state: not_started}
+            - {state: not_started}
+    resume:
+      from_first_run: true
+      expected:
+        final_state:
+          items: [10, 20, 30, 40, 50]
+          results: [10, 20, 30, 40]
+          # Critical: exactly one error entry, NOT two — instance 2's
+          # error contribution rolled forward from the saved record and
+          # was not re-recorded on resume.
+          errors_list_length: 1
+        instances_executed_during_resume: [3, 4]
+        instances_skipped_during_resume: [0, 1, 2]
+      invariants:
+        # Error-record contributions are first-class `completed`
+        # contributions under §10.11.2 collect mode.
+        no_duplicate_error_entries: true
