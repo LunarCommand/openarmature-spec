@@ -176,7 +176,7 @@ The `source` field on an image block carries one of two variants:
   `{ type: "inline", base64_data: <string> }`. The `media_type` field on the image block
   (§3.1.2) MUST be present for inline images. Implementations MUST NOT inspect, transcode, or
   re-encode the bytes; they pass through to the wire encoded as the provider's wire format
-  expects (§8.1.1).
+  expects (§8.1.1.1).
 
 A single image block carries exactly one source — `url` XOR `inline`. The discriminator is
 the `type` field on the source itself.
@@ -411,9 +411,10 @@ This section catalogs concrete wire-format mappings for specific provider protoc
 specifies how the abstract §3 / §4 / §6 records translate to that provider's wire shape and how
 the provider's responses / errors map back to §3 / §6 / §7. §8.1 describes the OpenAI-compatible
 Chat Completions mapping, which is the broadest-compatibility option (the OpenAI hosted API,
-vLLM, LM Studio, llama.cpp server, and many other local servers all speak it). Subsequent
-subsections (§8.2, §8.3, …) cover provider-native formats whose shape diverges from the OpenAI
-mapping — Anthropic Messages API, Google Gemini, Mistral, etc.
+vLLM, LM Studio, llama.cpp server, and many other local servers all speak it). Future
+subsections (§8.2, §8.3, …) are reserved for provider-native formats whose shape diverges from
+the OpenAI mapping — Anthropic Messages API, Google Gemini, Mistral, etc. Each lands via its
+own follow-on proposal.
 
 **Default placement rule.** Any provider wire-format mapping intended for implementation across
 multiple OA language implementations (Python, TypeScript, …) MUST be specified in this section.
