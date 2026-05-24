@@ -1,0 +1,92 @@
+# Per-instance resume + append reducer (§10.11.1): the load-bearing
+# correctness fixture. An append reducer accumulates one entry per
+# completed instance; if resume re-ran completed instances, the list
+# would have duplicate entries. The fixture asserts no duplicates.
+
+subgraph:
+  name: doubler
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      out:
+        type: int
+        default: 0
+  entry: compute
+  nodes:
+    compute:
+      flaky_per_index:
+        # Instance 2 fails on first run; succeeds on resume.
+        fail_first_run_indices: [2]
+        success_compute: {out: input}
+  edges:
+    - {from: compute, to: END}
+
+cases:
+  - name: append_reducer_no_double_merge_on_resume
+    description: |
+      Fan-out with 4 instances [10, 20, 30, 40] and `append` reducer.
+      Instances 0 and 1 complete-and-merge (their accumulator entries
+      are 10 and 20). Instance 2 fails on first run; fail_fast aborts
+      the fan-out. Saved record has instances 0, 1 as `completed` with
+      `result` of 10 and 20 respectively; instance 2 as `in_flight`;
+      instance 3 as `not_started`.
+
+      On resume, instances 0 and 1 are skipped — their accumulator
+      entries roll forward and merge through the `append` reducer
+      EXACTLY ONCE. Instances 2 and 3 execute. Final `results` list is
+      `[10, 20, 30, 40]` — NO duplicate `10` or `20` entries. This is
+      the §10.11.1 correctness guarantee: `completed` status MUST mean
+      exactly one accumulator entry per instance heading into fan-in.
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30, 40]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: doubler
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+          concurrent_mode: serial
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: process
+    saved_record_assertions:
+      fan_out_progress:
+        process:
+          instance_count: 4
+          instances:
+            - {state: completed, result: 10}
+            - {state: completed, result: 20}
+            - {state: in_flight}
+            - {state: not_started}
+    resume:
+      from_first_run: true
+      expected:
+        final_state:
+          items: [10, 20, 30, 40]
+          # Critical: exactly 4 entries, no duplicates from completed
+          # instances being re-merged.
+          results: [10, 20, 30, 40]
+        instances_executed_during_resume: [2, 3]
+        instances_skipped_during_resume: [0, 1]
+      invariants:
+        # Tightest possible append-reducer correctness: list length
+        # equals instance count.
+        results_list_length: 4
+        no_duplicate_results: true

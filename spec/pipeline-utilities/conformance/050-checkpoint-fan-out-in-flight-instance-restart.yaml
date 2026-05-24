@@ -1,0 +1,109 @@
+# In-flight instance restarts from entry (§10.7, §10.11): when a save
+# captures an instance mid-execution (snapshot triggered by a sibling's
+# completion), that instance's state in fan_out_progress is `in_flight`
+# with `completed_inner_positions` reflecting how far it had progressed.
+# On resume, the in_flight instance restarts from its subgraph entry
+# point — NOT from mid-execution. This matches §10.5's idempotency
+# contract (the inner subgraph's nodes are idempotent, so restarting is
+# safe; partial completed_inner_positions are informational, not
+# state-restore points).
+
+subgraph:
+  name: two_step
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      stage1:
+        type: int
+        default: 0
+      out:
+        type: int
+        default: 0
+  entry: step_a
+  nodes:
+    step_a:
+      update_pure: {stage1: input}
+    step_b:
+      flaky_per_index:
+        # Instance 1 fails at step_b on first run. Sibling instance 0
+        # has already completed both steps and recorded its
+        # contribution; sibling instance 2 has not yet been dispatched.
+        # Resume: instance 1 restarts from step_a (not from step_b).
+        fail_first_run_indices: [1]
+        success_compute: {out: stage1}
+  edges:
+    - {from: step_a, to: step_b}
+    - {from: step_b, to: END}
+
+cases:
+  - name: in_flight_instance_restarts_from_subgraph_entry
+    description: |
+      Fan-out with 3 instances [10, 20, 30] under serial execution.
+      Instance 0 completes both step_a and step_b; saves trigger after
+      each inner-node completion (per §10.3). After instance 0's
+      terminal save, instance 1 dispatches; step_a fires `completed`
+      (triggering a save where instance 0 is `completed` and instance 1
+      has `completed_inner_positions: [{node_name: step_a, ...}]`).
+      Then instance 1's step_b raises; fail_fast aborts.
+
+      Saved record: instance 0 = `completed`; instance 1 = `in_flight`
+      with `completed_inner_positions` containing step_a; instance 2 =
+      `not_started`.
+
+      Resume: instance 0 skipped. Instance 1 restarts from step_a (NOT
+      from step_b — the inner subgraph re-enters at its entry per
+      §10.7). Instance 2 dispatches normally.
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: two_step
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+          concurrent_mode: serial
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: process
+    saved_record_assertions:
+      fan_out_progress:
+        process:
+          instance_count: 3
+          instances:
+            - {state: completed, result: 10}
+            - state: in_flight
+              completed_inner_positions:
+                - {node_name: step_a, attempt_index: 0}
+            - {state: not_started}
+    resume:
+      from_first_run: true
+      expected:
+        final_state:
+          items: [10, 20, 30]
+          results: [10, 20, 30]
+        instances_executed_during_resume: [1, 2]
+        instances_skipped_during_resume: [0]
+      invariants:
+        # Critical: instance 1 re-runs both step_a AND step_b on resume.
+        # The completed_inner_positions on the saved record do NOT
+        # serve as a state-restore point within the subgraph; the
+        # subgraph re-enters at entry.
+        instance_1_executes_step_a_on_resume: true
+        instance_1_executes_step_b_on_resume: true

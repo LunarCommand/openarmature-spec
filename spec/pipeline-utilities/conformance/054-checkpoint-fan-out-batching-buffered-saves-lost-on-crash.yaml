@@ -1,0 +1,139 @@
+# Configurable batching for fan-out internal saves (§10.11.4): a
+# Checkpointer with batching enabled buffers fan-out internal saves and
+# flushes them at intervals. A crash with buffered-but-unflushed saves
+# loses those records. Instances whose `completed` state was buffered-
+# only revert to `in_flight` or `not_started` on resume — and re-run.
+# Under §10.11.1's reducer rules, this re-execution contributes to outer
+# state for the first time (no double-merge).
+
+subgraph:
+  name: scorer
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      out:
+        type: int
+        default: 0
+  entry: score
+  nodes:
+    score:
+      flaky_per_index:
+        # Instance 7 fails on first run (triggers abort with buffered
+        # saves outstanding); all succeed on resume.
+        fail_first_run_indices: [7]
+        success_compute: {out: input}
+  edges:
+    - {from: score, to: END}
+
+cases:
+  - name: buffered_saves_lost_resume_re_executes_no_double_merge
+    description: |
+      Fan-out with 10 instances [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+      under serial execution. Checkpointer is `in_memory_batched` with
+      batching configured to flush every 5 fan-out internal saves.
+
+      First run timeline:
+      - Instances 0-4 complete; their saves flush at instance 4's save
+        (5th save triggers flush). Record on disk: instances 0-4 =
+        `completed` with their results in fan_out_progress.
+      - Instance 5 completes; save buffered.
+      - Instance 6 completes; save buffered.
+      - Instance 7 begins; fails. Abort happens before the next flush.
+
+      Saved record state: instances 0-4 = `completed` (flushed);
+      instances 5-6 = ??? in the saved record — but per §10.11.4, the
+      buffered saves are LOST. On resume, the saved record reflects the
+      last flushed state, so instances 5-9 all appear as `not_started`
+      (or instance 7 appears as `in_flight` from a separate snapshot,
+      depending on timing, but instances 5 and 6 are NOT `completed` on
+      the loaded record).
+
+      On resume: instances 0-4 skipped (their flushed `completed` entries
+      preserved); instances 5-9 ALL re-run. Mock allows all to succeed.
+      Final `results` list is `[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]`
+      — exactly 10 entries, no duplicates. The re-execution of 5 and 6
+      is acceptable redundancy; per §10.11.4 it does NOT cause data
+      corruption because those instances' contributions had not flushed
+      to disk and are therefore contributing for the first time on
+      resume.
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: scorer
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+          concurrent_mode: serial
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    # New harness primitive: a Checkpointer with fan-out internal save
+    # batching configured. Per §10.11.4, batching applies ONLY to
+    # fan-out internal saves; outermost saves, subgraph saves, and the
+    # fan-out node's own completion save are still synchronous.
+    checkpointer:
+      kind: in_memory_batched
+      fan_out_internal_save_batching:
+        flush_every: 5
+    first_run_expected_error:
+      category: node_exception
+      raised_from: process
+    saved_record_assertions:
+      # Critical: the saved record reflects the LAST FLUSHED state,
+      # not the in-memory buffer. Buffered saves for instances 5 and 6
+      # are lost.
+      fan_out_progress:
+        process:
+          instance_count: 10
+          # Instances 0-4: completed and flushed.
+          instances:
+            - {state: completed, result: 10}
+            - {state: completed, result: 20}
+            - {state: completed, result: 30}
+            - {state: completed, result: 40}
+            - {state: completed, result: 50}
+            # Instances 5-9: states are NOT `completed` on the loaded
+            # record. Instance 7 may show in_flight from a separate
+            # snapshot, OR all may show not_started (depends on the
+            # implementation's exact buffer-flush timing); the fixture
+            # accepts either, but explicitly NOT `completed`.
+            - {state_one_of: [in_flight, not_started]}
+            - {state_one_of: [in_flight, not_started]}
+            - {state_one_of: [in_flight, not_started]}
+            - {state_one_of: [in_flight, not_started]}
+            - {state_one_of: [in_flight, not_started]}
+    resume:
+      from_first_run: true
+      expected:
+        final_state:
+          items: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+          results: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        # Flushed-completed instances skip.
+        instances_skipped_during_resume: [0, 1, 2, 3, 4]
+        # Buffered-only and not-yet-dispatched instances re-run.
+        instances_executed_during_resume: [5, 6, 7, 8, 9]
+      invariants:
+        # §10.11.4: re-execution under batching loss does NOT cause
+        # double-merge. The §10.11.1 correctness invariant holds: each
+        # `completed` instance contributes exactly once.
+        results_list_length: 10
+        no_duplicate_results: true
+        # §10.11.4: batching MUST NOT apply to outermost / subgraph /
+        # fan-out-node-completion saves. (This invariant is structural;
+        # it's verified by other fixtures in the suite and asserted
+        # here as a reminder of the contract scope.)
+        batching_scoped_to_fan_out_internal_saves_only: true

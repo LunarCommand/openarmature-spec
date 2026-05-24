@@ -15,7 +15,7 @@ lifecycle and the proposal template.
 | [0006](proposals/0006-llm-provider-core.md) | Core abstraction + OpenAI wire mapping      | llm-provider        | Accepted |
 | [0007](proposals/0007-observability-otel-span-mapping.md) | OpenTelemetry span mapping                  | observability       | Accepted |
 | [0008](proposals/0008-pipeline-utilities-checkpointing.md) | Checkpointing                               | pipeline-utilities  | Accepted |
-| [0009](proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md) | Per-instance fan-out resume                 | pipeline-utilities  | Draft    |
+| [0009](proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md) | Per-instance fan-out resume                 | pipeline-utilities  | Accepted |
 | [0010](proposals/0010-drain-timeout.md) | Bounded drain — configurable timeout        | graph-engine        | Draft    |
 | [0011](proposals/0011-pipeline-utilities-parallel-branches.md) | Parallel branches                           | pipeline-utilities  | Accepted |
 | [0012](proposals/0012-graph-engine-completed-event-after-edges.md) | Completed event fires after edge evaluation | graph-engine        | Accepted |

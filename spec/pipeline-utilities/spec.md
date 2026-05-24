@@ -11,6 +11,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §11 Parallel branches added by [proposal 0011](../../proposals/0011-pipeline-utilities-parallel-branches.md)
   - §10.2 `schema_version` reframed as user-facing; §10.10 `checkpoint_record_invalid` description amended and two new error categories (`checkpoint_state_migration_missing`, `checkpoint_state_migration_failed`) added; §10.12 State migrations added by [proposal 0014](../../proposals/0014-pipeline-utilities-state-migration.md)
   - §10.10 gained canonical configuration-time category `checkpoint_state_migration_chain_ambiguous`; §10.12.1 and §10.12.2 updated to reference the category by name; mutual-exclusion paragraph rewritten for four migration-related categories by [proposal 0018](../../proposals/0018-state-migration-chain-ambiguity.md)
+  - §10.2 `fan_out_progress` field promoted from reserved to populated; §10.3 save-granularity rule extended to fan-out instance internal nodes (the "engine does NOT save during fan-out instance execution" rule is removed); §10.7 atomic-restart fan-out resume replaced with per-instance resume; §10.11 added (per-instance fan-out resume contract — accumulator semantics, reducer interaction, error_policy / instance_middleware composition, configurable Checkpointer-level batching for fan-out internal saves); existing §10.11 (Reference implementations and backend layering) renumbered to §10.13 by [proposal 0009](../../proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -771,10 +772,12 @@ The `CheckpointRecord` carries:
   attempt that has been merged. Each position carries `namespace` (per graph-engine §6),
   `node_name`, `step` (monotonic across the invocation, including subgraph-internal nodes),
   `attempt_index`, and `fan_out_index` (when present).
-- `fan_out_progress` — reserved field for the v2 per-instance fan-out resume follow-on
-  proposal. In v1 of this section, the engine does not save inside fan-out instances at all
-  (see §10.3, §10.7), so this field is absent. The field is reserved in the record shape
-  so that v2 can populate it without a record-shape migration.
+- `fan_out_progress` — per-fan-out-node mapping populated when one or more fan-outs are in
+  flight at save time. Drives per-instance fan-out resume (per §10.7 and §10.11): on resume,
+  the engine consults this field to skip already-completed instances and re-run only those
+  that did not complete-and-record before the crash. Field shape (per-fan-out entry,
+  per-instance status with accumulator `result`, in-flight `completed_inner_positions`) is
+  specified in §10.11. Absent when no fan-out is in flight at the save point.
 - `parent_states` — when the latest save point is inside a subgraph or fan-out instance, the
   ordered sequence of containing-graph states (outermost first). Per graph-engine §6
   semantics; preserved across resume so the engine can re-enter the subgraph correctly.
@@ -803,17 +806,16 @@ The engine fires a save at every graph-engine §6 `completed` event from the fol
 - **Subgraph-internal nodes.** One save per inner-node completion, with `parent_states`
   populated per §10.2. Resume can re-enter the subgraph at any boundary; long-running
   subgraphs benefit directly from per-inner-node save granularity.
+- **Fan-out instance internal nodes.** One save per inner-node completion within an
+  instance. `parent_states` is populated per §10.2 (the fan-out instance's outer state is
+  the parent); `fan_out_progress` is populated per §10.11 to disambiguate which
+  `fan_out_index` slot the event belongs to. This save granularity is what enables the
+  per-instance resume contract of §10.7. For high-instance-count or high-inner-node-count
+  fan-outs whose internal save volume is a concern, Checkpointer backends MAY support
+  configurable batching scoped to fan-out internal saves per §10.11.4.
 - **Fan-out node itself** (the parent dispatch node, per pipeline-utilities §9). One save when
   the fan-out as a whole has finished and its results have merged back into outer state.
-
-The engine **does NOT save** during fan-out instance execution in v1. Fan-out instance
-internal `completed` events still emit observer events (per graph-engine §6) so the
-observability mapping can surface them as spans, but no checkpoint save fires for them.
-Rationale: §10.7 mandates atomic-restart fan-out resume in v1 — a crash mid-fan-out causes
-the entire fan-out to re-run on resume. Saving inner-instance state that the engine cannot
-resume from is dead weight; eliding those saves keeps the volume bounded for high-instance-
-count fan-outs. The v2 per-instance fan-out resume follow-on proposal reverses this and
-introduces fan-out internal saves with configurable backend batching.
+  This save also finalizes `fan_out_progress` to mark all instances complete.
 
 The engine calls `Checkpointer.save(invocation_id, current_record)` with the record
 reflecting state immediately after the triggering event. Save is **synchronous** (the engine
@@ -923,27 +925,53 @@ in the prior process and now find that resume can't recover from a single transi
 This is consistent with §10.4's choice to mint a new `invocation_id` for the resumed run:
 each resume is a fresh invocation in the observability sense, with its own retry budget.
 
-### 10.7 Fan-out resume — atomic in v1
+### 10.7 Fan-out resume — per-instance
 
-When a fan-out is in flight at crash time (some instances completed and merged into outer
-state; some in-flight; some not yet started), v1 resume re-runs the **entire fan-out** from
-scratch. The fan-out node's `completed_positions` entry is absent until all instances have
-completed and merged; on resume, the engine sees the fan-out as not-yet-completed and
-restarts it.
+When a fan-out is in flight at crash time (some instances completed and recorded their
+contribution into the fan-out accumulator; some in-flight; some not yet started), resume
+re-runs **only the instances that did not complete-and-record**. Instances whose
+contributions are already in the accumulator are skipped; their accumulator entries roll
+forward to the fan-out's fan-in step (per §9.3) at fan-out completion.
 
-This couples directly to §10.3's "no fan-out internal saves in v1" rule: the engine never
-records partial-fan-out progress because it cannot make use of that progress on resume. The
-fan-out node either has its `completed_positions` entry (whole fan-out finished) or does not
-(whole fan-out re-runs). There is no intermediate state.
+Per-instance results are recorded into a **fan-out-local accumulator** (the per-instance
+`result` entries in `fan_out_progress`, defined in §10.11) as instances complete. Parent
+state is NOT mutated per-instance — the existing §9.3 contract (parent state mutations
+happen at the fan-in step after ALL instances complete) is preserved unchanged. The
+accumulator is durable across crashes via the `fan_out_progress` field on
+`CheckpointRecord`; it rolls forward on resume so that already-completed instances'
+contributions are not lost.
 
-The cost: instances whose work already completed and merged to `state` get re-run. For
-fan-outs whose inner work is expensive (LLM calls, API requests), this is undesirable. A
-follow-on proposal will add **per-instance fan-out resume**,
-where the engine saves at fan-out instance internal `completed` events, populates
-`fan_out_progress`, and consults that field on resume to skip already-completed instances.
-The follow-on also introduces configurable backend batching for fan-out internal saves
-(scoped to keep the volume manageable when instance counts and inner-node counts get
-large). v1 keeps the spec scope-bound and ships the simpler atomic-restart contract first.
+On resume into a fan-out that was in flight at crash time, the engine consults the saved
+record's `fan_out_progress` field and treats each instance as one of three states:
+
+- **Completed.** The instance ran to completion in the prior execution and recorded its
+  durable contribution into the fan-out accumulator (the entry's `result` field per
+  §10.11). The contribution is path-agnostic: a success result for the `target_field`
+  bucket, or in `collect` error_policy mode (per §9.5), a recorded error for the
+  `errors_field` bucket. On resume, the engine MUST NOT re-run the instance and MUST NOT
+  record a second accumulator entry. The instance is skipped; its accumulator entry rolls
+  forward to the fan-out's fan-in step (per §9.3) at fan-out completion.
+- **In-flight at save time.** The instance had begun execution (its first inner node fired
+  `started`) at the moment of save AND no `completed` event for its terminal inner node
+  had fired yet, so no accumulator entry was recorded. On resume, the engine re-runs the
+  instance from its entry point with the same projected per-instance state as the original
+  run. The re-run instance's terminal inner node `completed` event records the
+  contribution into the accumulator for the first time (the original attempt contributed
+  nothing because it never reached the completed-and-recorded step). `in_flight` is
+  observable in the saved record only when a sibling instance's `completed` event triggers
+  a save during this instance's execution — that save snapshots all concurrent instances'
+  states, capturing the still-running ones with their accumulated
+  `completed_inner_positions`. If no sibling completes before the crash, the saved record
+  either does not exist (no save fired yet) or reflects the pre-fan-out save (all
+  instances `not_started`), and resume re-dispatches each instance normally; re-dispatch
+  is correctness-preserving because no accumulator entry was persisted.
+- **Not yet started.** The instance had not been dispatched at save time. On resume, the
+  engine dispatches the instance normally.
+
+Per-instance resume composes with the fan-out reducer (§10.11.1), `error_policy`
+(§10.11.2), and `instance_middleware` (§10.11.3); details are in §10.11. Backends MAY
+opt into configurable batching for fan-out internal saves to bound the write volume of
+high-instance-count fan-outs, with the explicit cost trade-off documented in §10.11.4.
 
 ### 10.8 Composition with §6 observer hooks
 
@@ -1046,38 +1074,150 @@ Version mismatches on Checkpointer backends that cannot support state migration 
 `checkpoint_record_invalid` — the migration_missing/migration_failed branch is reachable
 only on backends that can expose the required class-independent intermediate form.
 
-### 10.11 Reference implementations and backend layering
+### 10.11 Per-instance fan-out resume
 
-The proposal mandates the protocol; sibling-package adapters are NOT specified normatively.
-Implementations are expected to ship the protocol plus at least the minimal in-core
-implementations described below. Reference adapters for durable-execution platforms
-(Temporal, DBOS, Restate) ship as separate packages and follow the protocol; their existence
-is informative (charter §3.2 backend-as-sibling-package pattern) and not within the spec
-scope.
+The `CheckpointRecord.fan_out_progress` field is a per-fan-out-node mapping (when one or more
+fan-outs are in flight at save time). Each entry carries:
 
-In-core reference implementations:
+- `fan_out_node_name` — the name of the fan-out node in the parent graph.
+- `namespace` — the §6 namespace identifying the fan-out node uniquely (handles nested
+  subgraphs that contain fan-outs).
+- `instance_count` — the resolved instance count for this fan-out (per §9 `count` or
+  `items_field` mode).
+- `instances` — a sequence of per-instance status entries indexed by `fan_out_index` (`0` to
+  `instance_count - 1`). Each entry carries:
+  - `state` — one of `completed`, `in_flight`, `not_started`.
+  - `result` — for `completed` entries, the instance's durable contribution to the fan-out
+    accumulator. For success (any error_policy), the value contributed to the `target_field`
+    bucket; for `collect`-mode failures, the error entry contributed to the `errors_field`
+    bucket. The value is typed per the parent state schema's `target_field` /
+    `errors_field`; the representation is implementation-defined. Unused for `in_flight` and
+    `not_started`.
+  - `completed_inner_positions` — for `in_flight` entries, a list of `NodePosition` entries
+    with the same shape as `CheckpointRecord.completed_positions` (the outer-graph contract
+    from §10.2), but scoped to this fan-out instance's inner subgraph execution rather than
+    the outer graph. Empty when the instance is `in_flight` but no inner node has yet
+    completed within this instance's subgraph (e.g., a sibling-triggered save fired right
+    after this instance's first `started` event). Unused for `completed` and `not_started`.
 
-- **InMemoryCheckpointer** — keeps records in a Python `dict` (or per-language equivalent).
-  Not durable across process crashes. Useful for tests, short-lived runs, and development.
-  Accepts any state shape.
-- **SQLiteCheckpointer** — persists records to a SQLite database with WAL mode. Durable
-  across process crashes within a single host. Accepts any pickleable state shape (Python)
-  or any JSON-native shape (cross-language portable mode, configurable). Charter §3.2
-  already accepts SQLite as a core dependency for `openarmature-eval`, so adding it for core
-  checkpoint is consistent with existing dependency footprint.
+`completed` is the load-bearing state. An instance's `completed` status MUST mean: the
+instance produced its durable contribution to the fan-out accumulator AND that contribution
+is reflected in the entry's `result` field on the saved record. The contribution is
+path-agnostic — a success result for the `target_field` bucket, or in `collect` error_policy
+mode (per §9.5), a recorded error for the `errors_field` bucket. (`fail_fast`-mode failures
+do NOT produce a `completed` state — the whole fan-out aborts in that mode.) The atomicity
+contract is that the engine's "produce contribution + record into accumulator + save"
+sequence MUST be ordered such that a crash between contribution and save leaves the
+instance in `in_flight` state on the saved record (so resume re-runs it). A crash after the
+save has succeeded is reflected as `completed`, the instance is skipped, and its
+accumulator entry rolls forward to the fan-in step at fan-out completion. This is the same
+correctness model as the rest of §10 — work that hadn't been recorded as saved at crash
+time re-runs on resume.
 
-Sibling-package adapters (informative, NOT specified by this section):
+#### 10.11.1 Reducer interaction
 
-- `openarmature-temporal` — adapts Temporal's event-journal-and-data-converter to the
-  Checkpointer protocol. Multi-day human-in-loop pauses, cross-machine fault tolerance.
-- `openarmature-dbos` — adapts DBOS's Postgres-backed step journal. Lighter than Temporal,
-  Postgres-native.
-- `openarmature-restate` — adapts Restate's RPC-native journal.
-- `openarmature-redis-checkpoint` — adapts Redis as a fast networked store; useful for
-  multi-worker pipelines on a shared host.
+Per §9.3, fan-out results are merged into parent state via the parent's reducer for the
+`target_field` (with reducer definitions per graph-engine §2). Per-instance resume
+preserves the reducer's effect — the accumulator entries for `completed` instances roll
+forward and are merged exactly once at the fan-out's fan-in step:
 
-Each adapter package MAY add its own configuration ergonomics on top of the Checkpointer
-protocol (e.g., Temporal namespace selection); none change the protocol's behavioral contract.
+- `last_write_wins` — each `completed` instance has its result entry in the accumulator. At
+  fan-in, the reducer merges entries in instance-index order, with the last instance's value
+  winning. On resume, `completed` instances retain their original accumulator entries.
+  Re-running a `completed` instance would record a SECOND accumulator entry; under §5
+  determinism the values match, but the redundant entry is wasted work. Skipping is correct.
+- `append` — each `completed` instance has its result entry in the accumulator. At fan-in,
+  the reducer appends each entry to the target list in instance-index order. Re-running a
+  `completed` instance would record a SECOND accumulator entry, causing a double-append at
+  fan-in. Skipping is required for correctness.
+- `merge` — each `completed` instance has its result entry in the accumulator. At fan-in,
+  the reducer merges each entry into the dict-shaped outer field. Re-running a `completed`
+  instance would record a second accumulator entry; for pure `merge` semantics this is
+  idempotent but redundant. Skipping is correct and avoids the redundant work.
+
+The `append` reducer case is why per-instance resume cannot be a "best-effort, may
+double-contribute" model. The `completed` status is a correctness guarantee that there is
+exactly one accumulator entry per instance heading into the fan-in step.
+
+#### 10.11.2 Composition with `error_policy`
+
+Per §9.5, fan-out has two error policies:
+
+- **`fail_fast`.** A failed instance cancels its in-flight siblings; the fan-out raises. On
+  resume after a `fail_fast` cancellation: the previously-failed instance is in `in_flight`
+  state on the saved record (its terminal inner node fired `completed` with an error
+  outcome — per graph-engine §6 every node attempt emits exactly one `completed` event —
+  but `fail_fast` aborts before any accumulator entry is recorded for the failed slot, so
+  the instance's `fan_out_progress` state is not promoted to `completed`). The
+  previously-cancelled siblings are also in `in_flight` or `not_started` state. All of these re-run on resume per §10.7. Instances that had
+  completed and merged before the failure remain `completed` and are skipped.
+- **`collect`.** The fan-out runs all instances regardless of individual failures; failed
+  slots are recorded in `errors_field` at the fan-in step. On resume, instances marked
+  `completed` are skipped — their accumulator entry, either a success result for
+  `target_field` or a recorded error for `errors_field`, is preserved and rolls forward to
+  the fan-in step at fan-out completion. Instances in `in_flight` or `not_started` re-run;
+  if they fail again, the failure is again recorded into the accumulator as an error entry.
+
+#### 10.11.3 Composition with `instance_middleware`
+
+Per §9.7, `instance_middleware` (notably retry) wraps each instance's whole subgraph
+invocation as a unit. Per-instance resume composes with retry middleware as follows:
+
+- An instance whose retry middleware exhausted in `fail_fast` mode aborts the whole
+  fan-out; the instance's `fan_out_progress` state at save time is `in_flight` (no
+  accumulator entry was recorded — the failure cancelled the rest of the fan-out before any
+  instance could save its `completed` state for the failed instance). All instances re-run
+  on resume.
+- An instance whose retry middleware exhausted in `collect` mode produces a recorded error
+  entry in the accumulator. If a save fires after the error record (triggered by a
+  sibling's `completed` event or by the fan-out's own completion), the instance's state is
+  `completed` and its accumulator `result` field holds the error entry. On resume, the
+  instance is skipped — the error contribution rolls forward to the fan-in step. If no save
+  captured the error before the crash, the state reads as `in_flight` and the instance
+  re-runs (potentially producing a different outcome the second time).
+- On resume of an `in_flight` retry-exhausted instance, the instance re-runs with
+  `attempt_index` reset to `0` per §10.6 — the retry budget restarts. This matches the
+  "fresh execution attempt" semantics of resume.
+- An instance whose retry middleware succeeded mid-run (e.g., attempt 2 of 3 succeeded)
+  saved its `completed` state at the success (with the success result in its accumulator
+  entry). On resume, that instance is skipped — the retry history is not preserved, but
+  the result is.
+
+#### 10.11.4 Configurable batching for fan-out internal saves
+
+Fan-out internal saves (per §10.3) can be high-volume in workloads with many instances and
+many inner nodes per instance. To keep the cost manageable, Checkpointer backends MAY
+support **configurable batching** scoped specifically to fan-out internal saves. The
+configuration is per-Checkpointer-instance and implementation-defined (per-language
+ergonomics: a constructor parameter, a builder method, etc.). The behavioral contract:
+
+- The configuration knob applies ONLY to fan-out instance internal `completed` events
+  (saves triggered per §10.3 from inside a fan-out instance). It does NOT apply to
+  outermost-graph saves, subgraph-internal saves, or the fan-out node's own completion
+  save — those remain synchronous per §10.3 because they are correctness-critical for
+  resume.
+- When batching is enabled, the backend MAY buffer fan-out internal saves and flush them
+  at configured intervals (count-based, time-based, or both). The buffered saves represent
+  the most recent state of in-flight fan-out instances.
+- When the fan-out completes (the engine fires the fan-out node's own `completed` event),
+  the backend MUST flush all buffered fan-out internal saves before the fan-out node's
+  save returns. This guarantees that the fan-out's success state is durably recorded
+  before the engine proceeds.
+- A crash with buffered-but-unflushed fan-out internal saves loses those buffered records.
+  On resume, instances whose `completed` state was buffered-only re-run (the saved record
+  reflects the most recent flushed state). This is acceptable because re-running a
+  completed instance under per-instance resume's correctness rules requires a fresh
+  contribution: an instance whose `completed` status was lost reverts to `in_flight` or
+  `not_started` and the reducer rules in §10.11.1 still apply (the instance contributes to
+  outer state for the first time on resume).
+
+The cost trade-off is explicit: batching trades fewer durable writes per fan-out instance
+for some redundant re-execution on crash recovery. Backends document their batching
+defaults and configuration shape; users opt in with eyes open.
+
+Default behavior is **no batching** (every fan-out internal save is synchronously
+durable), to preserve the simplest correctness story for users who do not yet understand
+their workload's cost profile.
 
 ### 10.12 State migrations
 
@@ -1100,7 +1240,7 @@ Migration support requires the active Checkpointer to be able to expose a struct
 intermediate form of the loaded state (a plain dict, a JSON tree, or similar) that is
 independent of the current state class definition. Backends using JSON, msgpack, or similar
 schema-independent encodings naturally satisfy this; the SQLiteCheckpointer reference
-implementation (per §10.11) does so by default. Backends using class-bound serialization
+implementation (per §10.13) does so by default. Backends using class-bound serialization
 (Python pickle of state class instances) or live in-memory references to typed state objects
 (the InMemoryCheckpointer reference implementation) cannot expose a class-independent
 intermediate. When such a backend encounters a version mismatch on load AND one or more
@@ -1185,6 +1325,39 @@ If no migrations are registered for a graph and a loaded record's `schema_versio
 match the current schema, the engine MUST raise `checkpoint_state_migration_missing`, NOT
 `checkpoint_record_invalid`. Distinguishing the two categories matters: the former is
 actionable ("register a migration"); the latter is not ("the record is broken").
+
+### 10.13 Reference implementations and backend layering
+
+The proposal mandates the protocol; sibling-package adapters are NOT specified normatively.
+Implementations are expected to ship the protocol plus at least the minimal in-core
+implementations described below. Reference adapters for durable-execution platforms
+(Temporal, DBOS, Restate) ship as separate packages and follow the protocol; their existence
+is informative (charter §3.2 backend-as-sibling-package pattern) and not within the spec
+scope.
+
+In-core reference implementations:
+
+- **InMemoryCheckpointer** — keeps records in a Python `dict` (or per-language equivalent).
+  Not durable across process crashes. Useful for tests, short-lived runs, and development.
+  Accepts any state shape.
+- **SQLiteCheckpointer** — persists records to a SQLite database with WAL mode. Durable
+  across process crashes within a single host. Accepts any pickleable state shape (Python)
+  or any JSON-native shape (cross-language portable mode, configurable). Charter §3.2
+  already accepts SQLite as a core dependency for `openarmature-eval`, so adding it for core
+  checkpoint is consistent with existing dependency footprint.
+
+Sibling-package adapters (informative, NOT specified by this section):
+
+- `openarmature-temporal` — adapts Temporal's event-journal-and-data-converter to the
+  Checkpointer protocol. Multi-day human-in-loop pauses, cross-machine fault tolerance.
+- `openarmature-dbos` — adapts DBOS's Postgres-backed step journal. Lighter than Temporal,
+  Postgres-native.
+- `openarmature-restate` — adapts Restate's RPC-native journal.
+- `openarmature-redis-checkpoint` — adapts Redis as a fast networked store; useful for
+  multi-worker pipelines on a shared host.
+
+Each adapter package MAY add its own configuration ergonomics on top of the Checkpointer
+protocol (e.g., Temporal namespace selection); none change the protocol's behavioral contract.
 
 ## 11. Parallel branches
 
@@ -1348,7 +1521,8 @@ Existing categories that compose:
   `node_exception` subtype attached at the parallel-branches node's level.
 
 Composition with §10 checkpointing: the parallel-branches node fires graph-engine §6
-events that the §10 Checkpointer captures per its existing rules. v1 atomic-restart
-semantics for fan-out (§10.7) apply analogously to parallel branches: a crash mid-dispatch
-re-runs the whole parallel-branches node on resume. Per-branch resume is deferred to a
-follow-on alongside per-instance fan-out resume.
+events that the §10 Checkpointer captures per its existing rules. Atomic-restart semantics
+apply to parallel branches: a crash mid-dispatch re-runs the whole parallel-branches node
+on resume. Per-branch resume (the analogue to fan-out's per-instance resume in §10.7) is
+deferred to a follow-on; the parallel-branches primitive does not yet populate a per-branch
+progress field on the checkpoint record.
