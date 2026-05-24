@@ -266,8 +266,8 @@ supplied, the call additionally constrains the model's tool-calling behavior.
   - `"none"` — the model MUST NOT call tools, even if `tools` is supplied. Useful for guarded
     LLM calls or for explicitly disabling tool-calling on a per-call basis without constructing
     a tools-less request.
-  - `{type: "tool", name: <string>}` — the model MUST call the named tool exactly. The named
-    tool MUST appear in the supplied `tools` list; violations raise `provider_invalid_request`
+  - `{type: "tool", name: <string>}` — the model MUST call the named tool (and no other). The
+    named tool MUST appear in the supplied `tools` list; violations raise `provider_invalid_request`
     (§7) at pre-send validation. (`tools` MUST be non-empty in this case, by transitivity.)
 
   Default is `None` / absent. When `tool_choice` is `None` / absent, the engine MUST omit the
