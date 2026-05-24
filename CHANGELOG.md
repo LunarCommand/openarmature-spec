@@ -4,6 +4,24 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.20.0] — 2026-05-24
+
+**Added**
+
+- **llm-provider §5 `complete()` gained an optional `tool_choice` parameter.** Four modes: `"auto"` (model decides), `"required"` (model MUST call at least one tool), `"none"` (model MUST NOT call tools), and `{type: "tool", name: <string>}` (model MUST call the named tool). When omitted (`None` / absent), the engine omits the wire-level `tool_choice` field and the provider's own default applies — preserving v0.4.0 behavior exactly. Pre-send validation routes three new failure modes through `provider_invalid_request` (§7): (1) `required` with empty / absent `tools`; (2) force-specific with empty / absent `tools`; (3) force-specific with name not in supplied `tools`. The framework does NOT enforce the constraint post-hoc — whether the model honored it is observable from `Response.finish_reason` / `Response.message.tool_calls` but is not framework-policed (per §6's transparency principle). ([proposal 0025](proposals/0025-llm-provider-tool-choice.md))
+- **llm-provider §8.1.1 OpenAI request mapping** gains a `tool_choice` row covering the four modes plus the `None`-omitted-from-wire case. The spec `{type: "tool", name: X}` discriminator renames to OpenAI's `{type: "function", function: {name: X}}` wire shape (implementation performs the rename when constructing the wire body). ([proposal 0025](proposals/0025-llm-provider-tool-choice.md))
+- Conformance fixtures `029-tool-choice-modes`, `030-tool-choice-force-specific`, `031-tool-choice-validation` (llm-provider). New harness primitive: `expected_wire_request_checks.tool_choice_absent: true` (sibling-to-`expected_wire_request` block asserting a key is absent from the wire body, distinct from present-with-null; follows fixture 027's `expected_wire_request_checks.response_format_absent` precedent). Fixture 029 establishes the precedent that the mock provider returns constraint-compliant responses for the `required` and `none` cases; assertions verify end-to-end response mapping, not framework enforcement.
+
+**Changed**
+
+- **llm-provider §7 `provider_invalid_request` description** extended to enumerate the three new validation failure modes for `tool_choice` (required-with-empty-tools, force-with-empty-tools, force-name-not-in-list). No new category — the existing surface absorbs the new failure modes. ([proposal 0025](proposals/0025-llm-provider-tool-choice.md))
+
+**Notes**
+
+- **Pre-1.0 MINOR bump.** Implementations passing the v0.19.0 fixtures need actual work to pass the new fixtures (extend `complete()` with the new parameter, add pre-send validation, add the §8.1.1 wire mapping row). The no-`tool_choice` path is backward-compatible: existing callers passing no `tool_choice` continue to see the same wire shape they did in v0.4.0. Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.19.0 may target v0.20.0 directly.
+- **Sequenced ahead of §8.2 Anthropic + §8.3 Gemini follow-ons.** Adding `tool_choice` to `complete()` BEFORE the per-provider mappings ship avoids retrofitting three §8.X subsections in lockstep. The §8.1.1 mapping row lands here; future §8.X follow-ons (per the §8.X subsection template proposed in 0026) add their own per-provider `tool_choice` mapping rows.
+- **Framework does NOT enforce `"none"` post-hoc.** Per §5's clarifying paragraph, if a provider returns tool calls despite `tool_choice="none"`, the implementation MUST surface what the provider returned without re-validating. Provider compliance is observable from `finish_reason` / `tool_calls` but is not framework-policed.
+
 ## [0.19.0] — 2026-05-24
 
 **Changed**

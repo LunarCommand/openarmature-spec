@@ -6,7 +6,7 @@ specification text, conformance fixtures, governance rules, and numbered
 RFC-style proposals. **No implementation code lives here.** Implementations
 are in sibling repositories.
 
-**Current spec version:** [v0.19.0](CHANGELOG.md)
+**Current spec version:** [v0.20.0](CHANGELOG.md)
 
 ---
 
@@ -70,7 +70,7 @@ and architecture are in [`docs/openarmature.md`](docs/openarmature.md).
 |---|---|---|---|---|
 | [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.19.0 | 25 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks (with bounded `drain` — optional caller-supplied timeout + summary of undelivered events) |
 | [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.18.0 | 53 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (per-instance fan-out resume, state migration, configurable backend batching for fan-out internal saves), parallel branches |
-| [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.17.1 | 28 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, structured output via `response_schema`, and a wire-format-mapping catalog (§8.1 OpenAI-compatible; in-spec default for cross-language provider mappings) |
+| [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.20.0 | 31 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, structured output via `response_schema`, request-side tool-calling control via `tool_choice`, and a wire-format-mapping catalog (§8.1 OpenAI-compatible; in-spec default for cross-language provider mappings) |
 | [observability](spec/observability/spec.md) | 0.7.0 | 0.17.0 | 21 | Cross-backend correlation IDs, OpenTelemetry mapping (spans, log correlation, detached trace mode), LLM-span payload + GenAI semconv attributes (default-off payload, request parameters under `gen_ai.request.*`, GenAI semconv response attributes for LLM-aware backends) |
 | [prompt-management](spec/prompt-management/spec.md) | 0.15.0 | 0.15.0 | 12 | Named/versioned template fetch + render; composite backends with infrastructure-only fallback; PromptGroup tracing primitive; strict-undefined-by-default variable injection |
 
@@ -85,7 +85,6 @@ they are Accepted.
 | [0021](proposals/0021-graph-suspension.md) | Draft | spec/suspension/spec.md (new), graph-engine §3 + §6, observability §4 + §5, pipeline-utilities §10 | Graph suspension and external-signal resume — generalized pause primitive (HITL + async-job-wait + scheduled wakeup as flavors of one suspend) |
 | [0022](proposals/0022-harness-contract.md) | Draft | spec/harness/spec.md (new) | Harness contract — abstract behavioral contract for any harness wrapping the OA engine to serve a deployment runtime (three inbound dispatch paths, turn lifecycle, error categorization, runtime-neutral) |
 | [0023](proposals/0023-canonical-state-reducers.md) | Draft | graph-engine §2 | Canonical state reducers — extend baseline reducers with `bounded_append`, `dedupe_append`, `merge_by_key` (factory-style closures for chat-agent and tool-loop patterns) |
-| [0025](proposals/0025-llm-provider-tool-choice.md) | Draft | llm-provider §5 + §8.1.1 | LLM provider `tool_choice` parameter — four modes ("auto" / "required" / "none" / force-specific) for deterministic tool-calling control; sequenced ahead of §8.2 Anthropic + §8.3 Gemini follow-ons |
 | [0026](proposals/0026-llm-provider-wire-format-mapping-template.md) | Draft | llm-provider §8 | §8.X wire-format mapping subsection template — locks the canonical structure (Request / Response / Error / Concurrency / Structured output) so §8.2 Anthropic + §8.3 Gemini follow-ons land consistently; resolves 0019's open-question #2 |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).

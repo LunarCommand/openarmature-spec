@@ -1,0 +1,96 @@
+# tool_choice force-specific (§5, §8.1.1): the
+# `{type: "tool", name: X}` mode. Verifies wire body's
+# `tool_choice.function.name` matches X, and the returned tool call's
+# name matches X (mock provider returns a constraint-compliant
+# response). Companion to 029 (modes) and 031 (validation).
+
+cases:
+  - name: tool_choice_force_specific_named_tool
+    description: |
+      `tool_choice={type: "tool", name: "search"}`. Wire body maps to
+      OpenAI's `{type: "function", function: {name: "search"}}` shape
+      (rename from spec `tool` → wire `function` per §8.1.1). Mock
+      returns a tool_calls response naming "search" (constraint-
+      compliant); the fixture verifies both the outbound wire shape
+      and that the returned tool call's name is "search".
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Look up Apollo 11."}
+      tools:
+        - name: search
+          description: "Search a knowledge base."
+          parameters:
+            type: object
+            properties:
+              query: {type: string}
+            required: [query]
+        - name: summarize
+          description: "Summarize a document."
+          parameters:
+            type: object
+            properties:
+              doc_id: {type: string}
+            required: [doc_id]
+      tool_choice:
+        type: tool
+        name: search
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "Look up Apollo 11."}
+      tools:
+        - type: function
+          function:
+            name: search
+            description: "Search a knowledge base."
+            parameters:
+              type: object
+              properties:
+                query: {type: string}
+              required: [query]
+        - type: function
+          function:
+            name: summarize
+            description: "Summarize a document."
+            parameters:
+              type: object
+              properties:
+                doc_id: {type: string}
+              required: [doc_id]
+      # Critical: spec `type: "tool"` renames to wire `type: "function"`
+      # per the §8.1.1 mapping row.
+      tool_choice:
+        type: function
+        function:
+          name: search
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-force-1
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: null
+                  tool_calls:
+                    - id: call_search
+                      type: function
+                      function:
+                        name: search
+                        arguments: '{"query":"Apollo 11"}'
+                finish_reason: tool_calls
+            usage: {prompt_tokens: 12, completion_tokens: 10, total_tokens: 22}
+    expected:
+      response:
+        finish_reason: tool_calls
+        message:
+          role: assistant
+          tool_calls:
+            - id: call_search
+              name: search
+              arguments: {query: "Apollo 11"}
