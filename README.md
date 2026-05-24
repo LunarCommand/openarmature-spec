@@ -140,19 +140,35 @@ address, not scheduled deliverables.
   §8.2+ subsections for Anthropic Messages, Google Gemini, and Mistral as
   their concrete implementations take shape — wire-format consistency across
   language siblings is part of OA's cross-language promise.
+- **Observability backend mappings.** The observability spec currently
+  defines the OpenTelemetry mapping (§4). Backend-specific mappings —
+  Langfuse first, others as demand surfaces — would ship as sibling
+  sections of the observability spec, each mapping OA's normative event
+  stream onto the backend's native model. Follows the same pattern as
+  the per-provider wire-format catalog: one spec section per backend,
+  cross-language consistency guaranteed at the mapping layer.
+- **Multimodal LLM support — audio and video.** Proposal 0015 added image
+  content blocks (§3.1) and 0019's framing reserves §8.X subsections for
+  per-provider mappings. Audio and video each warrant their own follow-on
+  proposal (different wire shapes per provider, different format /
+  duration constraints, different streaming semantics for long video).
+  Input-only in v1, mirroring the image rollout; assistant-output audio /
+  video are separate, smaller workloads with their own scoping.
+- **Tool-call observability on LLM spans.** v0.17.0 (proposal 0024)
+  landed the LLM input/output payload + GenAI semconv attributes for
+  the request and response sides of an LLM call. The natural follow-on
+  is tool-call attributes on the same span — `gen_ai.tool.calls` style
+  attributes that capture which tools were invoked with what arguments
+  and what the results were, surfaced for LLM-aware OTel backends
+  (Langfuse, Phoenix, Honeycomb LLM lens) that already render tool-call
+  traces.
 
-Beyond the in-flight proposals, broader directions on the design horizon
-include cross-invocation session state (typed durable state keyed by a
-stable caller-supplied identity), graph suspension and external-signal
-resume (generalizing human-in-the-loop + async-job-wait + scheduled
-wakeups), a harness contract specifying how deployment runtimes wrap the
-engine, agent memory (cross-session knowledge stores — per-user profiles,
-episodic / semantic / procedural memory — distinct from sessions and
-queried mid-graph rather than loaded at invoke entry), a Langfuse backend
-mapping as a sibling section of the observability spec (analogous to the
-existing OpenTelemetry mapping), and an evaluation framework with
-persistent history. Each lands when there's a clear behavior to specify,
-not before.
+Beyond these active areas, broader directions on the design horizon
+include agent memory (cross-session knowledge stores — per-user
+profiles, episodic / semantic / procedural memory — distinct from
+sessions and queried mid-graph rather than loaded at invoke entry) and
+an evaluation framework with persistent history. Each lands when
+there's a clear behavior to specify, not before.
 
 ---
 
