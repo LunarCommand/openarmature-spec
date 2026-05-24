@@ -23,8 +23,6 @@ edges:
   - {from: a, to: b}
   - {from: b, to: END}
 
-initial_state: {}
-
 observers:
   # Observer sleeps 100ms per event on the FIRST invocation only; runs
   # normally on subsequent invocations. The first-run sleep forces the
