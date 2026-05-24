@@ -11,7 +11,7 @@
 ## Summary
 
 Extend the existing `complete()` operation with an optional `tool_choice` parameter that
-constrains the model's tool-calling behavior. Four modes: `"auto"` (default — model decides),
+constrains the model's tool-calling behavior. Four modes: `"auto"` (model decides),
 `"required"` (model MUST call at least one tool), `"none"` (model MUST NOT call tools), and
 `{type: "tool", name: <string>}` (model MUST call the named tool). The parameter is
 pre-send-validated against `tools`: combinations that ask the model to call a tool that wasn't
@@ -125,8 +125,8 @@ fields but is not normalized into a separate "did the model honor it" flag.
 ### §7 Error semantics: clarification, no new categories
 
 The pre-send validation failures introduced by `tool_choice` route through the existing
-`provider_invalid_request` category (§7). No new category is needed; the §7 surface remains
-exactly as in v0.16.0+.
+`provider_invalid_request` category (§7). No new category is needed; the §7 surface is
+unchanged.
 
 A clarifying paragraph in §7 (or a sub-bullet under the `provider_invalid_request` entry)
 SHOULD enumerate the three new validation failure modes:
@@ -177,9 +177,13 @@ where the cases share setup):
 
 - **`029-tool-choice-modes`** — table-style. Cases: `auto`, `required`, `none`, `default`
   (no `tool_choice` supplied). For each, verifies the outbound wire `tool_choice` value
-  (or absence) and that `Response.finish_reason` is consistent with the mode (`required`
-  → `"tool_calls"`; `none` → `"stop"`; `auto` and `default` → either, depending on the
-  mock response).
+  (or absence). The mock provider is configured to return constraint-compliant responses
+  (tool_calls for `required`, content-only for `none`); the fixture asserts
+  `Response.finish_reason` matches the mock's response (verifying end-to-end response
+  mapping — outbound wire + inbound shape), NOT that the framework enforces the constraint.
+  The §5 text is explicit that the framework does NOT re-validate the response against the
+  constraint post-hoc; provider compliance is observable from the returned fields but is
+  not framework-policed.
 - **`030-tool-choice-force-specific`** — fan-out-of-one-case fixture for the
   `{type: "tool", name: X}` mode. Verifies the wire body's `tool_choice.function.name`
   matches X, and the returned tool call's `name` matches X.
