@@ -10,6 +10,7 @@ Canonical behavioral specification for the OpenArmature LLM provider abstraction
   - §5 `complete()` extended with optional `response_schema` parameter; §6 Response gained `parsed` field; §7 gained `structured_output_invalid` error category (non-transient by default); §8.5 structured output wire mapping added (with §8.5.1 prompt-augmentation fallback and §8.5.2 response mapping); §10 structured output deferral removed by [proposal 0016](../../proposals/0016-llm-provider-structured-output.md)
   - §8 renamed from "OpenAI-compatible wire format" to "Wire-format mappings" and reorganized as a catalog of provider mappings; existing OpenAI-compatible body nested under new §8.1 "OpenAI-compatible mapping" (subsections §8.1 through §8.5 → §8.1.1 through §8.1.5); §8 framing paragraph added establishing the default placement rule (in-spec for any mapping with multi-language ambition; out-of-tree allowed only for single-language / opt-out / experimental cases) by [proposal 0019](../../proposals/0019-llm-provider-multi-provider-extension.md)
   - §5 `complete()` extended with optional `tool_choice` parameter (four modes: `"auto"` / `"required"` / `"none"` / `{type: "tool", name: X}`) with pre-send validation routing through `provider_invalid_request`; §7 clarified to enumerate the three new validation failure modes; §8.1.1 gained a `tool_choice` mapping row by [proposal 0025](../../proposals/0025-llm-provider-tool-choice.md)
+  - §8 framing gained a *Per-mapping subsection structure* paragraph recommending the canonical §8.X template (Request mapping / Response mapping / Error mapping / Concurrency / Structured output) with allowance for sub-subsections, provider-specific top-level additions, and SHOULD-level divergence-explanation requirement; resolves 0019's open-question #2 by [proposal 0026](../../proposals/0026-llm-provider-wire-format-mapping-template.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -483,6 +484,30 @@ in-spec default applies.
 per the §8.X subsection. A provider MAY implement multiple mappings (e.g., one implementation
 routing OpenAI-compatible requests through one path and Anthropic-native requests through
 another) and claim the corresponding labels independently.
+
+**Per-mapping subsection structure.** Each §8.X subsection SHOULD follow the canonical
+structure used by §8.1:
+
+| Subsection | Topic |
+|---|---|
+| §8.X.1 | Request mapping |
+| §8.X.2 | Response mapping |
+| §8.X.3 | Error mapping |
+| §8.X.4 | Concurrency |
+| §8.X.5 | Structured output |
+
+Provider-specific sub-subsections (e.g., §8.X.1.1 for content-block wire mapping per §8.1.1.1,
+§8.X.5.1 for prompt-augmentation fallback per §8.1.5.1) are permitted and expected. Providers
+whose wire shapes have features without §8.1 analogues MAY add additional top-level subsections
+at the end of the recommended five (e.g., §8.X.6 *Caching* if the provider exposes a caching
+primitive worth spec'ing); the recommended five SHOULD precede any provider-specific additions,
+in the order shown.
+
+The recommendation is SHOULD-level rather than MUST-level because some providers' shapes
+diverge from §8.1's organization in ways the template cannot accommodate by sub-subsection
+alone. When a §8.X proposal diverges from this template, the proposal text SHOULD explain the
+divergence in its *Detailed design* section so reviewers can confirm the divergence is
+structural rather than ergonomic.
 
 ### 8.1 OpenAI-compatible mapping
 

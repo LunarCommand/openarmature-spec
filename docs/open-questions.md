@@ -114,11 +114,13 @@ is just "keep it not-too-stale."
   the alternative (§8 → §8 OpenAI-compatible + §8.6+ Anthropic) was rejected
   in the acceptance pass.
 - **Per-mapping section structure for §8.X.**
-  [still-relevant] — should §8.X subsections follow §8.1's structure
+  [resolved-by-0026] — proposal 0026 locked the canonical §8.X template
   (Request mapping / Response mapping / Error mapping / Concurrency /
-  Structured output) by spec convention, or is each §8.X free to organize
-  per-provider? Currently free; the first §8.X follow-on (likely §8.2
-  Anthropic) decides whether to mirror §8.1 or diverge.
+  Structured output) as a SHOULD-level recommendation, with allowance
+  for sub-subsections and provider-specific top-level additions. When a
+  §8.X proposal diverges, the proposal text SHOULD explain why so
+  reviewers can confirm the divergence is structural rather than
+  ergonomic. Shipped in spec v0.20.1.
 - **What "Cross-language ambition" means in practice.**
   [still-relevant] — the §8 default placement rule says any mapping with
   multi-language ambition lives in spec. The first concrete test will be

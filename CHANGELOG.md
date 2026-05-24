@@ -4,6 +4,18 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.20.1] — 2026-05-24
+
+**Changed**
+
+- **llm-provider §8 framing gained a *Per-mapping subsection structure* paragraph** recommending the canonical §8.X subsection template (Request mapping / Response mapping / Error mapping / Concurrency / Structured output, in that order) used by §8.1. Provider-specific sub-subsections (e.g., §8.X.1.1 for content-block wire mapping, §8.X.5.1 for fallback) are permitted and expected; providers MAY add additional top-level subsections at the end of the canonical five for features without §8.1 analogues (e.g., §8.X.6 *Caching*). SHOULD-level rather than MUST-level — when a §8.X proposal diverges, the proposal text SHOULD explain the divergence in its *Detailed design* so reviewers can confirm it's structural rather than ergonomic. Resolves 0019's open-question #2 (per-mapping section structure). ([proposal 0026](proposals/0026-llm-provider-wire-format-mapping-template.md))
+
+**Notes**
+
+- **Pre-1.0 PATCH bump.** Purely textual structural recommendation. No new types, no new error categories, no behavioral change. All v0.20.0 conformance fixtures pass unchanged. §8.1 already follows the template by construction (it IS the template source). Matches the v0.16.1 / v0.17.1 precedent for spec-text clarifications.
+- **Cross-language consistency story.** The template lock-in is sequenced so §8.2 Anthropic and §8.3 Gemini follow-ons land against the same canonical structure — readers who know §8.1's organization can navigate §8.X by reflex, fixture sidecars reference subsection numbers predictably across mappings, and cross-language consistency (Python ↔ TypeScript siblings) extends to the spec-text structure as well as the wire shapes.
+- Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.20.0 may target v0.20.1 directly.
+
 ## [0.20.0] — 2026-05-24
 
 **Added**

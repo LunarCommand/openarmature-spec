@@ -32,6 +32,6 @@ lifecycle and the proposal template.
 | [0023](proposals/0023-canonical-state-reducers.md) | Canonical state reducers                    | graph-engine        | Draft    |
 | [0024](proposals/0024-llm-span-payload-and-semconv.md) | LLM span payload + GenAI semconv            | observability       | Accepted |
 | [0025](proposals/0025-llm-provider-tool-choice.md) | LLM provider `tool_choice` parameter        | llm-provider        | Accepted |
-| [0026](proposals/0026-llm-provider-wire-format-mapping-template.md) | §8.X wire-format mapping subsection template | llm-provider        | Draft    |
+| [0026](proposals/0026-llm-provider-wire-format-mapping-template.md) | §8.X wire-format mapping subsection template | llm-provider        | Accepted |
 
 Click any column header to sort.
