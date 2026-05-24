@@ -1,0 +1,55 @@
+# Drain timeout not reached, fast observers (§6 Drain): a graph runs
+# with observers that finish well within the timeout. Drain MUST report
+# timeout_reached=false and undelivered_count=0 — the timeout was set
+# but did not fire.
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1}
+  b:
+    update: {v: 2}
+  c:
+    update: {v: 3}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+observers:
+  # Observer takes ~0ms per event (no sleep directive). Total observer
+  # work is negligible compared to the 5-second drain timeout.
+  - {name: fast_obs, attach: graph, target: outer, behavior: record}
+
+invoke:
+  drain:
+    timeout_seconds: 5.0
+
+expected:
+  final_state:
+    v: 3
+  execution_order: [a, b, c]
+
+  drain_summary:
+    timeout_reached: false
+    undelivered_count: 0
+
+  # All 6 events (3 nodes × 2 phases) deliver successfully.
+  observer_events:
+    fast_obs:
+      - {step: 0, phase: started,   node_name: a, namespace: [a]}
+      - {step: 0, phase: completed, node_name: a, namespace: [a]}
+      - {step: 1, phase: started,   node_name: b, namespace: [b]}
+      - {step: 1, phase: completed, node_name: b, namespace: [b]}
+      - {step: 2, phase: started,   node_name: c, namespace: [c]}
+      - {step: 2, phase: completed, node_name: c, namespace: [c]}

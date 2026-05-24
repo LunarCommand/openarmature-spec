@@ -1,8 +1,9 @@
 # 0010: Bounded Drain — Configurable Timeout for Observer Delivery
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-05
+- **Accepted:** 2026-05-24
 - **Targets:** spec/graph-engine/spec.md §6 Observer hooks (the "Drain" subsection)
 - **Related:** 0003 (introduced drain), 0005 (extended observer model to pair events)
 - **Supersedes:**

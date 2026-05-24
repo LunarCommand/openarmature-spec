@@ -30,6 +30,22 @@ is just "keep it not-too-stale."
 
 ## graph-engine
 
+### 0010 — bounded drain timeout
+
+- **Cancellation mechanism for an in-flight observer.**
+  [resolved-by-acceptance] — the spec resolved this as "implementation-
+  defined" with the constraint that "the hard deadline itself is not
+  negotiable." Implementations document their cancellation mechanism
+  (`task.cancel()` in Python, `AbortSignal` in TypeScript, refusing to
+  hand the worker the next event once the deadline is within an
+  observer's expected latency budget, etc.). The spec sets the
+  behavioral contract; impls pick the how.
+- **Summary shape across languages.**
+  [resolved-by-acceptance] — the spec resolved this by mandating the
+  minimum fields (`undelivered_count`, `timeout_reached`) and leaving
+  the carrier shape (Python `dict`/dataclass, TypeScript object, etc.)
+  to per-language ergonomics. Implementations MAY add richer fields.
+
 ### 0012 — completed event after edges
 
 - **Existing fixture 014 sub-case for routing_error.**

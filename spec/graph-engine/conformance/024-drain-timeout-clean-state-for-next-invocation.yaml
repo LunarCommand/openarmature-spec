@@ -1,0 +1,77 @@
+# Drain timeout leaves clean state for next invocation (§6 Drain):
+# invocation 1 drains with a timeout that elapses (events undelivered);
+# invocation 2 drains without a timeout and MUST complete cleanly with
+# all of its observer events delivered. Verifies the "MUST NOT leak"
+# requirement — partial delivery state from one drain does not carry
+# into the next invocation.
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1}
+  b:
+    update: {v: 2}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: END}
+
+initial_state: {}
+
+observers:
+  # Observer sleeps 100ms per event on the FIRST invocation only; runs
+  # normally on subsequent invocations. The first-run sleep forces the
+  # timeout to elapse; the no-sleep behavior on invocation 2 means the
+  # second drain must complete cleanly.
+  - name: timeline_obs
+    attach: graph
+    target: outer
+    behavior: record
+    sleep_ms_per_event:
+      first_invocation: 100
+      subsequent_invocations: 0
+
+invocations:
+  - name: first
+    initial_state: {}
+    drain:
+      timeout_seconds: 0.05
+    expected:
+      final_state:
+        v: 2
+      drain_summary:
+        timeout_reached: true
+        undelivered_count_min: 1
+
+  - name: second
+    initial_state: {}
+    drain:
+      timeout_seconds: null  # no timeout
+    expected:
+      final_state:
+        v: 2
+      drain_summary:
+        timeout_reached: false
+        undelivered_count: 0
+      # All 4 observer events (2 nodes × started + completed) deliver
+      # cleanly on the second invocation — no leftover state from the
+      # first drain's truncation.
+      observer_events:
+        timeline_obs:
+          - {step: 0, phase: started,   node_name: a, namespace: [a]}
+          - {step: 0, phase: completed, node_name: a, namespace: [a]}
+          - {step: 1, phase: started,   node_name: b, namespace: [b]}
+          - {step: 1, phase: completed, node_name: b, namespace: [b]}
+
+invariants:
+  # Critical: the second invocation's drain does NOT inherit any
+  # cancelled-worker state, undelivered-queue residue, or other
+  # cross-invocation contamination from the first drain's timeout.
+  second_invocation_drain_independent_of_first: true
