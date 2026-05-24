@@ -1,9 +1,9 @@
 # 0025: LLM Provider — `tool_choice` Parameter
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-24
-- **Accepted:**
+- **Accepted:** 2026-05-24
 - **Targets:** spec/llm-provider/spec.md (modifies §5 *Provider interface*; modifies §7 *Error semantics* — clarification, no new categories; adds row to §8.1.1 *Request mapping*)
 - **Related:** 0006 (LLM provider core), 0019 (multi-provider wire-format extension)
 - **Supersedes:**

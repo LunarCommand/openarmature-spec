@@ -1,0 +1,77 @@
+# tool_choice pre-send validation (§5, §7): three failure modes that
+# MUST raise `provider_invalid_request` before any HTTP request is
+# sent. The implementation catches these at pre-send validation; the
+# mock provider is configured to fail the test if reached, since no
+# request should ever be sent on the validation-failure path.
+
+cases:
+  - name: required_with_empty_tools
+    description: |
+      `tool_choice="required"` supplied with empty / absent `tools`.
+      `required` mode demands the model call at least one tool, but
+      there are no tools to call. MUST raise
+      `provider_invalid_request` at pre-send validation per §5
+      operation semantics rule (1).
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Do something."}
+      tool_choice: required
+      # tools omitted — equivalent to None / [].
+    mock_provider:
+      # If the implementation sends a request despite the validation
+      # failure, the mock fails — confirming pre-send catch.
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request
+
+  - name: force_specific_with_empty_tools
+    description: |
+      `tool_choice={type: "tool", name: X}` supplied with empty /
+      absent `tools`. Force-specific demands the named tool exist in
+      the supplied list, but there are no tools. MUST raise
+      `provider_invalid_request` at pre-send validation per §5
+      operation semantics rule (2) (transitivity: tools must be
+      non-empty for force-specific to be valid).
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Search for X."}
+      tool_choice:
+        type: tool
+        name: search
+      # tools omitted.
+    mock_provider:
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request
+
+  - name: force_specific_with_name_not_in_tools_list
+    description: |
+      `tool_choice={type: "tool", name: "search"}` supplied with
+      `tools` containing only `summarize`. The forced tool name is not
+      in the supplied tools list. MUST raise
+      `provider_invalid_request` at pre-send validation per §5
+      operation semantics rule (2).
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Search for X."}
+      tools:
+        - name: summarize
+          description: "Summarize a document."
+          parameters:
+            type: object
+            properties:
+              doc_id: {type: string}
+            required: [doc_id]
+      tool_choice:
+        type: tool
+        name: search
+    mock_provider:
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request

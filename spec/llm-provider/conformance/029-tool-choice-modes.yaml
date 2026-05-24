@@ -1,0 +1,239 @@
+# tool_choice modes (§5, §8.1.1): four cases covering the three string
+# modes (`auto`, `required`, `none`) plus the default (no tool_choice
+# supplied). For each case, verifies:
+#   - the outbound wire `tool_choice` value (or absence on default)
+#   - that `Response.finish_reason` matches the mock provider's response
+#
+# Important: the mock provider is configured to return constraint-
+# compliant responses for the cases that constrain (e.g., `required`
+# mocks a tool_calls response). The fixture asserts end-to-end response
+# mapping (wire request + response shape), NOT that the framework
+# enforces the constraint post-hoc. The §5 text is explicit that the
+# framework does NOT re-validate the response against the constraint;
+# provider compliance is a provider-quality concern.
+
+cases:
+  - name: tool_choice_default_omits_wire_field
+    description: |
+      No `tool_choice` supplied. Wire body MUST NOT include the
+      `tool_choice` field; the OpenAI provider's own default applies
+      (which, for OpenAI, is `auto` when tools is non-empty).
+      Backward-compatible with v0.4.0 callers.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "What's the weather?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather for a location."
+          parameters:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "What's the weather?"}
+      tools:
+        - type: function
+          function:
+            name: get_weather
+            description: "Get current weather for a location."
+            parameters:
+              type: object
+              properties:
+                location: {type: string}
+              required: [location]
+      # CRITICAL: no `tool_choice` field on the wire body. The
+      # harness MUST assert that this key is absent, not that it
+      # equals null or auto.
+      tool_choice_absent: true
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-1
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "I'll check the weather for you."
+                finish_reason: stop
+            usage: {prompt_tokens: 10, completion_tokens: 7, total_tokens: 17}
+    expected:
+      response:
+        finish_reason: stop
+
+  - name: tool_choice_auto_emits_wire_field
+    description: |
+      Explicit `tool_choice="auto"`. Wire body MUST include
+      `tool_choice: "auto"`. Semantically equivalent to the default
+      for OpenAI when tools are present, but spec-explicit.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "What's the weather?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather."
+          parameters:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+      tool_choice: auto
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "What's the weather?"}
+      tools:
+        - type: function
+          function:
+            name: get_weather
+            description: "Get current weather."
+            parameters:
+              type: object
+              properties:
+                location: {type: string}
+              required: [location]
+      tool_choice: auto
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-2
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: "Sure, where?"}
+                finish_reason: stop
+            usage: {prompt_tokens: 10, completion_tokens: 3, total_tokens: 13}
+    expected:
+      response:
+        finish_reason: stop
+
+  - name: tool_choice_required_emits_wire_field_mock_returns_tool_call
+    description: |
+      `tool_choice="required"`. Wire body MUST include
+      `tool_choice: "required"`. Mock provider is configured to return
+      a tool_calls response (constraint-compliant). The fixture
+      verifies end-to-end response mapping — outbound wire + inbound
+      `finish_reason: "tool_calls"` — NOT framework enforcement of
+      the constraint.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "What's the weather?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather."
+          parameters:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+      tool_choice: required
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "What's the weather?"}
+      tools:
+        - type: function
+          function:
+            name: get_weather
+            description: "Get current weather."
+            parameters:
+              type: object
+              properties:
+                location: {type: string}
+              required: [location]
+      tool_choice: required
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-3
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: null
+                  tool_calls:
+                    - id: call_abc
+                      type: function
+                      function:
+                        name: get_weather
+                        arguments: '{"location":"SF"}'
+                finish_reason: tool_calls
+            usage: {prompt_tokens: 10, completion_tokens: 8, total_tokens: 18}
+    expected:
+      response:
+        finish_reason: tool_calls
+        message:
+          role: assistant
+          tool_calls:
+            - {id: call_abc, name: get_weather, arguments: {location: SF}}
+
+  - name: tool_choice_none_emits_wire_field_mock_returns_content
+    description: |
+      `tool_choice="none"`. Wire body MUST include
+      `tool_choice: "none"`. Mock provider is configured to return a
+      content-only response (constraint-compliant). The fixture
+      verifies end-to-end response mapping — outbound wire + inbound
+      `finish_reason: "stop"` — NOT framework enforcement of the
+      constraint.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "What's the weather?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather."
+          parameters:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+      tool_choice: none
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "What's the weather?"}
+      tools:
+        - type: function
+          function:
+            name: get_weather
+            description: "Get current weather."
+            parameters:
+              type: object
+              properties:
+                location: {type: string}
+              required: [location]
+      tool_choice: none
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-4
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "I can't call tools right now."
+                finish_reason: stop
+            usage: {prompt_tokens: 10, completion_tokens: 8, total_tokens: 18}
+    expected:
+      response:
+        finish_reason: stop

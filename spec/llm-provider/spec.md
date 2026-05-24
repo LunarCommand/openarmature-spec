@@ -9,6 +9,7 @@ Canonical behavioral specification for the OpenArmature LLM provider abstraction
   - §3 Message shape extended (user content MAY be a sequence of content blocks); §3.1 Content blocks added (text and image blocks; image input only on user messages); §7 gained `provider_unsupported_content_block` error category; §8.1 user-row updated and §8.1.1 content-block wire mapping added; §10 multi-modal entry split (image input now covered; audio/video and image outputs remain deferred) by [proposal 0015](../../proposals/0015-llm-provider-multimodal-images.md)
   - §5 `complete()` extended with optional `response_schema` parameter; §6 Response gained `parsed` field; §7 gained `structured_output_invalid` error category (non-transient by default); §8.5 structured output wire mapping added (with §8.5.1 prompt-augmentation fallback and §8.5.2 response mapping); §10 structured output deferral removed by [proposal 0016](../../proposals/0016-llm-provider-structured-output.md)
   - §8 renamed from "OpenAI-compatible wire format" to "Wire-format mappings" and reorganized as a catalog of provider mappings; existing OpenAI-compatible body nested under new §8.1 "OpenAI-compatible mapping" (subsections §8.1 through §8.5 → §8.1.1 through §8.1.5); §8 framing paragraph added establishing the default placement rule (in-spec for any mapping with multi-language ambition; out-of-tree allowed only for single-language / opt-out / experimental cases) by [proposal 0019](../../proposals/0019-llm-provider-multi-provider-extension.md)
+  - §5 `complete()` extended with optional `tool_choice` parameter (four modes: `"auto"` / `"required"` / `"none"` / `{type: "tool", name: X}`) with pre-send validation routing through `provider_invalid_request`; §7 clarified to enumerate the three new validation failure modes; §8.1.1 gained a `tool_choice` mapping row by [proposal 0025](../../proposals/0025-llm-provider-tool-choice.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -235,10 +236,11 @@ distinguishes "model in registry" from "model loaded" SHOULD be preferred over a
 `ready()` is a pre-flight check intended for fail-fast on startup or warmup polling. It MUST NOT
 be called automatically by `complete()`; callers decide when (or whether) to invoke it.
 
-### `complete(messages, tools=None, config=None, response_schema=None)`
+### `complete(messages, tools=None, config=None, response_schema=None, tool_choice=None)`
 
 Async. Performs a single completion call. When `response_schema` is supplied, the call
-additionally constrains the model's output to conform to the schema.
+additionally constrains the model's output to conform to the schema. When `tool_choice` is
+supplied, the call additionally constrains the model's tool-calling behavior.
 
 - `messages` — non-empty ordered sequence of messages. The first message MAY be `system`; otherwise
   the message list begins with `user`. The last message before the call MUST be `user` or `tool` (the
@@ -254,6 +256,29 @@ additionally constrains the model's output to conform to the schema.
   top-level schemas are out of scope for this version; a follow-on MAY relax this if cross-provider
   demand warrants. Implementations SHOULD validate at call time. The JSON Schema convention matches
   §4 — see §4's note on language-native schema constructors compiling to JSON Schema.
+- `tool_choice` — optional tool-choice constraint. One of:
+  - `"auto"` — the model decides whether to call tools. Equivalent to the no-`tool_choice`
+    default behavior when `tools` is non-empty; with `tools` empty / absent, the model has no
+    tools to call regardless.
+  - `"required"` — the model MUST return at least one tool call. `tools` MUST be non-empty when
+    `tool_choice` is `"required"`; violations raise `provider_invalid_request` (§7) at pre-send
+    validation.
+  - `"none"` — the model MUST NOT call tools, even if `tools` is supplied. Useful for guarded
+    LLM calls or for explicitly disabling tool-calling on a per-call basis without constructing
+    a tools-less request.
+  - `{type: "tool", name: <string>}` — the model MUST call the named tool exactly. The named
+    tool MUST appear in the supplied `tools` list; violations raise `provider_invalid_request`
+    (§7) at pre-send validation. (`tools` MUST be non-empty in this case, by transitivity.)
+
+  Default is `None` / absent. When `tool_choice` is `None` / absent, the engine MUST omit the
+  wire-level `tool_choice` field — the provider's own default applies. This preserves the
+  v0.4.0 behavior exactly (no wire-shape change for callers who don't supply `tool_choice`).
+
+  The discriminated-union shape (three string literals plus one record form) is described
+  abstractly; per-language ergonomics decide the type (e.g., Python could use
+  `Literal["auto", "required", "none"] | ToolChoiceForce`; TypeScript could use a string union
+  with the record form discriminated by `type`). Implementations MUST validate the shape at
+  call time before sending.
 
 Returns: a `Response` (§6).
 
@@ -279,7 +304,7 @@ v0.4.0 behavior is preserved exactly.
 
 Operation semantics:
 
-- `complete()` MUST NOT mutate `messages`, `tools`, `config`, or `response_schema`.
+- `complete()` MUST NOT mutate `messages`, `tools`, `config`, `response_schema`, or `tool_choice`.
 - `complete()` MUST be reentrant: multiple concurrent calls on the same provider are permitted.
   Implementations MUST NOT serialize concurrent calls internally.
 - `complete()` does NOT loop on tool calls. If the response's `finish_reason` is `"tool_calls"`,
@@ -290,6 +315,23 @@ Operation semantics:
 - When `response_schema` is set and the model produces output that successfully parses as JSON but
   fails to validate against `response_schema`, OR fails to parse as JSON at all, `complete()`
   raises `structured_output_invalid` (§7).
+- `complete()` MUST validate `tool_choice` against `tools` before sending. The validation rules:
+  1. `tool_choice="required"` requires `tools` non-empty.
+  2. `tool_choice={type: "tool", name: X}` requires `tools` non-empty AND X to be a `Tool.name`
+     in the supplied list.
+  3. `tool_choice="auto"` and `tool_choice="none"` have no `tools`-related preconditions.
+
+  Violations of rules 1–2 raise `provider_invalid_request` (§7) at pre-send validation, before
+  the implementation contacts the provider.
+
+When `tool_choice="none"` is supplied AND the provider returns tool calls anyway, the
+implementation MUST surface what the provider returned (per the §6 transparency principle)
+without re-validating against the constraint post-hoc. The constraint is a request-side hint
+the implementation passes to the wire; whether the model honored it is observable via the
+returned `finish_reason` (`"tool_calls"` means the model called tools regardless of the
+`"none"` hint) but is not enforced by the framework. Providers vary in whether they honor
+`"none"` strictly; provider compliance is a provider-quality concern, not a framework-policed
+contract.
 
 ## 6. Response and configuration
 
@@ -367,7 +409,12 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
   the §6 shape (missing required fields, invalid `tool_calls` structure, invalid JSON).
 - `provider_invalid_request` — the request was malformed before sending (per-role message
   constraints violated, `tool_call_id` does not match an earlier `assistant` tool call, duplicate
-  tool names, etc.). This category is raised by the implementation's pre-send validation.
+  tool names, etc.). This category is raised by the implementation's pre-send validation. The
+  `tool_choice` parameter (§5) adds three validation failure modes routed through this category:
+  (1) `tool_choice="required"` supplied with empty / absent `tools`; (2) `tool_choice={type: "tool",
+  name: X}` supplied with empty / absent `tools`; (3) `tool_choice={type: "tool", name: X}`
+  supplied with X not in the supplied `tools` list. Each MUST raise `provider_invalid_request`
+  at pre-send validation, before the implementation contacts the provider.
 - `provider_unsupported_content_block` — the bound model does not support a content block type
   used in the request (e.g., a text-only model received an image block, or the model supports
   images but not the requested `media_type` (per §3.1.2) or `source` variant (per §3.1.3)).
@@ -483,6 +530,22 @@ A §4 `Tool` `{name, description, parameters}` maps to an OpenAI `tools` entry a
 
 The §6 `RuntimeConfig` fields map directly: `temperature`, `max_tokens`, `top_p`, `seed`. The bound
 model identifier becomes OpenAI's `model` field.
+
+The §5 `tool_choice` parameter maps to OpenAI's `tool_choice` request-body field:
+
+| Spec `tool_choice` | OpenAI wire body |
+|---|---|
+| `None` / absent | (field omitted from request body) |
+| `"auto"` | `tool_choice: "auto"` |
+| `"required"` | `tool_choice: "required"` |
+| `"none"` | `tool_choice: "none"` |
+| `{type: "tool", name: X}` | `tool_choice: {type: "function", function: {name: X}}` |
+
+The `None`-omitted-from-wire row is load-bearing for backward compatibility: existing callers
+who never supply `tool_choice` see no wire-shape change, and the OpenAI provider's own default
+(which itself depends on whether `tools` is non-empty) applies unchanged. The spec `type: "tool"`
+discriminator renames OpenAI's `type: "function"` for spec-layer readability; the implementation
+performs the rename when constructing the wire body.
 
 ##### 8.1.1.1 Content-block wire mapping
 
