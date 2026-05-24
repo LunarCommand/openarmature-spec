@@ -1,9 +1,9 @@
 # 0026: LLM Provider — `§8.X` Wire-Format Mapping Subsection Template
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-24
-- **Accepted:**
+- **Accepted:** 2026-05-24
 - **Targets:** spec/llm-provider/spec.md (adds a *Per-mapping subsection structure* paragraph under §8 framing)
 - **Related:** 0019 (multi-provider wire-format extension — resolves its open-question #2), 0025 (tool_choice — the first §8.X follow-on to use the template)
 - **Supersedes:**
