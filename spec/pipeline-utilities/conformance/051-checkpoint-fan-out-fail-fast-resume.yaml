@@ -91,6 +91,6 @@ cases:
         # Failed-and-cancelled instances all re-run.
         instances_executed_during_resume: [1, 2, 3]
       invariants:
-        # Per §10.11.3 and §10.6: retry-exhausted instances re-run on
-        # resume with attempt_index reset.
+        # Per §10.6: attempt_index resets to 0 on resume for any re-run
+        # instance (no instance_middleware retry is configured here).
         instance_1_attempt_index_on_resume: 0

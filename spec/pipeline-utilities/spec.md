@@ -1145,9 +1145,11 @@ Per §9.5, fan-out has two error policies:
 
 - **`fail_fast`.** A failed instance cancels its in-flight siblings; the fan-out raises. On
   resume after a `fail_fast` cancellation: the previously-failed instance is in `in_flight`
-  state on the saved record (its terminal inner node never fired `completed`, so no merge,
-  so no `completed` save). The previously-cancelled siblings are also in `in_flight` or
-  `not_started` state. All of these re-run on resume per §10.7. Instances that had
+  state on the saved record (its terminal inner node fired `completed` with an error
+  outcome — per graph-engine §6 every node attempt emits exactly one `completed` event —
+  but `fail_fast` aborts before any accumulator entry is recorded for the failed slot, so
+  the instance's `fan_out_progress` state is not promoted to `completed`). The
+  previously-cancelled siblings are also in `in_flight` or `not_started` state. All of these re-run on resume per §10.7. Instances that had
   completed and merged before the failure remain `completed` and are skipped.
 - **`collect`.** The fan-out runs all instances regardless of individual failures; failed
   slots are recorded in `errors_field` at the fan-in step. On resume, instances marked

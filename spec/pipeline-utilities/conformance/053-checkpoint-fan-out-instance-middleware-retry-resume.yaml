@@ -92,7 +92,7 @@ cases:
         instances_skipped_during_resume: [0]
       invariants:
         # Per §10.6 and §10.11.3: retry budget restarts on resume.
-        instance_1_attempt_index_on_resume_start: 0
+        instance_1_attempt_index_on_resume: 0
         # Instance 1 succeeds on first attempt of resumed run (no
         # retries needed because the mock injection differs).
         instance_1_resume_attempt_count: 1
