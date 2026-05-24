@@ -1,0 +1,1 @@
+../../proposals/0026-llm-provider-wire-format-mapping-template.md

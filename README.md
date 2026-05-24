@@ -86,6 +86,7 @@ they are Accepted.
 | [0022](proposals/0022-harness-contract.md) | Draft | spec/harness/spec.md (new) | Harness contract — abstract behavioral contract for any harness wrapping the OA engine to serve a deployment runtime (three inbound dispatch paths, turn lifecycle, error categorization, runtime-neutral) |
 | [0023](proposals/0023-canonical-state-reducers.md) | Draft | graph-engine §2 | Canonical state reducers — extend baseline reducers with `bounded_append`, `dedupe_append`, `merge_by_key` (factory-style closures for chat-agent and tool-loop patterns) |
 | [0025](proposals/0025-llm-provider-tool-choice.md) | Draft | llm-provider §5 + §8.1.1 | LLM provider `tool_choice` parameter — four modes ("auto" / "required" / "none" / force-specific) for deterministic tool-calling control; sequenced ahead of §8.2 Anthropic + §8.3 Gemini follow-ons |
+| [0026](proposals/0026-llm-provider-wire-format-mapping-template.md) | Draft | llm-provider §8 | §8.X wire-format mapping subsection template — locks the canonical structure (Request / Response / Error / Concurrency / Structured output) so §8.2 Anthropic + §8.3 Gemini follow-ons land consistently; resolves 0019's open-question #2 |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
