@@ -65,6 +65,8 @@ plugins:
           - capabilities/*.md
         Proposals:
           - proposals/*.md
+        Open questions:
+          - open-questions.md
         Changelog:
           - changelog.md
 
@@ -100,6 +102,7 @@ nav:
     - Observability: capabilities/observability.md
     - Prompt Management: capabilities/prompt-management.md
   - Proposals: proposals.md
+  - Open questions: open-questions.md
   - Changelog: changelog.md
 
 # Per-proposal pages live under ``docs/proposals/`` (symlinked from
