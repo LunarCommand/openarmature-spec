@@ -12,7 +12,7 @@ lifecycle and the proposal template.
 | [0003](proposals/0003-node-boundary-observer-hooks.md) | Node-boundary observer hooks                | graph-engine        | Accepted |
 | [0004](proposals/0004-pipeline-utilities-middleware.md) | Middleware                                  | pipeline-utilities  | Accepted |
 | [0005](proposals/0005-pipeline-utilities-parallel-fan-out.md) | Parallel fan-out                            | pipeline-utilities  | Accepted |
-| [0006](proposals/0006-llm-provider-core.md) | Core abstraction (OpenAI-compatible)        | llm-provider        | Accepted |
+| [0006](proposals/0006-llm-provider-core.md) | Core abstraction + OpenAI wire mapping      | llm-provider        | Accepted |
 | [0007](proposals/0007-observability-otel-span-mapping.md) | OpenTelemetry span mapping                  | observability       | Accepted |
 | [0008](proposals/0008-pipeline-utilities-checkpointing.md) | Checkpointing                               | pipeline-utilities  | Accepted |
 | [0009](proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md) | Per-instance fan-out resume                 | pipeline-utilities  | Draft    |
@@ -25,8 +25,11 @@ lifecycle and the proposal template.
 | [0016](proposals/0016-llm-provider-structured-output.md) | Structured output                           | llm-provider        | Accepted |
 | [0017](proposals/0017-prompt-management-core.md) | Prompt management core                      | prompt-management   | Accepted |
 | [0018](proposals/0018-state-migration-chain-ambiguity.md) | State migration chain ambiguity             | pipeline-utilities  | Accepted |
-| [0019](proposals/0019-llm-provider-multi-provider-extension.md) | Multi-provider wire-format extension        | llm-provider        | Draft    |
+| [0019](proposals/0019-llm-provider-multi-provider-extension.md) | Multi-provider wire-format extension        | llm-provider        | Accepted |
 | [0020](proposals/0020-sessions-capability.md) | Sessions capability                         | sessions            | Draft    |
 | [0021](proposals/0021-graph-suspension.md) | Graph suspension and external-signal resume | suspension          | Draft    |
+| [0022](proposals/0022-harness-contract.md) | Harness contract                            | harness             | Draft    |
+| [0023](proposals/0023-canonical-state-reducers.md) | Canonical state reducers                    | graph-engine        | Draft    |
+| [0024](proposals/0024-llm-span-payload-and-semconv.md) | LLM span payload + GenAI semconv            | observability       | Accepted |
 
 Click any column header to sort.

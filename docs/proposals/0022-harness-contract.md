@@ -1,0 +1,1 @@
+../../proposals/0022-harness-contract.md
