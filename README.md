@@ -85,6 +85,7 @@ they are Accepted.
 | [0021](proposals/0021-graph-suspension.md) | Draft | spec/suspension/spec.md (new), graph-engine §3 + §6, observability §4 + §5, pipeline-utilities §10 | Graph suspension and external-signal resume — generalized pause primitive (HITL + async-job-wait + scheduled wakeup as flavors of one suspend) |
 | [0022](proposals/0022-harness-contract.md) | Draft | spec/harness/spec.md (new) | Harness contract — abstract behavioral contract for any harness wrapping the OA engine to serve a deployment runtime (three inbound dispatch paths, turn lifecycle, error categorization, runtime-neutral) |
 | [0023](proposals/0023-canonical-state-reducers.md) | Draft | graph-engine §2 | Canonical state reducers — extend baseline reducers with `bounded_append`, `dedupe_append`, `merge_by_key` (factory-style closures for chat-agent and tool-loop patterns) |
+| [0029](proposals/0029-count-drift-strict.md) | Draft | pipeline-utilities §10.10, §10.11 | Strict `checkpoint_record_invalid` on fan-out `instance_count` drift between save and resume — preserves §10.11.1's exactly-once reducer guarantee against silent pad/truncate behavior |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
