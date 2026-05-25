@@ -1,0 +1,147 @@
+# Count drift on fan-out resume raises checkpoint_record_invalid
+# (§10.11 + §10.10 per proposal 0029): when a saved fan_out_progress
+# entry's instance_count differs from the resumed run's resolved
+# count for the same fan-out node, the engine MUST raise
+# checkpoint_record_invalid before any fan-out instance work runs on
+# the resumed path. Silent pad/truncate of the saved instances list
+# is not permitted — it would risk dropping or duplicating
+# per-instance accumulator contributions, breaking §10.11.1's
+# exactly-once reducer guarantee.
+#
+# Two cases exercise both directions of drift (shrunk and grown
+# resumed count). Both hit the same error category; the fixture
+# verifies the category surfaces, not the impl-defined error payload.
+
+subgraph:
+  name: scorer
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      out:
+        type: int
+        default: 0
+  entry: score
+  nodes:
+    score:
+      update_pure: {out: input}
+  edges:
+    - {from: score, to: END}
+
+cases:
+  - name: shrunk_count_raises_checkpoint_record_invalid
+    description: |
+      First run: fan-out with 5 instances [10, 20, 30, 40, 50] under
+      serial execution; abort after instance 2 completes. The saved
+      record's fan_out_progress entry carries instance_count: 5 with
+      instances 0-2 as `completed` and instances 3-4 as `not_started`.
+
+      Resume against a graph where items_field has been re-resolved
+      to 3 instances [10, 20, 30] (e.g., the user shrank the input
+      list between runs). The engine MUST raise
+      checkpoint_record_invalid (per §10.10) before dispatching any
+      fan-out instance work on the resumed path — silently truncating
+      the saved instances 3-4 would be a no-op here (they're
+      not_started), but silently truncating instances that were
+      `completed` under a different shrink (e.g., shrinking to 2)
+      would drop their accumulator entries, so the spec mandates the
+      raise uniformly regardless of which entries the truncation
+      would affect.
+    state:
+      schema_version: "v1"
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30, 40, 50]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: scorer
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+          concurrent_mode: serial
+          abort_after_instance: 2
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      # The abort_after_instance harness directive surfaces as
+      # node_exception from the fan-out node (the simulated crash
+      # propagates out of the fan-out's dispatch loop).
+      category: node_exception
+      raised_from: process
+    resume:
+      from_first_run: true
+      # Per proposal 0029: the harness re-resolves items_field on the
+      # resumed graph to the modified list, simulating "user shrank
+      # the input set between runs."
+      resume_with_modified_items:
+        items: [10, 20, 30]
+      expected_error:
+        # The engine MUST raise checkpoint_record_invalid before any
+        # fan-out instance work runs. Category match only — the
+        # impl-defined error payload (SHOULD identify the fan_out_node_name
+        # and namespace per §10.10's error-payload framing) is not
+        # asserted here cross-impl.
+        category: checkpoint_record_invalid
+
+  - name: grown_count_raises_checkpoint_record_invalid
+    description: |
+      First run: fan-out with 5 instances [10, 20, 30, 40, 50] under
+      serial execution; abort after instance 2 completes. The saved
+      record's fan_out_progress entry carries instance_count: 5.
+
+      Resume against a graph where items_field has been re-resolved
+      to 7 instances [10, 20, 30, 40, 50, 60, 70] (e.g., the user
+      added entries to the input list between runs). The engine MUST
+      raise checkpoint_record_invalid before dispatching any fan-out
+      instance work — silent padding with `not_started` entries for
+      the new positions would dispatch additional work the saved
+      record didn't represent, contradicting §10.5's idempotency
+      framing (the resumed run is supposed to continue the work the
+      crashed run was performing, not extend it).
+    state:
+      schema_version: "v1"
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30, 40, 50]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: scorer
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+          concurrent_mode: serial
+          abort_after_instance: 2
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: process
+    resume:
+      from_first_run: true
+      resume_with_modified_items:
+        items: [10, 20, 30, 40, 50, 60, 70]
+      expected_error:
+        category: checkpoint_record_invalid

@@ -4,6 +4,23 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.22.0] — 2026-05-25
+
+**Added**
+
+- **pipeline-utilities §10.11 — "Count drift on resume" rule.** New normative paragraph mandating that the engine MUST raise `checkpoint_record_invalid` (per §10.10) when a saved `fan_out_progress` entry's `instance_count` differs from the resumed run's resolved count for the same fan-out node. Silent pad/truncate of the saved `instances` list is not permitted — per-instance accumulator contributions written under one `instance_count` cannot be reconciled with a different count without risking dropped or duplicated entries at the fan-in step, breaking §10.11.1's exactly-once reducer guarantee. The check MUST happen before any fan-out instance work runs on the resumed path; a saved record with multiple fan-out entries raises on the first mismatch encountered. Users who intentionally change a fan-out's input set between runs MUST start a fresh invocation rather than resume. ([proposal 0029](proposals/0029-count-drift-strict.md))
+- Conformance fixture `056-checkpoint-fan-out-count-drift` (pipeline-utilities). Two cases exercise both directions of drift (shrunk count 5 → 3; grown count 5 → 7); both assert `checkpoint_record_invalid` surfaces before fan-out instance work runs. Introduces one new harness primitive: `resume_with_modified_items: {<field>: <new-value>}` (re-resolves the named field on the resumed graph's initial state to simulate "user changed the input set between runs").
+
+**Changed**
+
+- **pipeline-utilities §10.10 `checkpoint_record_invalid` description** extended with one sentence enumerating `fan_out_progress[*].instance_count` drift between save and resume as a structural-incompatibility failure mode covered by the existing category. No new category minted; the existing `checkpoint_record_invalid` surface absorbs the new failure mode (consistent with the v0.20.0 `provider_invalid_request` extension pattern). ([proposal 0029](proposals/0029-count-drift-strict.md))
+
+**Notes**
+
+- **Pre-1.0 MINOR bump.** New normative rule + new conformance fixture. Implementations need actual work (a count-equality check on the resume path before fan-out dispatch, plus the new harness primitive in the conformance adapter). Existing v0.21.1 fixtures pass unchanged — no fixture exercises count drift before this proposal.
+- **No backward-compat carve-out.** Pre-1.0, no shipping consumers; the strict rule applies normatively from acceptance forward. Implementations that previously absorbed count drift via permissive pad/truncate update to raise.
+- **Both directions treated symmetrically.** Padding with `not_started` on a grown count is rejected for the same structural-incompatibility reason as truncating on a shrunk count. Implementations MAY surface the category with an impl-defined error payload identifying which `fan_out_node_name` / `namespace` triggered the raise; the spec mandates the category, not the payload shape. Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.21.1 may target v0.22.0 directly.
+
 ## [0.21.1] — 2026-05-25
 
 **Changed**

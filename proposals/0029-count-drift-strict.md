@@ -1,9 +1,9 @@
 # 0029: Pipeline Utilities — Strict `checkpoint_record_invalid` on fan-out `instance_count` drift
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-25
-- **Accepted:**
+- **Accepted:** 2026-05-25
 - **Targets:** spec/pipeline-utilities/spec.md (adds a normative rule under §10.11 mandating `checkpoint_record_invalid` on count drift; extends §10.10's `checkpoint_record_invalid` description to enumerate count drift as a failure mode); spec/pipeline-utilities/conformance/056-checkpoint-fan-out-count-drift.yaml (new fixture exercising the resume-time error path)
 - **Related:** 0008 (checkpointing — defines `checkpoint_record_invalid` and the §10.5 idempotency framing the new rule operationalizes), 0009 (per-instance fan-out resume — defines the `instance_count` field whose drift this rule guards)
 - **Supersedes:**
