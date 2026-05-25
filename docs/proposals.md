@@ -36,5 +36,6 @@ lifecycle and the proposal template.
 | [0027](proposals/0027-fan-out-instance-progress-result-is-error.md) | Explicit `result_is_error` on `fan_out_progress` per-instance entries | pipeline-utilities  | Accepted |
 | [0028](proposals/0028-schema-version-canonical-source.md) | Canonical source for `schema_version` on saved records | pipeline-utilities  | Accepted |
 | [0029](proposals/0029-count-drift-strict.md) | Strict `checkpoint_record_invalid` on fan-out `instance_count` drift | pipeline-utilities  | Accepted |
+| [0030](proposals/0030-drain-snapshot-and-timeout-validation.md) | §6 Drain snapshot semantic and timeout-input validation | graph-engine        | Draft    |
 
 Click any column header to sort.
