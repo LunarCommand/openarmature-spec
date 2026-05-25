@@ -12,6 +12,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §3 Execution model carved out a fan-out concurrency exception; §6 Observer hooks replaced single-event-per-attempt with started/completed pairs, added per-observer phase subscription, added `fan_out_index` field, and removed the "Middleware-dispatched events" subsection by [proposal 0005](../../proposals/0005-pipeline-utilities-parallel-fan-out.md)
   - §3 Execution model concurrency exception extended to also cover parallel-branches; §6 Observer hooks gained `branch_name` field and updated event-source uniqueness invariant to include it by [proposal 0011](../../proposals/0011-pipeline-utilities-parallel-branches.md)
   - §6 Observer hooks `drain` operation gained an optional caller-supplied `timeout` parameter and now MUST return a summary (`undelivered_count`, `timeout_reached`, with implementations permitted to add richer detail); under timeout, workers MUST be cancelled and graph state MUST remain usable for subsequent invocations by [proposal 0010](../../proposals/0010-drain-timeout.md)
+  - §6 Drain gained two clarifications of implicit rules: the snapshot semantic for "prior invocations" (drain covers workers active at call time; invocations started during the drain are NOT covered), and the MUST-reject rule for negative / NaN timeout inputs (with the error surface per-language idiomatic) by [proposal 0030](../../proposals/0030-drain-snapshot-and-timeout-validation.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -236,6 +237,13 @@ produced by subgraphs during an invocation are part of that invocation and are c
 graph's drain. Callers running in short-lived processes (scripts, serverless functions, CLIs) MUST
 use drain to avoid losing observer events that were dispatched but not yet delivered.
 
+The set of invocations covered by a `drain` call is the set whose worker(s) were active at the time
+`drain` is invoked. Invocations started after `drain` is called are NOT covered by that drain;
+callers needing delivery guarantees for a later invocation MUST call `drain` again after the later
+invocation begins. The snapshot semantic composes cleanly with the optional `timeout`: the deadline
+applies to a known finite set of workers captured at call time, rather than an open-ended set that
+new invocations could extend past the deadline.
+
 The `drain` operation MUST accept an optional **timeout** parameter (interpreted as a non-negative
 duration in seconds, mapped to the host language's idiomatic wait-bound type — for example, Python's
 `float` seconds). If the timeout is omitted or `None`, drain waits indefinitely (the existing v0.3.0
@@ -249,6 +257,11 @@ behavior). If a timeout is supplied:
   invocation;
 - observers SHOULD be written to be cancellation-safe (idempotent writes, try/finally cleanup) so
   that interruption by drain timeout does not leave partial side effects in an inconsistent state;
+- implementations MUST reject negative or `NaN` timeout inputs by raising an API-boundary error
+  before any drain work begins. The error surface is per-language idiomatic (e.g., a Python
+  `ValueError`, a TypeScript `RangeError`, a Go error return value); the spec mandates the
+  rejection, not the error type. Non-numeric input is rejected per the language's type-error idiom
+  (e.g., a Python `TypeError` from the underlying comparison or validation);
 
 drain MUST return a summary of the drain's outcome, in a form appropriate to the host language. The
 summary MUST include at least: the count of undelivered events, and a boolean or equivalent flag

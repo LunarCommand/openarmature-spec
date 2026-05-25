@@ -4,6 +4,20 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.22.1] — 2026-05-25
+
+**Changed**
+
+- **graph-engine §6 Drain gained two clarifications of implicit rules** surfaced during 0010's implementation pass. Both are textual sharpenings of contracts existing implementations already follow; the clarifications close cross-implementation drift before the TypeScript implementation lands. ([proposal 0030](proposals/0030-drain-snapshot-and-timeout-validation.md))
+  - **Snapshot semantic.** The set of invocations covered by a `drain` call is the set whose worker(s) were active at the time `drain` is invoked. Invocations started after `drain` is called are NOT covered; callers needing delivery guarantees for a later invocation MUST call `drain` again. Composes cleanly with the optional `timeout`: the deadline applies to a known finite worker set captured at call time, not an open-ended set that new invocations could extend past the deadline.
+  - **Timeout-input validation.** Implementations MUST reject negative or `NaN` timeout inputs by raising an API-boundary error before any drain work begins. The error surface is per-language idiomatic (Python `ValueError`, TypeScript `RangeError`, Go error return value); the spec mandates the rejection, not the error type. Non-numeric input is rejected per the language's type-error idiom.
+
+**Notes**
+
+- **Pre-1.0 PATCH bump.** Textual clarification of implicit rules; no new conformance fixtures (matches the v0.16.1 / v0.17.1 / v0.21.1 precedent). Both rules are awkward to test cross-language — the snapshot rule is timing-sensitive and the timeout-validation error-surface is per-language. The normative rules plus per-language documentation are sufficient.
+- **No backward-compat carve-out.** Pre-1.0, no shipping consumers of either rule that wasn't already following the natural reading. Implementations whose `drain` already snapshots and rejects invalid timeout inputs see no behavior change; those that don't update to comply.
+- **Skip-ahead implementation.** Per the Skip-ahead governance principle, implementations that have not yet shipped against v0.22.0 may target v0.22.1 directly.
+
 ## [0.22.0] — 2026-05-25
 
 **Added**
