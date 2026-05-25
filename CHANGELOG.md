@@ -4,6 +4,19 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.21.1] — 2026-05-25
+
+**Changed**
+
+- **pipeline-utilities §10.2 `schema_version` paragraph clarified** to name the outermost declared graph state class as the canonical source for the value written onto saved records. The framework reads `schema_version` from the state class passed to the graph constructor (e.g., `GraphBuilder(MyState)` in Python), not from `type(state).schema_version` at save time. Implementations MUST NOT source `schema_version` from the runtime instance's class when the user passes a State subclass instance whose `schema_version` shadows the declared class's value — the declared class is canonical for all save sites in the engine (outermost-graph, subgraph-internal, fan-out instance internal, fan-out node completion), so resume sees a single consistent `schema_version` and §10.12 migration registry lookups resolve unambiguously. ([proposal 0028](proposals/0028-schema-version-canonical-source.md))
+- Conformance fixture `055-checkpoint-schema-version-declared-class` (pipeline-utilities) added. Exercises the canonical-source rule via a graph declared against a state class with `schema_version: "v1"`, invoked against a subclass instance whose `schema_version` is `"v2"`, driven through a fan-out completion so multiple save sites fire. Asserts every captured save reports `schema_version: "v1"`. Introduces two new harness primitives: `runtime_state_subclass: {schema_version: "<v>"}` (per-language subclass-with-override construct) and `every_save_assertions.schema_version: "<v>"` (assert against every captured save, not just the latest).
+
+**Notes**
+
+- **Pre-1.0 PATCH bump.** Textual clarification of an implicit rule (the §10.12 migration system already implicitly assumed the declared class was canonical; this proposal makes the assumption explicit on the save side). Matches the v0.16.1 precedent for spec-text clarifications that force some implementations to align their reads. No new types, no new error categories, no new behavior — only an explicit normative rule against a previously implicit one.
+- **No backward-compat carve-out.** Pre-1.0, no shipping consumers; the declared-class rule applies normatively from acceptance forward.
+- **Cross-implementation consistency.** Locking in the rule before TypeScript implementation work means all implementations land on the same canonical source. Implementations whose save sites already read the declared class consistently see no behavior change; implementations with the declared/instance inconsistency (the reference Python implementation, after the proposal 0009 impl-review pass) update by threading the declared outermost state class through their invocation context to all save sites. Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.21.0 may target v0.21.1 directly.
+
 ## [0.21.0] — 2026-05-25
 
 **Added**

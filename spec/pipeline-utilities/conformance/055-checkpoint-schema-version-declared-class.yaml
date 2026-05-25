@@ -1,0 +1,84 @@
+# Canonical source for schema_version on saved records (§10.2 per
+# proposal 0028): when a user passes a subclass instance whose
+# schema_version shadows the declared graph state class's
+# schema_version, all saved records during the invocation MUST carry
+# the DECLARED class's value, not the runtime instance's value.
+# Exercises multiple save sites (outer dispatch, fan-out instance
+# internal, fan-out node completion) to verify the rule applies
+# uniformly across the engine.
+
+subgraph:
+  name: scorer
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      out:
+        type: int
+        default: 0
+  entry: score
+  nodes:
+    score:
+      update_pure: {out: input}
+  edges:
+    - {from: score, to: END}
+
+cases:
+  - name: declared_class_wins_over_runtime_subclass
+    description: |
+      A graph is built declaring a state class with schema_version "v1".
+      The user invokes it passing an instance of a SUBCLASS of that
+      state class whose schema_version is "v2". Per §10.2 the saved
+      records MUST carry "v1" (the declared class's value) at every
+      save site — the outer dispatch loop's saves, the fan-out instance
+      internal saves, and the fan-out node's own completion save — so
+      §10.12 migration lookups remain consistent on resume.
+
+      The fan-out has 3 instances under serial execution; success-only
+      path. Every save site fires at least once during the invocation.
+      All saves must report schema_version "v1", not "v2".
+    state:
+      schema_version: "v1"
+      fields:
+        items:
+          type: list<int>
+          default: [10, 20, 30]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    # Per proposal 0028: the harness constructs a subclass of the
+    # declared state class with this overriding schema_version, then
+    # passes an instance of the subclass to invoke(). Implementations
+    # map to the idiomatic per-language subclass-with-override
+    # construct (Python: type(...) call; TypeScript: structural type
+    # with override; etc.).
+    runtime_state_subclass:
+      schema_version: "v2"
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: scorer
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+          concurrent_mode: serial
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    expected:
+      final_state:
+        items: [10, 20, 30]
+        results: [10, 20, 30]
+    # Assert EVERY captured save during the invocation has
+    # schema_version "v1". Catches implementations whose intermediate
+    # save sites (e.g., fan-out instance internal saves) read the
+    # runtime instance class while the outer dispatch save reads the
+    # declared class — both must read declared per §10.2.
+    every_save_assertions:
+      schema_version: "v1"

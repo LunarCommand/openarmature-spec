@@ -1,9 +1,9 @@
 # 0028: Pipeline Utilities — Canonical source for `schema_version` on saved records
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-25
-- **Accepted:**
+- **Accepted:** 2026-05-25
 - **Targets:** spec/pipeline-utilities/spec.md (clarifies §10.2's `schema_version` paragraph to name the canonical source); spec/pipeline-utilities/conformance/055-checkpoint-schema-version-declared-class.yaml (new fixture exercising subclass-shadowing)
 - **Related:** 0014 (state migration — the system that consumes `schema_version`), 0009 (per-instance fan-out resume — surfaced the inconsistency across save sites)
 - **Supersedes:**

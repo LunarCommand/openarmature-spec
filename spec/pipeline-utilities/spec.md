@@ -13,6 +13,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §10.10 gained canonical configuration-time category `checkpoint_state_migration_chain_ambiguous`; §10.12.1 and §10.12.2 updated to reference the category by name; mutual-exclusion paragraph rewritten for four migration-related categories by [proposal 0018](../../proposals/0018-state-migration-chain-ambiguity.md)
   - §10.2 `fan_out_progress` field promoted from reserved to populated; §10.3 save-granularity rule extended to fan-out instance internal nodes (the "engine does NOT save during fan-out instance execution" rule is removed); §10.7 atomic-restart fan-out resume replaced with per-instance resume; §10.11 added (per-instance fan-out resume contract — accumulator semantics, reducer interaction, error_policy / instance_middleware composition, configurable Checkpointer-level batching for fan-out internal saves); existing §10.11 (Reference implementations and backend layering) renumbered to §10.13 by [proposal 0009](../../proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md)
   - §10.11 per-instance entry shape gained `result_is_error: bool` field (success vs `collect`-mode-error discriminator for resume routing); §10.11.2 `collect` bullet amended to name the field as the discrimination mechanism and forbid heuristic inspection of `result` shape by [proposal 0027](../../proposals/0027-fan-out-instance-progress-result-is-error.md)
+  - §10.2 `schema_version` paragraph clarified: the outermost declared graph state class is the canonical source for the value written onto saved records; implementations MUST NOT source `schema_version` from the runtime instance's class when a State subclass shadows the declared value by [proposal 0028](../../proposals/0028-schema-version-canonical-source.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -787,13 +788,22 @@ The `CheckpointRecord` carries:
 - `schema_version` — string. Carries the version identifier of the user's state schema at the
   time the record was saved. The state definition MAY expose a stable, user-controlled
   `schema_version` identifier (the surface for declaring it is per-language ergonomic — e.g.,
-  a class attribute in Python, a constant in TypeScript). When declared, the framework reads
-  `schema_version` from the state definition at save time and writes it onto the record.
-  State classes that do not declare a `schema_version` are treated as carrying an
-  implementation-defined sentinel value (typically the empty string), and are not
-  migration-eligible until they declare one. Users intending to evolve their schema across
-  deploys MUST declare an explicit `schema_version` so that migrations (per §10.12) can be
-  registered against it. The framework does not constrain the version identifier's syntax;
+  a class attribute in Python, a constant in TypeScript). State classes that do not declare a
+  `schema_version` are treated as carrying an implementation-defined sentinel value (typically
+  the empty string), and are not migration-eligible until they declare one. Users intending to
+  evolve their schema across deploys MUST declare an explicit `schema_version` so that
+  migrations (per §10.12) can be registered against it. **The framework reads `schema_version`
+  from the outermost declared graph state class** (the state class passed to the graph
+  constructor — e.g.,
+  `GraphBuilder(MyState)` in Python or the equivalent in another language idiom) at save
+  time and writes that value onto the record. Implementations MUST NOT source
+  `schema_version` from the runtime instance's class (e.g., `type(state).schema_version` in
+  Python) when the user passes a State subclass instance whose `schema_version` shadows the
+  declared class's value — the declared class is the canonical source for all save sites in
+  the engine (outermost-graph saves, subgraph-internal saves, fan-out instance internal
+  saves, fan-out node completion saves), so resume sees a single consistent `schema_version`
+  and the §10.12 migration registry's `from_version`/`to_version` lookups resolve
+  unambiguously. The framework does not constrain the version identifier's syntax;
   users MAY use semver, integer counters, date stamps, or content hashes — whatever makes
   sense for their evolution discipline. Two distinct identifiers are treated as distinct
   versions; identical identifiers are treated as the same version.
