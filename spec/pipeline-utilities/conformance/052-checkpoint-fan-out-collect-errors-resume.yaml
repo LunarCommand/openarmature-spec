@@ -86,12 +86,12 @@ cases:
         process:
           instance_count: 5
           instances:
-            - {state: completed, result: 10}
-            - {state: completed, result: 20}
+            - {state: completed, result: 10, result_is_error: false}
+            - {state: completed, result: 20, result_is_error: false}
             # Instance 2's contribution is an error record under collect.
-            - {state: completed, result_kind: error}
-            - {state: not_started}
-            - {state: not_started}
+            - {state: completed, result_is_error: true}
+            - {state: not_started, result_is_error: false}
+            - {state: not_started, result_is_error: false}
     resume:
       from_first_run: true
       expected:

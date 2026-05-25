@@ -1,9 +1,9 @@
 # 0027: Pipeline Utilities — Explicit `result_is_error` on `fan_out_progress` per-instance entries
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-25
-- **Accepted:**
+- **Accepted:** 2026-05-25
 - **Targets:** spec/pipeline-utilities/spec.md (extends the §10.11 per-instance entry shape on `CheckpointRecord.fan_out_progress` with one new required boolean field); spec/pipeline-utilities/conformance/052-checkpoint-fan-out-collect-errors-resume.yaml (extends saved-record assertions to exercise the new field)
 - **Related:** 0009 (per-instance fan-out resume — the proposal that introduced the `CheckpointRecord.fan_out_progress` per-instance entry shape)
 - **Supersedes:**
