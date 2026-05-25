@@ -211,21 +211,41 @@ fixture using it; no other migration is needed. Future fixtures that
 need to assert "this instance is a `collect`-mode error" use
 `result_is_error: true`.
 
+### Other fan-out fixtures: add `result_is_error: false` to every entry
+
+Because `result_is_error` is normatively required on EVERY per-instance
+entry regardless of state (success-completed, error-completed, in_flight,
+not_started), all fan-out checkpoint fixtures whose
+`saved_record_assertions.fan_out_progress[*].instances` lists exercise
+the entry shape must include the field. Update fixtures 048, 049, 050,
+051, 053, 054 to assert `result_is_error: false` on every entry
+(none of these fixtures contain `collect`-mode errors, so the value
+is uniformly `false`).
+
+The `state_one_of: [in_flight, not_started]` entries used by fixtures
+051 and 054 also carry `result_is_error: false` — both candidate states
+require the field to be `false` per §10.11, so the matcher is uniform
+regardless of which state the saved record happens to reflect on a
+given implementation.
+
+### Fixture 052 also gains a `result_present: true` matcher
+
+For instance 2's `collect`-mode error entry, the fixture asserts
+`result_is_error: true` but cannot assert the exact `result` value
+because the error-record shape is implementation-defined per §9.5.
+Without a `result` assertion, an implementation could omit the `result`
+field entirely for error contributions and pass the fixture — even
+though §10.11 mandates the contribution is reflected in `result`. The
+new `result_present: true` harness matcher closes that gap: it asserts
+the field exists on the saved record without constraining its shape.
+
 ### No new standalone fixture
 
-The fixture-052 modification exercises the round-trip end-to-end
-(`completed` entries with both `result_is_error: true` and
-`result_is_error: false` saved, then loaded, then routed correctly on
-resume to `errors_field` and `target_field` respectively). A
-standalone fixture would duplicate that coverage. If a future
-implementation surfaces a discrimination edge case not covered here, a
-follow-on can add one.
-
-### No other fixture changes
-
-All existing fixtures (048–054) other than 052 keep their existing
-assertions unchanged. Fixtures that don't currently exercise
-`fan_out_progress` matchers are unaffected by this proposal.
+The fixture-052 modification (with the new `result_is_error: true` /
+`result_is_error: false` assertions and the `result_present: true`
+gap-closer) exercises the round-trip end-to-end. A standalone fixture
+would duplicate that coverage. If a future implementation surfaces a
+discrimination edge case not covered here, a follow-on can add one.
 
 ## Alternatives considered
 

@@ -89,7 +89,7 @@ cases:
             - {state: completed, result: 10, result_is_error: false}
             - {state: completed, result: 20, result_is_error: false}
             # Instance 2's contribution is an error record under collect.
-            - {state: completed, result_is_error: true}
+            - {state: completed, result_is_error: true, result_present: true}
             - {state: not_started, result_is_error: false}
             - {state: not_started, result_is_error: false}
     resume:

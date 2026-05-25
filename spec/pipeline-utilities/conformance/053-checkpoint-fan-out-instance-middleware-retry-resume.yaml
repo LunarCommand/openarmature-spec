@@ -79,9 +79,9 @@ cases:
         process:
           instance_count: 3
           instances:
-            - {state: completed, result: 10}
-            - {state: in_flight}
-            - state_one_of: [in_flight, not_started]
+            - {state: completed, result: 10, result_is_error: false}
+            - {state: in_flight, result_is_error: false}
+            - {state_one_of: [in_flight, not_started], result_is_error: false}
     resume:
       from_first_run: true
       expected:

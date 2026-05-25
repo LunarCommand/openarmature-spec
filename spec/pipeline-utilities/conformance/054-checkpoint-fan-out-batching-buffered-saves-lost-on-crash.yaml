@@ -101,21 +101,22 @@ cases:
           instance_count: 10
           # Instances 0-4: completed and flushed.
           instances:
-            - {state: completed, result: 10}
-            - {state: completed, result: 20}
-            - {state: completed, result: 30}
-            - {state: completed, result: 40}
-            - {state: completed, result: 50}
+            - {state: completed, result: 10, result_is_error: false}
+            - {state: completed, result: 20, result_is_error: false}
+            - {state: completed, result: 30, result_is_error: false}
+            - {state: completed, result: 40, result_is_error: false}
+            - {state: completed, result: 50, result_is_error: false}
             # Instances 5-9: states are NOT `completed` on the loaded
             # record. Instance 7 may show in_flight from a separate
             # snapshot, OR all may show not_started (depends on the
             # implementation's exact buffer-flush timing); the fixture
-            # accepts either, but explicitly NOT `completed`.
-            - {state_one_of: [in_flight, not_started]}
-            - {state_one_of: [in_flight, not_started]}
-            - {state_one_of: [in_flight, not_started]}
-            - {state_one_of: [in_flight, not_started]}
-            - {state_one_of: [in_flight, not_started]}
+            # accepts either, but explicitly NOT `completed`. Per §10.11
+            # result_is_error MUST be false for both candidate states.
+            - {state_one_of: [in_flight, not_started], result_is_error: false}
+            - {state_one_of: [in_flight, not_started], result_is_error: false}
+            - {state_one_of: [in_flight, not_started], result_is_error: false}
+            - {state_one_of: [in_flight, not_started], result_is_error: false}
+            - {state_one_of: [in_flight, not_started], result_is_error: false}
     resume:
       from_first_run: true
       expected:

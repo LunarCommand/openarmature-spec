@@ -71,10 +71,10 @@ cases:
         process:
           instance_count: 4
           instances:
-            - {state: completed, result: 10}
-            - {state: completed, result: 20}
-            - {state: in_flight}
-            - {state: not_started}
+            - {state: completed, result: 10, result_is_error: false}
+            - {state: completed, result: 20, result_is_error: false}
+            - {state: in_flight, result_is_error: false}
+            - {state: not_started, result_is_error: false}
     resume:
       from_first_run: true
       expected:
