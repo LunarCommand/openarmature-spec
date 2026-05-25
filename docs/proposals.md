@@ -35,5 +35,6 @@ lifecycle and the proposal template.
 | [0026](proposals/0026-llm-provider-wire-format-mapping-template.md) | §8.X wire-format mapping subsection template | llm-provider        | Accepted |
 | [0027](proposals/0027-fan-out-instance-progress-result-is-error.md) | Explicit `result_is_error` on `fan_out_progress` per-instance entries | pipeline-utilities  | Accepted |
 | [0028](proposals/0028-schema-version-canonical-source.md) | Canonical source for `schema_version` on saved records | pipeline-utilities  | Accepted |
+| [0029](proposals/0029-count-drift-strict.md) | Strict `checkpoint_record_invalid` on fan-out `instance_count` drift | pipeline-utilities  | Draft    |
 
 Click any column header to sort.
