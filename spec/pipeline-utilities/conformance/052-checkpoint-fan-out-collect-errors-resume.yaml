@@ -97,7 +97,7 @@ cases:
       expected:
         final_state:
           items: [10, 20, 30, 40, 50]
-          results: [10, 20, 30, 40]
+          results: [10, 20, 40, 50]
           # Critical: exactly one error entry, NOT two — instance 2's
           # error contribution rolled forward from the saved record and
           # was not re-recorded on resume.
