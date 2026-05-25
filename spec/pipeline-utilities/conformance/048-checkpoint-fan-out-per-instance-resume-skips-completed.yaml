@@ -72,11 +72,11 @@ cases:
         process:
           instance_count: 5
           instances:
-            - {state: completed, result: 10}
-            - {state: completed, result: 20}
-            - {state: completed, result: 30}
-            - {state: in_flight}
-            - {state: not_started}
+            - {state: completed, result: 10, result_is_error: false}
+            - {state: completed, result: 20, result_is_error: false}
+            - {state: completed, result: 30, result_is_error: false}
+            - {state: in_flight, result_is_error: false}
+            - {state: not_started, result_is_error: false}
       # The fan-out node itself has no completed_positions entry — the
       # fan-out as a whole never completed.
       fan_out_node_in_completed_positions: false

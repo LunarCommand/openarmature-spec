@@ -20,8 +20,9 @@ and rolled forward — NOT re-recorded.
 - Saved record has instances 0 and 1 as `completed` with success
   results, instance 2 as `completed` with an error result.
 - Resume skips all three; runs only instances 3 and 4.
-- Final `results` has 4 success entries (`[10, 20, 30, 40]`); `errors`
-  has exactly 1 entry (instance 2's failure from the first run).
+- Final `results` has 4 success entries (`[10, 20, 40, 50]` — instances
+  0, 1, 3, 4); `errors` has exactly 1 entry (instance 2's failure from
+  the first run).
 
 **What fails:**
 
@@ -41,9 +42,16 @@ and rolled forward — NOT re-recorded.
   abort under collect mode) and from a node-level exception inside an
   instance (which collect mode would capture as an error entry, not an
   abort).
-- The `result_kind: error` assertion accommodates the
-  implementation-defined representation of error contributions in the
-  saved record. Implementations MAY represent error contributions as
-  structured records, error class instances, serialized exception
-  metadata, etc.; the harness checks only that the result is an error
-  kind, not its specific shape.
+- The `result_is_error: true` assertion on instance 2 is the normative
+  discrimination mechanism per §10.11: implementations MUST populate
+  this boolean field on every per-instance entry and consult it on
+  resume to route the rolled-forward contribution
+  (`true` → `errors_field`, `false` → `target_field`). The companion
+  `result_present: true` matcher asserts that the `result` field exists
+  on the saved record without constraining its shape — §10.11 mandates
+  that `completed` entries MUST reflect their contribution in `result`,
+  but the error-record shape itself remains implementation-defined per
+  §9.5 (implementations MAY represent error contributions as structured
+  records, error class instances, serialized exception metadata, etc.).
+  The harness checks the existence and the boolean discriminator, not
+  the specific representation.

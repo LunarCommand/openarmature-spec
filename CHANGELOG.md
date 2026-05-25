@@ -4,6 +4,23 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.21.0] — 2026-05-25
+
+**Added**
+
+- **pipeline-utilities §10.11 per-instance entry shape gained `result_is_error: bool`.** Boolean discriminator on each entry of `CheckpointRecord.fan_out_progress[*].instances[*]`: `true` when the entry's `result` is a `collect`-mode error contribution that rolls forward into `errors_field` on resume, `false` when it's a success contribution that rolls forward into `target_field`. MUST be `false` for `state in {"in_flight", "not_started"}` (the value of `result` is also unused in those states). The field is normatively required on every entry; implementations MUST populate it on save and consult it on resume. Inferring routing from `result` shape is not permitted. ([proposal 0027](proposals/0027-fan-out-instance-progress-result-is-error.md))
+
+**Changed**
+
+- **pipeline-utilities §10.11.2 `collect` bullet amended** to name `result_is_error` as the routing discriminator for `completed`-entry contributions on resume. The previous shape-inspection workaround (heuristic match against the engine's canonical error-record dict shape) is explicitly forbidden in favor of consulting the boolean field. ([proposal 0027](proposals/0027-fan-out-instance-progress-result-is-error.md))
+- Conformance fixtures `048-checkpoint-fan-out-per-instance-resume-skips-completed` through `054-checkpoint-fan-out-batching-buffered-saves-lost-on-crash` (pipeline-utilities) updated to assert `result_is_error` on every per-instance entry in their `saved_record_assertions.fan_out_progress[*].instances` lists, enforcing the new requiredness across all four state combinations (success-completed → `false`, collect-mode-error-completed → `true`, in_flight → `false`, not_started → `false`). Fixture 052 is the only fixture exercising the `result_is_error: true` case (it's the only fixture with a `collect`-mode failure that gets recorded as a `completed` contribution); fixtures 048–054 other than 052 all carry `result_is_error: false` uniformly. The fixture-only `result_kind: error` harness primitive that was a workaround for the missing normative discriminator is retired; fixture 052 was its sole consumer. Fixture 052 also adds a `result_present: true` matcher on the collect-mode error entry to assert §10.11's "the contribution is reflected in `result`" rule without constraining the impl-defined error-record shape (per §9.5). ([proposal 0027](proposals/0027-fan-out-instance-progress-result-is-error.md))
+
+**Notes**
+
+- **Pre-1.0 MINOR bump.** New required field on a saved-record data structure — implementations that passed the v0.20.1 fixtures need actual work to pass v0.21.0 (populate the field on save, consult it on resume, remove any heuristic shape-inspection fallback). Existing v0.20.1 fixtures (other than 052) pass unchanged; fixture 052's saved-record assertion now exercises the new field. Per the "Skip-ahead implementation" governance principle, implementations that have not yet shipped against v0.20.1 may target v0.21.0 directly.
+- **No backward-compat carve-out.** Pre-1.0, no shipping consumers between the v0.18.0 introduction of `fan_out_progress` and this proposal: the discrimination contract is normatively required from acceptance forward, with no transitional "MAY fall back to a heuristic for older records" allowance. The cleaner contract is cheap to specify while exactly one implementation exists.
+- **Cross-language consistency.** Locking in the discrimination mechanism before TypeScript implementation work avoids reconciling diverged heuristics later. The boolean field round-trips cleanly through any `Checkpointer` backend without requiring per-language agreement on the engine's internal error-record shape (which remains implementation-defined per §9.5).
+
 ## [0.20.1] — 2026-05-24
 
 **Changed**

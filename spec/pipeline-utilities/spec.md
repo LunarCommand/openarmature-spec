@@ -12,6 +12,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §10.2 `schema_version` reframed as user-facing; §10.10 `checkpoint_record_invalid` description amended and two new error categories (`checkpoint_state_migration_missing`, `checkpoint_state_migration_failed`) added; §10.12 State migrations added by [proposal 0014](../../proposals/0014-pipeline-utilities-state-migration.md)
   - §10.10 gained canonical configuration-time category `checkpoint_state_migration_chain_ambiguous`; §10.12.1 and §10.12.2 updated to reference the category by name; mutual-exclusion paragraph rewritten for four migration-related categories by [proposal 0018](../../proposals/0018-state-migration-chain-ambiguity.md)
   - §10.2 `fan_out_progress` field promoted from reserved to populated; §10.3 save-granularity rule extended to fan-out instance internal nodes (the "engine does NOT save during fan-out instance execution" rule is removed); §10.7 atomic-restart fan-out resume replaced with per-instance resume; §10.11 added (per-instance fan-out resume contract — accumulator semantics, reducer interaction, error_policy / instance_middleware composition, configurable Checkpointer-level batching for fan-out internal saves); existing §10.11 (Reference implementations and backend layering) renumbered to §10.13 by [proposal 0009](../../proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md)
+  - §10.11 per-instance entry shape gained `result_is_error: bool` field (success vs `collect`-mode-error discriminator for resume routing); §10.11.2 `collect` bullet amended to name the field as the discrimination mechanism and forbid heuristic inspection of `result` shape by [proposal 0027](../../proposals/0027-fan-out-instance-progress-result-is-error.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1093,6 +1094,13 @@ fan-outs are in flight at save time). Each entry carries:
     bucket. The value is typed per the parent state schema's `target_field` /
     `errors_field`; the representation is implementation-defined. Unused for `in_flight` and
     `not_started`.
+  - `result_is_error` — boolean discriminator for `completed` entries: `true` when the
+    contribution is a `collect`-mode error entry that rolls forward into `errors_field`,
+    `false` when the contribution is a success value that rolls forward into
+    `target_field`. MUST be `false` for `state in {"in_flight", "not_started"}` (the value
+    of `result` is also unused in those states). Implementations MUST consult this field
+    on resume to route the rolled-forward contribution; inferring routing from `result`
+    shape is not permitted.
   - `completed_inner_positions` — for `in_flight` entries, a list of `NodePosition` entries
     with the same shape as `CheckpointRecord.completed_positions` (the outer-graph contract
     from §10.2), but scoped to this fan-out instance's inner subgraph execution rather than
@@ -1157,6 +1165,10 @@ Per §9.5, fan-out has two error policies:
   `target_field` or a recorded error for `errors_field`, is preserved and rolls forward to
   the fan-in step at fan-out completion. Instances in `in_flight` or `not_started` re-run;
   if they fail again, the failure is again recorded into the accumulator as an error entry.
+  The `result_is_error` field on the saved per-instance entry (per §10.11) discriminates
+  the two cases: `result_is_error: true` routes the contribution to `errors_field`;
+  `result_is_error: false` routes it to `target_field`. Implementations MUST consult this
+  field rather than inferring routing from `result` shape.
 
 #### 10.11.3 Composition with `instance_middleware`
 
