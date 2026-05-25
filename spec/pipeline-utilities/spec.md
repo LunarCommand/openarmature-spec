@@ -14,6 +14,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §10.2 `fan_out_progress` field promoted from reserved to populated; §10.3 save-granularity rule extended to fan-out instance internal nodes (the "engine does NOT save during fan-out instance execution" rule is removed); §10.7 atomic-restart fan-out resume replaced with per-instance resume; §10.11 added (per-instance fan-out resume contract — accumulator semantics, reducer interaction, error_policy / instance_middleware composition, configurable Checkpointer-level batching for fan-out internal saves); existing §10.11 (Reference implementations and backend layering) renumbered to §10.13 by [proposal 0009](../../proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md)
   - §10.11 per-instance entry shape gained `result_is_error: bool` field (success vs `collect`-mode-error discriminator for resume routing); §10.11.2 `collect` bullet amended to name the field as the discrimination mechanism and forbid heuristic inspection of `result` shape by [proposal 0027](../../proposals/0027-fan-out-instance-progress-result-is-error.md)
   - §10.2 `schema_version` paragraph clarified: the outermost declared graph state class is the canonical source for the value written onto saved records; implementations MUST NOT source `schema_version` from the runtime instance's class when a State subclass shadows the declared value by [proposal 0028](../../proposals/0028-schema-version-canonical-source.md)
+  - §10.11 gained a "Count drift on resume" rule: when a saved `fan_out_progress` entry's `instance_count` differs from the resumed run's resolved count, the engine MUST raise `checkpoint_record_invalid` (per §10.10); silent pad/truncate of the saved `instances` list is not permitted. §10.10 `checkpoint_record_invalid` description extended to enumerate count drift as a failure mode by [proposal 0029](../../proposals/0029-count-drift-strict.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1028,13 +1029,15 @@ Canonical runtime category: `checkpoint_record_invalid` — raised when
 `Checkpointer.load(X)` returns a record whose schema is incompatible with the current graph
 (state shape mismatch, missing required fields, a post-migration state that fails to
 deserialize against the current state class per §10.12.4, OR a version mismatch on a
-Checkpointer backend that cannot support state migration per §10.12.1). Non-transient.
-(Prior to proposal 0014, "incompatible `schema_version`" appeared in this list as a
-generic reason; raw `schema_version` mismatches now route through
-`checkpoint_state_migration_missing` or `checkpoint_state_migration_failed` per §10.12 on
-migration-capable backends, and only fall back to `checkpoint_record_invalid` when the
-backend itself cannot expose the class-independent intermediate the migration system
-requires.)
+Checkpointer backend that cannot support state migration per §10.12.1). The category also
+covers `fan_out_progress[*].instance_count` drift between save and resume per §10.11 — a
+saved per-instance accumulator shape that is structurally incompatible with the resumed
+run's resolved count. Non-transient. (Prior to proposal 0014, "incompatible
+`schema_version`" appeared in this list as a generic reason; raw `schema_version`
+mismatches now route through `checkpoint_state_migration_missing` or
+`checkpoint_state_migration_failed` per §10.12 on migration-capable backends, and only
+fall back to `checkpoint_record_invalid` when the backend itself cannot expose the
+class-independent intermediate the migration system requires.)
 
 New canonical runtime category: `checkpoint_state_migration_missing` — raised on
 `invoke(resume_invocation=X)` when the loaded record's `schema_version` does not match the
@@ -1117,6 +1120,19 @@ fan-outs are in flight at save time). Each entry carries:
     the outer graph. Empty when the instance is `in_flight` but no inner node has yet
     completed within this instance's subgraph (e.g., a sibling-triggered save fired right
     after this instance's first `started` event). Unused for `completed` and `not_started`.
+
+**Count drift on resume.** When the engine loads a saved record and finds a
+`fan_out_progress` entry whose `instance_count` does NOT equal the count the resumed run
+resolves for the same fan-out node (per §9 `count` or `items_field` mode), the engine
+MUST raise `checkpoint_record_invalid` (per §10.10). Implementations MUST NOT silently
+pad the saved `instances` list with `not_started` entries when the resumed count is
+larger, nor silently truncate trailing entries when the resumed count is smaller —
+per-instance accumulator contributions written under one `instance_count` cannot be
+reconciled with a different count without risking dropped or duplicated entries at the
+fan-in step, breaking §10.11.1's exactly-once reducer guarantee. The check MUST happen
+before any fan-out instance work runs on the resumed path; a saved record with multiple
+fan-out entries raises on the first mismatch encountered. Users who intentionally change
+a fan-out's input set between runs MUST start a fresh invocation rather than resume.
 
 `completed` is the load-bearing state. An instance's `completed` status MUST mean: the
 instance produced its durable contribution to the fan-out accumulator AND that contribution
