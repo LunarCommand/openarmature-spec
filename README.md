@@ -6,7 +6,7 @@ specification text, conformance fixtures, governance rules, and numbered
 RFC-style proposals. **No implementation code lives here.** Implementations
 are in sibling repositories.
 
-**Current spec version:** [v0.22.0](CHANGELOG.md)
+**Current spec version:** [v0.22.1](CHANGELOG.md)
 
 ---
 
@@ -68,7 +68,7 @@ and architecture are in [`docs/openarmature.md`](docs/openarmature.md).
 
 | Capability | Introduced | Latest | Fixtures | Scope |
 |---|---|---|---|---|
-| [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.19.0 | 25 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks (with bounded `drain` — optional caller-supplied timeout + summary of undelivered events) |
+| [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.22.1 | 25 | Typed state, async nodes, conditional/static edges, reducers, subgraph composition, observer hooks (with bounded `drain` — optional caller-supplied timeout + summary of undelivered events; snapshot semantic for covered invocations; MUST-reject for invalid timeout inputs) |
 | [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.22.0 | 55 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (per-instance fan-out resume with explicit success/error discrimination, strict count-drift detection on resume, state migration with canonical declared-class `schema_version` source, configurable backend batching for fan-out internal saves), parallel branches |
 | [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.20.1 | 31 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, structured output via `response_schema`, request-side tool-calling control via `tool_choice`, and a wire-format-mapping catalog (§8.1 OpenAI-compatible; in-spec default for cross-language provider mappings) |
 | [observability](spec/observability/spec.md) | 0.7.0 | 0.17.0 | 21 | Cross-backend correlation IDs, OpenTelemetry mapping (spans, log correlation, detached trace mode), LLM-span payload + GenAI semconv attributes (default-off payload, request parameters under `gen_ai.request.*`, GenAI semconv response attributes for LLM-aware backends) |
@@ -85,7 +85,6 @@ they are Accepted.
 | [0021](proposals/0021-graph-suspension.md) | Draft | spec/suspension/spec.md (new), graph-engine §3 + §6, observability §4 + §5, pipeline-utilities §10 | Graph suspension and external-signal resume — generalized pause primitive (HITL + async-job-wait + scheduled wakeup as flavors of one suspend) |
 | [0022](proposals/0022-harness-contract.md) | Draft | spec/harness/spec.md (new) | Harness contract — abstract behavioral contract for any harness wrapping the OA engine to serve a deployment runtime (three inbound dispatch paths, turn lifecycle, error categorization, runtime-neutral) |
 | [0023](proposals/0023-canonical-state-reducers.md) | Draft | graph-engine §2 | Canonical state reducers — extend baseline reducers with `bounded_append`, `dedupe_append`, `merge_by_key` (factory-style closures for chat-agent and tool-loop patterns) |
-| [0030](proposals/0030-drain-snapshot-and-timeout-validation.md) | Draft | graph-engine §6 | §6 Drain clarifications: snapshot semantic (drain covers workers active at call time, not invocations started during the drain) + timeout-input validation (implementations MUST reject negative / NaN timeouts) |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 

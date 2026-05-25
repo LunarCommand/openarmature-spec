@@ -1,9 +1,9 @@
 # 0030: Graph Engine — §6 Drain snapshot semantic and timeout-input validation
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-25
-- **Accepted:**
+- **Accepted:** 2026-05-25
 - **Targets:** spec/graph-engine/spec.md (clarifies §6 Drain with two textual amendments: snapshot semantic for "prior invocations" + MUST-reject rule for negative / NaN timeout inputs)
 - **Related:** 0010 (drain timeout — both clarifications surfaced during 0010's openarmature-python implementation pass)
 - **Supersedes:**
