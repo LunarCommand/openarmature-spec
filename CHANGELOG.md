@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.18.1] — 2026-05-25
+
+**Fixed**
+
+- **pipeline-utilities conformance fixture `052-checkpoint-fan-out-collect-errors-resume` — `expected.final_state.results` literal corrected** from `[10, 20, 30, 40]` to `[10, 20, 40, 50]`. The fixture exercises a 5-instance collect-mode fan-out (items `[10, 20, 30, 40, 50]`) with instance 2 (item value `30`) configured to always fail; failures under `collect` route to `errors_field` and never to the success `target_field`. The original literal listed the first four input items rather than the four values from the four successful instances (0, 1, 3, 4), contradicting the fixture's own description ("4 success contributions in `results`") and its other assertions (`errors_list_length: 1`, `instances_executed_during_resume: [3, 4]`, `instances_skipped_during_resume: [0, 1, 2]`). Surfaced by the openarmature-python proposal 0009 implementation pass.
+
+**Notes**
+
+- **Pre-1.0 PATCH bump.** Fixture-data correction only — no spec text changes, no behavioral changes, no new types, no new error categories. The spec contract defined in v0.18.0 is unchanged; the fixture literal now matches what the fixture's own data trace produces. An implementation that passed the fixture's documented intent under v0.18.0 (i.e., produced `[10, 20, 40, 50]` per the description and other assertions) passes the corrected fixture unchanged; an implementation that had matched the wrong literal would have had to produce output inconsistent with the fixture's data shape. No proposal required per `GOVERNANCE.md` (typo fix).
+- **Skip-ahead implementation.** Per the Skip-ahead implementation governance principle, implementations that have not yet shipped against v0.18.0 may target v0.18.1 directly.
+
 ## [0.18.0] — 2026-05-24
 
 **Added**
