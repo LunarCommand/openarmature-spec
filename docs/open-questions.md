@@ -128,6 +128,17 @@ is just "keep it not-too-stale."
   "TypeScript port anticipated" or requires a concrete TypeScript
   implementation in flight. Lean was "former is fine"; worth clarifying in
   the first §8.X follow-on if reviewers push.
+- **Byte-stable wire-mapping assertions across implementations.**
+  [candidate-for-new-proposal] — the §8.X wire mappings are end-to-end
+  tested via `expected_wire_request` captures (each impl compares against
+  its language-native JSON shape). A future cross-impl conformance dimension
+  could assert that the wire body produced by two implementations for the
+  same spec input is byte-stable (similar in spirit to §10.11.1's
+  exactly-once reducer invariants). Surfaced during 0025's implementation
+  work as an observation that the matcher infrastructure is already in place
+  — what's missing is the fixture shape that exercises cross-impl byte
+  equality. Defer until a real cross-impl scenario surfaces; today this is
+  single-impl territory (only the Python impl ships an §8.X mapping).
 
 ---
 
