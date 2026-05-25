@@ -788,14 +788,13 @@ The `CheckpointRecord` carries:
 - `schema_version` — string. Carries the version identifier of the user's state schema at the
   time the record was saved. The state definition MAY expose a stable, user-controlled
   `schema_version` identifier (the surface for declaring it is per-language ergonomic — e.g.,
-  a class attribute in Python, a constant in TypeScript). When declared, the framework reads
-  `schema_version` from the state definition at save time and writes it onto the record.
-  State classes that do not declare a `schema_version` are treated as carrying an
-  implementation-defined sentinel value (typically the empty string), and are not
-  migration-eligible until they declare one. Users intending to evolve their schema across
-  deploys MUST declare an explicit `schema_version` so that migrations (per §10.12) can be
-  registered against it. **The framework reads `schema_version` from the outermost declared
-  graph state class** (the state class passed to the graph constructor — e.g.,
+  a class attribute in Python, a constant in TypeScript). State classes that do not declare a
+  `schema_version` are treated as carrying an implementation-defined sentinel value (typically
+  the empty string), and are not migration-eligible until they declare one. Users intending to
+  evolve their schema across deploys MUST declare an explicit `schema_version` so that
+  migrations (per §10.12) can be registered against it. **The framework reads `schema_version`
+  from the outermost declared graph state class** (the state class passed to the graph
+  constructor — e.g.,
   `GraphBuilder(MyState)` in Python or the equivalent in another language idiom) at save
   time and writes that value onto the record. Implementations MUST NOT source
   `schema_version` from the runtime instance's class (e.g., `type(state).schema_version` in
