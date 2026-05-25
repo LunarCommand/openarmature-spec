@@ -1,0 +1,1 @@
+../../proposals/0028-schema-version-canonical-source.md
