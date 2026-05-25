@@ -63,9 +63,9 @@ The pattern that fails this rule:
 2. A maintenance tag `vA.B.1` is cut from a side branch off `vA.B.0`
    with the fix isolated. Tag and release published.
 3. The cherry-pick back to `main` is scheduled separately and lags.
-4. Before the cherry-pick lands, a new MINOR `vA.B+1.0` is tagged off
+4. Before the cherry-pick lands, a new MINOR `vA.(B+1).0` is tagged off
    `main` — inheriting the original typo.
-5. Same again at `vA.B+2.0`, `vA.B+2.1`, …
+5. Same again at `vA.(B+2).0`, `vA.(B+2).1`, …
 6. The cherry-pick eventually lands on main, fixing future tags from
    that point forward — but every interleaved tag between the
    maintenance bump and the cherry-pick is permanently broken (without
@@ -145,7 +145,7 @@ Force-tagging published releases is a destructive operation:
 
 ## Maintenance tags
 
-A maintenance tag (`vX.Y.Z+1` cut from a side branch off `vX.Y.Z`)
+A maintenance tag (`vX.Y.(Z+1)` cut from a side branch off `vX.Y.Z`)
 is appropriate when:
 
 - The fix is purely textual or fixture-data.
@@ -159,7 +159,7 @@ For the maintenance tag itself:
 - Apply the fix + `CHANGELOG.md` entry naming the maintenance bump.
 - Bump README `Current spec version` on the side branch ONLY if the
   side branch is being published as the new "canonical" version of
-  the `vX.Y.Z+` line (uncommon; usually the main line is canonical).
+  the `vX.Y.*` line (uncommon; usually the main line is canonical).
 - Tag the side-branch commit, push the tag, publish the GitHub
   Release with `--latest=false` (so it doesn't supersede the main
   line's latest tag).
