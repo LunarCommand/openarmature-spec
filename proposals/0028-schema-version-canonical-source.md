@@ -52,7 +52,7 @@ Two readings of the current text are both spec-conformant:
   value on `type(state)` (`"v2"` in the subclass case). This is what
   the fan-out save helpers (`_save_instance_completed`,
   `_save_instance_in_flight`) in the same reference implementation do
-  today (after the proposal-0027 impl-review pass switched them to
+  today (after the proposal-0009 impl-review pass switched them to
   `type(parent_states_prefix[0]).schema_version`).
 
 These two readings disagree only under subclass shadowing, but they
