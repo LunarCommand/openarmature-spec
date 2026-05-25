@@ -1,11 +1,11 @@
-# 0027: Pipeline Utilities — Explicit `result_is_error` on `FanOutInstanceProgress`
+# 0027: Pipeline Utilities — Explicit `result_is_error` on `fan_out_progress` per-instance entries
 
 - **Status:** Draft
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-25
 - **Accepted:**
-- **Targets:** spec/pipeline-utilities/spec.md (extends the §10.11 `FanOutInstanceProgress` entry shape with one new required boolean field); spec/pipeline-utilities/conformance/052-checkpoint-fan-out-collect-errors-resume.yaml (extends saved-record assertions to exercise the new field)
-- **Related:** 0009 (per-instance fan-out resume — the proposal that introduced the `FanOutInstanceProgress` shape)
+- **Targets:** spec/pipeline-utilities/spec.md (extends the §10.11 per-instance entry shape on `CheckpointRecord.fan_out_progress` with one new required boolean field); spec/pipeline-utilities/conformance/052-checkpoint-fan-out-collect-errors-resume.yaml (extends saved-record assertions to exercise the new field)
+- **Related:** 0009 (per-instance fan-out resume — the proposal that introduced the `CheckpointRecord.fan_out_progress` per-instance entry shape)
 - **Supersedes:**
 
 ## Summary
@@ -20,10 +20,11 @@ existing per-instance `result` field is unchanged.
 
 ## Motivation
 
-§10.11's `FanOutInstanceProgress.result` carries the per-instance
-contribution but is silent on how an implementation distinguishes
-success from error contributions when rolling them forward at the
-fan-in step on resume. The two cases are textually described — "for
+§10.11's per-instance `result` field (on entries of
+`CheckpointRecord.fan_out_progress[*].instances[*]`) carries the
+per-instance contribution but is silent on how an implementation
+distinguishes success from error contributions when rolling them
+forward at the fan-in step on resume. The two cases are textually described — "for
 success (any error_policy), the value contributed to the `target_field`
 bucket; for `collect`-mode failures, the error entry contributed to the
 `errors_field` bucket" — but the discrimination mechanism is left
@@ -58,7 +59,7 @@ essentially free.
 
 ## Detailed design
 
-### §10.11 `FanOutInstanceProgress` entry shape: add `result_is_error`
+### §10.11 per-instance entry shape: add `result_is_error`
 
 Extend the per-instance entry list in §10.11 with one new field. The
 revised entry shape is:
@@ -134,7 +135,7 @@ amended bullet reads (new text **bold**, surrounding text unchanged):
 >   completion. Instances in `in_flight` or `not_started` re-run; if
 >   they fail again, the failure is again recorded into the
 >   accumulator as an error entry. **The `result_is_error` field on
->   the saved `FanOutInstanceProgress` entry (per §10.11)
+>   the saved per-instance entry (per §10.11)
 >   discriminates the two cases: `result_is_error: true` routes the
 >   contribution to `errors_field`; `result_is_error: false` routes it
 >   to `target_field`. Implementations MUST consult this field rather
@@ -147,7 +148,8 @@ instances and the discrimination question doesn't arise.
 ### Cross-spec touchpoints
 
 - **Pipeline-utilities §10.11** — primary change site. The
-  `FanOutInstanceProgress` entry shape gains the new field.
+  per-instance entry shape (on `CheckpointRecord.fan_out_progress[*].instances[*]`)
+  gains the new field.
 - **Pipeline-utilities §10.11.2** — amended per the section above
   (one sentence appended to the `collect` bullet).
 - **Pipeline-utilities §10.11.1** — unchanged. Reducer-interaction
@@ -182,8 +184,8 @@ instances:
   - {state: completed, result: 20, result_is_error: false}
   # Instance 2's contribution is an error record under collect.
   - {state: completed, result_is_error: true}
-  - {state: not_started}
-  - {state: not_started}
+  - {state: not_started, result_is_error: false}
+  - {state: not_started, result_is_error: false}
 ```
 
 The success entries (instances 0, 1) gain an explicit
