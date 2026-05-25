@@ -144,8 +144,8 @@ save time). The count-drift rule applies independently to each
 entry; the engine MUST raise on the FIRST mismatch encountered. The
 error message SHOULD identify which `fan_out_node_name` and
 `namespace` triggered the raise so the user can diagnose. The
-identification mechanism is implementation-defined per §10.10's
-error-payload framing.
+identification mechanism is implementation-defined per the
+language idiom.
 
 ### Resume-time check, not save-time
 

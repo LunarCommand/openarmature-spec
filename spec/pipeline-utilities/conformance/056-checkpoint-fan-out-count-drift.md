@@ -14,8 +14,8 @@ guarantee.
 **Spec sections exercised:**
 
 - §10.11 "Count drift on resume" paragraph (the new normative rule).
-- §10.10 `checkpoint_record_invalid` description (the category surface
-  the rule routes through).
+- §10.10 `checkpoint_record_invalid` description (the category the
+  rule routes through).
 - §10.5 idempotency framing (the rule's motivation — resume continues
   the prior run's work, doesn't extend or truncate it).
 - §10.11.1 reducer exactly-once guarantee (the invariant the rule

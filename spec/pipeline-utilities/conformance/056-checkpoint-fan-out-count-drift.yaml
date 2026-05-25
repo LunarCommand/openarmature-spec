@@ -90,9 +90,10 @@ cases:
       expected_error:
         # The engine MUST raise checkpoint_record_invalid before any
         # fan-out instance work runs. Category match only — the
-        # impl-defined error payload (SHOULD identify the fan_out_node_name
-        # and namespace per §10.10's error-payload framing) is not
-        # asserted here cross-impl.
+        # error payload is implementation-defined per the language
+        # idiom (impls SHOULD identify the fan_out_node_name and
+        # namespace that triggered the raise) and is not asserted
+        # here cross-impl.
         category: checkpoint_record_invalid
 
   - name: grown_count_raises_checkpoint_record_invalid
