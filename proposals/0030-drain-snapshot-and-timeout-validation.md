@@ -130,11 +130,11 @@ behavior.
 
 The reference Python implementation already implements both
 clarifications (snapshot in its `drain()` worker capture; the
-API-boundary error on negative / NaN inputs after the 0010
-implementation pass's CoPilot review). The clarifications make
-those implicit choices normative for cross-implementation
-consistency; no Python impl follow-on is needed beyond a
-documentation sweep (the docstring already names both behaviors).
+API-boundary error on negative / NaN inputs added during the 0010
+implementation pass). The clarifications make those implicit
+choices normative for cross-implementation consistency; no Python
+impl follow-on is needed beyond a documentation sweep (the
+docstring already names both behaviors).
 
 ## Conformance test impact
 
