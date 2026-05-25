@@ -48,6 +48,18 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - **Summary shape is language-idiomatic.** The two required fields (`undelivered_count`, `timeout_reached`) are mandated; the shape that carries them (a Python `dict`/dataclass, a TypeScript object, etc.) is per-language ergonomics. Implementations MAY add additional fields (per-observer counts, sampled event metadata) as long as the minimum two are present.
 - **Downstream interactions** (informative — no normative changes to other capabilities): under a timeout, late observer events may be lost. The OTel observer (observability §6) may have openarmature spans that never reach the exporter; downstream OTel exporters' own buffer/retry settings cover this. Checkpoint save events (pipeline-utilities §10.8) may not surface as observer-stream spans under timeout, but the underlying checkpoint save was synchronous and durable per §10.3 / §10.1.1 — resume correctness is unaffected. Event *production* remains deterministic (graph-engine §5); only event *delivery* is bounded by the timeout.
 
+## [0.18.1] — 2026-05-25
+
+**Fixed**
+
+- **pipeline-utilities conformance fixture `052-checkpoint-fan-out-collect-errors-resume` — `expected.final_state.results` literal corrected** from `[10, 20, 30, 40]` to `[10, 20, 40, 50]`. The fixture exercises a 5-instance collect-mode fan-out (items `[10, 20, 30, 40, 50]`) with instance 2 (item value `30`) configured to always fail; failures under `collect` route to `errors_field` and never to the success `target_field`. The original literal listed the first four input items rather than the four values from the four successful instances (0, 1, 3, 4), contradicting the fixture's own description ("4 success contributions in `results`") and its other assertions (`errors_list_length: 1`, `instances_executed_during_resume: [3, 4]`, `instances_skipped_during_resume: [0, 1, 2]`). Surfaced by the openarmature-python proposal 0009 implementation pass.
+
+**Notes**
+
+- **Pre-1.0 PATCH bump.** Fixture-data correction only — no spec text changes, no behavioral changes, no new types, no new error categories. The spec contract defined in v0.18.0 is unchanged; the fixture literal now matches what the fixture's own data trace produces. An implementation that passed the fixture's documented intent under v0.18.0 (i.e., produced `[10, 20, 40, 50]` per the description and other assertions) passes the corrected fixture unchanged; an implementation that had matched the wrong literal would have had to produce output inconsistent with the fixture's data shape. No proposal required per `GOVERNANCE.md` (typo fix).
+- **Released as a v0.18.x maintenance tag.** Tagged on a maintenance branch off v0.18.0 (rather than on `main`, which had since stacked v0.19.0 / v0.20.0 / v0.20.1) so the python implementation can bump its spec submodule pin from v0.18.0 to v0.18.1 cleanly without absorbing the unrelated v0.19.0+ fixture sets it has not yet implemented. The same fixture correction is also reflected on `main` for forward consistency.
+- **Skip-ahead implementation.** Per the Skip-ahead implementation governance principle, implementations that have not yet shipped against v0.18.0 may target v0.18.1 directly.
+
 ## [0.18.0] — 2026-05-24
 
 **Added**
