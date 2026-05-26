@@ -1,0 +1,114 @@
+# Smallest possible Langfuse trace: linear graph with three nodes,
+# default Langfuse observer config. Establishes the fundamental Trace +
+# Observation shape before testing nuances in 023-024.
+#
+# Conformance harness contract for Langfuse-mapping fixtures:
+#
+#   - The harness instantiates an in-memory Langfuse client recorder
+#     (captures Trace + Observation entities as they would be sent to
+#     Langfuse) and a Langfuse observer wired to the graph. The recorder
+#     replaces the network sink; no real Langfuse API call is made.
+#   - Graph definition follows the existing observability fixture
+#     conventions (state, entry, nodes, edges, initial_state, mock_llm).
+#   - Optional config blocks:
+#     * `caller_correlation_id` — string passed to invoke(); when omitted,
+#       framework auto-generates a UUIDv4 (spec §3.1).
+#     * `caller_invocation_label` — string passed to invoke() as the
+#       caller-supplied invocation label per §8.6; when omitted, the
+#       observer SHOULD default trace.name to the entry-node name.
+#     * `langfuse_observer` — block configuring the Langfuse observer:
+#       * `disable_llm_spans: bool` (default false)
+#       * `disable_llm_payload: bool` (default true)
+#     * `mock_llm` — canned responses for an OpenAI-compatible mock
+#       provider (per llm-provider §8 wire format).
+#   - Expected output:
+#     * `expected.langfuse_trace` — top-level Trace shape (id pattern,
+#       name, metadata) with a nested `observations` tree of
+#       observation records. Each observation has `type` (span /
+#       generation / event), `name`, `metadata` (subset assertions),
+#       `level`, optional Generation-specific fields (input, output,
+#       model, modelParameters, usage, prompt), and `children`.
+#
+# Attribute placeholder strings (same as OTel fixtures):
+#   - `<uuid>` matches any canonical UUIDv4 (36 chars, hyphenated).
+#   - `<any-string>` matches any non-empty string.
+#   - `<corr_id_X>` matches an opaque correlation id used for
+#     cross-observation correlation (harness binds X to the actual id on
+#     first occurrence and asserts equality on later occurrences).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1, trace: ["a"]}
+  b:
+    update: {v: 2, trace: ["b"]}
+  c:
+    update: {v: 3, trace: ["c"]}
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+# No caller_correlation_id — verify auto-generation per §3.1.
+# No caller_invocation_label — verify §8.6 entry-node-name fallback.
+
+expected:
+  langfuse_trace:
+    id: "<uuid>"
+    name: "a"
+    metadata:
+      correlation_id: "<corr_id_1>"
+      entry_node: "a"
+      spec_version: "<any-string>"
+    observations:
+      - type: span
+        name: "a"
+        metadata:
+          namespace: ["a"]
+          step: 0
+          attempt_index: 0
+          correlation_id: "<corr_id_1>"
+        level: DEFAULT
+        children: []
+      - type: span
+        name: "b"
+        metadata:
+          namespace: ["b"]
+          step: 1
+          attempt_index: 0
+          correlation_id: "<corr_id_1>"
+        level: DEFAULT
+        children: []
+      - type: span
+        name: "c"
+        metadata:
+          namespace: ["c"]
+          step: 2
+          attempt_index: 0
+          correlation_id: "<corr_id_1>"
+        level: DEFAULT
+        children: []
+
+  # Invariant: the same correlation_id MUST appear on the Trace's
+  # metadata.correlation_id AND on every Observation's
+  # metadata.correlation_id (cross-cutting per §8.5).
+  invariants:
+    correlation_id_consistency: true
+    # Invariant: the Trace's id MUST equal the invocation_id (which is
+    # how cross-system lookup by invocation_id finds the Langfuse
+    # Trace per §8.4.1).
+    trace_id_equals_invocation_id: true
