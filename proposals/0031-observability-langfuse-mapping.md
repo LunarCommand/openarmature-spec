@@ -293,13 +293,22 @@ In both cases the following metadata is set:
 | `openarmature.prompt.label` | `generation.metadata.prompt.label` |
 | `openarmature.prompt.template_hash` | `generation.metadata.prompt.template_hash` |
 | `openarmature.prompt.rendered_hash` | `generation.metadata.prompt.rendered_hash` |
-| `openarmature.prompt.group_name` (when set) | `observation.metadata.prompt_group_name` (every observation within the group) |
 
 The `generation.metadata.prompt` map's shape is normative for
 cross-implementation parity. Implementations MUST NOT collapse it into
 flat metadata keys (e.g., `metadata.prompt_name` flat strings) when
 the structured shape above is available — the structured form lets
 Langfuse UI extensions render prompt identity uniformly.
+
+**Prompt-group propagation.** When `openarmature.prompt.group_name`
+is set on spans participating in a `PromptGroup` (per prompt-management
+§9 / §11), the value propagates to
+`observation.metadata.prompt_group_name` on every participating
+observation — including each Generation observation for the group's
+LLM calls and any wrapping node/subgraph Span observations carrying
+the group_name. Unlike the per-Generation prompt-identity fields
+above, this is an observation-level attribute and follows the §8.4.2
+observation-level mapping pattern.
 
 #### 8.5 Correlation ID realization
 
@@ -321,7 +330,7 @@ Detached trace mode (§4.4) applies to the Langfuse mapping the same as
 to the OTel mapping. A detached subgraph or fan-out produces a separate
 Langfuse Trace (new `trace.id`); the parent's dispatch observation
 carries a Langfuse-native cross-trace reference in its metadata
-(`metadata.detached_child_trace_id` — string array, one entry per
+(`metadata.detached_child_trace_ids` — string array, one entry per
 detached child). The correlation_id is invocation-scoped per §3, so
 all detached Traces and the parent Trace share the same
 `metadata.correlation_id`.
@@ -355,9 +364,11 @@ the behavioral contract above is the minimum.
 #### 8.7 Generation rendering
 
 Generation observations render the LLM call's input/output content
-when the §5.5 LLM-payload attributes are emitted (i.e., when the OTel
-observer's `disable_llm_payload` flag is `False`, OR the Langfuse
-observer is configured for payload emission per its own flag).
+when the Langfuse observer's `disable_llm_payload` flag is `False`.
+The flag governs Langfuse-side emission only; it is independent of
+the OTel observer's flag per §8.9. Both observers consume the same
+source data (per §5.5's definition of LLM-payload content) from the
+§6 LLM provider event, and each makes its own emission decision.
 
 The Langfuse observer MUST support its own `disable_llm_payload` flag
 independent of the OTel observer's setting (per §8.9). When the flag
