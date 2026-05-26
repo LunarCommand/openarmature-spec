@@ -24,8 +24,9 @@ Langfuse's `metadata` and observation-shape fields; correlation ID
 realization on trace and observation metadata; the `langfuse.trace.name`
 attribute on the Trace and where its value sources from; generation
 rendering with payload + truncation reuse from §5.5; prompt linkage that
-honors both Langfuse-native PromptBackend sources (via the SDK's prompt
-entity link) and non-Langfuse sources (via observation metadata); and
+attaches a Langfuse Prompt entity reference when the prompt's source
+provides one (regardless of which specific backend produced it) and
+falls back to metadata-only otherwise; and
 composition rules so a graph wired to BOTH the OTel observer AND the
 Langfuse observer produces consistent OA-state across both backends. No
 existing OTel-mapping behavior changes; the LangfuseObserver is a new
@@ -39,17 +40,17 @@ substrate-neutral mapping family, with the OTel mapping (§3–§7) as the
 first concrete backend. §9 (becoming §10 in this proposal) names Langfuse
 as a deferred mapping. Two real-world signals justify landing it now:
 
-1. **Production users today rely on Langfuse's OTLP ingest with custom
-   per-service attribute-mapping shims.** A downstream user adopting the
-   v0.17.0 LLM-payload + GenAI semconv attributes (proposal 0024) reports a
-   ~50-LOC `LangfuseAttributeMapper` they wrote to translate
-   `openarmature.prompt.*` → `langfuse.prompt.*` and `openarmature.llm.*` →
-   `langfuse.observation.*` so Langfuse renders generations correctly. Their
-   own thin wrapper around the Langfuse Python SDK exists for the same
-   reason on the prompt-management side. Every Langfuse user re-derives
-   this shim, and the shim's correctness is fragile (Langfuse's OTLP
-   ingest semantics evolve; users patch when something breaks). A
-   normative mapping replaces the shim with a first-class
+1. **Production deployments today rely on Langfuse's OTLP ingest with
+   custom per-service attribute-mapping shims.** The pattern recurs
+   across reported usage of the v0.17.0 LLM-payload + GenAI semconv
+   attributes (proposal 0024): on the observability side, a per-service
+   attribute mapper translating `openarmature.prompt.*` →
+   `langfuse.prompt.*` and `openarmature.llm.*` →
+   `langfuse.observation.*` so Langfuse renders generations correctly;
+   on the prompt-management side, a thin wrapper around the Langfuse
+   client. Each adopter re-derives the same shim, and each shim's
+   correctness is fragile under evolving Langfuse OTLP ingest
+   semantics. A normative mapping replaces the shim with a first-class
    LangfuseObserver.
 
 2. **Langfuse's native data model carries more than OTel can.** Generation
@@ -65,15 +66,15 @@ as a deferred mapping. Two real-world signals justify landing it now:
    Langfuse SDK directly produces clean native shape without the
    round-trip.
 
-The friction-roundup work that produced proposal 0024 also surfaced two
-Langfuse-specific items deferred to this proposal:
-
-- **#8 — Langfuse-native backend.** Surface a sibling §-section in the
-  observability spec defining the LangfuseObserver's normative behavior.
-- **#11 — `langfuse.trace.name` on invocation-root.** Langfuse's OTLP
-  ingest does not derive trace name from the OTel root span name; it
-  reads a Langfuse-specific attribute. The native LangfuseObserver
-  surfaces the same field through Langfuse's Trace API.
+Proposal 0024 explicitly deferred a Langfuse-native backend mapping
+(see its "Why now" section) precisely so the LLM-payload work could
+ship without bundling the larger Langfuse surface. This proposal lands
+that deferred work and, in doing so, addresses one specific OTLP-mirror
+wart: Langfuse's OTLP ingest does not derive the Langfuse Trace's
+display name from the OTel root span name; it reads a Langfuse-specific
+attribute. A native LangfuseObserver sets the Trace's name field
+directly through Langfuse's Trace API and sidesteps the attribute-key
+guessing game.
 
 A normative Langfuse mapping has three concrete benefits, paralleling
 the original OTel-mapping rationale (§7 of proposal 0007):
@@ -91,12 +92,12 @@ the original OTel-mapping rationale (§7 of proposal 0007):
 
 ### Why now
 
-The downstream user enumerated above has a hard adoption gate on the
-LangfuseObserver shipping in the next python release. The spec needs to
-land first so the python implementation has a target. The predecessor
-proposal (0024 — LLM payload + GenAI semconv) shipped at v0.17.0; the
-attribute set this mapping translates from is now stable. No additional
-predecessors gate this work.
+Production demand for first-class Langfuse emission has been building
+since the v0.17.0 LLM-payload + GenAI semconv work shipped; adopters of
+that work hit the OTLP-ingest-plus-shim friction immediately. The
+predecessor proposal (0024) is now stable, so the attribute set this
+mapping translates from is fixed; no additional predecessors gate this
+work.
 
 ## Design
 
@@ -157,8 +158,8 @@ Langfuse exposes a small set of entity types relevant to this mapping:
     mapping; reserved for future proposals.
 - **Prompt entity.** A Langfuse-managed prompt record with `name`,
   `version`, `label`, and content. Generation observations carry a
-  native link to a Prompt entity when the prompt was sourced from a
-  Langfuse-native PromptBackend.
+  native link to a Prompt entity when the prompt's source provides one
+  (see §8.4.4 for the linkage trigger).
 
 Implementations consume Langfuse's client SDK in their host language
 (Python, TypeScript). The SDK calls themselves are impl detail; this
@@ -256,19 +257,37 @@ category mechanism in §4.2 covers hard failures via the
 
 When the LLM provider span carries `openarmature.prompt.*` attributes
 (per prompt-management §11), the Generation observation MUST surface
-the prompt identity. Two cases:
+the prompt identity. The mechanism depends on what the prompt's source
+backend provides — not on which specific backend it is. Two cases:
 
-1. **Prompt sourced from a Langfuse-native PromptBackend.** The
-   Generation observation MUST be linked to the Langfuse Prompt entity
-   via the SDK's native prompt-link mechanism (Langfuse's Generation
-   API takes a `prompt` parameter; the SDK call shape is impl detail).
-   The metadata fields below MUST also be set redundantly so consumers
-   can query without traversing the link.
-2. **Prompt sourced from a non-Langfuse PromptBackend** (filesystem,
-   in-memory, custom). No Prompt-entity link is established; identity
-   surfaces via metadata only.
+1. **The prompt's source exposes a Langfuse Prompt reference.** Any
+   prompt backend that attaches an accessible Langfuse Prompt entity
+   to the rendered prompt qualifies. A Langfuse-native PromptBackend
+   is the obvious case, but the contract is open to other backends
+   that may expose the same — e.g., a federated proxy backend that
+   resolves through Langfuse, a custom backend that mirrors prompts
+   to Langfuse, or any future backend that interoperates with the
+   Langfuse Prompt entity. In all such cases the Generation
+   observation MUST be linked to that Langfuse Prompt entity via
+   Langfuse's native link mechanism (the Generation API accepts a
+   prompt reference; the SDK call shape is impl detail). The metadata
+   fields below MUST also be set redundantly so consumers can query
+   without traversing the link.
+2. **The prompt's source does NOT expose a Langfuse Prompt
+   reference.** This covers all backends that have no native Langfuse
+   Prompt counterpart — filesystem, in-memory, and any other
+   non-Langfuse-aware backend (current or future). No Prompt-entity
+   link is established; identity surfaces via metadata only.
 
-In both cases:
+The trigger for case 1 versus case 2 is whether a Langfuse Prompt
+reference is available on the prompt record at emission time. How that
+reference is exposed — a metadata field on `Prompt`, an interface
+marker, an SDK-side accessor — is the prompt-management capability's
+concern (implementation-defined under prompt-management §3's `metadata`
+mapping). The Langfuse observer MUST establish the link when a
+reference is present and MUST NOT fabricate one when absent.
+
+In both cases the following metadata is set:
 
 | OA attribute (per prompt-management §11) | Langfuse Generation field |
 |---|---|
@@ -388,10 +407,11 @@ rule, ungated by `disable_llm_payload`.
 
 #### 8.8 Prompt linkage
 
-Per §8.4.4. The two cases (Langfuse-native PromptBackend vs. non-
-Langfuse PromptBackend) determine whether a Prompt-entity link is
+Per §8.4.4. The two cases (prompt source exposes a Langfuse Prompt
+reference vs. does not) determine whether a Prompt-entity link is
 established in addition to metadata. The metadata shape is normative
-for cross-implementation parity.
+for cross-implementation parity; the link establishment is conditional
+on the source's capability, not on any specific backend identity.
 
 The propagation mechanism — how `openarmature.prompt.*` attributes
 reach the LLM provider span at emission time — is the prompt-management
@@ -434,10 +454,12 @@ between the two views of one invocation.
 
 **Unified Langfuse configuration.** Implementations SHOULD allow a
 single Langfuse client configuration (host, public key, secret key,
-or equivalent) to be shared between the Langfuse observer and a
-Langfuse-native PromptBackend. The API shape is impl-defined; the
-behavioral contract is that the user configures Langfuse credentials
-once and both surfaces consume them.
+or equivalent) to be shared across any Langfuse-consuming surfaces
+the implementation exposes — the Langfuse observer, a Langfuse-aware
+PromptBackend, and any future Langfuse-aware capability the
+implementation adds. The API shape is impl-defined; the behavioral
+contract is that the user configures Langfuse credentials once and
+all Langfuse-consuming surfaces use them.
 
 #### 8.10 Out of scope
 
@@ -524,9 +546,11 @@ The harness format (fixture header comment in 001) extends with:
   (`disable_llm_payload`, `disable_llm_spans`, payload byte cap).
 - `expected.langfuse_trace` — analogous to `expected.span_tree` but
   describing the Langfuse Trace + Observation tree shape.
-- `prompt_backend.langfuse` — when a Langfuse-native PromptBackend is
-  in use (fixture 024 case A), the harness provides a mock
-  LangfusePromptBackend that returns canned Prompt entities.
+- `prompt_backend.langfuse` — when a Langfuse-aware PromptBackend is
+  in use (fixture 024 case A), the harness provides a mock backend
+  that attaches canned Langfuse Prompt entity references to the
+  prompts it returns; the fixture asserts the link is established on
+  the resulting Generation observation.
 
 The harness MAY use the same in-memory transport shape across both
 the OTel and Langfuse observer paths; the conformance assertions
@@ -562,29 +586,30 @@ above):
   configuration surfaces.
 - **Filesystem PromptBackend layout ergonomics, StrictUndefined
   opt-out config, Langfuse SDK compile() wrapping.** These are
-  implementation-side asks routed to the impl repo via coord; they
-  do not require spec changes.
+  implementation-side ergonomic concerns; the spec contract is
+  unchanged and these knobs are at each implementation's discretion.
 
 ## Open questions
 
 1. **§8.6 trace-name default.** The proposed default is the entry-node
    name when no caller-supplied invocation label is provided. An
    alternative would be a constant default (`"openarmature.invocation"`,
-   paralleling the OTel mapping's §4.5 constant). I've gone with the
-   entry-node default because the OTel mapping's constant name was
-   driven by OTel UI conventions; Langfuse trace lists are user-facing
-   and benefit from differentiated names. Open for python's read.
+   paralleling the OTel mapping's §4.5 constant). Picked the entry-node
+   default because the OTel mapping's constant name was driven by OTel
+   UI conventions; Langfuse trace lists are user-facing and benefit
+   from differentiated names. Open for review.
 
 2. **§8.4.4 prompt-metadata shape.** Proposed as a nested
    `metadata.prompt.{name, version, label, template_hash,
    rendered_hash}` map. An alternative is flat keys
-   (`metadata.prompt_name`, `metadata.prompt_version`, etc.). I've gone
-   with the nested shape because it parallels the structure Langfuse
-   uses for its own native prompt linkage and makes UI extensions
-   easier to write. Open for python's read.
+   (`metadata.prompt_name`, `metadata.prompt_version`, etc.). Picked
+   the nested shape because it parallels the structure Langfuse uses
+   for its own native prompt linkage and makes UI extensions easier to
+   write. Open for review.
 
-3. **Wish 8 normativity (§8.9 unified config).** The proposed text is
+3. **§8.9 unified-config normativity.** The proposed text is
    "implementations SHOULD allow a single Langfuse client
    configuration… to be shared" — SHOULD, not MUST. Treating it as
-   informative guidance rather than mandate. Open for python on
-   whether to upgrade to MUST.
+   informative guidance rather than mandate because the shared-config
+   requirement is impl-level ergonomics, not behavioral contract.
+   Open for review on whether to upgrade to MUST.
