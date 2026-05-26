@@ -230,10 +230,7 @@ additional, specific to Generations.
 | OA attribute (per §5.5) | Langfuse Generation field |
 |---|---|
 | `openarmature.llm.model` (and `gen_ai.request.model`) | `generation.model` |
-| `gen_ai.request.temperature` | `generation.modelParameters.temperature` (emitted only when the OA attribute is set) |
-| `gen_ai.request.max_tokens` | `generation.modelParameters.max_tokens` (emitted only when the OA attribute is set) |
-| `gen_ai.request.top_p` | `generation.modelParameters.top_p` (emitted only when the OA attribute is set) |
-| `gen_ai.request.seed` | `generation.modelParameters.seed` (emitted only when the OA attribute is set) |
+| Each `gen_ai.request.*` request-parameter attribute defined in §5.5.2 | `generation.modelParameters.<suffix>` — the §5.5.2 attribute's suffix after `gen_ai.request.` becomes the key under `modelParameters` (e.g., `gen_ai.request.temperature` → `modelParameters.temperature`). Emitted only when the source attribute is set. As §5.5.2 evolves to add further request-parameter attributes, the Langfuse `modelParameters` set expands by inclusion without further §8.4.3 edits. |
 | `openarmature.llm.input.messages` (when payload enabled per §5.5.4) | `generation.input` (parsed back from the JSON-encoded OA attribute string to the native message-list structure) |
 | `openarmature.llm.output.content` (when payload enabled per §5.5.4) | `generation.output` |
 | `openarmature.llm.request.extras` (when payload enabled per §5.5.4) | `generation.metadata.request_extras` (the JSON-encoded OA attribute parsed back to a native object) |
