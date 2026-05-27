@@ -1,8 +1,9 @@
 # §7 LabelResolver fallback chain. One manager is configured with a
 # LabelResolver backed by a mapping that has a `default` key plus two
-# per-name overrides. Five fetch calls exercise all three precedence
-# levels plus the explicit-label-bypass and resolver-without-default
-# variants.
+# per-name overrides. Six fetch calls exercise all three precedence
+# levels plus the explicit-label-bypass, the no-resolver-configured
+# fallback, AND the resolver-configured-but-without-default
+# fallback (distinct code path from no-resolver).
 
 backends:
   - name: local
@@ -83,6 +84,25 @@ secondary_calls:
     # No label argument; no resolver — spec-fallback "production".
     capture_as: r_unknown_no_resolver
 
+# Third manager: resolver configured but with NO `default` key.
+# Distinct code path from no-resolver: resolver IS consulted, but
+# lookup misses on per-name AND on the absent default → spec fallback "production".
+tertiary_label_resolver:
+  mapping:
+    # No `default` key. Only per-name overrides for unrelated prompts.
+    other_prompt: staging
+
+tertiary_manager:
+  backends: [local]
+  label_resolver_ref: tertiary_label_resolver
+
+tertiary_calls:
+  - target: tertiary_manager
+    operation: fetch
+    name: unknown_prompt
+    # Resolver is consulted; no per-name match, no default key — spec fallback "production".
+    capture_as: r_unknown_resolver_no_default
+
 expected:
   r_seg:
     label: staging
@@ -97,5 +117,8 @@ expected:
     label: production
     version: v-prod
   r_unknown_no_resolver:
+    label: production
+    version: v1
+  r_unknown_resolver_no_default:
     label: production
     version: v1

@@ -12,7 +12,7 @@ plus the explicit-label-bypass case and the no-resolver-configured case.
 - §6 default `label` parameter shift from v0.15.0's `"production"` to v0.26.0's `None` /
   sentinel.
 
-**Cases (single fixture with five fetch calls):**
+**Cases (single fixture with six fetch calls):**
 
 1. `fetch("segment_semantic", label=None)` with resolver mapping `{default: "production",
    segment_semantic: "staging", extract_claims: "variant-a"}` → resolver returns `"staging"`
@@ -25,6 +25,10 @@ plus the explicit-label-bypass case and the no-resolver-configured case.
    consulted; manager passes `"production"` verbatim to backend.
 5. `fetch("unknown_prompt", label=None)` against a second manager that has NO LabelResolver
    configured → spec-fallback returns `"production"`.
+6. `fetch("unknown_prompt", label=None)` against a third manager that HAS a LabelResolver
+   configured but the resolver's mapping has NO `default` key (only unrelated per-name
+   overrides) → resolver is consulted, misses per-name, misses default, spec-fallback
+   returns `"production"`. Distinct code path from case 5 (resolver IS consulted here).
 
 **Harness extensions:**
 

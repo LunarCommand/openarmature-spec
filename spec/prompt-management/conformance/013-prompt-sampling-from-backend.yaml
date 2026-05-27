@@ -32,7 +32,7 @@ calls:
     capture_as: prompt
   - target: manager
     operation: render
-    prompt_ref: prompt
+    fetched_prompt_ref: prompt
     variables: {topic: "weather"}
     capture_as: rendered
 
