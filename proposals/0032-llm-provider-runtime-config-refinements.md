@@ -4,7 +4,7 @@
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-26
 - **Accepted:**
-- **Targets:** spec/llm-provider/spec.md (modifies §6 *Response and configuration*); spec/observability/spec.md (extends §5.5.2 *Request parameters*)
+- **Targets:** spec/llm-provider/spec.md (modifies §6 *Response and configuration*; extends §8.1 *OpenAI-compatible wire mapping* with the three new declared-field mappings); spec/observability/spec.md (extends §5.5.2 *Request parameters*)
 - **Related:** 0006 (llm-provider core), 0024 (LLM span payload + GenAI semconv)
 - **Supersedes:**
 
@@ -13,13 +13,17 @@
 Refine the `RuntimeConfig` surface in llm-provider §6 with three changes
 and one observability follow-on:
 
-1. **Promote three OpenAI-standard sampling fields to declared
+1. **Promote three cross-vendor sampling fields to declared
    `RuntimeConfig` fields:** `frequency_penalty`, `presence_penalty`,
-   and `stop`. These are cross-vendor standard parameters (every major
-   provider — OpenAI, Anthropic, Gemini, Mistral, Cohere — supports
-   equivalents) currently handled via the implementation-allowed extras
-   path. Promoting them to declared fields makes them discoverable,
-   typed, and part of the versioned API contract.
+   and `stop_sequences`. These are cross-vendor standard parameters
+   (every major provider — OpenAI, Anthropic, Gemini, Mistral, Cohere
+   — supports equivalents) currently handled via the
+   implementation-allowed extras path. Promoting them to declared
+   fields makes them discoverable, typed, and part of the versioned
+   API contract. Field naming follows the cross-vendor OpenTelemetry
+   GenAI semconv (`stop_sequences`, not OpenAI's shorter `stop`); the
+   §8.1 OpenAI-compatible wire mapping translates `stop_sequences` to
+   OpenAI's request-body key `stop` at the wire layer.
 
 2. **Replace the current vague "implementations MAY accept additional
    provider-specific fields" clause with an explicit normative
@@ -53,8 +57,12 @@ and one observability follow-on:
 
 No breaking changes to existing behavior. Existing callers passing
 `frequency_penalty` / `presence_penalty` / `stop` via the extras path
-continue to work (Pydantic-style frameworks resolve declared fields
-ahead of extras; the value flows the same way through the wire).
+continue to work via the pass-through contract — the extras
+pass-through forwards undeclared keys untouched to the wire body, and
+OpenAI's `stop` body field continues to accept the value the same way
+it does today. Callers who want to use the new declared field switch
+their kwarg to `stop_sequences=[...]`; the §8.1 wire mapping handles
+the translation to OpenAI's `stop` body field.
 
 ## Motivation
 
@@ -145,7 +153,7 @@ A `RuntimeConfig` record:
 | `seed` | Int, optional. Best-effort determinism for providers that support it. Setting `seed` does NOT guarantee determinism; see §9. |
 | `frequency_penalty` | Float, optional. Penalty on token frequency; commonly `[-2.0, 2.0]` per the OpenAI reference. Cross-vendor: OpenAI, Mistral, Cohere, and most OpenAI-compatible servers accept this name directly; Anthropic and Gemini map to vendor-specific equivalents at the wire layer (per §8.2 / §8.3 when those land). |
 | `presence_penalty` | Float, optional. Penalty on token presence; commonly `[-2.0, 2.0]`. Same cross-vendor framing as `frequency_penalty`. |
-| `stop` | List of strings, optional. Stop sequences. When any string in the list appears in the generated text, generation halts. The OpenAI reference accepts up to four; per-provider limits MAY differ and are enforced at the wire layer. |
+| `stop_sequences` | List of strings, optional. Stop sequences. When any string in the list appears in the generated text, generation halts. The OA declared name matches the OpenTelemetry GenAI semconv (`gen_ai.request.stop_sequences`) and the wire-key convention used by most cross-vendor providers (Anthropic uses `stop_sequences`, Gemini uses `stopSequences`). The OpenAI-compatible wire mapping (§8.1) translates this field to OpenAI's request-body key `stop`. Per-provider limits MAY differ (OpenAI accepts up to four; others vary) and are enforced at the wire layer by the provider, not by the framework. |
 
 ### llm-provider §6 — extras-pass-through contract (new normative
 clause, replaces the existing "Implementations MAY accept additional
@@ -200,9 +208,9 @@ fields as the language's default-null:
 
 ```
 config = RuntimeConfig(temperature=0.0, max_tokens=32)
-# top_p, seed, frequency_penalty, presence_penalty, stop are all
-# unset (None / undefined). The wire body contains only the two
-# declared fields the caller set.
+# top_p, seed, frequency_penalty, presence_penalty, stop_sequences
+# are all unset (None / undefined). The wire body contains only the
+# two declared fields the caller set.
 ```
 
 Without this rule, callers would have to filter Nones defensively
@@ -234,13 +242,14 @@ opt-out is enabled (per §5.5.4):
 - `gen_ai.request.presence_penalty` — double. Mapped from
   `RuntimeConfig.presence_penalty`.
 - `gen_ai.request.stop_sequences` — string array. Mapped from
-  `RuntimeConfig.stop`. The OpenTelemetry GenAI semconv defines this
-  attribute as an array (the semconv name is `stop_sequences`, plural,
-  even though the corresponding RuntimeConfig field is named `stop`
-  to match the OpenAI request-body field name). Implementations MUST
-  emit the list verbatim, preserving order.
+  `RuntimeConfig.stop_sequences`. Both the OA declared field and the
+  GenAI semconv attribute use the same name (`stop_sequences`); the
+  cross-vendor naming convention is uniform across the OA layer and
+  the observability layer. The OpenAI-compatible wire body field
+  (`stop`) is the outlier and is handled by §8.1's translation.
+  Implementations MUST emit the list verbatim, preserving order.
 
-The remaining §5.5.2 paragraphs (null-omission rule for absent
+The remaining §5.5.2 paragraphs (attribute-omission rule for unset
 fields, GenAI-semconv-not-OpenArmature rationale, the
 cross-vendor-parameters precedent) apply unchanged to the expanded
 list.
@@ -250,15 +259,59 @@ The §8.4.3 Langfuse mapping (introduced by proposal 0031) references
 `generation.modelParameters.{frequency_penalty, presence_penalty,
 stop_sequences}` automatically, without any §8 edit.
 
+### llm-provider §8.1 — OpenAI-compatible wire mapping (extension)
+
+The existing §8.1 sentence "The §6 `RuntimeConfig` fields map directly:
+`temperature`, `max_tokens`, `top_p`, `seed`. The bound model
+identifier becomes OpenAI's `model` field." extends to cover the three
+new declared fields:
+
+- `frequency_penalty` → OpenAI request-body field `frequency_penalty`
+  (same name; maps directly).
+- `presence_penalty` → OpenAI request-body field `presence_penalty`
+  (same name; maps directly).
+- `stop_sequences` → OpenAI request-body field **`stop`** (rename).
+  OpenAI's wire body uses the shorter `stop` key; the OA declared
+  field is named `stop_sequences` to match the cross-vendor convention
+  (the GenAI semconv attribute, Anthropic's `stop_sequences` field,
+  Gemini's `stopSequences` field). The wire-mapping layer translates
+  the OA declared name to OpenAI's body key on emission and back on
+  ingress.
+
+The rename is the only declared-field-to-wire-body translation in the
+§8.1 mapping; every other declared field carries the same name on
+both sides. Future §8.2 (Anthropic) and §8.3 (Gemini) mappings define
+their own per-field translations.
+
+Undeclared `RuntimeConfig` fields (those a caller supplies beyond the
+declared set per §6's extras-pass-through contract) appear at the
+OpenAI request-body root, as siblings to `temperature`, `model`, etc.
+This codifies the behavior every existing OpenAI-compatible adopter
+already relies on (e.g., the OpenAI Python SDK's `extra_body=`
+parameter; LangChain's wrapper splatting kwargs into the body;
+Bifrost's straight pass-through to vLLM). The pass-through MUST
+preserve key names and value types verbatim per §6's
+extras-pass-through contract.
+
+A short normative note is added to §8.1 announcing the
+`stop_sequences` → `stop` rename so that implementers of the
+OpenAI-compatible wire mapping don't accidentally emit
+`stop_sequences` to the OpenAI request body (where OpenAI's server
+would not recognize the field).
+
 ## Conformance fixtures
 
 Two new fixtures land at acceptance:
 
 - **`spec/llm-provider/conformance/032-runtime-config-declared-fields-and-null-skip.{yaml,md}`** — exercises both behaviors in one fixture with two cases.
-  - Case 1: All seven declared fields set on `RuntimeConfig`; verifies each reaches the OpenAI-compatible §8.1 wire body under the expected key. Includes one undeclared field (`repetition_penalty=1.05`) to verify the pass-through contract — the field MUST appear in the wire body somewhere (per §8.1's convention for undeclared keys).
+  - Case 1: All seven declared fields set on `RuntimeConfig`; verifies each reaches the OpenAI-compatible §8.1 wire body under the expected key (including the `stop_sequences` → OpenAI body `stop` rename). Includes one undeclared field (`repetition_penalty=1.05`) to verify the pass-through contract — the field MUST appear at the OpenAI request-body root per §8.1's normative convention for undeclared keys.
   - Case 2: Partial config with `temperature` and `max_tokens` set, all other declared fields left as the language's default-null sentinel. Verifies the wire body contains exactly two declared fields; verifies the unset declared fields are NOT present (no `null`-valued entries).
 
 - **`spec/observability/conformance/025-otel-llm-request-params-extended.{yaml,md}`** — exercises §5.5.2's expanded attribute list against the OTel observer. One case: all seven declared `RuntimeConfig` fields set; mock provider returns a basic response; verifies the LLM provider span carries `gen_ai.request.{temperature, max_tokens, top_p, seed, frequency_penalty, presence_penalty, stop_sequences}` with the supplied values.
+
+Existing-fixture update (lands with the accept PR):
+
+- **`spec/observability/conformance/018-otel-llm-request-extras.{yaml,md}`** — currently uses `frequency_penalty` as its example extras key. With `frequency_penalty` promoted to a declared field by this proposal, the fixture's example would no longer demonstrate a true extras key (the value would be sourced from the declared field, not the extras bag). Switch the example to `repetition_penalty: 1.05` (a genuine vendor-specific extra used by vLLM / HuggingFace endpoints; not on any roadmap to become a declared field). Assertions update accordingly: `openarmature.llm.request.extras` carries `{repetition_penalty: 1.05}` instead of `{frequency_penalty: 0.5}`. No behavior contract change to §5.5.1 — only the example key changes.
 
 ## Versioning
 
@@ -309,38 +362,22 @@ For this proposal specifically:
 
 ## Open questions
 
-1. **Null-skip rule location — llm-provider §6 vs. §8.1 (OpenAI wire
-   mapping).** The proposal places the rule in §6 (general declared-
-   field semantics) so the same rule applies uniformly to future
-   §8.2 (Anthropic) and §8.3 (Gemini) wire mappings without
-   re-derivation per-mapping. An alternative is to place the rule
-   in §8.1 specifically (where the OpenAI wire body is shaped) and
-   let each future §8.X define its own null-handling. The §6
-   placement is preferred because the rule expresses a contract on
-   what "None / undefined" means semantically, not how a specific
-   wire format serializes it — that semantic should be uniform
-   across mappings, and any wire format that genuinely needs
-   "explicit null" semantics for a declared field would already need
-   a non-`None` sentinel value to disambiguate. Open for review.
+None. Three questions flagged at draft time are settled in the
+proposal text above:
 
-2. **Range validation timing.** The spec leaves range validation to
-   the provider (rejected via `provider_invalid_request`). An
-   alternative is for the framework to do client-side range checks
-   on the new declared fields (e.g., reject `frequency_penalty`
-   outside `[-2.0, 2.0]` at the API boundary). The deferred-to-
-   provider approach is preferred because (a) ranges differ across
-   vendors (Anthropic, Gemini, vLLM may have different limits), and
-   (b) client-side validation drifts as vendors update their
-   reference docs. Open for review.
-
-3. **`stop` field naming.** The declared field is named `stop` to
-   match the OpenAI request-body key (which is what most adopters
-   already type via the extras path). The observability attribute
-   is `gen_ai.request.stop_sequences` (plural, the GenAI semconv
-   name). The naming mismatch is intentional — each name reflects
-   the convention of the namespace it lives in — but introduces a
-   small surface where a future implementation could conflate the
-   two. Open for review on whether to rename the declared field to
-   `stop_sequences` for consistency (would mean the OA name diverges
-   from the OpenAI request-body key, which most callers will type
-   first).
+- **Null-skip rule location** — placed in §6 (general declared-field
+  semantics), so future §8.2 / §8.3 wire mappings inherit uniform
+  null-skip behavior without re-derivation. The rule expresses what
+  `None`/`undefined` means semantically, not how a specific wire
+  format serializes it.
+- **Range validation timing** — deferred to the provider (rejected
+  via the existing `provider_invalid_request` error category).
+  Vendor ranges differ and the framework's job is to forward intent
+  to the wire untouched.
+- **Stop-field naming** — declared field is `stop_sequences`,
+  matching the cross-vendor OpenTelemetry GenAI semconv (and
+  Anthropic / Gemini wire-key conventions). The §8.1 OpenAI-
+  compatible wire mapping translates `stop_sequences` to OpenAI's
+  shorter request-body key `stop`. OpenAI is the outlier on the
+  shorter name; the OA declared layer matches the cross-vendor
+  norm.
