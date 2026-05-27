@@ -12,7 +12,8 @@ is non-empty and `disable_llm_payload = False`.
 **Cases:**
 
 1. `extras_emitted` — `RuntimeConfig` carries `temperature: 0.7` and an extras bag with
-   `frequency_penalty: 0.5`. `disable_llm_payload = False`. The span carries
+   `repetition_penalty: 1.05` (a vLLM / HuggingFace-style vendor-specific knob with no path to
+   becoming a declared field). `disable_llm_payload = False`. The span carries
    `gen_ai.request.temperature` (per §5.5.2) and `openarmature.llm.request.extras` (per §5.5.1)
    as a JSON-encoded object.
 
@@ -27,7 +28,7 @@ is non-empty and `disable_llm_payload = False`.
 **What passes:**
 
 - `gen_ai.request.temperature: 0.7` is present on the span.
-- `openarmature.llm.request.extras` parses to an object equivalent to `{frequency_penalty: 0.5}`.
+- `openarmature.llm.request.extras` parses to an object equivalent to `{repetition_penalty: 1.05}`.
 
 **What fails:**
 
@@ -36,5 +37,5 @@ is non-empty and `disable_llm_payload = False`.
   user has NOT opted in; the user IS opted in here).
 - Extras content is duplicated in `gen_ai.request.*` namespace — implementation tried to map
   provider-specific extras into the GenAI semconv (incorrect — extras stay OA-shape).
-- `frequency_penalty` is emitted as `gen_ai.request.frequency_penalty` — implementation
-  generalized too aggressively (not a settled semconv name; stays in extras).
+- `repetition_penalty` is emitted as `gen_ai.request.repetition_penalty` — implementation
+  generalized too aggressively (not a settled GenAI semconv name; stays in extras).

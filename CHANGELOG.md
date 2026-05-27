@@ -4,6 +4,27 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.24.0] — 2026-05-26
+
+**Added**
+
+- **llm-provider §6 — three new declared `RuntimeConfig` fields**: `frequency_penalty`, `presence_penalty`, and `stop_sequences`. The first two are cross-vendor standard sampling parameters (every major provider supports equivalents). The third matches the cross-vendor OpenTelemetry GenAI semconv naming (`stop_sequences`) and the wire-key convention used by Anthropic / Gemini / Cohere; the OpenAI-compatible wire mapping (§8.1) translates this field to OpenAI's request-body key `stop`. ([proposal 0032](proposals/0032-llm-provider-runtime-config-refinements.md))
+- **llm-provider §6 — explicit extras-pass-through contract**. Replaces the prior vague "implementations MAY accept additional provider-specific fields" line with a normative contract: undeclared `RuntimeConfig` fields MUST reach the wire request body untouched, subject to the §8 wire-format mapping. The pass-through MUST NOT translate, rename, or transform undeclared fields. Codifies the behavior every existing adopter already relies on for passing vendor-specific knobs (e.g., `repetition_penalty`, `top_k`, `min_p` through OpenAI-compatible providers to vLLM).
+- **llm-provider §6 — null-skip semantics on declared fields**. A declared `RuntimeConfig` field with value `None` / `undefined` (the language's "unset" sentinel) MUST be omitted from the wire request body. Distinct from "field supplied with an explicit null value." Implementations MUST NOT serialize `None`-valued declared fields as JSON `null`. Lets callers construct partial configs by leaving unset fields as default-null and rely on the framework to omit them at the wire layer — no defensive null-filter shim needed.
+- **llm-provider §8.1 — extended declared-field mapping table**. The pre-0032 four (`temperature`, `max_tokens`, `top_p`, `seed`) and the two new same-named declared fields (`frequency_penalty`, `presence_penalty`) map directly to OpenAI request-body keys. The third new declared field (`stop_sequences`) renames to OpenAI body field `stop` — the OA name follows the cross-vendor semconv; OpenAI is the outlier with the shorter wire-key name; the wire mapping handles the translation.
+- **llm-provider §8.1 — formal undeclared-field placement contract**. Undeclared `RuntimeConfig` fields appear at the OpenAI request-body root, as siblings to `temperature`, `model`, etc. Codifies the behavior every existing OpenAI-compatible adopter relies on (OpenAI SDK `extra_body`, LangChain kwarg-splat, gateway pass-through). The §8.1 mapping does NOT validate, rename, or transform undeclared keys; key names and value types are preserved verbatim per §6's extras-pass-through.
+- **observability §5.5.2 — three new GenAI semconv attributes**: `gen_ai.request.frequency_penalty`, `gen_ai.request.presence_penalty`, `gen_ai.request.stop_sequences`. Mapped from the three new declared `RuntimeConfig` fields. The §8.4.3 Langfuse-mapping reference to §5.5.2 picks them up by inclusion: the three new attributes flow into `generation.modelParameters.{frequency_penalty, presence_penalty, stop_sequences}` automatically, no §8 edit required.
+- Conformance fixtures `llm-provider/conformance/032-runtime-config-declared-fields-and-null-skip` (two cases — full declared-field set + one extras key landing at the body root; partial config exercising the null-skip rule including the `stop_sequences` → `stop` rename), and `observability/conformance/025-otel-llm-request-params-extended` (one case — all seven declared `RuntimeConfig` fields emit the corresponding seven `gen_ai.request.*` attributes).
+
+**Changed**
+
+- **observability/conformance/018-otel-llm-request-extras** — example extras key switched from `frequency_penalty` (which is now a declared field as of this release) to `repetition_penalty` (a vLLM / HuggingFace-style vendor-specific extra with no path to becoming a declared field). No behavior contract change to §5.5.1; only the fixture's example key changes so the extras-bag demonstration continues to depict a genuinely undeclared field. ([proposal 0032](proposals/0032-llm-provider-runtime-config-refinements.md))
+
+**Notes**
+
+- **MINOR bump.** Adds three declared fields, two new normative clauses to llm-provider §6, mapping extensions to §8.1, three new observability attributes, and two new conformance fixtures. No breaking changes. Existing callers passing `frequency_penalty` / `presence_penalty` / `stop` via the extras path continue to work via the §6 extras-pass-through contract; the new declared fields take precedence over a same-named extras key when both are supplied.
+- **Naming convention precedent.** Where the OpenTelemetry GenAI semconv has settled on a cross-vendor name, OA's declared field uses that name (even when one specific provider — OpenAI in this case — uses a shorter wire-key form). The wire-format-mapping layer (§8) is the right place to translate to vendor body keys. This convention applies prospectively to future §8.2 (Anthropic) / §8.3 (Gemini) mappings and to any later declared-field additions.
+
 ## [0.23.0] — 2026-05-26
 
 **Added**

@@ -8,6 +8,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - created by [proposal 0007](../../proposals/0007-observability-otel-span-mapping.md)
   - §5.5 extended with LLM input/output payload attributes (default-off), `RuntimeConfig` request parameters under the OpenTelemetry GenAI semantic conventions, a minimum set of GenAI semconv response attributes, two new opt-out flags (`disable_llm_payload`, `disable_genai_semconv`), and a per-attribute truncation contract (64 KiB default cap, UTF-8-boundary-safe algorithm, 256-byte minimum, inline-image redaction) by [proposal 0024](../../proposals/0024-llm-span-payload-and-semconv.md)
   - §8 added — Langfuse backend mapping (sibling to the OTel mapping in §3–§7); covers observation-type mapping (invocation → Trace, node/subgraph/fan-out → Span observation, LLM provider → Generation observation), attribute translation from `openarmature.*` and `gen_ai.*` to Langfuse native fields, correlation ID realization on Trace + Observation metadata, `langfuse.trace.name` source, prompt linkage to a Langfuse Prompt entity when the prompt's source exposes one (falling back to metadata-only otherwise), and composition rules with the OTel observer; renumbers existing §8 Determinism → §9 and §9 Out of scope → §10 by [proposal 0031](../../proposals/0031-observability-langfuse-mapping.md)
+  - §5.5.2 attribute list extended with three new GenAI semconv attributes (`gen_ai.request.frequency_penalty`, `gen_ai.request.presence_penalty`, `gen_ai.request.stop_sequences`) corresponding to the three new declared `RuntimeConfig` fields introduced by llm-provider [proposal 0032](../../proposals/0032-llm-provider-runtime-config-refinements.md). The §8.4.3 Langfuse-mapping reference to §5.5.2 expands by inclusion: the three new attributes flow into `generation.modelParameters.{frequency_penalty, presence_penalty, stop_sequences}` automatically, no §8 edit required.
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -490,6 +491,12 @@ semconv opt-out is enabled (per §5.5.4):
 - `gen_ai.request.max_tokens` — int. Mapped from `RuntimeConfig.max_tokens`.
 - `gen_ai.request.top_p` — double. Mapped from `RuntimeConfig.top_p`.
 - `gen_ai.request.seed` — int. Mapped from `RuntimeConfig.seed`.
+- `gen_ai.request.frequency_penalty` — double. Mapped from `RuntimeConfig.frequency_penalty`.
+- `gen_ai.request.presence_penalty` — double. Mapped from `RuntimeConfig.presence_penalty`.
+- `gen_ai.request.stop_sequences` — string array. Mapped from `RuntimeConfig.stop_sequences`.
+  Both the OA declared field and the GenAI semconv attribute use the same name; the OpenAI
+  request-body field is `stop` (translated by §8.1 of llm-provider). Implementations MUST emit
+  the list verbatim, preserving order.
 
 When the corresponding `RuntimeConfig` field is not set (or `RuntimeConfig` is absent on the
 call), the implementation MUST NOT emit the attribute. The absence of an attribute means "the
