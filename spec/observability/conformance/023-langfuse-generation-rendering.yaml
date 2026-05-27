@@ -20,12 +20,14 @@ cases:
     nodes:
       ask_llm:
         calls_llm:
+          model: "test-model"
           messages:
             - {role: system, content: "you are concise"}
             - {role: user, content: "hi there"}
-          temperature: 0.0
-          max_tokens: 32
           stores_response_in: msg
+          config:
+            temperature: 0.0
+            max_tokens: 32
     edges:
       - {from: ask_llm, to: END}
     initial_state: {}
@@ -50,7 +52,7 @@ cases:
               - type: generation
                 name: "openarmature.llm.complete"
                 model: "test-model"
-                model_parameters:
+                modelParameters:
                   temperature: 0.0
                   max_tokens: 32
                 usage:
@@ -90,8 +92,12 @@ cases:
         calls_llm:
           messages:
             - {role: system, content: "you are concise"}
-            # Long user content forces truncation at the 256-byte cap.
-            - {role: user, content: "<repeat 'x' 400 times>"}
+            # Harness primitive (per fixture 014): synthesize a user message
+            # whose content is 500 bytes of 'x'. Combined with the system
+            # message and JSON envelope, the input.messages attribute
+            # exceeds the 256-byte cap configured below and triggers the
+            # §8.7 truncation-fallthrough path.
+            - {role: user, content_repeat: {char: "x", bytes: 500}}
           stores_response_in: msg
     edges:
       - {from: ask_llm, to: END}

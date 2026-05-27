@@ -1,4 +1,4 @@
-# Determinism (§8): repeated invocations of the same graph with the same
+# Determinism (§9): repeated invocations of the same graph with the same
 # input MUST produce identical *deterministic* span content — hierarchy,
 # names, attributes (excluding timing-derived), status. trace_id, span_id,
 # and timestamps are inherently nondeterministic and NOT compared.
