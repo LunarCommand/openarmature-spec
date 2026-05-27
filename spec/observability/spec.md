@@ -165,7 +165,8 @@ outermost `invoke()` call, alongside the correlation ID. Implementations MUST:
 - Keys MUST be strings.
 - Values MUST be OpenTelemetry-attribute-compatible scalars: string, int, float (double),
   bool, or homogeneous arrays of those types. Nested objects, null values, and mixed-type
-  arrays are NOT permitted (matching OTel's `AnyValue` attribute-type contract).
+  arrays are NOT permitted (matching OTel's `AttributeValue` type contract — narrower than
+  the broader OTLP `AnyValue` container, which permits nested objects and is NOT used here).
 - Keys MUST NOT collide with reserved namespaces: `openarmature.*` and `gen_ai.*`.
   Implementations MUST reject (raise an error at the `invoke()` API boundary, before any work
   begins) a metadata mapping that contains a colliding key. The error category is
@@ -1033,14 +1034,18 @@ and search; metadata entries are NOT promoted to Langfuse's `userId` / `sessionI
 fields by these propagation rules. The two surfaces are complementary and orthogonal.
 
 **Langfuse-specific constraints on caller-supplied metadata.** Langfuse's documentation
-states that propagated metadata keys are limited to alphanumeric characters and values are
-limited to 200-character strings. Callers wiring OA to a Langfuse backend SHOULD use
-alphanumeric keys (e.g., camelCase like `tenantId`) within Langfuse's value-length bounds.
-The OA API-boundary validation does NOT enforce these constraints by default (they are
-Langfuse-specific, not spec-wide per §3.4 cross-backend portability); a key that violates
-Langfuse's constraints reaches the Langfuse observer and is handled per the Langfuse SDK's
-error / truncation semantics. Implementations MAY expand their `invoke()`-boundary rejected-key
-set to also catch Langfuse-specific constraints early, per §3.4's MAY-expand allowance.
+states that propagated metadata keys are limited to alphanumeric characters, and that
+string-valued entries are limited to 200 characters. Non-string scalar values (int, float,
+bool) and homogeneous arrays — all permitted by §3.4 — propagate per the Langfuse SDK's
+native handling (typically preserved as their native type in the metadata payload; the
+200-character limit does not apply to non-string scalars). Callers wiring OA to a Langfuse
+backend SHOULD use alphanumeric keys (e.g., camelCase like `tenantId`) and keep
+string-valued entries within Langfuse's 200-character bound. The OA API-boundary
+validation does NOT enforce these constraints by default (they are Langfuse-specific, not
+spec-wide per §3.4 cross-backend portability); a key or value that violates Langfuse's
+constraints reaches the Langfuse observer and is handled per the Langfuse SDK's error /
+truncation semantics. Implementations MAY expand their `invoke()`-boundary rejected-key set
+to also catch Langfuse-specific constraints early, per §3.4's MAY-expand allowance.
 
 #### 8.4.1 Trace-level mapping (sourced from invocation span attributes)
 
