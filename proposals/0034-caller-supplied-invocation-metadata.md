@@ -131,10 +131,12 @@ normative attribute family, no breaking changes.
 
 In addition to the correlation ID surface (§3.1–§3.3), the framework
 MUST accept an optional **caller-supplied metadata mapping** at
-invoke time. Callers attach a `dict[str, scalar]` (Python idiom;
-equivalent per language) carrying arbitrary key/value entries that
-identify the invocation for search and filtering in observability
-backends.
+invoke time. Callers attach a mapping from string keys to
+OTel-attribute-compatible values (a `dict[str, AttributeValue]` in
+Python idiom, where `AttributeValue` matches OTel's scalar /
+homogeneous-array type contract; equivalent per language) carrying
+arbitrary key/value entries that identify the invocation for search
+and filtering in observability backends.
 
 **Lifecycle and propagation.** The mapping is per-invocation and
 lives for the duration of one outermost `invoke()` call, alongside
@@ -202,9 +204,13 @@ metadata limits keys to alphanumeric characters; some backends
 disallow dots). Callers who wire OA to multiple observability
 backends SHOULD use alphanumeric or camelCase keys (`tenantId`,
 `userId`, `featureFlag`) for cross-backend portability. The OA
-spec's API-boundary validation only enforces the reserved-namespace
-rule above; backend-specific key constraints surface at the
-backend's emission layer, NOT at `invoke()` entry.
+spec's API-boundary validation MUST at least enforce the
+reserved-namespace rule above; implementations MAY expand the
+rejected-key set to also catch backend-specific constraints early
+(e.g., a Langfuse-aware implementation rejecting non-alphanumeric
+keys at `invoke()` rather than at observer emission). When
+implementations do NOT expand, backend-specific key constraints
+surface at the backend's emission layer.
 
 ### observability §5.6 — cross-cutting attributes (extended)
 
