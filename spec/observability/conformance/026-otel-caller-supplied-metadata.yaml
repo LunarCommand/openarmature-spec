@@ -1,0 +1,78 @@
+# §5.6 cross-cutting attribute family: caller-supplied invocation
+# metadata (per §3.4) MUST appear as openarmature.user.<key> span
+# attributes on every span emitted during the invocation. Verifies
+# the cross-cutting nature against a graph that produces multiple
+# span types (invocation, node, LLM provider).
+
+cases:
+  - name: caller_metadata_emits_on_every_span
+    description: |
+      Invocation supplied with caller_metadata covering all three OTel
+      attribute value shapes (string, int, bool). Graph has two nodes
+      and one LLM call. The harness asserts that every span (the
+      invocation span, both node spans, and the LLM provider span)
+      carries the full openarmature.user.* attribute set with the
+      supplied values.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: prep
+    nodes:
+      prep:
+        update: {msg: "ready"}
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: prep, to: ask_llm}
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      seatCount: 42
+      isCanary: true
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-26
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hi back"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 2, total_tokens: 7}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          attributes:
+            openarmature.user.tenantId: "acme-corp"
+            openarmature.user.seatCount: 42
+            openarmature.user.isCanary: true
+          children:
+            - name: "prep"
+              status: OK
+              attributes:
+                openarmature.user.tenantId: "acme-corp"
+                openarmature.user.seatCount: 42
+                openarmature.user.isCanary: true
+              children: []
+            - name: "ask_llm"
+              status: OK
+              attributes:
+                openarmature.user.tenantId: "acme-corp"
+                openarmature.user.seatCount: 42
+                openarmature.user.isCanary: true
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.user.tenantId: "acme-corp"
+                    openarmature.user.seatCount: 42
+                    openarmature.user.isCanary: true
+                  children: []
+      invariants:
+        # Every span MUST carry the full openarmature.user.* set per §5.6.
+        caller_metadata_cross_cutting: true

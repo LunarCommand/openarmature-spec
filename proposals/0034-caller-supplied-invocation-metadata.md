@@ -1,9 +1,9 @@
 # 0034: Observability — Caller-Supplied Invocation Metadata Propagation
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-26
-- **Accepted:**
+- **Accepted:** 2026-05-26
 - **Targets:** spec/observability/spec.md (extends §3 *Cross-backend correlation ID* with a sibling caller-supplied metadata surface; extends §5.6 *Cross-cutting attributes* with an `openarmature.user.*` cross-cutting attribute family; extends §8.4.1 *Trace-level mapping* and §8.4.2 *Observation-level mapping* with Langfuse propagation rules); spec/graph-engine/spec.md (small clarifying touch to §3 noting `invoke()` accepts an optional `metadata` argument alongside the existing per-language invocation surface)
 - **Related:** 0007 (observability OTel span mapping), 0024 (LLM span payload + GenAI semconv), 0031 (observability Langfuse mapping)
 - **Supersedes:**
@@ -176,9 +176,43 @@ the correlation ID. Implementations MUST:
 **Invocation-scoped, not trace-scoped.** Detached subgraphs and
 detached fan-outs (per §4.4) inherit the metadata from the parent
 invocation. The mapping is per-invocation context, the same as
-`correlation_id`; detached children of the invocation share it. Per-
-node or per-subgraph metadata override is NOT in scope for this
-proposal; the contract is one mapping per `invoke()` call.
+`correlation_id`; detached children of the invocation share it.
+
+**Mid-invocation augmentation.** Code executing within a node body,
+middleware, or observer MAY add entries to the in-scope metadata
+mapping during invocation. Implementations MUST expose a per-language
+framework helper for this purpose (e.g., a Python
+`openarmature.observability.set_invocation_metadata(**entries)`
+function; TypeScript equivalent; the spec mandates the behavioral
+contract, not the exact API name). The helper:
+
+- Performs an additive merge into the current async context's
+  metadata. Existing keys with the same name are overwritten; other
+  keys are preserved.
+- Validates added keys against the reserved-namespace rule
+  (`openarmature.*`, `gen_ai.*`) and the value-type contract above.
+  Violations MUST raise at the call site, before any downstream span
+  emission picks up the partially-applied state.
+- Affects only spans emitted AFTER the call returns. Spans already
+  closed are NOT retroactively updated. Spans still open at the time
+  of the call (e.g., the invocation span itself, an ancestor node
+  span) MAY pick up the additions per OTel's `set_attribute` /
+  Langfuse SDK's `trace.update` semantics — implementations SHOULD
+  update open spans where the backend SDK supports it, so the
+  augmented metadata is visible end-to-end.
+
+**Per-async-context scoping.** The metadata mapping is held in the
+language's idiomatic async-context primitive (Python `ContextVar`,
+TypeScript `AsyncLocalStorage`) with copy-on-write per async context.
+Fan-out instances (pipeline-utilities §9), parallel-branches instances
+(§11), and detached children each receive their own copy at dispatch
+time; augmentation calls within one instance MUST NOT leak to sibling
+instances. This makes the common fan-out pattern (each instance adds
+its own per-item identifier — `productId`, `documentId`, etc. — to
+its own subtree's spans) work correctly without leakage between
+instances. Augmentation within the parent context (before fan-out
+dispatch, or in code that runs serially) flows forward to subsequent
+spans in that context, per normal context-primitive semantics.
 
 **Backend-mapping contract.** The OTel mapping is the primary
 cross-vendor propagation: §5.6 specifies the `openarmature.user.*`
@@ -387,18 +421,15 @@ CHANGELOG entry references this proposal.
 
 For this proposal specifically:
 
-- **Per-node or per-subgraph metadata override.** A caller MAY want
-  to attach additional metadata when entering a specific node or
-  subgraph (e.g., per-LLM-call cost tracking). Per-call override
-  requires a different mechanism (middleware injection, span-attribute
-  add) and isn't a natural fit for the invocation-scoped contract
-  here. A future proposal MAY add per-call metadata if usage patterns
-  surface.
-- **Metadata mutation during invocation.** Once `invoke()` is called,
-  the metadata mapping is frozen for that invocation. Implementations
-  MUST NOT support mid-flight mutation (would violate
-  invocation-scoped propagation and risk observers seeing different
-  metadata across spans).
+- **Per-LLM-call (not per-node) metadata override.** A caller MAY
+  want to attach metadata specific to a single LLM call within a
+  node (e.g., per-call cost tracking, per-call evaluation tags).
+  Per-LLM-call override would require either a `metadata` argument
+  on `provider.complete()` or a separate framework helper scoped to
+  the next LLM call only. Not in scope; mid-invocation augmentation
+  via §3.4's helper handles the broader use cases (per-node,
+  per-subgraph, per-fan-out-instance), and per-LLM-call needs are
+  less common.
 - **Metadata-driven sampling.** Langfuse and OTel both support
   metadata-conditional sampling rules (e.g., "sample 100% of traces
   where `tenantId == 'acme-corp'`"). Sampling decisions are

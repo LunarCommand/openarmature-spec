@@ -1,0 +1,144 @@
+# §3.4 mid-invocation augmentation + per-async-context scoping:
+# fan-out instances each augment the metadata with their own
+# per-item identifier; sibling instances MUST NOT see each other's
+# augmentations. Verifies the canonical fan-out-with-per-product-id
+# pattern.
+
+cases:
+  - name: fan_out_instances_augment_metadata_independently
+    description: |
+      Three fan-out instances each process one product. The body of
+      each instance calls set_invocation_metadata(productId=<id>)
+      before its LLM call. The harness asserts:
+        - Each instance's spans (the fan-out instance span, the LLM
+          provider span within it) carry the BASELINE caller metadata
+          (tenantId from invoke()) AND the instance-specific
+          productId.
+        - No instance's spans carry the productId from a sibling
+          instance.
+        - The Langfuse Trace metadata carries the baseline (tenantId)
+          but NOT any of the per-instance productIds (those live on
+          observation.metadata of the specific instance's
+          observations).
+    state:
+      fields:
+        results:
+          type: list<dict>
+          reducer: append
+          default: []
+    entry: fan_out_node
+    nodes:
+      fan_out_node:
+        fan_out:
+          # Each item is processed by a per-instance subgraph below.
+          items_field: products
+          inner_subgraph: evaluate_product
+          # Inside the inner subgraph's body node, the test harness
+          # invokes the set_invocation_metadata helper with the
+          # per-instance product_id before the LLM call. The harness
+          # encodes this via the `augment_metadata_from_field` block
+          # which tells the harness "for each instance, augment the
+          # metadata with {productId: item.id} before any LLM call
+          # runs in the instance's subgraph."
+          augment_metadata_from_field:
+            productId: id
+    inner_subgraphs:
+      evaluate_product:
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "score this product"}]
+              stores_response_in: score
+        edges:
+          - {from: ask, to: END}
+    edges:
+      - {from: fan_out_node, to: END}
+    initial_state:
+      products:
+        - {id: "prod-A", name: "Apple"}
+        - {id: "prod-B", name: "Banana"}
+        - {id: "prod-C", name: "Cherry"}
+    caller_metadata:
+      tenantId: "acme-corp"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-29-a
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok-A"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-29-b
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok-B"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-29-c
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok-C"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid>"
+        metadata:
+          tenantId: "acme-corp"
+        # The Trace metadata does NOT include per-instance productId.
+        observations:
+          - type: span
+            name: "fan_out_node"
+            metadata:
+              tenantId: "acme-corp"
+            children:
+              - type: span
+                # fan-out instance subgraph for product A
+                metadata:
+                  tenantId: "acme-corp"
+                  productId: "prod-A"
+                children:
+                  - type: generation
+                    name: "openarmature.llm.complete"
+                    metadata:
+                      tenantId: "acme-corp"
+                      productId: "prod-A"
+                    children: []
+              - type: span
+                # fan-out instance for product B
+                metadata:
+                  tenantId: "acme-corp"
+                  productId: "prod-B"
+                children:
+                  - type: generation
+                    name: "openarmature.llm.complete"
+                    metadata:
+                      tenantId: "acme-corp"
+                      productId: "prod-B"
+                    children: []
+              - type: span
+                # fan-out instance for product C
+                metadata:
+                  tenantId: "acme-corp"
+                  productId: "prod-C"
+                children:
+                  - type: generation
+                    name: "openarmature.llm.complete"
+                    metadata:
+                      tenantId: "acme-corp"
+                      productId: "prod-C"
+                    children: []
+      invariants:
+        # Each fan-out instance's observations carry its own
+        # productId; no instance's observations carry another
+        # instance's productId.
+        fan_out_per_instance_metadata_isolation: true
+        # The baseline caller metadata (tenantId) reaches every
+        # span / observation, regardless of which instance.
+        baseline_caller_metadata_universal: true

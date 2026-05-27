@@ -1,0 +1,59 @@
+# §3.4 namespace-collision rejection: caller-supplied metadata keys
+# under reserved namespaces (openarmature.* and gen_ai.*) MUST be
+# rejected at the invoke() API boundary, before any observer
+# emission. Two cases cover both reserved prefixes.
+
+cases:
+  - name: rejects_openarmature_prefix
+    description: |
+      Caller supplies a metadata key under the reserved `openarmature.*`
+      namespace. The framework MUST raise an API-boundary error before
+      any work begins; no spans or Langfuse observations are produced.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      openarmature.user.malicious: "x"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      # The harness asserts the framework raised before any work
+      # began — no spans emitted, no Langfuse observations produced.
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_gen_ai_prefix
+    description: |
+      Caller supplies a metadata key under the reserved `gen_ai.*`
+      namespace (the OTel GenAI semconv prefix used by §5.5.2 request
+      parameters). The framework MUST raise an API-boundary error
+      before any work begins; no spans or Langfuse observations are
+      produced.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      gen_ai.system: "openai"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true

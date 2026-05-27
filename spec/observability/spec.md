@@ -9,6 +9,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.5 extended with LLM input/output payload attributes (default-off), `RuntimeConfig` request parameters under the OpenTelemetry GenAI semantic conventions, a minimum set of GenAI semconv response attributes, two new opt-out flags (`disable_llm_payload`, `disable_genai_semconv`), and a per-attribute truncation contract (64 KiB default cap, UTF-8-boundary-safe algorithm, 256-byte minimum, inline-image redaction) by [proposal 0024](../../proposals/0024-llm-span-payload-and-semconv.md)
   - §8 added — Langfuse backend mapping (sibling to the OTel mapping in §3–§7); covers observation-type mapping (invocation → Trace, node/subgraph/fan-out → Span observation, LLM provider → Generation observation), attribute translation from `openarmature.*` and `gen_ai.*` to Langfuse native fields, correlation ID realization on Trace + Observation metadata, `langfuse.trace.name` source, prompt linkage to a Langfuse Prompt entity when the prompt's source exposes one (falling back to metadata-only otherwise), and composition rules with the OTel observer; renumbers existing §8 Determinism → §9 and §9 Out of scope → §10 by [proposal 0031](../../proposals/0031-observability-langfuse-mapping.md)
   - §5.5.2 attribute list extended with three new GenAI semconv attributes (`gen_ai.request.frequency_penalty`, `gen_ai.request.presence_penalty`, `gen_ai.request.stop_sequences`) corresponding to the three new declared `RuntimeConfig` fields introduced by llm-provider [proposal 0032](../../proposals/0032-llm-provider-runtime-config-refinements.md). The §8.4.3 Langfuse-mapping reference to §5.5.2 expands by inclusion: the three new attributes flow into `generation.modelParameters.{frequency_penalty, presence_penalty, stop_sequences}` automatically, no §8 edit required.
+  - §3 extended with new §3.4 *Caller-supplied invocation metadata* subsection — sibling caller surface to `correlation_id` accepting an arbitrary key/value mapping at `invoke()` time, propagated via the language's context primitive, augmentable mid-invocation via a framework helper (each fan-out instance gets its own per-async-context copy so per-instance additions don't leak to siblings), invocation-scoped (flows through detached subgraphs and fan-outs); §5.6 cross-cutting attribute family extended with `openarmature.user.*` (appears on every span and OTel log record, using the in-scope metadata at span emission time); §7 log records extended to carry the same family; §8.4.1 and §8.4.2 Langfuse propagation extended with caller metadata merged into `trace.metadata` and every `observation.metadata` as top-level keys (with a Langfuse-Sessions distinction note clarifying that this is orthogonal to Sessions/`sessionId`, which remain deferred to proposal 0020); graph-engine §3 gains a clarifying paragraph noting `invoke()` accepts the metadata mapping by [proposal 0034](../../proposals/0034-caller-supplied-invocation-metadata.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -136,6 +137,101 @@ ID realization" subsection naming the field/attribute/metadata key the backend u
 ID is invocation-scoped, not trace-scoped, so it flows through detached subgraphs and fan-outs
 unchanged. A detached subgraph's spans carry the same correlation ID as the parent trace's
 spans.
+
+### 3.4 Caller-supplied invocation metadata
+
+In addition to the correlation ID surface (§3.1–§3.3), the framework MUST accept an optional
+**caller-supplied metadata mapping** at invoke time. Callers attach a mapping from string keys to
+OTel-attribute-compatible values (a `dict[str, AttributeValue]` in Python idiom, where
+`AttributeValue` matches OTel's scalar / homogeneous-array type contract; equivalent per
+language) carrying arbitrary key/value entries that identify the invocation for search and
+filtering in observability backends.
+
+**Lifecycle and propagation.** The mapping is per-invocation and lives for the duration of one
+outermost `invoke()` call, alongside the correlation ID. Implementations MUST:
+
+- **Accept the mapping at invoke time** via a per-language idiomatic mechanism (e.g., a
+  `metadata` keyword argument on `invoke()`, a field on the invocation-config record,
+  equivalent).
+- **Propagate via the language's idiomatic context primitive** — Python `ContextVar`,
+  TypeScript `AsyncLocalStorage`, equivalents — so the mapping is readable from observers
+  without explicit threading through function arguments. Same propagation mechanism as the
+  correlation ID (§3.1).
+- **Reset the context after the invocation completes** so subsequent invocations get fresh
+  metadata.
+
+**Key/value constraints.**
+
+- Keys MUST be strings.
+- Values MUST be OpenTelemetry-attribute-compatible scalars: string, int, float (double),
+  bool, or homogeneous arrays of those types. Nested objects, null values, and mixed-type
+  arrays are NOT permitted (matching OTel's `AnyValue` attribute-type contract).
+- Keys MUST NOT collide with reserved namespaces: `openarmature.*` and `gen_ai.*`.
+  Implementations MUST reject (raise an error at the `invoke()` API boundary, before any work
+  begins) a metadata mapping that contains a colliding key. The error category is
+  implementation-defined per the language's API-boundary error idiom (Python `ValueError`,
+  TypeScript `RangeError`, Go error return — same shape as §6 of graph-engine's
+  drain-timeout-input validation).
+- Key length, value length, and entry count are NOT constrained by the spec; backends MAY
+  enforce their own limits (Langfuse caps trace-metadata values at a vendor-defined size,
+  etc.) and surface rejections via existing error channels.
+
+**Invocation-scoped, not trace-scoped.** Detached subgraphs and detached fan-outs (per §4.4)
+inherit the metadata from the parent invocation. The mapping is per-invocation context, the
+same as `correlation_id`; detached children of the invocation share it.
+
+**Mid-invocation augmentation.** Code executing within a node body, middleware, or observer
+MAY add entries to the in-scope metadata mapping during invocation. Implementations MUST
+expose a per-language framework helper for this purpose (e.g., a Python
+`openarmature.observability.set_invocation_metadata(**entries)` function;
+TypeScript equivalent; the spec mandates the behavioral contract, not the exact API name).
+The helper:
+
+- Performs an additive merge into the current async context's metadata. Existing keys with
+  the same name are overwritten; other keys are preserved.
+- Validates added keys against the reserved-namespace rule (`openarmature.*`, `gen_ai.*`) and
+  the value-type contract above. Violations MUST raise at the call site, before any
+  downstream span emission picks up the partially-applied state.
+- Affects only spans emitted AFTER the call returns. Spans already closed are NOT
+  retroactively updated. Spans still open at the time of the call (e.g., the invocation span
+  itself, an ancestor node span) MAY pick up the additions per OTel's `set_attribute` /
+  Langfuse SDK's `trace.update` semantics — implementations SHOULD update open spans where
+  the backend SDK supports it, so the augmented metadata is visible end-to-end.
+
+**Per-async-context scoping.** The metadata mapping is held in the language's idiomatic
+async-context primitive (Python `ContextVar`, TypeScript `AsyncLocalStorage`) with
+copy-on-write per async context. Fan-out instances (pipeline-utilities §9), parallel-branches
+instances (§11), and detached children each receive their own copy at dispatch time;
+augmentation calls within one instance MUST NOT leak to sibling instances. This makes the
+common fan-out pattern (each instance adds its own per-item identifier — `productId`,
+`documentId`, etc. — to its own subtree's spans) work correctly without leakage between
+instances. Augmentation within the parent context (before fan-out dispatch, or in code that
+runs serially) flows forward to subsequent spans in that context, per normal context-primitive
+semantics.
+
+**Backend-mapping contract.** The OTel mapping is the primary cross-vendor propagation: §5.6
+specifies the `openarmature.user.*` cross-cutting attribute family, which appears on every
+span and every OTel log record (§7) emitted during the invocation. Every observability backend
+that consumes OTel spans (Phoenix / Arize, Honeycomb, Datadog APM, HyperDX, Grafana Tempo,
+custom OTel collectors, etc.) sees the metadata as standard OTel span attributes with no
+per-backend wiring beyond the OTel mapping itself.
+
+Backends whose data model carries trace-level metadata as a typed field separate from OTel
+span attributes need an additional propagation rule in their respective §-section. The
+Langfuse mapping (§8.4.1 + §8.4.2) is the one such backend currently specified; future
+observability backend mappings (when proposed) follow the same pattern — they inherit §5.6
+cross-cutting attributes by default and only add their own propagation rules if the backend's
+data model needs them.
+
+**Cross-backend key portability.** Backends may impose their own constraints on metadata key
+names (e.g., Langfuse's propagated metadata limits keys to alphanumeric characters; some
+backends disallow dots). Callers who wire OA to multiple observability backends SHOULD use
+alphanumeric or camelCase keys (`tenantId`, `userId`, `featureFlag`) for cross-backend
+portability. The OA spec's API-boundary validation MUST at least enforce the
+reserved-namespace rule above; implementations MAY expand the rejected-key set to also catch
+backend-specific constraints early (e.g., a Langfuse-aware implementation rejecting
+non-alphanumeric keys at `invoke()` rather than at observer emission). When implementations
+do NOT expand, backend-specific key constraints surface at the backend's emission layer.
 
 ## 4. Span hierarchy
 
@@ -693,10 +789,30 @@ These attributes appear on EVERY span emitted during an invocation, regardless o
   an invocation — so every span emitted during the invocation MUST carry it). The same
   correlation ID appears on spans within detached subgraphs and detached fan-out instances
   (per §4.4 detached mode).
+- `openarmature.user.<key>` — for each entry `(key, value)` in the caller-supplied invocation
+  metadata IN SCOPE at the time the span is emitted (per §3.4, where "in scope" reflects
+  both the initial mapping supplied at `invoke()` AND any subsequent mid-invocation
+  augmentations applied in the current async context), the implementation MUST emit a span
+  attribute named `openarmature.user.<key>` with the supplied `value`. The cross-cutting
+  scope matches `openarmature.correlation_id`: every span emitted during the invocation
+  carries the in-scope set — the invocation span, every node span, every subgraph span,
+  every fan-out instance span, every LLM provider span, and every retry attempt span.
+  Detached subgraphs and detached fan-out instances (§4.4) also carry the in-scope set, since
+  the metadata is invocation-scoped, not trace-scoped. Value types match §3.4 (OTel-attribute
+  scalars or homogeneous arrays). Implementations SHOULD update already-open spans (the
+  invocation span, ancestor node spans) with later-added entries where the OTel SDK supports
+  it, so the augmented metadata is visible on those spans at trace export time.
 
-The cross-cutting nature of `openarmature.correlation_id` means observability backends can
-filter for "all spans related to request X" with a single attribute query, regardless of which
-node, subgraph, or fan-out instance emitted the span.
+The `openarmature.user.` namespace is reserved for caller-supplied metadata per §3.4; the OA
+spec does NOT define any normative attribute names under this prefix. Future OA-normative
+attributes go under `openarmature.*` (the existing namespace) or `gen_ai.*` (when the GenAI
+semconv has settled a cross-vendor name). Reserving the `openarmature.user.` prefix gives
+callers a stable, collision-free namespace they can rely on across spec versions.
+
+The cross-cutting nature of `openarmature.correlation_id` and `openarmature.user.*` means
+observability backends can filter for "all spans related to request X" or "all spans for
+tenant Y" with a single attribute query, regardless of which node, subgraph, or fan-out
+instance emitted the span.
 
 ## 6. Driving span lifecycle
 
@@ -796,6 +912,11 @@ OTel Logs SDK so that:
 
 - `openarmature.correlation_id` — string. The invocation's correlation ID. Set on every log
   record emitted during the invocation.
+- `openarmature.user.<key>` — for each entry in the caller-supplied invocation metadata (per
+  §3.4), the implementation MUST emit a log-record attribute named `openarmature.user.<key>`
+  with the supplied value, on every log record emitted during the invocation. Same OTel Logs
+  Bridge mechanism as the `correlation_id` propagation below. Same value-type contract as the
+  §5.6 cross-cutting span-attribute family.
 - `trace_id`, `span_id` — string. The active span's identifiers, populated automatically by
   the OTel Logs SDK when the user's logger is bridged to OTel Logs (see implementation guidance
   below).
@@ -895,6 +1016,32 @@ The §5 OA attribute keys translate to Langfuse fields per the tables below. Imp
 set the corresponding Langfuse fields when the source OA attribute is set on the source span
 (per §5).
 
+Per §3.4, the Langfuse mapping is one specific instance of the per-backend propagation pattern
+for caller-supplied invocation metadata. Langfuse's data model treats `trace.metadata` and
+`observation.metadata` as typed top-level fields separate from OTel span attributes; the
+Langfuse observer must populate them explicitly. OTel-attribute-based backends (Phoenix /
+Arize, Honeycomb, Datadog APM, HyperDX) do NOT need this per-backend propagation; they inherit
+the §5.6 `openarmature.user.*` cross-cutting attributes from the OTel observer's span
+emission.
+
+**Distinction from Langfuse Sessions.** Langfuse's `trace.metadata` field (the target of
+§3.4's caller-supplied metadata propagation) is distinct from Langfuse's Sessions feature.
+Sessions group multiple traces under a single `sessionId` for cross-invocation conversation
+replay; they are deferred to a future sessions capability (see §10 *Out of scope*). §3.4's
+caller-supplied metadata is per-invocation arbitrary key/value enrichment used for filtering
+and search; metadata entries are NOT promoted to Langfuse's `userId` / `sessionId` Trace
+fields by these propagation rules. The two surfaces are complementary and orthogonal.
+
+**Langfuse-specific constraints on caller-supplied metadata.** Langfuse's documentation
+states that propagated metadata keys are limited to alphanumeric characters and values are
+limited to 200-character strings. Callers wiring OA to a Langfuse backend SHOULD use
+alphanumeric keys (e.g., camelCase like `tenantId`) within Langfuse's value-length bounds.
+The OA API-boundary validation does NOT enforce these constraints by default (they are
+Langfuse-specific, not spec-wide per §3.4 cross-backend portability); a key that violates
+Langfuse's constraints reaches the Langfuse observer and is handled per the Langfuse SDK's
+error / truncation semantics. Implementations MAY expand their `invoke()`-boundary rejected-key
+set to also catch Langfuse-specific constraints early, per §3.4's MAY-expand allowance.
+
 #### 8.4.1 Trace-level mapping (sourced from invocation span attributes)
 
 | OA attribute (per §5.1, §5.6) | Langfuse Trace field |
@@ -904,6 +1051,7 @@ set the corresponding Langfuse fields when the source OA attribute is set on the
 | `openarmature.graph.entry_node` | `trace.metadata.entry_node` |
 | `openarmature.graph.spec_version` | `trace.metadata.spec_version` |
 | (caller-supplied invocation label OR entry node name, per §8.6) | `trace.name` |
+| Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at trace emission time (per §3.4, including any mid-invocation augmentations applied before trace closure) | `trace.metadata.<key>` (top level, sibling to `correlation_id` / `entry_node` / `spec_version`; NOT nested under a `user` sub-object so Langfuse UI filtering on `metadata.<key>` matches what callers supplied; implementations SHOULD use Langfuse SDK's `trace.update(metadata=...)` to apply mid-invocation augmentations to the open Trace) |
 
 #### 8.4.2 Observation-level mapping (sourced from node / subgraph / fan-out span attributes)
 
@@ -920,6 +1068,7 @@ set the corresponding Langfuse fields when the source OA attribute is set on the
 | `openarmature.fan_out.error_policy` | `observation.metadata.fan_out_error_policy` (fan-out node Span observation only) |
 | `openarmature.fan_out.parent_node_name` | `observation.metadata.fan_out_parent_node_name` (fan-out instance Span observation only) |
 | `openarmature.correlation_id` | `observation.metadata.correlation_id` (cross-cutting per §8.5) |
+| Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at the observation's emission time (per §3.4) | `observation.metadata.<key>` on EVERY Observation (top level, same propagation rationale as `correlation_id`; lets users filter across observations from detached subgraphs / fan-outs in one Langfuse UI query). For the fan-out per-instance use case, each instance's observations carry that instance's augmented metadata (per §3.4 per-async-context scoping), so adopters can filter Langfuse by the per-instance identifier (e.g., `productId`) to find that specific instance's subtree. |
 | `openarmature.error.category` | `observation.level = "ERROR"`, `observation.statusMessage = <category>` |
 
 #### 8.4.3 Generation-specific mapping (sourced from LLM provider span attributes)

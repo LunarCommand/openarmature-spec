@@ -1,0 +1,87 @@
+# §8.4.1 + §8.4.2 Langfuse propagation: caller-supplied metadata
+# (per §3.4) is merged into trace.metadata AND into every
+# observation.metadata as top-level keys (sibling to correlation_id,
+# entry_node, spec_version on the trace; sibling to correlation_id
+# and the other per-observation metadata on observations).
+
+cases:
+  - name: caller_metadata_merges_to_langfuse_trace_and_observations
+    description: |
+      Invocation supplied with three caller metadata entries; graph
+      has two nodes and one LLM call. The harness asserts that the
+      Langfuse Trace's metadata carries all three entries as top-level
+      keys (alongside correlation_id / entry_node / spec_version),
+      and that every Observation (the two node Span observations and
+      the LLM Generation observation) also carries all three entries
+      as top-level keys in its metadata.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: prep
+    nodes:
+      prep:
+        update: {msg: "ready"}
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: prep, to: ask_llm}
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      seatCount: 42
+      isCanary: true
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-27
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hi back"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 2, total_tokens: 7}
+    expected:
+      langfuse_trace:
+        id: "<uuid>"
+        metadata:
+          correlation_id: "<uuid>"
+          entry_node: "prep"
+          spec_version: "<any-string>"
+          tenantId: "acme-corp"
+          seatCount: 42
+          isCanary: true
+        observations:
+          - type: span
+            name: "prep"
+            metadata:
+              correlation_id: "<uuid>"
+              tenantId: "acme-corp"
+              seatCount: 42
+              isCanary: true
+            children: []
+          - type: span
+            name: "ask_llm"
+            metadata:
+              correlation_id: "<uuid>"
+              tenantId: "acme-corp"
+              seatCount: 42
+              isCanary: true
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                metadata:
+                  correlation_id: "<uuid>"
+                  tenantId: "acme-corp"
+                  seatCount: 42
+                  isCanary: true
+                children: []
+      invariants:
+        # Caller metadata entries MUST appear at trace.metadata top
+        # level (not nested under "user") AND on every observation's
+        # metadata top level (per §8.4.1 + §8.4.2).
+        caller_metadata_top_level_on_trace: true
+        caller_metadata_top_level_on_every_observation: true

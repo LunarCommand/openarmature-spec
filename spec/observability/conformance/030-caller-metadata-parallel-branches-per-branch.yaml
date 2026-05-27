@@ -1,0 +1,147 @@
+# §3.4 mid-invocation augmentation + per-async-context scoping:
+# parallel-branches case. Two heterogeneous branches dispatched
+# concurrently each augment the metadata with their own
+# branch-specific identifier; sibling branches MUST NOT see each
+# other's augmentations. Companion to fixture 029, which exercises
+# the same contract for fan-out instances; this fixture verifies
+# the SEPARATE code path used by parallel-branches (pipeline-
+# utilities §11) honors the same per-async-context isolation.
+
+subgraphs:
+  fraud_check:
+    state:
+      fields:
+        fraud_score:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "score for fraud"}]
+          stores_response_in: fraud_score
+    edges:
+      - {from: ask, to: END}
+
+  policy_audit:
+    state:
+      fields:
+        audit_summary:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "audit the policy"}]
+          stores_response_in: audit_summary
+    edges:
+      - {from: ask, to: END}
+
+cases:
+  - name: parallel_branches_augment_metadata_independently
+    description: |
+      Two parallel branches (fraud_check, policy_audit) dispatched
+      concurrently. Each branch's body augments the metadata with
+      its own branch-specific identifier (branchName) before its
+      LLM call. The harness asserts:
+        - Each branch's observations carry the BASELINE caller
+          metadata (tenantId from invoke()) AND its OWN branchName.
+        - No branch's observations carry the sibling's branchName.
+        - The Langfuse Trace metadata carries the baseline but NOT
+          either branchName (those land on observation.metadata
+          inside each branch's subtree, not on trace.metadata).
+    state:
+      fields:
+        fraud_result:
+          type: string
+          default: ""
+        audit_result:
+          type: string
+          default: ""
+    entry: dispatcher
+    nodes:
+      dispatcher:
+        parallel_branches:
+          branches:
+            fraud_check:
+              subgraph: fraud_check
+              outputs:
+                fraud_result: fraud_score
+              # Per-branch metadata augmentation: harness primitive
+              # equivalent to `set_invocation_metadata(branchName=
+              # "fraud_check")` placed at the top of the branch's
+              # subgraph body.
+              augment_metadata:
+                branchName: "fraud_check"
+            policy_audit:
+              subgraph: policy_audit
+              outputs:
+                audit_result: audit_summary
+              augment_metadata:
+                branchName: "policy_audit"
+    edges:
+      - {from: dispatcher, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-30-fraud
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "low"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-30-audit
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "compliant"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid>"
+        metadata:
+          tenantId: "acme-corp"
+        # Trace metadata does NOT carry either branch's branchName.
+        observations:
+          - type: span
+            name: "dispatcher"
+            metadata:
+              tenantId: "acme-corp"
+            children:
+              - type: span
+                # fraud_check subgraph dispatch span
+                metadata:
+                  tenantId: "acme-corp"
+                  branchName: "fraud_check"
+                children:
+                  - type: generation
+                    name: "openarmature.llm.complete"
+                    metadata:
+                      tenantId: "acme-corp"
+                      branchName: "fraud_check"
+                    children: []
+              - type: span
+                # policy_audit subgraph dispatch span
+                metadata:
+                  tenantId: "acme-corp"
+                  branchName: "policy_audit"
+                children:
+                  - type: generation
+                    name: "openarmature.llm.complete"
+                    metadata:
+                      tenantId: "acme-corp"
+                      branchName: "policy_audit"
+                    children: []
+      invariants:
+        # Each branch's observations carry only ITS OWN branchName;
+        # no leakage to the sibling branch.
+        parallel_branches_per_branch_metadata_isolation: true
+        # The baseline caller metadata (tenantId) reaches every
+        # span / observation regardless of which branch.
+        baseline_caller_metadata_universal: true
