@@ -1,0 +1,101 @@
+# §7 LabelResolver fallback chain. One manager is configured with a
+# LabelResolver backed by a mapping that has a `default` key plus two
+# per-name overrides. Five fetch calls exercise all three precedence
+# levels plus the explicit-label-bypass and resolver-without-default
+# variants.
+
+backends:
+  - name: local
+    prompts:
+      - name: segment_semantic
+        label: staging
+        version: v-staging
+        template: "Stage 1"
+        template_hash: "sha256:seg-staging"
+      - name: segment_semantic
+        label: production
+        version: v-prod
+        template: "Stage 1 prod"
+        template_hash: "sha256:seg-prod"
+      - name: extract_claims
+        label: variant-a
+        version: va
+        template: "Variant A"
+        template_hash: "sha256:ec-va"
+      - name: extract_claims
+        label: production
+        version: vp
+        template: "Variant prod"
+        template_hash: "sha256:ec-vp"
+      - name: classify
+        label: production
+        version: v1
+        template: "Classify v1"
+        template_hash: "sha256:classify-v1"
+      - name: unknown_prompt
+        label: production
+        version: v1
+        template: "Unknown"
+        template_hash: "sha256:unknown-v1"
+
+label_resolver:
+  mapping:
+    default: production
+    segment_semantic: staging
+    extract_claims: variant-a
+
+manager:
+  backends: [local]
+  label_resolver_ref: label_resolver
+
+calls:
+  - target: manager
+    operation: fetch
+    name: segment_semantic
+    # No label argument — resolver consulted, per-name override returns "staging".
+    capture_as: r_seg
+  - target: manager
+    operation: fetch
+    name: extract_claims
+    # No label argument — per-name override returns "variant-a".
+    capture_as: r_ec
+  - target: manager
+    operation: fetch
+    name: classify
+    # No label argument — no per-name override; resolver's default returns "production".
+    capture_as: r_classify
+  - target: manager
+    operation: fetch
+    name: segment_semantic
+    label: production
+    # Explicit label — resolver NOT consulted; passes "production" verbatim.
+    capture_as: r_seg_explicit
+
+# Second manager: same backends, NO LabelResolver configured.
+secondary_manager:
+  backends: [local]
+  # label_resolver_ref intentionally omitted.
+
+secondary_calls:
+  - target: secondary_manager
+    operation: fetch
+    name: unknown_prompt
+    # No label argument; no resolver — spec-fallback "production".
+    capture_as: r_unknown_no_resolver
+
+expected:
+  r_seg:
+    label: staging
+    version: v-staging
+  r_ec:
+    label: variant-a
+    version: va
+  r_classify:
+    label: production
+    version: v1
+  r_seg_explicit:
+    label: production
+    version: v-prod
+  r_unknown_no_resolver:
+    label: production
+    version: v1

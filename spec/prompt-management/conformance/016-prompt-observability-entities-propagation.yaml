@@ -1,0 +1,73 @@
+# §3 Prompt.observability_entities propagation. Two cases: a backend
+# that populates a Langfuse Prompt reference (case A); a backend with
+# no observability entities (case B, absent semantic).
+
+backends:
+  - name: langfuse_aware
+    prompts:
+      - name: classify
+        label: production
+        version: v7
+        template: "Classify: {{ topic }}"
+        template_hash: "sha256:classify-v7"
+        # Sentinel string represents an opaque Langfuse SDK Prompt
+        # entity reference. The harness asserts equality on this
+        # sentinel rather than constructing a real SDK object.
+        observability_entities:
+          langfuse_prompt: "lf-prompt-sentinel-7a3e"
+
+  - name: filesystem
+    prompts:
+      - name: greet
+        label: production
+        version: sha-deadbeef
+        template: "Hello, {{ name }}!"
+        template_hash: "sha256:greet-deadbeef"
+        # No observability_entities — verifies the absent case.
+
+cases:
+  - name: observability_entities_propagates
+    description: |
+      Backend populates observability_entities['langfuse_prompt'] with
+      a sentinel reference. The harness verifies both Prompt and
+      PromptResult carry the reference unchanged.
+    manager:
+      backends: [langfuse_aware]
+    calls:
+      - target: manager
+        operation: fetch
+        name: classify
+        label: production
+        capture_as: prompt
+      - target: manager
+        operation: render
+        prompt_ref: prompt
+        variables: {topic: "weather"}
+        capture_as: rendered
+    expected:
+      prompt:
+        name: classify
+        observability_entities:
+          langfuse_prompt: "lf-prompt-sentinel-7a3e"
+      rendered:
+        name: classify
+        observability_entities:
+          langfuse_prompt: "lf-prompt-sentinel-7a3e"
+
+  - name: observability_entities_absent
+    description: |
+      Filesystem-style backend supplies no observability_entities;
+      the field is None on both Prompt and PromptResult.
+    manager:
+      backends: [filesystem]
+    calls:
+      - target: manager
+        operation: get
+        name: greet
+        label: production
+        variables: {name: "Alice"}
+        capture_as: rendered
+    expected:
+      rendered:
+        name: greet
+        observability_entities_absent: true
