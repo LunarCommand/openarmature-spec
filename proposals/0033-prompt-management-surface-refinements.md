@@ -138,7 +138,7 @@ LLM-call surfaces; the prompt-management refinements complete the
 adoption set for production deployments wiring OA to managed prompt
 backends.
 
-The three additions are independent surface refinements — each
+The four additions are independent surface refinements — each
 addresses a distinct adoption gap. They bundle into one proposal
 because they share a single driver (production adopters of
 proposal 0031 + 0032), a single spec (prompt-management), and a
@@ -243,17 +243,38 @@ MAY adopt either of two conventions for sourcing `sampling`:
   at backend construction time, keyed by prompt name; populate
   `Prompt.sampling` from the entry matching the fetched name.
 
-Both conventions parse the file as JSON whose top-level shape
-matches `SamplingConfig`. Example (informative):
+The two conventions have different top-level shapes:
+
+**Per-prompt sidecar** — top-level is a single `SamplingConfig`. The
+prompt name comes from the sidecar file's path (`<name>.config.json`
+next to `<name>.j2`); the file's JSON does NOT include a `name` field.
+Example (informative):
 
 ```json
 {
-  "name": "classify",
   "temperature": 0.0,
   "max_tokens": 256,
   "stop_sequences": ["END"],
   "extras": {
     "repetition_penalty": 1.05
+  }
+}
+```
+
+**Unified config file** — top-level is a mapping from prompt name to
+`SamplingConfig`. Example (informative):
+
+```json
+{
+  "classify": {
+    "temperature": 0.0,
+    "max_tokens": 256,
+    "stop_sequences": ["END"]
+  },
+  "extract_claims": {
+    "temperature": 0.2,
+    "max_tokens": 1024,
+    "extras": {"repetition_penalty": 1.05}
   }
 }
 ```
