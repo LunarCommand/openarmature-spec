@@ -12,11 +12,15 @@
 Add three new conformance fixtures to `spec/observability/conformance/`
 exercising the §8.3 *Observation-type mapping* rows and §8.5 *Detached
 trace mode* Langfuse-specific rules that v0.23.0 (proposal 0031)
-shipped normatively but only partially fixtured. Specifically:
+shipped normatively but only partially covered by fixtures.
+Specifically:
 
 - **Subgraph Span observation hierarchy** — §8.3 row 3 (Subgraph span
-  → Span observation, child of the surrounding parent Span, containing
-  the subgraph's nested node Span observations).
+  → Span observation, child of the surrounding parent Span — or
+  directly child of the Trace when there is no parent Span
+  observation, since per §8.3 row 1 the invocation itself maps to the
+  Trace rather than to a root Span observation — containing the
+  subgraph's nested node Span observations).
 - **Fan-out node dispatch + per-instance Span observations
   (non-detached)** — §8.3 rows 4-5 (Fan-out node span → Span
   observation as dispatch container; Fan-out instance span → child
@@ -47,9 +51,9 @@ the §8.3 mapping table:
 - LLM provider → Generation observation (row 6)
 - Retry attempts (row 7, implicit in 023)
 
-Three rows of the §8.3 table were specified normatively but not
-fixtured: Subgraph (row 3), Fan-out node (row 4), and Fan-out instance
-(row 5). The §8.5 detached-trace-mode Langfuse rules were specified
+Three rows of the §8.3 table were specified normatively but had no
+fixture coverage: Subgraph (row 3), Fan-out node (row 4), and Fan-out
+instance (row 5). The §8.5 detached-trace-mode Langfuse rules were specified
 in prose but had no fixture asserting the `detached_child_trace_ids`
 metadata-array shape or the cross-trace `correlation_id` consistency
 for the Langfuse mapping.
@@ -112,8 +116,8 @@ onto the linear-graph harness primitives used by 001 / 003 / 004 /
 shape:**
 
 - `trace.id` matches the `openarmature.invocation_id` per §8.4.1.
-- `observation.name` of each Span observation matches the OA span
-  name per §8.4.2.
+- `observation.name` of each Span observation matches the
+  `openarmature.node.name` attribute on the source span per §8.4.2.
 - `observation.metadata.namespace` reflects the subgraph nesting per
   §8.4.2 (e.g., `["outer_sub", "inner_x"]`).
 - `observation.metadata.subgraph_name` is set on `inner_x` and
@@ -233,7 +237,7 @@ mapping as specified by 0031.
 ## Open questions
 
 None at draft time. The mapping rows and detached-trace rules being
-fixtured are normatively specified in v0.23.0; the fixtures simply
-exercise them. The fixture YAML shapes mirror their OTel siblings
+covered here are normatively specified in v0.23.0; the fixtures
+simply exercise them. The fixture YAML shapes mirror their OTel siblings
 (002 / 006 / 008) where applicable, so harness conventions are
 already established.
