@@ -43,4 +43,4 @@ Click any column header to sort.
 
 The **Python** column reflects [`openarmature-python/conformance.toml`](https://github.com/LunarCommand/openarmature-python/blob/main/conformance.toml). Status values: `Shipped (X.Y.Z)` — proposal's behavior shipped in this implementation version; `Textual (X.Y.Z)` — accepted proposal was purely textual (reframe, clarification, template) and required no module-level change; `Pending` — Accepted in spec, not yet pinned in this implementation; `—` — proposal is Draft and impl status does not apply.
 
-The **TypeScript** column is empty pending the start of a TypeScript implementation.
+The **TypeScript** column shows `—` for every row pending the start of a TypeScript implementation.
