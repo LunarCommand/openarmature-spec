@@ -13,6 +13,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §3 Execution model concurrency exception extended to also cover parallel-branches; §6 Observer hooks gained `branch_name` field and updated event-source uniqueness invariant to include it by [proposal 0011](../../proposals/0011-pipeline-utilities-parallel-branches.md)
   - §6 Observer hooks `drain` operation gained an optional caller-supplied `timeout` parameter and now MUST return a summary (`undelivered_count`, `timeout_reached`, with implementations permitted to add richer detail); under timeout, workers MUST be cancelled and graph state MUST remain usable for subsequent invocations by [proposal 0010](../../proposals/0010-drain-timeout.md)
   - §6 Drain gained two clarifications of implicit rules: the snapshot semantic for "prior invocations" (drain covers workers active at call time; invocations started during the drain are NOT covered), and the MUST-reject rule for negative / NaN timeout inputs (with the error surface per-language idiomatic) by [proposal 0030](../../proposals/0030-drain-snapshot-and-timeout-validation.md)
+  - §3 *Execution model* gained a clarifying paragraph noting that `invoke()` accepts an optional caller-supplied metadata mapping (per observability §3.4) alongside the existing `correlation_id` argument and per-language invocation surface by [proposal 0034](../../proposals/0034-caller-supplied-invocation-metadata.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -150,6 +151,16 @@ graph run, with the bounded exceptions that a fan-out node may execute multiple 
 concurrently and a parallel-branches node may execute multiple heterogeneous compiled subgraphs
 concurrently. After a fan-out or parallel-branches node completes, single-threaded execution resumes for
 the rest of the parent run.
+
+**Invocation entry surface.** The `invoke()` operation accepts the initial state, an optional
+caller-supplied `correlation_id` (per observability §3.1), and an optional caller-supplied
+metadata mapping (per observability §3.4). The metadata mapping carries arbitrary
+OTel-attribute-compatible key/value entries that propagate to every observability backend the
+implementation emits to. The exact mechanism by which callers supply these arguments at invoke
+time is per-language idiomatic (a keyword argument; a field on an invocation-config record;
+equivalent); the graph-engine spec does not prescribe the mechanism. The contracts for how
+these arguments are validated and propagated live in the observability spec (§3.1 for
+`correlation_id`, §3.4 for caller-supplied metadata).
 
 ## 4. Error semantics
 
