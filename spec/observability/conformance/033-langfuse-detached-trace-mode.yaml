@@ -80,7 +80,6 @@ cases:
                   name: "step"
                   metadata:
                     namespace: ["long_running_workflow", "step"]
-                    subgraph_name: "long_running_workflow"
                     correlation_id: "<corr_id_1>"
                   level: DEFAULT
                   children: []

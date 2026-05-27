@@ -80,6 +80,7 @@ expected:
           namespace: ["outer_sub"]
           step: 1
           attempt_index: 0
+          subgraph_name: "inner"
           correlation_id: "<corr_id_1>"
         level: DEFAULT
         children:
@@ -87,7 +88,6 @@ expected:
             name: "inner_x"
             metadata:
               namespace: ["outer_sub", "inner_x"]
-              subgraph_name: "inner"
               correlation_id: "<corr_id_1>"
             level: DEFAULT
             children: []
@@ -95,7 +95,6 @@ expected:
             name: "inner_y"
             metadata:
               namespace: ["outer_sub", "inner_y"]
-              subgraph_name: "inner"
               correlation_id: "<corr_id_1>"
             level: DEFAULT
             children: []

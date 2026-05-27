@@ -28,7 +28,12 @@ Langfuse Trace / Observation tree rather than the OTel span tree.
   Trace (the invocation maps to the Trace; no root Span observation wraps them).
 - `inner_x` and `inner_y` are Span observations under `outer_sub` (the subgraph
   wrapper contains the inner nodes).
-- The two inner observations carry `metadata.subgraph_name = "inner"` per §8.4.2.
+- The `outer_sub` subgraph dispatch observation carries
+  `metadata.subgraph_name = "inner"` per §8.4.2 (sourced from
+  `openarmature.subgraph.name` on the subgraph span itself per §5.3).
+  The inner-node observations (`inner_x`, `inner_y`) do NOT carry
+  `subgraph_name` — that attribute is subgraph-span-scoped, not
+  inner-node-scoped.
 - `metadata.namespace` on each observation reflects the subgraph nesting:
   `["outer_in"]`, `["outer_sub"]`, `["outer_sub", "inner_x"]`, `["outer_sub", "inner_y"]`,
   `["outer_out"]`.
@@ -40,8 +45,11 @@ Langfuse Trace / Observation tree rather than the OTel span tree.
 
 - Inner-subgraph nodes appear as direct children of the Trace rather than nested under
   `outer_sub` — subgraph parenting is collapsed.
-- `metadata.subgraph_name` missing from inner-node observations — §8.4.2 subgraph-name
-  propagation not implemented.
+- `metadata.subgraph_name` missing from the `outer_sub` subgraph dispatch observation —
+  §8.4.2 subgraph-name propagation from the subgraph span not implemented.
+- `metadata.subgraph_name` set on inner-node observations rather than on the subgraph
+  dispatch — attribute scope mis-routed (subgraph-span attribute per §5.3, not a
+  per-node attribute).
 - `metadata.namespace` on inner-node observations is flat rather than reflecting the
   subgraph dispatch (e.g. `["inner_x"]` instead of `["outer_sub", "inner_x"]`).
 - `correlation_id` differs between the Trace and any of the Observations — cross-cutting

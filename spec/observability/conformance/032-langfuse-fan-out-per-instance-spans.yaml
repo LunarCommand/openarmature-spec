@@ -74,13 +74,13 @@ expected:
             metadata:
               fan_out_index: 0
               fan_out_parent_node_name: "process"
+              subgraph_name: "worker"
               correlation_id: "<corr_id_1>"
             level: DEFAULT
             children:
               - type: span
                 name: "compute"
                 metadata:
-                  subgraph_name: "worker"
                   correlation_id: "<corr_id_1>"
                 level: DEFAULT
                 children: []
@@ -89,13 +89,13 @@ expected:
             metadata:
               fan_out_index: 1
               fan_out_parent_node_name: "process"
+              subgraph_name: "worker"
               correlation_id: "<corr_id_1>"
             level: DEFAULT
             children:
               - type: span
                 name: "compute"
                 metadata:
-                  subgraph_name: "worker"
                   correlation_id: "<corr_id_1>"
                 level: DEFAULT
                 children: []
@@ -104,13 +104,13 @@ expected:
             metadata:
               fan_out_index: 2
               fan_out_parent_node_name: "process"
+              subgraph_name: "worker"
               correlation_id: "<corr_id_1>"
             level: DEFAULT
             children:
               - type: span
                 name: "compute"
                 metadata:
-                  subgraph_name: "worker"
                   correlation_id: "<corr_id_1>"
                 level: DEFAULT
                 children: []
