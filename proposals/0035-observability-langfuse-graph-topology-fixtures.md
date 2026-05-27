@@ -1,8 +1,9 @@
 # 0035: Observability — Langfuse §8.3 Graph-Topology Conformance Coverage
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-27
+- **Accepted:** 2026-05-27
 - **Targets:** spec/observability/conformance/ (three new fixture pairs); no normative spec-text changes
 - **Related:** 0031 (observability Langfuse mapping — defined the §8 mapping including §8.3 observation-type rows and §8.5 detached-trace mode); 0034 (observability caller-supplied invocation metadata — extended §8.4.1/§8.4.2 with metadata propagation)
 - **Supersedes:**

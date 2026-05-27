@@ -1,0 +1,123 @@
+# §8.3 rows 4-5: Fan-out node maps to a dispatch Span observation
+# (with fan-out-node-specific metadata: item_count, concurrency,
+# error_policy); each fan-out instance maps to a Span observation
+# child of the dispatch, disambiguated by metadata.fan_out_index
+# and carrying metadata.fan_out_parent_node_name per §8.4.2.
+# Non-detached; mirrors 006-otel-fan-out-instance-attribution one
+# to one.
+
+subgraph:
+  name: worker
+  state:
+    fields:
+      input:
+        type: int
+        default: 0
+      doubled:
+        type: int
+        default: 0
+  entry: compute
+  nodes:
+    compute:
+      update_pure_from_state: {doubled: input_times_two}   # harness: doubled = input * 2
+  edges:
+    - {from: compute, to: END}
+
+state:
+  fields:
+    items:
+      type: list<int>
+      default: [10, 20, 30]
+    results:
+      type: list<int>
+      reducer: append
+      default: []
+
+entry: process
+
+nodes:
+  process:
+    fan_out:
+      subgraph: worker
+      items_field: items
+      item_field: input
+      collect_field: doubled
+      target_field: results
+      concurrency: 2
+      error_policy: collect
+
+edges:
+  - {from: process, to: END}
+
+initial_state: {}
+
+expected:
+  langfuse_trace:
+    id: "<uuid>"
+    name: "process"
+    metadata:
+      correlation_id: "<corr_id_1>"
+      entry_node: "process"
+      spec_version: "<any-string>"
+    observations:
+      - type: span
+        name: "process"
+        metadata:
+          fan_out_item_count: 3
+          fan_out_concurrency: 2
+          fan_out_error_policy: "collect"
+          correlation_id: "<corr_id_1>"
+        level: DEFAULT
+        children:
+          - type: span
+            name: "process"
+            metadata:
+              fan_out_index: 0
+              fan_out_parent_node_name: "process"
+              subgraph_name: "worker"
+              correlation_id: "<corr_id_1>"
+            level: DEFAULT
+            children:
+              - type: span
+                name: "compute"
+                metadata:
+                  correlation_id: "<corr_id_1>"
+                level: DEFAULT
+                children: []
+          - type: span
+            name: "process"
+            metadata:
+              fan_out_index: 1
+              fan_out_parent_node_name: "process"
+              subgraph_name: "worker"
+              correlation_id: "<corr_id_1>"
+            level: DEFAULT
+            children:
+              - type: span
+                name: "compute"
+                metadata:
+                  correlation_id: "<corr_id_1>"
+                level: DEFAULT
+                children: []
+          - type: span
+            name: "process"
+            metadata:
+              fan_out_index: 2
+              fan_out_parent_node_name: "process"
+              subgraph_name: "worker"
+              correlation_id: "<corr_id_1>"
+            level: DEFAULT
+            children:
+              - type: span
+                name: "compute"
+                metadata:
+                  correlation_id: "<corr_id_1>"
+                level: DEFAULT
+                children: []
+
+  invariants:
+    correlation_id_consistency: true
+    trace_id_equals_invocation_id: true
+    # Every per-instance observation has a unique fan_out_index in 0..count-1.
+    unique_fan_out_indices_under: "process"
+    fan_out_index_range: [0, 2]
