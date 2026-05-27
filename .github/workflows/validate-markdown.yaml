@@ -5,12 +5,14 @@ on:
     paths:
       - "**/*.md"
       - "scripts/validate_markdown_links.py"
+      - "scripts/regenerate_proposals_impl_tracking.py"
       - ".github/workflows/validate-markdown.yaml"
   push:
     branches: [main]
     paths:
       - "**/*.md"
       - "scripts/validate_markdown_links.py"
+      - "scripts/regenerate_proposals_impl_tracking.py"
       - ".github/workflows/validate-markdown.yaml"
 
 jobs:
@@ -22,3 +24,5 @@ jobs:
         with:
           python-version: "3.12"
       - run: python scripts/validate_markdown_links.py
+      - name: Check proposals impl-tracking columns are current
+        run: python scripts/regenerate_proposals_impl_tracking.py --check
