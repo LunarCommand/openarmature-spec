@@ -1,9 +1,9 @@
 # 0032: llm-provider — RuntimeConfig Surface Refinements
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-26
-- **Accepted:**
+- **Accepted:** 2026-05-26
 - **Targets:** spec/llm-provider/spec.md (modifies §6 *Response and configuration*; extends §8.1 *OpenAI-compatible wire mapping* with the three new declared-field mappings); spec/observability/spec.md (extends §5.5.2 *Request parameters*)
 - **Related:** 0006 (llm-provider core), 0024 (LLM span payload + GenAI semconv)
 - **Supersedes:**

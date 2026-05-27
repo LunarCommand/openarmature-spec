@@ -1,0 +1,122 @@
+# §6 RuntimeConfig declared-fields surface refinements (proposal 0032):
+# verifies the three new declared fields (frequency_penalty,
+# presence_penalty, stop_sequences) reach the OpenAI wire body under
+# the expected keys; verifies the extras-pass-through and null-skip
+# contracts; verifies the §8.1 stop_sequences -> stop rename and the
+# undeclared-field root placement.
+
+cases:
+  - name: all_declared_fields_plus_extra
+    description: |
+      All seven §6 declared RuntimeConfig fields are set on a single
+      complete() call, plus one undeclared field (repetition_penalty).
+      The wire body MUST contain:
+        - The four pre-0032 declared fields at the root (temperature,
+          max_tokens, top_p, seed).
+        - The three new declared fields frequency_penalty,
+          presence_penalty mapped to same-named keys at the root.
+        - The new declared field stop_sequences renamed to OpenAI's
+          body key `stop` (per §8.1's translation rule).
+        - The undeclared extras field repetition_penalty placed at the
+          request-body root (per §8.1's now-formalized convention for
+          undeclared keys).
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "hi"}
+      config:
+        temperature: 0.7
+        max_tokens: 256
+        top_p: 0.95
+        seed: 42
+        frequency_penalty: 0.3
+        presence_penalty: 0.4
+        stop_sequences: ["END", "STOP"]
+        # Undeclared field — pass-through per §6 extras contract.
+        extras:
+          repetition_penalty: 1.05
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "hi"}
+      temperature: 0.7
+      max_tokens: 256
+      top_p: 0.95
+      seed: 42
+      frequency_penalty: 0.3
+      presence_penalty: 0.4
+      # Renamed: stop_sequences (OA declared) -> stop (OpenAI body).
+      stop: ["END", "STOP"]
+      # Undeclared extras land at the request-body root, sibling to
+      # the declared fields.
+      repetition_penalty: 1.05
+    expected_wire_request_checks:
+      # The OA declared name (stop_sequences) MUST NOT appear in the
+      # outbound body — only OpenAI's renamed key (stop).
+      stop_sequences_absent: true
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-32a
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: "hi back"}
+                finish_reason: stop
+            usage: {prompt_tokens: 5, completion_tokens: 2, total_tokens: 7}
+    expected:
+      response:
+        finish_reason: stop
+
+  - name: partial_config_null_skip
+    description: |
+      Only temperature and max_tokens are set; the remaining five
+      declared fields (top_p, seed, frequency_penalty,
+      presence_penalty, stop_sequences) are unset. Per §6's null-skip
+      contract, the unset declared fields MUST be omitted from the
+      wire body entirely — they MUST NOT appear as JSON null. The
+      wire body contains exactly two declared fields plus the bound
+      model identifier.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "hi"}
+      config:
+        temperature: 0.0
+        max_tokens: 32
+        # top_p, seed, frequency_penalty, presence_penalty,
+        # stop_sequences are all unset (None / undefined).
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "hi"}
+      temperature: 0.0
+      max_tokens: 32
+    expected_wire_request_checks:
+      # Each unset declared field MUST be absent from the wire body
+      # (NOT serialized as null) per §6 null-skip.
+      top_p_absent: true
+      seed_absent: true
+      frequency_penalty_absent: true
+      presence_penalty_absent: true
+      stop_absent: true
+      stop_sequences_absent: true
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-32b
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: "ok"}
+                finish_reason: stop
+            usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      response:
+        finish_reason: stop

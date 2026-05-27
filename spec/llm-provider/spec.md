@@ -11,6 +11,7 @@ Canonical behavioral specification for the OpenArmature LLM provider abstraction
   - §8 renamed from "OpenAI-compatible wire format" to "Wire-format mappings" and reorganized as a catalog of provider mappings; existing OpenAI-compatible body nested under new §8.1 "OpenAI-compatible mapping" (subsections §8.1 through §8.5 → §8.1.1 through §8.1.5); §8 framing paragraph added establishing the default placement rule (in-spec for any mapping with multi-language ambition; out-of-tree allowed only for single-language / opt-out / experimental cases) by [proposal 0019](../../proposals/0019-llm-provider-multi-provider-extension.md)
   - §5 `complete()` extended with optional `tool_choice` parameter (four modes: `"auto"` / `"required"` / `"none"` / `{type: "tool", name: X}`) with pre-send validation routing through `provider_invalid_request`; §7 clarified to enumerate the three new validation failure modes; §8.1.1 gained a `tool_choice` mapping row by [proposal 0025](../../proposals/0025-llm-provider-tool-choice.md)
   - §8 framing gained a *Per-mapping subsection structure* paragraph recommending the canonical §8.X template (Request mapping / Response mapping / Error mapping / Concurrency / Structured output) with allowance for sub-subsections, provider-specific top-level additions, and SHOULD-level divergence-explanation requirement; resolves 0019's open-question #2 by [proposal 0026](../../proposals/0026-llm-provider-wire-format-mapping-template.md)
+  - §6 `RuntimeConfig` extended with three new declared fields (`frequency_penalty`, `presence_penalty`, `stop_sequences`) matching the cross-vendor OpenTelemetry GenAI semconv naming; existing "MAY accept additional provider-specific fields" line replaced with an explicit extras-pass-through contract (undeclared fields MUST reach the wire untouched) and a null-skip contract (declared fields with `None` MUST be omitted from the wire body); §8.1 OpenAI-compatible mapping extended to cover the three new declared-field mappings (with `stop_sequences` → OpenAI body `stop` rename) and formally specify undeclared-field placement at the OpenAI request-body root by [proposal 0032](../../proposals/0032-llm-provider-runtime-config-refinements.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -387,8 +388,28 @@ A `RuntimeConfig` record:
 | `max_tokens` | Int, optional. Maximum completion tokens. |
 | `top_p` | Float, optional. Nucleus sampling probability. |
 | `seed` | Int, optional. Best-effort determinism for providers that support it. Setting `seed` does NOT guarantee determinism; see §9. |
+| `frequency_penalty` | Float, optional. Penalty on token frequency; commonly `[-2.0, 2.0]` per the OpenAI reference. Cross-vendor: OpenAI, Mistral, Cohere, and most OpenAI-compatible servers accept this name directly; Anthropic and Gemini map to vendor-specific equivalents at the wire layer. |
+| `presence_penalty` | Float, optional. Penalty on token presence; commonly `[-2.0, 2.0]`. Same cross-vendor framing as `frequency_penalty`. |
+| `stop_sequences` | List of strings, optional. Stop sequences. When any string in the list appears in the generated text, generation halts. The OA declared name matches the OpenTelemetry GenAI semconv (`gen_ai.request.stop_sequences`) and the wire-key convention used by most cross-vendor providers (Anthropic uses `stop_sequences`, Gemini uses `stopSequences`). The OpenAI-compatible wire mapping (§8.1) translates this field to OpenAI's request-body key `stop`. Per-provider limits MAY differ (OpenAI accepts up to four; others vary) and are enforced at the wire layer by the provider, not by the framework. |
 
-Implementations MAY accept additional provider-specific fields. The four above are the minimum.
+**Extras pass-through.** `RuntimeConfig` is extensible. Implementations MUST accept fields beyond
+the declared set above without erroring at the API boundary; undeclared fields MUST be preserved
+on the config record and forwarded to the wire request body untouched, subject to the wire-format
+mapping (§8). The pass-through MUST NOT translate, rename, or otherwise transform undeclared
+fields. A caller passing `repetition_penalty=1.05` MUST see `repetition_penalty: 1.05` in the wire
+body under whatever placement the wire-format mapping defines (e.g., §8.1's OpenAI-compatible
+mapping places undeclared keys at the request-body root). Undeclared fields are NOT validated by
+the spec; the provider's backend is the source of truth on what extra parameters it recognizes.
+
+**Null-skip semantics.** A declared `RuntimeConfig` field with a value of `None` (Python `None`,
+TypeScript `undefined`, the language's equivalent "unset" sentinel) MUST be omitted from the wire
+request body. Such a value denotes "field not supplied for this call," distinct from "field
+supplied with an explicit null value." Implementations MUST NOT serialize `None`-valued declared
+fields as JSON `null` in the wire body. The null-skip rule applies to declared fields only;
+undeclared fields supplied to `RuntimeConfig` are forwarded per the extras-pass-through contract
+above (the implementation's wire-format mapping determines whether an undeclared-field `None`
+appears as `null` in the request body or is omitted — implementation-defined, since the spec does
+not constrain undeclared-field types).
 
 ## 7. Error semantics
 
@@ -553,8 +574,27 @@ A §4 `Tool` `{name, description, parameters}` maps to an OpenAI `tools` entry a
 }
 ```
 
-The §6 `RuntimeConfig` fields map directly: `temperature`, `max_tokens`, `top_p`, `seed`. The bound
-model identifier becomes OpenAI's `model` field.
+The §6 `RuntimeConfig` declared fields map to the OpenAI request body as follows:
+
+- `temperature`, `max_tokens`, `top_p`, `seed`, `frequency_penalty`, `presence_penalty` — map
+  directly (same name on the OpenAI request body).
+- `stop_sequences` — renamed to OpenAI body field `stop`. The OA declared name follows the
+  cross-vendor OpenTelemetry GenAI semconv (`gen_ai.request.stop_sequences`) and matches the
+  wire-key convention used by Anthropic / Gemini / Cohere; OpenAI is the outlier with the shorter
+  `stop` name. The wire mapping translates `RuntimeConfig.stop_sequences` to OpenAI's `stop`
+  field on emission. Implementations of the OpenAI-compatible mapping MUST perform this rename;
+  emitting `stop_sequences` directly to the OpenAI request body would not be recognized by
+  OpenAI's server.
+
+The bound model identifier becomes OpenAI's `model` field.
+
+**Undeclared `RuntimeConfig` fields** (those a caller supplies beyond the declared set, per §6's
+extras-pass-through contract) appear at the OpenAI request-body root, as siblings to
+`temperature`, `model`, etc. This codifies the behavior every existing OpenAI-compatible adopter
+relies on (e.g., the OpenAI Python SDK's `extra_body=` parameter; LangChain's wrapper splatting
+kwargs into the body; gateways like Bifrost passing straight through to vLLM). The pass-through
+MUST preserve key names and value types verbatim per §6's extras-pass-through contract; the §8.1
+mapping does NOT validate, rename, or transform undeclared keys.
 
 The §5 `tool_choice` parameter maps to OpenAI's `tool_choice` request-body field:
 
