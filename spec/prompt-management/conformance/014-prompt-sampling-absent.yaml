@@ -1,0 +1,32 @@
+# §3 Prompt.sampling opt-in: a backend that does NOT supply sampling
+# config returns Prompt with sampling absent (None / null). The manager
+# does NOT default the field at any layer.
+
+backends:
+  - name: local
+    prompts:
+      - name: minimal
+        label: production
+        version: v1
+        template: "Hello, {{ name }}!"
+        template_hash: "sha256:minimal-v1"
+        # No sampling field supplied.
+
+manager:
+  backends: [local]
+
+calls:
+  - target: manager
+    operation: get
+    name: minimal
+    label: production
+    variables: {name: "Alice"}
+    capture_as: rendered
+
+expected:
+  rendered:
+    name: minimal
+    label: production
+    # sampling MUST be absent / null / None per language idiom; manager
+    # MUST NOT synthesize a default sampling config.
+    sampling_absent: true

@@ -1,9 +1,9 @@
 # 0033: prompt-management — Surface Refinements
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-26
-- **Accepted:**
+- **Accepted:** 2026-05-26
 - **Targets:** spec/prompt-management/spec.md (extends §3 *Prompt shape* and §4 *PromptResult shape* with `sampling` and `observability_entities` sub-record fields; extends §5 *PromptBackend protocol* with an informative sidecar convention; extends §6 *PromptManager interface* with optional `LabelResolver` integration; adds new §7 *LabelResolver* primitive — renumbers existing §7-§13 by +1; extends §12 (was §11) *Cross-spec touchpoints* with sampling-to-RuntimeConfig wiring and Langfuse-Prompt-entity-lookup touchpoints); spec/observability/spec.md (clarifies §8.4.4 to name `Prompt.observability_entities['langfuse_prompt']` as the spec-defined location for the Langfuse Prompt reference, replacing the implementation-defined `metadata`-mapping phrasing inherited from proposal 0031)
 - **Related:** 0017 (prompt management core), 0024 (LLM span payload + GenAI semconv), 0031 (observability Langfuse mapping), 0032 (llm-provider RuntimeConfig surface refinements)
 - **Supersedes:**
@@ -154,7 +154,10 @@ modifications is reproduced below. Section numbering shifts: current
 
 The spec version under which this lands is determined at acceptance
 time and recorded in `CHANGELOG.md`. Anticipated bump: MINOR
-(v0.25.0) — new optional fields, new primitive, no breaking changes.
+(v0.26.0) — new optional fields, new primitive, no breaking changes.
+(Originally drafted as the v0.25.0 candidate; proposal 0034 accepted
+ahead of 0033 and shipped as v0.25.0, so this proposal now targets
+v0.26.0.)
 
 ### prompt-management §3 — Prompt shape (extended)
 
@@ -450,7 +453,7 @@ The harness conventions extend with three new primitives:
 
 ## Versioning
 
-MINOR bump. The spec's whole-spec SemVer increments to **v0.25.0** on
+MINOR bump. The spec's whole-spec SemVer increments to **v0.26.0** on
 acceptance:
 
 - Adds optional `sampling` field to prompt-management §3 `Prompt` and
@@ -477,7 +480,7 @@ acceptance:
   an explicit label continue to get `"production"` when no resolver
   is configured (spec-fallback path). Implementations of the
   observability §8.4.4 Langfuse mapping update their lookup from
-  the v0.23.0 implementation-defined `metadata` key to the v0.25.0
+  the v0.23.0 implementation-defined `metadata` key to the v0.26.0
   spec-defined `observability_entities['langfuse_prompt']`; the
   visible behavior is unchanged.
 

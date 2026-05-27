@@ -1123,10 +1123,11 @@ the prompt's source backend provides — not on which specific backend it is. Tw
    identity surfaces via metadata only.
 
 The trigger for case 1 versus case 2 is whether a Langfuse Prompt reference is available on the
-prompt record at emission time. How that reference is exposed — a metadata field on `Prompt`, an
-interface marker, an SDK-side accessor — is the prompt-management capability's concern
-(implementation-defined under prompt-management §3's `metadata` mapping). The Langfuse observer
-MUST establish the link when a reference is present and MUST NOT fabricate one when absent.
+prompt record at emission time. As of v0.26.0 (prompt-management proposal 0033), the reference
+lives at a spec-defined location: `Prompt.observability_entities['langfuse_prompt']`. When the
+key is present (value is the opaque Langfuse SDK Prompt reference), case 1 applies; when the
+key is absent or `observability_entities` is `None`, case 2 applies. The Langfuse observer
+MUST establish the link when the reference is present and MUST NOT fabricate one when absent.
 
 In both cases the following metadata is set:
 

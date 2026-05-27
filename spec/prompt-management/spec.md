@@ -6,6 +6,7 @@ Canonical behavioral specification for the OpenArmature prompt-management capabi
 - **Introduced:** spec version 0.15.0
 - **History:**
   - created by [proposal 0017](../../proposals/0017-prompt-management-core.md)
+  - §3 *Prompt shape* extended with two new optional typed fields (`sampling` — sub-record mirroring llm-provider §6 `RuntimeConfig`'s declared-fields-plus-extras shape for per-prompt sampling configuration; `observability_entities` — backend-keyed mapping for first-class entity references, with spec-normative key `langfuse_prompt` for the Langfuse Prompt entity). §4 *PromptResult shape* propagates both new fields. §5 *PromptBackend protocol* gains an informative filesystem sidecar convention (per-prompt `<root>/<name>.config.json` and unified `<root>/prompt_configs.json` shapes) for sourcing `sampling`. §6 *PromptManager interface* gains optional `LabelResolver` integration on `fetch()`; the default label parameter shifts from `"production"` to `None`/sentinel with a fallback chain (explicit > resolver > spec-fallback `"production"`). New §7 *LabelResolver* primitive added (renumbers existing §7-§13 → §8-§14). §12 (was §11) *Cross-spec touchpoints* gains two new touchpoints: `Prompt.sampling` → llm-provider §6 `RuntimeConfig` wiring at the LLM call site, and `Prompt.observability_entities['langfuse_prompt']` → observability §8.4.4 Langfuse Generation linkage lookup by [proposal 0033](../../proposals/0033-prompt-management-surface-refinements.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -83,14 +84,22 @@ A `Prompt` record:
 | `name` | String. The prompt's stable identifier within its backend. Matches the `name` argument the caller passed to fetch. |
 | `version` | String. The prompt's version identifier within its backend. Implementation-defined: a backend MAY use semver, monotonic integers, content hashes, git short-SHAs, date stamps, or any stable identifier. Two distinct version strings MUST denote distinct prompt contents. |
 | `label` | String. The label under which the prompt was fetched (e.g., `"production"`, `"latest"`, `"variant-a"`). Backends MAY support multiple labels per prompt; the label is part of the fetch query. |
-| `template` | The unrendered template, in the implementation's chosen template representation (a Jinja2 `Template` instance, a string, an AST, etc.). The spec does not constrain the in-memory representation; it constrains the render contract (§7). |
+| `template` | The unrendered template, in the implementation's chosen template representation (a Jinja2 `Template` instance, a string, an AST, etc.). The spec does not constrain the in-memory representation; it constrains the render contract (§8). |
 | `template_hash` | String. A stable content-derived hash of the unrendered template. Implementations SHOULD use a cryptographic hash (e.g., SHA-256 hex) over the canonical serialization of the template. The hash MUST be deterministic for identical template content. |
 | `fetched_at` | Timestamp of when this Prompt was fetched from its backend. Implementation-defined precision. When the backend serves a cached result, `fetched_at` MUST reflect the original fetch time, not the cache hit time (matching §5's "caching MUST NOT break content-addressing" intent). |
-| `metadata` | Optional implementation-defined mapping of additional backend-supplied metadata (e.g., Langfuse tags, file path of origin). The spec does not constrain shape. |
+| `sampling` | Optional. A `SamplingConfig` sub-record carrying per-prompt sampling configuration. Field shape mirrors llm-provider §6 `RuntimeConfig`: the seven declared fields (`temperature`, `max_tokens`, `top_p`, `seed`, `frequency_penalty`, `presence_penalty`, `stop_sequences`), all optional, plus an extras mapping for vendor-specific fields per `RuntimeConfig`'s extras-pass-through contract. Per-language implementations SHOULD use the SAME type as `RuntimeConfig` (or a structurally-compatible subtype) so callers can splat `prompt.sampling` directly into `provider.complete(config=...)` without per-field translation. The model identifier is NOT part of `SamplingConfig`; per-prompt model selection is out of scope (the bound provider determines the model). Absent (`None` / `null` / `undefined`, per the language idiom) when the backend doesn't supply sampling config for this prompt. |
+| `observability_entities` | Optional mapping (`dict[str, Any] \| None`) carrying backend-keyed references to first-class entities the prompt has been registered as in observability backends. Keys follow `<backend>_<entity>` naming. Spec-normative keys: `langfuse_prompt` — the Langfuse SDK Prompt-entity reference, used by observability §8.4.4 to establish the Langfuse Generation → Prompt link. Future observability backend mappings define their own keys. Values are opaque to the spec; per-language implementations determine the concrete type (e.g., the Langfuse Python SDK's `Prompt` class instance, the Langfuse TypeScript SDK's equivalent). Absent / `None` when the backend doesn't expose any such references; absent keys within a populated mapping signal "this backend's reference is not available." |
+| `metadata` | Optional implementation-defined mapping of additional backend-supplied metadata (e.g., Langfuse tags, file path of origin, other backend-attribution metadata). The spec does not constrain shape. Note that the Langfuse Prompt-entity reference moved out of this field as of v0.26.0 (proposal 0033) — it now lives on `observability_entities['langfuse_prompt']` so the observability §8.4.4 lookup has a spec-defined location. |
 
 The `name + version + label` triple identifies a prompt; the `template_hash` lets two
 prompts with the same name be distinguished by content (e.g., a Langfuse-backed prompt
 fetched at two different times with the same `latest` label may have different content).
+
+**Opt-in per backend.** A backend that doesn't supply sampling config or observability
+entities returns prompts with those fields as `None`. Callers consume the fields defensively
+(checking for absence) or rely on the language's idiom for unset optional fields. The spec
+does NOT mandate a default sampling config in the absence of a supplied one — callers fall
+back to `RuntimeConfig()` defaults at the provider layer.
 
 ## 4. PromptResult shape
 
@@ -107,6 +116,8 @@ A `PromptResult` record:
 | `variables` | The variable mapping that was used to render. Implementations MAY redact or omit values that contain sensitive content; the keys MUST be present so audit trails can identify what variables were applied. |
 | `fetched_at` | Timestamp of when the source `Prompt` was fetched. Implementation-defined precision. When the `Prompt` came from a cache (§6), `fetched_at` MUST reflect the original fetch time, not the cache hit time. |
 | `rendered_at` | Timestamp of when this `PromptResult` was rendered. Distinct from `fetched_at`: a single fetched prompt MAY render multiple times. |
+| `sampling` | Propagated from the source `Prompt.sampling`. Same shape as §3's `sampling` field; absent when the source Prompt had no sampling config. |
+| `observability_entities` | Propagated from the source `Prompt.observability_entities`. Same shape as §3's field; carries the same backend-keyed reference mapping the source Prompt had. Rendering does NOT modify the contents. |
 
 The `rendered_hash` is the cache-key value most useful to downstream consumers — two
 calls with the same template AND the same variables produce the same `rendered_hash`,
@@ -130,8 +141,8 @@ Operation semantics:
 - `fetch()` MUST be reentrant: multiple concurrent calls on the same backend are
   permitted.
 - `fetch()` does NOT render or otherwise mutate the template.
-- `fetch()` MUST raise `prompt_not_found` (§10) when no prompt matches `(name, label)`.
-- `fetch()` MUST raise `prompt_store_unavailable` (§10) when the backend is unreachable
+- `fetch()` MUST raise `prompt_not_found` (§11) when no prompt matches `(name, label)`.
+- `fetch()` MUST raise `prompt_store_unavailable` (§11) when the backend is unreachable
   (network failure, filesystem I/O error, vendor API timeout).
 
 Backends MAY cache their own results internally (e.g., a Langfuse backend caching by
@@ -142,15 +153,65 @@ correct for the served template (caching MUST NOT break content-addressing).
 The protocol is deliberately small — backends are fetchers, nothing more. Composition,
 fallback, and rendering are the manager's concern.
 
+**Backends MAY populate `Prompt.sampling` and `Prompt.observability_entities`** from any
+source the backend has access to. Common sources:
+
+- A Langfuse-backed `PromptBackend` sources `sampling` from Langfuse's `prompt.config`
+  field, and populates `observability_entities['langfuse_prompt']` with the Langfuse SDK's
+  Prompt entity reference for use by observability §8.4.4's Generation linkage.
+- A filesystem `PromptBackend` MAY adopt the convention of loading a sidecar file (see
+  *Filesystem sidecar conventions* below).
+- A database-backed backend loads from a per-prompt config column.
+- A test / mock backend leaves both fields as `None` for prompts that don't need them.
+
+When a backend supplies `Prompt.sampling`, it MUST construct the sub-record per §3's shape
+(the seven declared fields plus extras mapping; declared-field types match `RuntimeConfig`).
+A backend that sources from a vendor system with a richer config shape MUST project to the
+declared `SamplingConfig` shape, placing vendor-specific fields under the extras mapping per
+§3's extras-pass-through analog of llm-provider §6.
+
+**Filesystem sidecar conventions (informative).** Filesystem backends MAY adopt either of
+two conventions for sourcing `sampling`:
+
+- **Per-prompt sidecar:** for a template at `<root>/<name>.j2`, also read
+  `<root>/<name>.config.json` (or equivalent extension) and populate `Prompt.sampling`
+  from its contents. The file's top-level JSON is a single `SamplingConfig`; the prompt
+  name comes from the file path, so the file itself does NOT include a `name` field.
+- **Unified config file:** read a single `<root>/prompt_configs.json` at backend
+  construction time, keyed by prompt name; populate `Prompt.sampling` from the entry
+  matching the fetched name. The file's top-level JSON is a mapping from prompt name to
+  `SamplingConfig`.
+
+The conventions are informative; the spec does NOT mandate a specific filesystem layout.
+Implementations are free to use either convention, both, or neither (e.g., loading from a
+separate config service). The normative contract is the `Prompt.sampling` field itself, not
+the file convention that produces it.
+
 ## 6. PromptManager interface
 
-A `PromptManager` is constructed with one or more `PromptBackend`s and exposes:
+A `PromptManager` is constructed with one or more `PromptBackend`s and (optionally) a
+`LabelResolver` (per §7). It exposes:
 
-### `fetch(name, label="production")`
+### `fetch(name, label=None)`
 
-Async. Fetches a `Prompt` by name and label, consulting backends in order per §8
-fallback semantics. Returns a `Prompt`. Raises `prompt_not_found` if no backend produces
-the prompt; raises `prompt_store_unavailable` only when ALL backends are unavailable.
+Async. Fetches a `Prompt` by name and label, consulting backends in order per §9
+fallback semantics. Label resolution:
+
+1. If `label` is explicitly supplied (non-`None`), use it verbatim. Manager passes it
+   through to backend `fetch(name, label)` calls.
+2. If `label` is `None` (or absent) AND the manager has a `LabelResolver` configured,
+   consult the resolver per §7: `label = resolver.resolve(name)`. Manager passes the
+   resolved label to backends.
+3. If `label` is `None` (or absent) AND no `LabelResolver` is configured, use the default
+   `"production"` (backwards-compatible with the v0.15.0 default).
+
+The default value for the `label` parameter is `None` (or the language's idiomatic "unset"
+sentinel) rather than the string `"production"`. This makes the resolver / default chain
+explicit: callers who want to force-pass `"production"` continue to do so; callers who
+want the resolver to decide simply omit the argument.
+
+Returns a `Prompt`. Raises `prompt_not_found` if no backend produces the prompt; raises
+`prompt_store_unavailable` only when ALL backends are unavailable.
 
 ### `render(prompt, variables=None)`
 
@@ -171,23 +232,73 @@ Render semantics:
 - `rendered_at` is set to the call time; `fetched_at` is propagated from `Prompt.fetched_at`
   (per §3).
 - `rendered_hash` is computed from the rendered messages.
-- Variable handling follows §7.
+- Variable handling follows §8.
 
 Render is synchronous because it is purely a string-transformation step over the
 in-memory template; no backend I/O is involved. Async render would surface no
 benefits and would needlessly couple the operation to the host's event loop.
 
-### `get(name, label="production", variables=None)`
+### `get(name, label=None, variables=None)`
 
-Async. Convenience equivalent to `render(await fetch(name, label), variables)`.
-Implementations SHOULD provide this as a convenience for the common single-shot path;
-users wanting fetch/render separation use `fetch` and `render` directly.
+Async. Convenience equivalent to `render(await fetch(name, label), variables)`. Same
+label-resolution rule as `fetch()` (per the three-step chain above): explicit label →
+resolver → spec-fallback `"production"`. Implementations SHOULD provide this as a
+convenience for the common single-shot path; users wanting fetch/render separation use
+`fetch` and `render` directly.
 
-## 7. Variable injection
+## 7. LabelResolver
+
+A `LabelResolver` is an optional helper that maps prompt names to labels for
+deployment-time A/B testing — flip one prompt to `staging` or `variant-a` without code
+changes by updating the resolver's data.
+
+Operation:
+
+### `resolve(name) -> str`
+
+Synchronous. Returns the label to use when fetching the prompt named `name`. Pure
+function; deterministic for given resolver state.
+
+**Fallback chain.** Implementations MUST resolve in this order:
+
+1. **Per-name override.** If the resolver has a specific label mapped for `name`, return
+   it. (Highest precedence.)
+2. **Default override.** If the resolver has a default label configured (e.g., a
+   `"default"` key in a mapping source), return that.
+3. **Spec fallback.** Return `"production"`. (Lowest precedence, backwards-compatible
+   with v0.15.0's default.)
+
+The contract is on the precedence order and on the spec-fallback value, not on how the
+resolver stores its data. Implementations MAY back resolvers with:
+
+- A static mapping (in-memory dict / record).
+- A JSON file (e.g., `prompt_labels.json` keyed by prompt name).
+- An environment-variable lookup.
+- A remote config service (resolution result MAY be cached).
+
+**Configuration shape (informative).** A common pattern is a JSON file structured as:
+
+```json
+{
+  "default": "production",
+  "segment_semantic": "staging",
+  "extract_claims": "variant-a"
+}
+```
+
+Under this shape, the resolver returns `"staging"` for `segment_semantic`, `"variant-a"`
+for `extract_claims`, and `"production"` (the file's `"default"` value, which equals the
+spec-fallback in this case) for every other prompt name.
+
+**No resolver, no problem.** A `PromptManager` constructed without a `LabelResolver`
+follows the §6 rule's step 3 directly: when no label is supplied at fetch time, use
+`"production"`. Existing v0.15.0 callers continue to work without modification.
+
+## 8. Variable injection
 
 Render MUST treat undefined variables as errors by default. When a template references a
 variable that is not present in the `variables` mapping passed to `render()`, render MUST
-raise `prompt_render_error` (§10). Silently substituting empty strings or `null` is
+raise `prompt_render_error` (§11). Silently substituting empty strings or `null` is
 forbidden by default.
 
 Implementations MAY offer an explicit opt-out (e.g., a `strict=False` flag on `render`,
@@ -203,7 +314,7 @@ This requirement maps to Jinja2's `StrictUndefined` (Python) and to per-language
 equivalents (TypeScript template engines vary; implementations document their concrete
 choice). The spec mandates the behavior; the configuration knob is per-implementation.
 
-## 8. Composite backends and fallback
+## 9. Composite backends and fallback
 
 A `PromptManager` constructed with multiple backends MUST consult them in order. The
 fallback contract:
@@ -234,7 +345,7 @@ Implementations SHOULD log fallbacks (a `prompt_store_unavailable` from one back
 followed by a successful fetch from the next) at WARN level so operators see when
 their primary backend is degraded.
 
-## 9. PromptGroup
+## 10. PromptGroup
 
 A `PromptGroup` composes two or more `PromptResult` instances under a single tracing
 grouping. The group itself does not execute the calls or pass output between them — it
@@ -245,7 +356,7 @@ A `PromptGroup` record:
 
 | Field | Description |
 |---|---|
-| `group_name` | String. A stable identifier for this group pattern. Used by observability §5.5 cross-reference (per §11) so all spans under the group share an `openarmature.prompt.group_name` attribute. |
+| `group_name` | String. A stable identifier for this group pattern. Used by observability §5.5 cross-reference (per §12) so all spans under the group share an `openarmature.prompt.group_name` attribute. |
 | `members` | An ordered sequence of at least two `PromptResult` instances. Order matches the application's intended call sequence (first member runs first); the spec does not require sequential execution, but observability tools MAY use member order to lay out the group visually. |
 
 The group is a hint to observability, not a control-flow primitive. User code is
@@ -270,21 +381,21 @@ helpers are ergonomics on top of this spec, not part of the spec.
 
 Empty groups and single-member groups are both spec-invalid; `members` MUST contain at
 least two elements. (Single-prompt tagging is already served by the per-prompt
-observability attributes in §11 — `openarmature.prompt.name`,
+observability attributes in §12 — `openarmature.prompt.name`,
 `openarmature.prompt.version`, `openarmature.prompt.label` —
 without needing a degenerate group-of-one.)
 
-## 10. Errors
+## 11. Errors
 
 Three canonical error categories:
 
 - `prompt_not_found` — no prompt matches `(name, label)`. Raised by
-  `PromptBackend.fetch()` and propagated by `PromptManager.fetch()` per §8 fallback
+  `PromptBackend.fetch()` and propagated by `PromptManager.fetch()` per §9 fallback
   semantics. Non-transient (retrying the same name + label will not succeed without
   changing the backends or the prompt store contents).
 
 - `prompt_render_error` — render failed. Raised by `PromptManager.render()` when:
-  - the template references an undefined variable under strict-by-default §7 handling, OR
+  - the template references an undefined variable under strict-by-default §8 handling, OR
   - the template fails to parse (syntax error in the template language), OR
   - a variable's value is not coercible to the template's expected type.
 
@@ -296,14 +407,14 @@ Three canonical error categories:
   filesystem I/O error, vendor API 5xx, vendor API timeout). Raised by
   `PromptBackend.fetch()`. Transient — the same fetch may succeed when the backend
   recovers. `PromptManager.fetch()` raises this only after ALL composed backends raise
-  it (per §8).
+  it (per §9).
 
 Each error MUST expose a `category` identifier (matching the strings above, per the
 language's idiom — error class, error code, tagged discriminant). Provider-originated
 errors (e.g., a Langfuse SDK exception) SHOULD preserve the underlying exception as
 cause.
 
-## 11. Cross-spec touchpoints
+## 12. Cross-spec touchpoints
 
 ### Llm-provider §3 (Message shape)
 
@@ -337,7 +448,40 @@ A follow-on proposal MAY tighten these from `MAY` to `SHOULD` once the propagati
 mechanism is settled across implementations; v1 of this capability leaves the
 mechanism flexible.
 
-## 12. Determinism
+### Llm-provider §6 (RuntimeConfig wiring)
+
+When a managed prompt has `Prompt.sampling` set (per §3), the LLM call site MAY thread
+the sub-record through to `provider.complete(config=...)`'s `RuntimeConfig` argument. The
+declared-fields-plus-extras shape mirrors `RuntimeConfig` exactly, so the wiring is a
+direct splat in the implementation's idiom.
+
+The §6 of llm-provider null-skip semantics applies once the values reach `RuntimeConfig`:
+declared fields with value `None` / `undefined` in `Prompt.sampling` MUST be omitted from
+the wire body per llm-provider §6. The PromptManager itself does NOT enforce null-skip —
+it merely propagates `sampling` to the PromptResult; the wire-layer skip happens at the
+RuntimeConfig construction site.
+
+Per-language ergonomics may further provide a convenience method that combines `render()`
++ `complete()` (e.g., a `render_and_call()` or `invoke_with_prompt()` helper that
+internally splats `PromptResult.sampling` into the LLM call). Convenience helpers are
+out of spec scope; the contract this section establishes is the shape-compatibility
+between `Prompt.sampling` and `RuntimeConfig`.
+
+### Observability §8.4.4 (Langfuse Prompt-entity reference lookup)
+
+Observability §8.4.4 specifies when a Langfuse Generation observation MUST be linked to
+a Langfuse Prompt entity: "when the prompt's source exposes a Langfuse Prompt reference."
+The reference lives at a spec-defined location on Prompt:
+`Prompt.observability_entities['langfuse_prompt']`.
+
+When that key is present (value is the opaque Langfuse SDK Prompt reference for the
+rendered prompt), the Langfuse observer MUST establish the native link per §8.4.4 case 1.
+When the key is absent or `observability_entities` itself is `None`, §8.4.4 case 2
+applies (metadata-only, no Prompt-entity link). The trigger semantic is unchanged from
+v0.23.0; only the lookup location is now spec-defined rather than
+implementation-defined.
+
+## 13. Determinism
 
 Render is deterministic: the same `Prompt` rendered with the same `variables` MUST
 produce a `PromptResult` whose `messages` and `rendered_hash` are bytewise identical
@@ -354,7 +498,7 @@ Fetch is NOT required to be deterministic across time — a backend MAY return d
 operator updates the prompt in the source backend). The `version` and `template_hash`
 fields on `Prompt` exist precisely to make this observable.
 
-## 13. Out of scope
+## 14. Out of scope
 
 - **Templating language** — Jinja2, handlebars, simple format strings, etc. Per
   implementation. The spec mandates the render contract (strict undefined, deterministic
