@@ -38,6 +38,7 @@ lifecycle and the proposal template.
 | [0029](proposals/0029-count-drift-strict.md) | Strict `checkpoint_record_invalid` on fan-out `instance_count` drift | pipeline-utilities  | Accepted | Shipped (0.9.0) | —          |
 | [0030](proposals/0030-drain-snapshot-and-timeout-validation.md) | §6 Drain snapshot semantic and timeout-input validation | graph-engine        | Accepted | Textual (0.9.0) | —          |
 | [0031](proposals/0031-observability-langfuse-mapping.md) | Langfuse backend mapping (§8 sibling to OTel)             | observability       | Accepted | Pending         | —          |
+| [0032](proposals/0032-llm-provider-runtime-config-refinements.md) | RuntimeConfig surface refinements (declared fields, extras pass-through, null-skip) | llm-provider | Draft    | —               | —          |
 
 Click any column header to sort.
 
