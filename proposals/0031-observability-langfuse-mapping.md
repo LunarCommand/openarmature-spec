@@ -1,9 +1,9 @@
 # 0031: Observability — Langfuse Backend Mapping
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-26
-- **Accepted:**
+- **Accepted:** 2026-05-26
 - **Targets:** spec/observability/spec.md (adds §8 *Langfuse mapping*; renumbers existing §8 *Determinism* → §9, §9 *Out of scope* → §10)
 - **Related:** 0007 (observability OTel span mapping), 0017 (prompt-management core), 0024 (LLM span payload and GenAI semconv)
 - **Supersedes:**

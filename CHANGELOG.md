@@ -4,6 +4,35 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.23.0] — 2026-05-26
+
+**Added**
+
+- **observability §8 — Langfuse backend mapping** (sibling section to the OpenTelemetry mapping in §3–§7). Specifies how OA's §6 observer event stream maps to Langfuse's native data model — Traces, Observations (Generation, Span, Event), and the Prompt entity — so a Langfuse observer writes Langfuse-shaped data directly instead of mirroring OTel attributes through Langfuse's OTLP ingest. Coverage: ([proposal 0031](proposals/0031-observability-langfuse-mapping.md))
+  - **§8.3 Observation-type mapping** — invocation → Trace (container); node/subgraph/fan-out → Span observation; LLM provider → Generation observation; retry attempts → sibling observations under the same parent.
+  - **§8.4 Attribute mapping table** — three sub-tables (Trace-level, Observation-level, Generation-specific) translating `openarmature.*` and `gen_ai.*` to Langfuse native fields. The Generation table references §5.5.2 by inclusion so future request-parameter additions flow into `generation.modelParameters` without further §8.4.3 edits. §8.4.4 covers prompt linkage: a Langfuse Prompt-entity link is established when the prompt's source exposes a Langfuse Prompt reference (capability-based trigger, not tied to any specific PromptBackend implementation); otherwise identity surfaces via the nested `generation.metadata.prompt` map only.
+  - **§8.5 Correlation ID realization** — `metadata.correlation_id` on both Trace and Observation levels; cross-trace reference (`metadata.detached_child_trace_ids`) on the parent's dispatch observation for detached subgraphs / fan-outs.
+  - **§8.6 Trace name** — MUST-support caller-supplied invocation label; SHOULD-default to the entry-node name when no caller label is supplied.
+  - **§8.7 Generation rendering** — input/output emission gated by the Langfuse observer's own `disable_llm_payload` flag (independent of the OTel observer's flag); truncation marker passes through as a raw string when the underlying §5.5.1 payload was truncated.
+  - **§8.8 Prompt linkage** — references §8.4.4.
+  - **§8.9 Composition with OTel** — both observers consume the §6 event stream independently; each `disable_llm_*` flag is per-observer. The cross-backend correlation ID (§3) joins the two views.
+  - **§8.10 Out of scope** — Langfuse Sessions, Scoring, Cost emission, and PromptBackend caching policy.
+- Conformance fixtures `022-langfuse-basic-trace`, `023-langfuse-generation-rendering` (two cases — normal rendering and the §8.7 truncation-fallthrough path), `024-langfuse-prompt-linkage` (two cases — source exposes a Langfuse Prompt reference vs. does not). Introduces new harness primitives: `langfuse_observer.{disable_llm_payload, disable_llm_spans, payload_byte_cap}` config block; `expected.langfuse_trace` recorder shape (Trace + nested Observation tree with `type`, `name`, `metadata`, Generation fields, `children`); `prompt_backend.type` selector with two recognized values (`mock_with_langfuse_reference`, `filesystem`); `input_parses_as_messages` and `input_is_raw_string_with_marker` assertions for the §8.7 rendering paths; `prompt_entity_link` / `prompt_entity_link_absent` assertions for §8.4.4 cases.
+
+**Changed**
+
+- **observability §1 closing paragraph** updated to acknowledge the Langfuse mapping as a sibling section alongside the OTel mapping (no longer a future deferral); OTel remains the reference shape for cross-backend equivalence. ([proposal 0031](proposals/0031-observability-langfuse-mapping.md))
+- **observability §2 Concepts `Correlation ID` example** now cross-references §8.5 (Langfuse realization) alongside §5.6 (OTel realization).
+- **observability §3.3 Backend-mapping contract** now names §8.5 as the Langfuse realization of the correlation-ID surface.
+- **observability §8 (was Determinism)** renumbered to §9; one sentence added affirming that Langfuse observation content is similarly a function of (a) the §6 event stream and (b) implementation-specific data (timestamps, observation IDs, trace IDs).
+- **observability §9 (was Out of scope)** renumbered to §10; the "Langfuse mapping — separate proposal" bullet removed since the mapping now lives in §8.
+
+**Notes**
+
+- **MINOR bump.** Adds a new spec section with normative behavior. No breaking changes to §1–§7; OTel-only implementations continue to conform at v0.23.0 without modification.
+- **Cross-language status.** No TypeScript implementation exists yet; the §8 conformance fixtures will be exercised against TS once the TS implementation enters its harness phase. Python is the first language implementation target.
+- **Prompt-management touchpoint.** §8.4.4's "Langfuse Prompt reference" mechanism is left implementation-defined under prompt-management §3's `metadata` mapping. A follow-on proposal MAY normatively define how backends expose the reference; until then, implementations are free to choose the surface (metadata field, interface marker, SDK-side accessor).
+
 ## [0.22.1] — 2026-05-25
 
 **Changed**

@@ -1,0 +1,131 @@
+# Langfuse Generation observation rendering for an LLM call. Verifies
+# §8.4.3 Generation field population (model, modelParameters, usage,
+# input/output, metadata.{system, response_model, finish_reason}) under
+# disable_llm_payload=False. Also covers the truncation case for
+# generation.input / generation.output.
+
+cases:
+  - name: generation_rendering
+    description: |
+      Single LLM call with a two-turn conversation. Langfuse observer
+      with disable_llm_payload=False. The Generation observation MUST
+      carry input/output/model/modelParameters/usage and the metadata
+      fields specified in §8.4.3 (system, response_model, finish_reason).
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          model: "test-model"
+          messages:
+            - {role: system, content: "you are concise"}
+            - {role: user, content: "hi there"}
+          stores_response_in: msg
+          config:
+            temperature: 0.0
+            max_tokens: 32
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-23
+          object: chat.completion
+          model: test-model-v2
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello back"}, finish_reason: stop}
+          usage: {prompt_tokens: 7, completion_tokens: 2, total_tokens: 9}
+    langfuse_observer:
+      disable_llm_payload: false
+    expected:
+      langfuse_trace:
+        id: "<uuid>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                model: "test-model"
+                modelParameters:
+                  temperature: 0.0
+                  max_tokens: 32
+                usage:
+                  input: 7
+                  output: 2
+                  total: 9
+                metadata:
+                  finish_reason: "stop"
+                  system: "openai"
+                  response_model: "test-model-v2"
+                  response_id: "cc-23"
+                level: DEFAULT
+                # generation.input parses to the §3 message structure
+                # originally sent to the provider (per §8.7).
+                input_parses_as_messages:
+                  - {role: system, content: "you are concise"}
+                  - {role: user, content: "hi there"}
+                output: "hello back"
+                children: []
+
+  - name: generation_rendering_truncated
+    description: |
+      Single LLM call where the §5.5.1 input payload exceeds the
+      configured 256-byte truncation cap (the minimum allowed by §5.5.5).
+      Verifies §8.7's truncation-fallthrough rule: the Langfuse
+      observer MUST set generation.input to the raw truncated string
+      (preserving the §5.5.5 truncation marker) rather than failing to
+      parse, since the unparseable JSON IS the truncation signal.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages:
+            - {role: system, content: "you are concise"}
+            # Harness primitive (per fixture 014): synthesize a user message
+            # whose content is 500 bytes of 'x'. Combined with the system
+            # message and JSON envelope, the input.messages attribute
+            # exceeds the 256-byte cap configured below and triggers the
+            # §8.7 truncation-fallthrough path.
+            - {role: user, content_repeat: {char: "x", bytes: 500}}
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-23b
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "k"}, finish_reason: stop}
+          usage: {prompt_tokens: 410, completion_tokens: 1, total_tokens: 411}
+    langfuse_observer:
+      disable_llm_payload: false
+      payload_byte_cap: 256
+    expected:
+      langfuse_trace:
+        id: "<uuid>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                # generation.input was the §5.5.1 attribute under
+                # truncation; the unparseable JSON is preserved as a
+                # raw string with the marker per §8.7.
+                input_is_raw_string_with_marker: true
+                output: "k"
+                children: []

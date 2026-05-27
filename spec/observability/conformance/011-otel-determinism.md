@@ -1,6 +1,6 @@
 # 011 — Determinism Over Span Content
 
-Verifies §8 determinism. The graph-engine §5 determinism guarantee covers the §6 event stream
+Verifies §9 determinism. The graph-engine §5 determinism guarantee covers the §6 event stream
 (same input → same events → same payloads, in the same order). The OTel mapping is a function
 of that event stream plus implementation-specific data (IDs, timestamps). The conformance
 suite asserts determinism over the *deterministic* portion of span content only — hierarchy,
@@ -9,8 +9,8 @@ data like `trace_id`, `span_id`, or timestamps.
 
 **Spec sections exercised:**
 
-- §8 Determinism — span hierarchy, names, attributes (minus timing), and status are reproducible.
-- §8 Carve-outs — `trace_id`, `span_id`, `invocation_id`, auto-generated `correlation_id`, and
+- §9 Determinism — span hierarchy, names, attributes (minus timing), and status are reproducible.
+- §9 Carve-outs — `trace_id`, `span_id`, `invocation_id`, auto-generated `correlation_id`, and
   any `openarmature.timing.*` attributes are NOT covered by determinism.
 
 **Cases:**

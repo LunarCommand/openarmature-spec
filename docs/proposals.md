@@ -37,6 +37,6 @@ lifecycle and the proposal template.
 | [0028](proposals/0028-schema-version-canonical-source.md) | Canonical source for `schema_version` on saved records | pipeline-utilities  | Accepted |
 | [0029](proposals/0029-count-drift-strict.md) | Strict `checkpoint_record_invalid` on fan-out `instance_count` drift | pipeline-utilities  | Accepted |
 | [0030](proposals/0030-drain-snapshot-and-timeout-validation.md) | §6 Drain snapshot semantic and timeout-input validation | graph-engine        | Accepted |
-| [0031](proposals/0031-observability-langfuse-mapping.md) | Langfuse backend mapping (§8 sibling to OTel)             | observability       | Draft    |
+| [0031](proposals/0031-observability-langfuse-mapping.md) | Langfuse backend mapping (§8 sibling to OTel)             | observability       | Accepted |
 
 Click any column header to sort.

@@ -1,0 +1,133 @@
+# Langfuse Generation prompt linkage — two cases per §8.4.4. Verifies
+# that the trigger for Prompt-entity linkage is whether the prompt's
+# source exposes a Langfuse Prompt reference, not which specific
+# PromptBackend is in use; the metadata.prompt block is set redundantly
+# in both cases.
+
+cases:
+  - name: langfuse_prompt_reference_present
+    description: |
+      Prompt sourced from a backend that exposes a Langfuse Prompt
+      reference on the rendered prompt. The Generation observation MUST
+      be linked to that Prompt entity via Langfuse's native link
+      mechanism AND set generation.metadata.prompt.{name, version, label,
+      template_hash, rendered_hash} redundantly.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    prompt_backend:
+      type: mock_with_langfuse_reference
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          # The mock backend attaches a Langfuse Prompt entity reference
+          # (the recorder verifies the resulting Generation observation
+          # is linked to it).
+          langfuse_prompt_reference: "lf-prompt-7a3e"
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-24a
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                # Prompt-entity linkage MUST be established via the
+                # SDK's native prompt-link mechanism.
+                prompt_entity_link: "lf-prompt-7a3e"
+                metadata:
+                  prompt:
+                    name: "classify"
+                    version: "v7"
+                    label: "production"
+                    template_hash: "abc123"
+                    rendered_hash: "<any-string>"
+                children: []
+
+  - name: no_langfuse_prompt_reference
+    description: |
+      Prompt sourced from a backend that does NOT expose a Langfuse
+      Prompt reference (filesystem backend in this fixture). The
+      Generation observation MUST NOT establish a Prompt-entity link;
+      identity surfaces via generation.metadata.prompt only.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: greet
+        calls_llm:
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    prompt_backend:
+      type: filesystem
+      prompts:
+        greet:
+          name: greet
+          version: "sha-deadbeef"
+          label: production
+          template: "say hi to {{name}}"
+          template_hash: "deadbeef"
+          # No langfuse_prompt_reference — verifies §8.4.4 case 2.
+    render_variables:
+      name: "world"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-24b
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hi world"}, finish_reason: stop}
+          usage: {prompt_tokens: 4, completion_tokens: 2, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                # NO Prompt-entity link MUST be established.
+                prompt_entity_link_absent: true
+                metadata:
+                  prompt:
+                    name: "greet"
+                    version: "sha-deadbeef"
+                    label: "production"
+                    template_hash: "deadbeef"
+                    rendered_hash: "<any-string>"
+                children: []
