@@ -41,7 +41,7 @@ lifecycle and the proposal template.
 | [0032](proposals/0032-llm-provider-runtime-config-refinements.md) | RuntimeConfig surface refinements (declared fields, extras pass-through, null-skip) | llm-provider | Accepted | Pending         | —          |
 | [0033](proposals/0033-prompt-management-surface-refinements.md) | Prompt-management surface refinements (`Prompt.sampling`, `LabelResolver`, filesystem sidecar, `Prompt.observability_entities`) | prompt-management | Accepted | Pending         | —          |
 | [0034](proposals/0034-caller-supplied-invocation-metadata.md) | Caller-supplied invocation metadata propagation (cross-cutting OTel `openarmature.user.*` + per-backend rules, Langfuse first) | observability | Accepted | Pending         | —          |
-| [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse §8.3 graph-topology conformance coverage (subgraph, fan-out, detached) | observability | Draft    | —               | —          |
+| [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse §8.3 graph-topology conformance coverage (subgraph, fan-out, detached) | observability | Accepted | Pending         | —          |
 
 Click any column header to sort.
 

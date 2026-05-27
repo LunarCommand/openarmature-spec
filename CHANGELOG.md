@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.26.1] — 2026-05-27
+
+**Added**
+
+- **observability §8.3 / §8.5 — three new conformance fixtures** hardening cross-impl parity for the Langfuse mapping graph-topology rows v0.23.0 (proposal 0031) shipped normatively but only partially covered by fixtures. `observability/conformance/031-langfuse-subgraph-span-hierarchy` exercises §8.3 row 3 (Subgraph span → Span observation) and §8.4.2 subgraph-related metadata (`namespace`, `subgraph_name`). `032-langfuse-fan-out-per-instance-spans` exercises §8.3 rows 4-5 (Fan-out node → dispatch Span observation; Fan-out instance → child Span observation under dispatch) and §8.4.2 fan-out-node-specific keys (`fan_out_item_count` / `concurrency` / `error_policy` on the dispatch only) plus fan-out-instance-specific keys (`fan_out_index`, `fan_out_parent_node_name` on each per-instance observation). `033-langfuse-detached-trace-mode` exercises §8.5 detached-trace-mode rules for both detachment levels (subgraph and fan-out) — each detached child mints a separate Langfuse Trace, the parent's dispatch observation carries `metadata.detached_child_trace_ids` (string array, one entry per detached child), and `correlation_id` is invocation-scoped across all Traces in the invocation. ([proposal 0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md))
+
+**Notes**
+
+- **Patch bump.** Pure conformance-coverage extension; no normative spec-text changes, no public-type changes, no behavior changes for any compliant implementation of the §8 Langfuse mapping as already specified by v0.23.0. The new fixtures harden the contract that was always there.
+- Each new fixture mirrors an existing OTel-side fixture one-to-one in graph topology: `031` mirrors `002-otel-subgraph-hierarchy`; `032` mirrors `006-otel-fan-out-instance-attribution`; `033` mirrors `008-otel-detached-trace-mode` (including its two-cases shape).
+
 ## [0.26.0] — 2026-05-26
 
 **Added**

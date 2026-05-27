@@ -1,0 +1,116 @@
+# §8.3 row 3: Subgraph span maps to a Span observation child of the
+# surrounding parent Span (or, for a top-level subgraph dispatched
+# directly from the invocation, child of the Trace itself per §8.3
+# row 1 which establishes that the invocation maps to the Trace
+# rather than to a root Span observation). Inner nodes of the
+# subgraph parent to the subgraph's Span observation. Mirrors the
+# OTel side (002-otel-subgraph-hierarchy) one-to-one in graph
+# topology; asserts the Langfuse-specific parenting + metadata
+# fields per §8.4.
+
+subgraph:
+  name: inner
+  state:
+    fields:
+      v:
+        type: int
+        default: 0
+      trace:
+        type: list<string>
+        reducer: append
+        default: []
+  entry: inner_x
+  nodes:
+    inner_x:
+      update: {v: 10, trace: ["inner_x"]}
+    inner_y:
+      update: {v: 20, trace: ["inner_y"]}
+  edges:
+    - {from: inner_x, to: inner_y}
+    - {from: inner_y, to: END}
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: outer_in
+
+nodes:
+  outer_in:
+    update: {v: 1, trace: ["outer_in"]}
+  outer_sub:
+    subgraph: inner
+  outer_out:
+    update: {v: 99, trace: ["outer_out"]}
+
+edges:
+  - {from: outer_in, to: outer_sub}
+  - {from: outer_sub, to: outer_out}
+  - {from: outer_out, to: END}
+
+initial_state: {}
+
+expected:
+  langfuse_trace:
+    id: "<uuid>"
+    name: "outer_in"
+    metadata:
+      correlation_id: "<corr_id_1>"
+      entry_node: "outer_in"
+      spec_version: "<any-string>"
+    observations:
+      - type: span
+        name: "outer_in"
+        metadata:
+          namespace: ["outer_in"]
+          step: 0
+          attempt_index: 0
+          correlation_id: "<corr_id_1>"
+        level: DEFAULT
+        children: []
+      - type: span
+        name: "outer_sub"
+        metadata:
+          namespace: ["outer_sub"]
+          step: 1
+          attempt_index: 0
+          correlation_id: "<corr_id_1>"
+        level: DEFAULT
+        children:
+          - type: span
+            name: "inner_x"
+            metadata:
+              namespace: ["outer_sub", "inner_x"]
+              subgraph_name: "inner"
+              correlation_id: "<corr_id_1>"
+            level: DEFAULT
+            children: []
+          - type: span
+            name: "inner_y"
+            metadata:
+              namespace: ["outer_sub", "inner_y"]
+              subgraph_name: "inner"
+              correlation_id: "<corr_id_1>"
+            level: DEFAULT
+            children: []
+      - type: span
+        name: "outer_out"
+        metadata:
+          namespace: ["outer_out"]
+          step: 2
+          attempt_index: 0
+          correlation_id: "<corr_id_1>"
+        level: DEFAULT
+        children: []
+
+  invariants:
+    # §8.5: correlation_id MUST appear on the Trace metadata AND on every Observation metadata.
+    correlation_id_consistency: true
+    # §8.4.1: Trace.id MUST equal the invocation_id for cross-system lookup.
+    trace_id_equals_invocation_id: true

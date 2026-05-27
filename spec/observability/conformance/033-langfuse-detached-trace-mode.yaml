@@ -1,0 +1,165 @@
+# §8.5 detached trace mode (Langfuse-specific rules): opt-in per
+# subgraph or per fan-out node. Each detached child mints its own
+# Langfuse Trace; the parent's dispatch Span observation carries
+# `metadata.detached_child_trace_ids` (string array, one entry per
+# detached child); `correlation_id` is invocation-scoped and shared
+# across all detached Traces and the parent Trace. Two cases —
+# detached subgraph and detached fan-out — mirroring the OTel-side
+# fixture 008-otel-detached-trace-mode one-to-one.
+
+cases:
+  - name: detached_subgraph_two_traces_one_child_id
+    subgraphs:
+      long_running_workflow:
+        state:
+          fields:
+            x:
+              type: int
+              default: 0
+        entry: step
+        nodes:
+          step:
+            update_pure: {x: 1}
+        edges:
+          - {from: step, to: END}
+    state:
+      fields:
+        ran:
+          type: bool
+          default: false
+    entry: dispatch
+    nodes:
+      dispatch:
+        subgraph: long_running_workflow
+      after:
+        update: {ran: true}
+    edges:
+      - {from: dispatch, to: after}
+      - {from: after,    to: END}
+    initial_state: {}
+    detached_subgraphs: ["long_running_workflow"]
+    expected:
+      # Two distinct Langfuse Traces; the parent's `dispatch` Span
+      # observation carries `metadata.detached_child_trace_ids` with
+      # exactly one entry referencing the detached Trace's id.
+      langfuse_traces:
+        - id: "<trace_id_parent>"
+          name: "dispatch"
+          metadata:
+            correlation_id: "<corr_id_1>"
+            entry_node: "dispatch"
+            spec_version: "<any-string>"
+          observations:
+            - type: span
+              name: "dispatch"
+              metadata:
+                detached_child_trace_ids: ["<trace_id_detached>"]
+                correlation_id: "<corr_id_1>"
+              level: DEFAULT
+              children: []   # detached — no nested children in parent Trace
+            - type: span
+              name: "after"
+              metadata:
+                correlation_id: "<corr_id_1>"
+              level: DEFAULT
+              children: []
+        - id: "<trace_id_detached>"
+          name: "<any-string>"
+          metadata:
+            # correlation_id is the SAME as the parent Trace per §8.5.
+            correlation_id: "<corr_id_1>"
+          observations:
+            - type: span
+              name: "long_running_workflow"
+              metadata:
+                subgraph_name: "long_running_workflow"
+                correlation_id: "<corr_id_1>"
+              level: DEFAULT
+              children:
+                - type: span
+                  name: "step"
+                  metadata:
+                    namespace: ["long_running_workflow", "step"]
+                    subgraph_name: "long_running_workflow"
+                    correlation_id: "<corr_id_1>"
+                  level: DEFAULT
+                  children: []
+      invariants:
+        # Parent and detached Traces have DIFFERENT ids.
+        distinct_trace_ids: true
+        # Parent's `dispatch` observation references exactly one detached child.
+        dispatch_detached_child_trace_id_count: 1
+        # The §3 correlation_id is the SAME across both Traces.
+        correlation_id_consistent_across_traces: true
+
+  - name: detached_fan_out_one_trace_per_instance
+    subgraph:
+      name: per_doc
+      state:
+        fields:
+          input:
+            type: int
+            default: 0
+          out:
+            type: int
+            default: 0
+      entry: score
+      nodes:
+        score:
+          update_pure_from_state: {out: input_times_two}
+      edges:
+        - {from: score, to: END}
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [1, 2, 3]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: per_document_scoring
+    nodes:
+      per_document_scoring:
+        fan_out:
+          subgraph: per_doc
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+    edges:
+      - {from: per_document_scoring, to: END}
+    initial_state: {}
+    detached_fan_outs: ["per_document_scoring"]
+    expected:
+      # Parent Trace contains only the invocation-level Trace and the
+      # fan-out node's dispatch Span observation, which carries a
+      # three-entry `metadata.detached_child_trace_ids` array, one
+      # entry per per-instance Trace. Three additional per-instance
+      # Traces are minted, each rooting its own observation tree.
+      langfuse_traces:
+        - id: "<trace_id_parent>"
+          name: "per_document_scoring"
+          metadata:
+            correlation_id: "<corr_id_1>"
+          observations:
+            - type: span
+              name: "per_document_scoring"
+              metadata:
+                fan_out_item_count: 3
+                detached_child_trace_ids: ["<trace_id_instance_0>", "<trace_id_instance_1>", "<trace_id_instance_2>"]
+                correlation_id: "<corr_id_1>"
+              level: DEFAULT
+              children: []
+      # Three additional Traces — one per instance.
+      detached_trace_count: 3
+      invariants:
+        # Each per-instance Trace has its own id, distinct from the parent.
+        all_instance_trace_ids_distinct: true
+        # All four Traces (parent + 3 instances) share the same correlation_id.
+        correlation_id_consistent_across_traces: true
+        # No spans from inside the per-instance subgraphs leaked into the parent Trace.
+        no_instance_spans_in_parent_trace: true
+        # Parent's fan-out node observation references exactly three detached children
+        # in metadata.detached_child_trace_ids.
+        dispatch_detached_child_trace_id_count: 3
