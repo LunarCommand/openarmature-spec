@@ -7,7 +7,7 @@ cases:
   - name: extras_emitted
     description: |
       Single LLM call with RuntimeConfig carrying one provider-specific
-      extra (repetition_penalty: 0.5). disable_llm_payload=False on the
+      extra (repetition_penalty: 1.05). disable_llm_payload=False on the
       observer. The openarmature.llm.request.extras attribute carries a
       JSON-encoded object with the extras mapping.
     state:
