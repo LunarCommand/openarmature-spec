@@ -1,0 +1,1 @@
+../../proposals/0041-observability-langfuse-metadata-namespacing.md

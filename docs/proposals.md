@@ -44,6 +44,7 @@ lifecycle and the proposal template.
 | [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse §8.3 graph-topology conformance coverage (subgraph, fan-out, detached) | observability | Accepted | Shipped (0.10.0)| —          |
 | [0036](proposals/0036-graph-engine-fan-out-collection-reducers.md) | Fan-out collection reducers (`concat_flatten` for list-of-lists, `merge_all` for list-of-dicts) | graph-engine  | Accepted | Shipped (0.10.0)| —          |
 | [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping (§8.2) — system extraction, tool/tool_result content blocks, `tool` role bidirectional translation, native structured output (`output_config.format`), first-class `ThinkingBlock` + `RedactedThinkingBlock` for extended thinking round-trip | llm-provider  | Accepted | Pending         | —          |
+| [0041](proposals/0041-observability-langfuse-metadata-namespacing.md) | Namespace OA-emitted Langfuse metadata under `metadata.openarmature` (fixes caller-key vs OA-key collision in flat trace/observation/generation metadata; caller keys stay top-level; §3.4 reserves the bare `openarmature`/`gen_ai` tokens) | observability | Draft    | —               | —          |
 
 Click any column header to sort.
 
