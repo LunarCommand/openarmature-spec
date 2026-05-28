@@ -42,6 +42,7 @@ lifecycle and the proposal template.
 | [0033](proposals/0033-prompt-management-surface-refinements.md) | Prompt-management surface refinements (`Prompt.sampling`, `LabelResolver`, filesystem sidecar, `Prompt.observability_entities`) | prompt-management | Accepted | Pending         | —          |
 | [0034](proposals/0034-caller-supplied-invocation-metadata.md) | Caller-supplied invocation metadata propagation (cross-cutting OTel `openarmature.user.*` + per-backend rules, Langfuse first) | observability | Accepted | Pending         | —          |
 | [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse §8.3 graph-topology conformance coverage (subgraph, fan-out, detached) | observability | Accepted | Pending         | —          |
+| [0036](proposals/0036-graph-engine-fan-out-collection-reducers.md) | Fan-out collection reducers (`concat_flatten` for list-of-lists, `merge_all` for list-of-dicts) | graph-engine  | Draft    | —               | —          |
 
 Click any column header to sort.
 
