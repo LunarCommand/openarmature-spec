@@ -4,6 +4,18 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.27.1] — 2026-05-27
+
+**Fixed**
+
+- **observability/conformance/031-langfuse-subgraph-span-hierarchy** — corrected `metadata.step` values to match graph-engine §6's "subgraph-internal node executions increment the same counter" rule. Previously asserted `outer_out: step 2`, which contradicts §6 (the global counter increments through inner subgraph nodes). Corrected: `outer_in: 0`, `inner_x: 1`, `inner_y: 2`, `outer_out: 3`. The `outer_sub` wrapper observation's synthesized step (=1, matching the first inner event) was already correct. Added explicit `step` assertions on `inner_x` and `inner_y` (previously unasserted) so the global-counter behavior is documented in the fixture rather than implicit.
+- **observability/conformance/033-langfuse-detached-trace-mode** — corrected `metadata.namespace` on the detached trace's inner observation (`step` node in case A) from `["long_running_workflow", "step"]` to `["dispatch", "step"]`. The earlier value used the subgraph identity at the wrapper position, conflating `subgraph_name` (identity, per §5.3 / §8.4.2) with `namespace` (wrapper node name, per graph-engine §6 convention). Across detached and non-detached modes alike, `namespace` is wrapper-node-name-scoped — only `subgraph_name` carries the identity. The two attributes are complementary, not redundant.
+
+**Notes**
+
+- **Patch bump.** Pure fixture-YAML corrections. No spec-text changes; no behavior changes for any compliant implementation. The fixtures were inconsistent with the spec prose (§6 step semantics; §5.3 / §8.4.2 + graph-engine §6 namespace convention) at proposal 0035's acceptance time; this patch aligns the YAML with the prose that was always normative. Implementations correctly tracking §6 step semantics and graph-engine §6 namespace conventions pass the corrected fixtures.
+- Proposal 0035 (`0035-observability-langfuse-graph-topology-fixtures`) is unchanged in its accepted prose; only the YAML deliverables it introduced are corrected here. No proposal-text immutability concern — the corrections are to fixture artifacts that contradicted the spec text, not to the proposal's claims about what was asserted.
+
 ## [0.27.0] — 2026-05-27
 
 **Added**

@@ -88,6 +88,8 @@ expected:
             name: "inner_x"
             metadata:
               namespace: ["outer_sub", "inner_x"]
+              step: 1
+              attempt_index: 0
               correlation_id: "<corr_id_1>"
             level: DEFAULT
             children: []
@@ -95,6 +97,8 @@ expected:
             name: "inner_y"
             metadata:
               namespace: ["outer_sub", "inner_y"]
+              step: 2
+              attempt_index: 0
               correlation_id: "<corr_id_1>"
             level: DEFAULT
             children: []
@@ -102,7 +106,7 @@ expected:
         name: "outer_out"
         metadata:
           namespace: ["outer_out"]
-          step: 2
+          step: 3
           attempt_index: 0
           correlation_id: "<corr_id_1>"
         level: DEFAULT

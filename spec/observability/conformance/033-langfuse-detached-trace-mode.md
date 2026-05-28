@@ -46,6 +46,11 @@ rather than as OTel-native Links between span contexts.
 - No detached-side observations appear inside the parent Trace.
 - `correlation_id` is identical across all Traces in the invocation (both on Trace
   metadata and on every Observation metadata).
+- Inner observations in the detached Trace carry `metadata.namespace` using the
+  wrapper NODE NAME (e.g., `["dispatch", "step"]`), not the subgraph identity.
+  `namespace` is wrapper-node-name-scoped across detached and non-detached modes
+  alike — only `metadata.subgraph_name` (per §5.3 / §8.4.2) carries the subgraph
+  identity. The two fields are complementary, not redundant.
 
 **What fails:**
 
@@ -62,3 +67,8 @@ rather than as OTel-native Links between span contexts.
 - `metadata.detached_child_trace_ids` is a single string rather than an array, or its
   entries don't match the minted detached Trace ids — the array shape is the
   spec-normative form.
+- Inner observations in the detached Trace have `metadata.namespace` using the
+  subgraph IDENTITY (e.g., `["long_running_workflow", "step"]`) — implementation
+  conflated `subgraph_name` (identity, per §5.3 / §8.4.2) with `namespace` (wrapper
+  node name, per graph-engine §6 convention). The two attributes are
+  complementary; only `subgraph_name` carries the identity.

@@ -79,7 +79,7 @@ cases:
                 - type: span
                   name: "step"
                   metadata:
-                    namespace: ["long_running_workflow", "step"]
+                    namespace: ["dispatch", "step"]
                     correlation_id: "<corr_id_1>"
                   level: DEFAULT
                   children: []
