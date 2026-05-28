@@ -1,9 +1,9 @@
 # 028 — Caller-Metadata Namespace Rejection
 
-Verifies §3.4's namespace-collision rejection rule at the `invoke()` API boundary. Caller
-metadata keys under the reserved `openarmature.*` or `gen_ai.*` namespaces MUST cause the
-framework to raise an error BEFORE any work begins — no spans emitted, no observability
-backend artifacts produced.
+Verifies §3.4's reserved-key rejection at the `invoke()` API boundary. Caller metadata keys
+under the reserved `openarmature.*` / `gen_ai.*` namespaces, OR exactly matching a reserved
+OA-emitted metadata key name (the §8.4 Langfuse set), MUST cause the framework to raise an
+error BEFORE any work begins — no spans emitted, no observability backend artifacts produced.
 
 **Spec sections exercised:**
 
@@ -11,6 +11,9 @@ backend artifacts produced.
   at the `invoke()` API boundary. Error category is implementation-defined per the language's
   API-boundary error idiom (Python `ValueError`, TypeScript `RangeError`, etc.), same shape
   as §6 of graph-engine's drain-timeout-input validation.
+- §3.4 — reserved exact-name rule: a caller key that exactly matches an OA-emitted top-level
+  metadata key name (the §8.4 set — `correlation_id`, `step`, `system`, etc.) MUST be rejected
+  at the same boundary, by whole-key match (not prefix), regardless of which backends are wired.
 - §3.4 cross-backend portability paragraph: rejection happens before observer emission, NOT
   at the backend's emission layer.
 
@@ -20,6 +23,13 @@ backend artifacts produced.
    The framework MUST reject at `invoke()` entry. No spans, no Langfuse observations produced.
 2. `rejects_gen_ai_prefix` — caller metadata includes `gen_ai.system: "openai"`. The
    framework MUST reject at `invoke()` entry. Same negative assertions.
+3. `rejects_reserved_oa_name_step` — caller key `step` (an OA observation-metadata name,
+   §8.4.2). Rejected at `invoke()` entry.
+4. `rejects_reserved_oa_name_correlation_id` — caller key `correlation_id` (§8.4.1 / §8.5).
+   Rejected at `invoke()` entry.
+5. `rejects_reserved_oa_name_system` — caller key `system` (an OA generation-metadata name,
+   §8.4.3; distinct from the `gen_ai.*` prefix case — here the bare key `system` collides).
+   Rejected at `invoke()` entry.
 
 **Harness extensions:**
 

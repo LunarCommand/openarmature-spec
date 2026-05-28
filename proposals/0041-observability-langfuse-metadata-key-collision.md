@@ -1,8 +1,9 @@
 # 0041: Observability — Reserve OA-Emitted Metadata Key Names Against Caller-Key Collision
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-28
+- **Accepted:** 2026-05-28
 - **Targets:** spec/observability/spec.md (§3.4 — extend the reserved-namespace rule so caller-supplied invocation-metadata keys may not collide with the OA-emitted top-level metadata key names that backend mappings write; §8.4 — add a note documenting the shared-namespace collision and the §3.4 reservation that prevents it)
 - **Related:** 0031 (Langfuse backend mapping — introduced §8.4), 0034 (caller-supplied invocation metadata — placed caller keys top-level in `trace.metadata` / `observation.metadata`), 0007 (OTel span mapping — `openarmature.*` attribute namespace)
 - **Supersedes:**
