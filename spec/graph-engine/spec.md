@@ -312,7 +312,9 @@ Implementations MAY provide APIs to add or remove registered observers. Any chan
 registered observers during a graph run MUST NOT take effect until the next invocation — the set of
 observers receiving events for an in-flight invocation is fixed at the point the invocation begins.
 
-**Node event shape.** A node event carries the following fields:
+**Node event shape.** A *node* event — the `started` / `completed` pair below, as distinct from the
+framework-emitted augmentation events described under *Framework-emitted augmentation events* later in
+this section, which carry no `phase` — carries the following fields:
 
 - `phase` — required, one of `"started"` or `"completed"`. `started` events are dispatched before the
   node executes (after middleware pre-phases; right before the wrapped function call). `completed`
@@ -479,7 +481,11 @@ Accepted values:
 Empty phase sets are not permitted; implementations SHOULD raise at registration time.
 
 When delivering events, the engine MUST check the receiving observer's `phases` set before dispatch
-to that observer; it MUST NOT deliver an event whose phase is not in the subscribed set. Observers
+to that observer; it MUST NOT deliver an event whose phase is not in the subscribed set. This rule
+governs node-boundary events, which carry a `phase`; framework-emitted augmentation events (see
+*Framework-emitted augmentation events* below) carry no `phase` and are not subject to the `phases`
+filter — they are delivered to every registered observer, which ignores them if it does not handle
+augmentation events. Observers
 with different phase subscriptions on the same graph or invocation are permitted and common — for
 example, an OpenTelemetry observer subscribes to both for span boundaries while a metrics observer
 subscribes to `completed` only.
@@ -497,6 +503,22 @@ Python: frozen-instance error).
 registered observers, the sequence of events passed to observers MUST be identical across runs. This
 extends the §5 determinism guarantee to observer delivery order. Observer side effects (logging, IO)
 remain out of scope for this guarantee.
+
+**Framework-emitted augmentation events.** Beyond node-boundary `started` / `completed` pairs, the
+observer delivery queue MAY also carry framework-emitted observability events that are not node-boundary
+events — specifically the metadata-augmentation event defined in observability §3.4 / §6, emitted when
+`set_invocation_metadata` adds entries mid-invocation. An augmentation event is a **distinct event
+kind**, delivered to observers via a per-language-idiomatic representation (a discriminated union
+carrying an explicit `kind` discriminator, a separate observer callback, equivalent). It carries no
+`phase` — the `phase` field and its `started` / `completed` enumeration (per *Node event shape* above)
+are properties of node-boundary events only — and none of the node-only fields (`pre_state`,
+`post_state`, `error`); it carries the added metadata entries plus the lineage-identity fields it reuses
+from the node event (`namespace`, `attempt_index`, `fan_out_index`, `branch_name`). Augmentation events
+are delivered in the same strict-serial order as node-boundary events, at the point the augmentation
+occurs. Because the `phases` subscription filter governs node-boundary phases, augmentation events are
+not subject to it: they are delivered to every registered observer, which ignores them if it does not
+handle augmentation events. graph-engine does not define the augmentation event's full semantics beyond
+this representation and its delivery ordering; the semantics live in observability §3.4 / §6.
 
 ## 7. Out of scope
 

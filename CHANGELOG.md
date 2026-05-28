@@ -4,6 +4,51 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.30.0] — 2026-05-28
+
+**Changed**
+
+- **observability §3.4 — reserve OA-emitted metadata key names against caller collision.** The §3.4 caller-metadata key constraints extend the reserved set: a caller-supplied key MUST NOT exactly match any OA-emitted top-level metadata key name a §8 backend mapping writes alongside caller keys (the §8.4 Langfuse set: `correlation_id`, `entry_node`, `spec_version`, `detached_child_trace_ids`, `namespace`, `step`, `attempt_index`, `fan_out_index`, `subgraph_name`, `fan_out_item_count`, `fan_out_concurrency`, `fan_out_error_policy`, `fan_out_parent_node_name`, `prompt_group_name`, `request_extras`, `finish_reason`, `system`, `response_model`, `response_id`, `prompt`). Such a key is rejected at the `invoke()` boundary (exact whole-key match, backend-set-independent), the same mechanism as the existing `openarmature.*` / `gen_ai.*` prefix reservation. This prevents a caller key from silently overwriting an OA-emitted field in Langfuse's flat top-level metadata. ([proposal 0041](proposals/0041-observability-langfuse-metadata-key-collision.md))
+
+**Added**
+
+- **observability §8.4 — shared-namespace note.** Documents that OA-emitted Langfuse metadata keys and §3.4 caller keys share the top level of the metadata object (both placed there because Langfuse filters reliably only on top-level keys), and that §3.4's reservation keeps both filterable without collision; OA keys are not nested under a sub-object.
+- Conformance: fixture `observability/conformance/028` extended with reserved-exact-name rejection cases (`step`, `correlation_id`, `system`) alongside the existing reserved-prefix cases.
+
+**Notes**
+
+- **MINOR bump.** A caller that previously supplied one of the now-reserved bare names (e.g. `metadata={"step": …}`) is rejected at `invoke()` after this lands — a breaking change for that caller, taken to stop silent overwrite of OA-emitted Langfuse metadata. No Langfuse-metadata-layout change; callers using non-reserved keys, and existing dashboards / filters, are unaffected.
+
+## [0.29.0] — 2026-05-28
+
+**Changed**
+
+- **observability §3.4 — mid-invocation augmentation open-span update tightened SHOULD → MUST.** Entries added mid-invocation via `set_invocation_metadata` MUST be applied in place to the spans still open in the augmenting async context — for an outermost-serial-context call, the invocation span and the calling node's span; for a fan-out instance / parallel branch, that instance's / branch's dispatch span and any open inner-node spans — where the backend SDK supports in-place attribute / metadata update. An explicit boundary is added: spans in ancestor or sibling async contexts MUST NOT be updated, preserving the per-async-context copy-on-write isolation. ([proposal 0040](proposals/0040-observability-mid-invocation-metadata-open-span-update.md))
+
+**Added**
+
+- **observability §6 — augmentation-event mechanism.** New §6 guidance for how an observer-driven lifecycle reflects mid-invocation augmentation onto already-open spans: a framework-emitted metadata-augmentation event delivered in serial order on the observer queue, carrying the added entries plus the originating lineage identity (`namespace` / `attempt_index` / `fan_out_index` / `branch_name`). The open-span-update behavior is the MUST; the event is the recommended mechanism (alternatives that produce the same spans are permitted).
+- **graph-engine §6 — observer delivery queue carries augmentation events.** Clarifying note that the queue MAY carry a framework-emitted metadata-augmentation event (a distinct event kind from node-boundary `started` / `completed`, carrying no `pre_state` / `post_state` / `error`, not subject to the `phases` filter) alongside node-boundary events; the closed `phase` enumeration continues to apply to node-boundary events only.
+- Conformance fixtures: `observability/conformance/029` and `030` corrected to add the inner-node span level (which carries the augmented per-instance / per-branch key per the open-span MUST); new fixture `034-caller-metadata-open-span-update-serial` covering the outermost-context case (invocation span + calling node span updated in place).
+
+**Notes**
+
+- **MINOR bump.** Tightens a previously-SHOULD behavior to a MUST — an implementation that declined the open-span update under the SHOULD must now perform it for backends whose SDK supports in-place update — and adds an observer-queue event kind. Callers that do not call `set_invocation_metadata` see no behavior change.
+
+## [0.28.0] — 2026-05-27
+
+**Added**
+
+- **llm-provider §8.2 — Anthropic Messages wire-format mapping.** New §8.2 subsection (following the §8.X template) mapping the abstract §3/§4/§5/§6/§7 contract onto the Anthropic Messages API (`POST /v1/messages`): system extraction to the top-level `system` field; user/assistant-only `messages`; `tool` role bidirectional translation to/from `tool_result` content blocks (§8.2.1.2); `tool_use` content-block tool calls and `{name, description, input_schema}` tool definitions (§8.2.1.1); `tool_choice` mapping with the `required`→`any` rename; `max_tokens` required (pre-send `provider_invalid_request` when absent); `frequency_penalty`/`presence_penalty` rejected as unsupported; `stop_reason` → `finish_reason` mapping (incl. `pause_turn`); usage mapping with a cached-token note; the §8.2.3 error table (incl. 402 `billing_error`, 504 `timeout_error`); native structured output via `output_config.format` (§8.2.5) with tool-call-coercion and prompt-augmentation fallbacks for pre-native models (§8.2.5.1). ([proposal 0037](proposals/0037-llm-provider-anthropic-messages-mapping.md))
+- **llm-provider §3.1 — `ThinkingBlock` and `RedactedThinkingBlock` content block types.** Two new assistant-message-only block types surfacing provider-emitted reasoning content as first-class spec records. `ThinkingBlock {text, signature}` carries reasoning text plus an opaque provider round-trip token; `RedactedThinkingBlock {data}` carries an opaque redacted slot. Both are preserved verbatim on round-trip and are provider-bound (routing thinking-bearing history to a different provider strips them). §3 assistant per-role constraint relaxed so `assistant` `content` may be a content-block sequence (text + thinking/redacted-thinking; image stays user-only). §3.1 renumbered (Mixing blocks → §3.1.6). §6 `Response.message` note added.
+- **llm-provider §8.1.1 — strip-on-send rule.** The OpenAI mapping strips `ThinkingBlock`/`RedactedThinkingBlock` from outbound assistant messages (OpenAI has no wire representation for reasoning content), enabling cross-provider conversation routing without manual filtering. Generalizes to any mapping that does not surface reasoning content; reasoning signatures are provider-bound.
+- Conformance fixtures `llm-provider/conformance/033-043` (eleven): basic round-trip, tool-call flow, image blocks, tool_choice modes, RuntimeConfig mapping, max_tokens-required, error mapping, native structured output, structured-output fallback, thinking-block round-trip, and OpenAI thinking-block strip. The Anthropic fixtures carry a `mapping: anthropic` discriminator (a harness extension; fixtures without it target the §8.1 OpenAI mapping).
+
+**Notes**
+
+- **MINOR bump.** Additive: a new §8.X wire-format mapping, two new optional content-block types (assistant-only, absent unless a reasoning-surfacing provider emits them), and one strip-on-send rule on §8.1 (affects outbound wire only when thinking blocks are present, which prior to this proposal could not occur). No breaking changes — existing callers and the §8.1 mapping are unaffected.
+- Anthropic provides native structured output (GA on current Claude models) via `output_config.format`; the mapping uses the native path (mirroring §8.1.5), with tool-call coercion and prompt-augmentation demoted to fallbacks for pre-native models.
+
 ## [0.27.1] — 2026-05-27
 
 **Fixed**

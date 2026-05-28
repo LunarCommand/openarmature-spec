@@ -75,7 +75,7 @@ A message is a record with the following fields:
 | Field | Required | Description |
 |---|---|---|
 | `role` | yes | One of `"system"`, `"user"`, `"assistant"`, `"tool"`. Discriminator. |
-| `content` | conditional (see below) | Text content of the message, OR — for `user` role only — a non-empty ordered sequence of content blocks per §3.1. |
+| `content` | conditional (see below) | Text content of the message, OR a non-empty ordered sequence of content blocks per §3.1. `user` messages MAY carry text or image blocks; `assistant` messages MAY carry text, thinking, and redacted-thinking blocks (per the per-role constraints below). |
 | `tool_calls` | only on `assistant` | Ordered list of `ToolCall` records the model is requesting. |
 | `tool_call_id` | required on `tool` | The `id` of the matching `assistant` tool call. |
 
@@ -90,7 +90,15 @@ Per-role constraints:
   `tool_calls` MUST be absent. `tool_call_id` MUST be absent.
 - `assistant`: `tool_calls` MAY be present. If `tool_calls` is present and non-empty, `content` MAY
   be empty (the assistant is purely calling tools); if `tool_calls` is absent or empty, `content`
-  MUST be a non-empty string. `tool_call_id` MUST be absent.
+  MUST be one of:
+  - a non-empty string (text-only message), OR
+  - a non-empty ordered sequence of content blocks containing `TextBlock` and/or
+    `ThinkingBlock` / `RedactedThinkingBlock` entries (per §3.1). `ImageBlock` MUST NOT appear in
+    an `assistant` message (image blocks are user-only). Thinking and redacted-thinking blocks
+    appear only when a provider mapping surfaces provider-emitted reasoning content (per §3.1.4 /
+    §3.1.5).
+
+  `tool_call_id` MUST be absent.
 - `tool`: `content` MUST be a string (the tool's textual result; serialize structured results to a
   string at the call boundary). `tool_call_id` MUST be present and MUST match the `id` of an
   `assistant` `ToolCall` earlier in the message list. `tool_calls` MUST be absent.
@@ -141,7 +149,10 @@ choice to the application.
 ### 3.1 Content blocks
 
 A **content block** is a typed record with a discriminator field identifying the block type.
-v1 defines two block types: text and image.
+The spec defines four block types: text, image, thinking, and redacted-thinking. Text and image
+blocks appear in `user` messages (and text blocks in `assistant` messages); thinking and
+redacted-thinking blocks appear only in `assistant` messages when a provider mapping surfaces
+provider-emitted reasoning content (per §3.1.4 / §3.1.5).
 
 #### 3.1.1 Text block
 
@@ -184,12 +195,55 @@ The `source` field on an image block carries one of two variants:
 A single image block carries exactly one source — `url` XOR `inline`. The discriminator is
 the `type` field on the source itself.
 
-#### 3.1.4 Mixing blocks
+#### 3.1.4 Thinking block
 
-A user message MAY mix text and image blocks freely. The wire format preserves block order;
-providers vary in whether they treat block order as semantically meaningful (e.g., "image
-appearing before its describing text" vs. "image after"), so application code SHOULD construct
-the block sequence in the order it wants the model to perceive it.
+A thinking block is a record:
+
+| Field | Required | Description |
+|---|---|---|
+| `type` | yes | The literal string `"thinking"`. |
+| `text` | yes | The reasoning content the provider emitted. A non-empty string. |
+| `signature` | yes | An opaque provider-issued token used by the provider to verify the block on round-trip. Implementations MUST pass the value through unchanged; spec callers MUST NOT construct, modify, or fabricate the field. |
+
+Thinking blocks represent provider-emitted reasoning content. They MAY appear in `assistant`
+message content sequences. They MUST NOT appear in `user`, `system`, or `tool` message content.
+Implementations MUST surface thinking blocks a provider emits on the `Response.message.content`
+block list (per §6) and MUST preserve them verbatim when the same `assistant` message is sent
+back to that provider in a subsequent `complete()` call.
+
+Provider mappings that do not surface reasoning content (e.g., the §8.1 OpenAI mapping) MUST
+strip thinking blocks from outbound `assistant` messages (per §8.1.1's strip-on-send rule) and
+MUST NOT emit thinking blocks on inbound responses. Each provider's §8.X mapping specifies its
+wire-level handling. Thinking-block `signature` values are provider-bound — a signature issued
+by one provider is not portable to another; routing thinking-bearing conversation history to a
+different provider's mapping strips the blocks rather than forwarding signatures the target
+provider cannot verify.
+
+#### 3.1.5 Redacted thinking block
+
+A redacted thinking block is a record:
+
+| Field | Required | Description |
+|---|---|---|
+| `type` | yes | The literal string `"redacted_thinking"`. |
+| `data` | yes | An opaque provider-issued blob preserving the structural slot for reasoning content the provider has redacted from caller view. Implementations MUST pass the value through unchanged. |
+
+The redacted variant covers cases where a provider's policy withholds reasoning text from the
+caller while preserving the structural slot so subsequent conversation turns can round-trip
+without breaking the provider's reasoning continuity. Same scope and round-trip rules as
+`ThinkingBlock` (§3.1.4): `assistant`-message-content only; preserved verbatim on round-trip;
+provider-bound; stripped when routed to a non-surfacing provider mapping.
+
+#### 3.1.6 Mixing blocks
+
+A user message MAY mix text and image blocks freely. An assistant message MAY contain thinking
+and redacted-thinking blocks (per §3.1.4 / §3.1.5) alongside text blocks when the provider
+mapping surfaces them; thinking blocks SHOULD precede text blocks in an assistant message's
+content sequence, matching the order providers emit them. Implementations MUST preserve the
+emitted block order on round-trip. The wire format preserves block order; providers vary in
+whether they treat block order as semantically meaningful (e.g., "image appearing before its
+describing text" vs. "image after"), so application code SHOULD construct the block sequence in
+the order it wants the model to perceive it.
 
 A content-block sequence MUST NOT be empty (per the §3 per-role constraint). A content-block
 sequence consisting entirely of text blocks is valid (and is the multi-text-block shape some
@@ -341,7 +395,7 @@ A `Response` record:
 
 | Field | Description |
 |---|---|
-| `message` | The assistant message returned by the model. Always `role: "assistant"`. May carry `tool_calls`. |
+| `message` | The assistant message returned by the model. Always `role: "assistant"`. May carry `tool_calls`. When the bound provider's §8.X mapping surfaces provider-emitted reasoning content, `message.content` is a content-block sequence that MAY include `ThinkingBlock` / `RedactedThinkingBlock` entries (per §3.1.4 / §3.1.5); mappings that do not surface reasoning content return text-only content. |
 | `finish_reason` | One of `"stop"`, `"length"`, `"tool_calls"`, `"content_filter"`, `"error"`. See below. |
 | `usage` | A record `{prompt_tokens, completion_tokens, total_tokens}`. Each field is a non-negative integer or `null`. If the provider does not report usage, all three MUST be `null`. |
 | `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Carries everything the provider returned — including fields the spec does not normalize (logprobs, content-filter details, provider-specific extensions). The normalized fields above are derived from `raw`; the two views MUST be consistent (modifying one does not affect the other, since both are immutable from the caller's perspective). |
@@ -612,6 +666,19 @@ who never supply `tool_choice` see no wire-shape change, and the OpenAI provider
 discriminator renames OpenAI's `type: "function"` for spec-layer readability; the implementation
 performs the rename when constructing the wire body.
 
+**Thinking-block strip-on-send.** OpenAI Chat Completions does not surface reasoning tokens and
+has no wire representation for `ThinkingBlock` / `RedactedThinkingBlock` (§3.1.4 / §3.1.5). When
+an `assistant` message in the request carries thinking or redacted-thinking blocks — e.g.,
+because the caller is replaying conversation history that originated from a different §8.X-mapped
+provider — the §8.1 mapping MUST strip those blocks before emitting the OpenAI wire request.
+Stripping is deterministic and raises no error; it preserves the spec's content-block superset
+across cross-provider conversation round-trips (a conversation that accrued thinking blocks under
+one provider can be routed through an OpenAI-compatible provider without manual filtering). The
+remaining text-block content emits normally. The §8.1 mapping MUST NOT emit thinking blocks on
+inbound responses (OpenAI does not produce them). This strip-on-send rule generalizes to any
+provider mapping that does not surface reasoning content; reasoning-block signatures are
+provider-bound (per §3.1.4) and are never forwarded to a provider that did not issue them.
+
 ##### 8.1.1.1 Content-block wire mapping
 
 Each spec content block maps to one OpenAI content-array entry:
@@ -628,9 +695,8 @@ sources absent) are spec-invalid and MUST be rejected at pre-send validation per
 
 OpenAI uses the same `image_url` content-entry shape for both URL-referenced and base64-inline
 images (with the inline case expressed as a `data:` URL). Anthropic and Google use different
-wire shapes; their own §8-style mapping sections (added by future proposals per §10's
-"Provider-native wire formats" deferral) will define their own block→wire mappings without
-disrupting this one.
+wire shapes; their own §8-style mapping sections (§8.2 Anthropic; future proposals for others)
+define their own block→wire mappings without disrupting this one.
 
 #### 8.1.2 Response mapping
 
@@ -729,6 +795,239 @@ When the response carries structured content (not tool calls):
 
 When the response carries tool calls instead, the mapping follows §8.1.2 unchanged: `parsed` is
 absent, `tool_calls` is populated, `finish_reason` is `"tool_calls"`.
+
+### 8.2 Anthropic Messages mapping
+
+The Anthropic Messages API (`POST /v1/messages`) is the provider-native protocol for Anthropic's
+Claude model family. Its wire shape diverges from §8.1's OpenAI-compatible mapping: `system` is a
+top-level request field rather than a message role; tool calls and tool results are content
+blocks (not a separate `tool_calls` field and `tool` role); `tool_choice` has a different shape;
+`max_tokens` is required; the tool definition uses `input_schema`; and extended-thinking models
+emit reasoning content blocks that are round-trip-load-bearing for multi-turn correctness.
+
+#### 8.2.1 Request mapping
+
+**System extraction.** Spec messages with `role: "system"` are removed from the message list and
+their text content is concatenated into Anthropic's top-level `system` request field
+(joined with `\n\n` when more than one system message is present, preserving order). The
+`messages` array sent to Anthropic contains only `user` and `assistant` entries.
+Implementations MUST reject (`provider_invalid_request`) any system message containing non-text
+content.
+
+**Message body shape.** Each remaining spec message maps to one Anthropic message:
+
+| Spec role | Anthropic role | Notes |
+|---|---|---|
+| `user` | `user` | String `content` maps directly; a content-block sequence maps per §8.2.1.1. |
+| `assistant` (no tool calls, no thinking) | `assistant` | `content` becomes Anthropic's `content`. |
+| `assistant` (with tool calls and/or thinking) | `assistant` | Tool calls become `tool_use` content blocks; thinking / redacted-thinking blocks pass through. See §8.2.1.1. |
+| `tool` | (no direct Anthropic role) | Maps via §8.2.1.2 to an Anthropic `user` message containing `tool_result` content blocks. |
+
+**Tool definitions.** A §4 `Tool` `{name, description, parameters}` maps to an Anthropic `tools`
+entry as `{name, description, input_schema}` — note `input_schema`, not `parameters`; the JSON
+Schema passes through verbatim under the renamed key.
+
+**`tool_choice` mapping.** The §5 `tool_choice` maps to Anthropic's `tool_choice` field:
+
+| Spec `tool_choice` | Anthropic wire body |
+|---|---|
+| `None` / absent | (field omitted) |
+| `"auto"` | `{"type": "auto"}` |
+| `"required"` | `{"type": "any"}` |
+| `"none"` | `{"type": "none"}` |
+| `{type: "tool", name: X}` | `{"type": "tool", "name": X}` |
+
+The `"required"` → `"any"` rename is the load-bearing translation (the spec's cross-vendor name
+maps to Anthropic's wire name for the same semantic). Anthropic's optional
+`disable_parallel_tool_use` field, when a caller needs it, is supplied via the extras-pass-through
+path.
+
+**RuntimeConfig field mapping.** The §6 `RuntimeConfig` declared fields map to the Anthropic
+request body:
+
+- `temperature`, `top_p`, `seed`, `stop_sequences` map directly (`stop_sequences` matches
+  Anthropic's wire-key convention exactly — no rename).
+- `max_tokens` maps directly. Anthropic requires this field on every request; if
+  `RuntimeConfig.max_tokens` is `None` or absent, implementations MUST reject at pre-send
+  validation (`provider_invalid_request`) identifying `max_tokens` as required by this mapping.
+  The mapping MUST NOT default to a magic value.
+- `frequency_penalty`, `presence_penalty` — Anthropic does NOT support these. If supplied
+  (non-`None`), implementations MUST raise `provider_invalid_request` at pre-send validation
+  identifying the unsupported field. Quiet drop is forbidden.
+
+The bound model identifier becomes Anthropic's `model` field. Undeclared `RuntimeConfig` fields
+appear at the request-body root per §6's extras-pass-through contract; the mapping does NOT
+validate, rename, or transform them.
+
+##### 8.2.1.1 Content-block wire mapping
+
+This sub-subsection covers two wire-encoding paths. Spec content blocks (per §3.1) in message
+`content` map to Anthropic content entries per the table. Spec `ToolCall` records in the
+`assistant` message's top-level `tool_calls` field (per §3) are NOT §3 content blocks — the
+mapping extracts them and serializes them as Anthropic `tool_use` wire entries (and parses
+inbound `tool_use` entries back into `Response.message.tool_calls`).
+
+| Spec source | Anthropic wire entry |
+|---|---|
+| `TextBlock { text }` (content block) | `{ "type": "text", "text": <text> }` |
+| `ImageBlock` with `source: url { url }` (content block; user-only) | `{ "type": "image", "source": { "type": "url", "url": <url> } }`. The `detail` hint is dropped — Anthropic does not honor it. |
+| `ImageBlock { media_type, source: inline { base64_data } }` (content block; user-only) | `{ "type": "image", "source": { "type": "base64", "media_type": <media_type>, "data": <base64_data> } }`. The `detail` hint is dropped. |
+| `ToolCall { id, name, arguments }` from `tool_calls` field (extracted at wire) | `{ "type": "tool_use", "id": <id>, "name": <name>, "input": <arguments> }`. `arguments` is the deserialized mapping; Anthropic accepts an object directly under `input` (no JSON-string serialization, unlike §8.1.1). |
+| `ThinkingBlock { text, signature }` (content block; assistant-only) | `{ "type": "thinking", "thinking": <text>, "signature": <signature> }`. The signature passes through verbatim in both directions. |
+| `RedactedThinkingBlock { data }` (content block; assistant-only) | `{ "type": "redacted_thinking", "data": <data> }`. The data blob passes through verbatim in both directions. |
+
+Empty content blocks are spec-invalid and MUST be rejected at pre-send validation per §3 /
+`provider_invalid_request`.
+
+##### 8.2.1.2 `tool` role bidirectional translation
+
+Spec `tool` messages (§3) do not map to any Anthropic role. The mapping translates
+bidirectionally.
+
+**Spec → Anthropic (on send):** each consecutive run of spec `tool` messages collapses into a
+single Anthropic `user` message whose content is an array of `tool_result` blocks — one per
+spec `tool` message, preserving order: `{ "type": "tool_result", "tool_use_id":
+<tool_call_id>, "content": <content> }`. The collapse is required because Anthropic forbids
+consecutive messages of the same role; the user message carrying the tool results follows the
+assistant's prior `tool_use` blocks. Anthropic's optional `is_error` field on a `tool_result`
+is supplied via the extras path when a caller signals tool failure.
+
+**Anthropic → Spec (on receive):** the user message's content blocks are walked in order. Each
+`tool_result` block maps to one spec `tool` message (`tool_call_id` ← `tool_use_id`, content ←
+the block's `content`); each maximal run of non-`tool_result` blocks maps to one spec `user`
+message carrying those blocks. The walk preserves the original block order across the emitted
+spec messages.
+
+The send-side collapse (above) only ever produces `user` messages whose content is entirely
+`tool_result` blocks, so a conversation OA itself produced round-trips exactly. For an
+externally-authored Anthropic `user` message that interleaves `tool_result` blocks with other
+content, the receive split preserves block order and the tool-call/tool-result pairing but
+re-segments the interleaved message into multiple spec `user` / `tool` messages (one per
+maximal run); a subsequent send re-collapses consecutive `tool` messages per the send rule.
+Content and order are preserved; the exact message-boundary segmentation MAY differ from the
+original wire shape.
+
+#### 8.2.2 Response mapping
+
+A successful Anthropic response maps onto a §6 `Response`:
+
+- `message` — built from the response's `role: "assistant"` and `content` array. Anthropic
+  `text` / `thinking` / `redacted_thinking` entries map to spec `TextBlock` / `ThinkingBlock` /
+  `RedactedThinkingBlock` content blocks (per §8.2.1.1), preserving their relative order on
+  `Message.content`. Anthropic `tool_use` entries are NOT content blocks — per §3, `ToolCall`
+  is the top-level `message.tool_calls` field, not a §3.1 content-block type — so they are
+  extracted to `Response.message.tool_calls` (next bullet) and do NOT appear on
+  `Message.content`.
+- `tool_calls` — the `tool_use` entries from the content array, extracted in wire order onto
+  `Response.message.tool_calls` as spec `ToolCall` records (mirroring §8.1's flatter shape so
+  callers see tool calls in the same place regardless of provider). Order within the
+  `tool_calls` list follows the order the `tool_use` entries appeared in the Anthropic response.
+- `finish_reason` — derived from Anthropic's `stop_reason`:
+
+  | Anthropic `stop_reason` | Spec `finish_reason` |
+  |---|---|
+  | `end_turn` | `"stop"` |
+  | `max_tokens` | `"length"` |
+  | `stop_sequence` | `"stop"` (the matched sequence is preserved in `Response.raw.stop_sequence`) |
+  | `tool_use` | `"tool_calls"` |
+  | `pause_turn` | `"stop"` (a long-running turn the provider paused; the caller MAY continue by passing the response back — the pause is preserved in `Response.raw.stop_reason`) |
+  | `refusal` | `"content_filter"` (the refusal category, when present, is preserved in `Response.raw.stop_details`) |
+  | (unknown) | `"error"` |
+
+- `usage` — `usage.prompt_tokens` ← `input_tokens`, `usage.completion_tokens` ← `output_tokens`,
+  `usage.total_tokens` ← the sum of those two (or `null` per §6's rules). **Cache-token note:**
+  Anthropic's `input_tokens` counts only non-cached input; `cache_creation_input_tokens` and
+  `cache_read_input_tokens` report cached input separately, and Anthropic's own total-input
+  accounting is `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`. The spec
+  `usage.prompt_tokens` maps from `input_tokens` alone; the cache subfields surface in
+  `Response.raw.usage` and are NOT promoted to the spec `usage` record.
+- `raw` — the parsed JSON response body, verbatim. Anthropic-specific fields (response `id`,
+  the `model` used, cache token counts, `stop_details`) surface here unchanged.
+
+#### 8.2.3 Error mapping
+
+The error envelope is `{"type": "error", "error": {"type": <error_type>, "message": <string>},
+"request_id": <string>}`.
+
+| Anthropic condition | Spec category |
+|---|---|
+| HTTP 401 `authentication_error` | `provider_authentication` |
+| HTTP 402 `billing_error` | `provider_authentication` (account-level access failure; the specific type appears in `Response.raw`) |
+| HTTP 403 `permission_error` | `provider_authentication` |
+| HTTP 404 `not_found_error` (model-not-found body) | `provider_invalid_model` |
+| HTTP 413 `request_too_large` | `provider_invalid_request` |
+| HTTP 429 `rate_limit_error` | `provider_rate_limit` |
+| HTTP 500 `api_error` | `provider_unavailable` |
+| HTTP 504 `timeout_error` | `provider_unavailable` |
+| HTTP 529 `overloaded_error` | `provider_unavailable` |
+| HTTP 5xx (other), connection error, client timeout | `provider_unavailable` |
+| HTTP 400 with body indicating the model rejected a content block (image / media-type / unsupported source) | `provider_unsupported_content_block` |
+| HTTP 400 `invalid_request_error` (other malformed-request causes) | `provider_invalid_request` |
+| Successful HTTP response that fails to parse into §6 shape | `provider_invalid_response` |
+
+Anthropic's `error.type` and `request_id` surface in `Response.raw` for finer-grained handling.
+
+#### 8.2.4 Concurrency
+
+Matches §8.1.4. Anthropic's hosted API supports concurrent requests; implementations MUST NOT
+add a serialization layer. Client-side rate-limit needs use the pipeline-utilities rate limiter
+or middleware, not this layer.
+
+#### 8.2.5 Structured output
+
+The Anthropic Messages API provides native structured output (generally available on current
+Claude models) via the top-level `output_config.format` request field.
+
+**Native: `output_config.format`.** When `complete()` is called with a `response_schema`, the
+mapping sets:
+
+```
+{
+  "output_config": {
+    "format": {
+      "type": "json_schema",
+      "schema": <response_schema verbatim>
+    }
+  }
+}
+```
+
+The `type: "json_schema"` discriminator is required; the GA path requires no beta header.
+Anthropic's constrained decoding guarantees the generated output conforms to the schema. The
+structured JSON is returned as the assistant message's text content; the mapping parses it into
+`Response.parsed` and validates against `response_schema` per §6. On validation failure raise
+`structured_output_invalid` (§7).
+
+Two non-conformance cases are inherent to the provider and are NOT validation bugs: a
+`stop_reason: "refusal"` (the refusal takes precedence, so output may not match the schema) and
+a `stop_reason: "max_tokens"` (truncation). In both cases the mapping surfaces the
+non-conforming content and the mapped `finish_reason` (`content_filter` / `length`) per §6 / §7;
+implementations MUST NOT silently coerce these into a schema-conforming shape.
+
+When `complete()` is called without a `response_schema`, the request MUST NOT include
+`output_config`; the free-form wire shape is preserved.
+
+(Anthropic's complementary strict-tool-use feature — `strict: true` on a tool definition —
+guarantees tool-call *argument* conformance, not *response* shape; it is a tool-parameter
+feature reachable via the tool-definition extras path, not part of this structured-output
+mapping.)
+
+##### 8.2.5.1 Fallback for models without native structured output
+
+Claude models predating native `output_config.format` support fall back to a pre-native pattern.
+Implementations SHOULD prefer tool-call coercion (stronger conformance) and MUST document which
+path a given call uses.
+
+**Tool-call coercion** (preferred fallback). When the caller's `tools` list is empty or absent,
+construct a synthetic tool whose `input_schema` is the `response_schema`, add it to `tools`, and
+set `tool_choice` to `{"type": "tool", "name": <synthetic name>}`. The response's
+`tool_use.input` for the synthetic tool becomes `Response.parsed`. Unavailable when the caller
+already supplies tools (the synthetic tool would override the caller's tool intent).
+
+**Prompt-augmentation** (last-resort fallback). Per §8.1.5.1: append a schema directive to the
+`system` field (or message list), issue the request otherwise unmodified, parse and validate the
+text response against `response_schema`, raise `structured_output_invalid` on failure. The
+caller's original `messages` MUST be left unchanged.
 
 ## 9. Determinism
 

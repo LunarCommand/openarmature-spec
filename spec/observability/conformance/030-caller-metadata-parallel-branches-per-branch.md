@@ -45,7 +45,9 @@ reaches every span / observation.
 
 **What passes:**
 
-- Each branch's observations carry both `tenantId` AND its own `branchName`.
+- Each branch's observations — the branch-dispatch span, the inner `ask` node span (both
+  open at the augmentation call and updated in place per §3.4's open-span MUST), and the
+  LLM generation — carry both `tenantId` AND its own `branchName`.
 - `fraud_check` branch's observations carry `branchName: "fraud_check"`, NOT
   `branchName: "policy_audit"`.
 - `policy_audit` branch's observations carry `branchName: "policy_audit"`, NOT
@@ -61,6 +63,9 @@ reaches every span / observation.
 - The Trace's `metadata` ends up with one of the branches' `branchName` values — the
   implementation's parallel-branches dispatcher applied per-branch augmentations to the
   parent context. Violates §3.4's per-async-context scoping rule.
+- The branch-dispatch span or inner `ask` node span doesn't carry the branch's
+  `branchName` — only the LLM generation does. §3.4's open-span MUST is unmet: the spans
+  open in the branch's async context at the augmentation call MUST be updated in place.
 - Some branches' observations are missing the baseline `tenantId` — the
   parallel-branches dispatcher reset the metadata to only the augmentations within
   branches instead of additively merging. Violates §3.4's additive-merge rule.

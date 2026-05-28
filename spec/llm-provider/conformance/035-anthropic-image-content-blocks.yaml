@@ -1,0 +1,54 @@
+# §8.2.1.1 Anthropic image content-block wire mapping. Verifies both
+# image source variants: inline (base64) maps to Anthropic's
+# {type: image, source: {type: base64, media_type, data}}; URL maps to
+# {type: image, source: {type: url, url}}. The `detail` hint is dropped
+# (Anthropic does not honor it).
+
+mapping: anthropic
+
+mock_provider:
+  capabilities:
+    supports_image_input: true
+  responses:
+    - status: 200
+      body:
+        type: message
+        id: msg_035
+        model: claude-test
+        role: assistant
+        content:
+          - {type: text, text: "Two images received."}
+        stop_reason: end_turn
+        usage: {input_tokens: 30, output_tokens: 4}
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - type: image
+            media_type: "image/png"
+            source: {type: inline, base64_data: "aGVsbG8="}
+            detail: high
+          - type: image
+            source: {type: url, url: "https://example.com/x.png"}
+          - {type: text, text: "Describe both."}
+    config:
+      max_tokens: 256
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 256
+      messages:
+        - role: user
+          content:
+            # inline -> base64 source; media_type carried; detail dropped.
+            - type: image
+              source: {type: base64, media_type: "image/png", data: "aGVsbG8="}
+            # url -> url source; detail dropped.
+            - type: image
+              source: {type: url, url: "https://example.com/x.png"}
+            - {type: text, text: "Describe both."}
+    expected:
+      response:
+        message: {role: assistant, content: "Two images received.", tool_calls: null}
+        finish_reason: stop
