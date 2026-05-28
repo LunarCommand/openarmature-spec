@@ -1,0 +1,104 @@
+# §2 merge_all reducer: strict list-of-mappings → folded mapping via
+# shallow merge with last-write-wins per key (consistent with merge's
+# single-dict semantics). Mirrors merge's strictness but for the
+# N-mappings shape; raises ReducerError per §4 when its input does
+# not match the contract.
+#
+# Field type is `dict` (no value constraint) so the reducer is the
+# layer enforcing the list-of-mappings shape rather than the
+# typed-state validation layer. This matches the spec's intent (the
+# REDUCER raises ReducerError on bad input) and isolates this
+# fixture's assertions to reducer behavior rather than state-schema
+# validation.
+
+cases:
+  - name: success_folds_mappings_with_last_write_wins
+    state:
+      fields:
+        registry:
+          type: dict
+          reducer: merge_all
+          default: {seed_key: "seed_value", retained: "from_prior"}
+    entry: x
+    nodes:
+      x:
+        # Three mappings: across them, later writes win on key conflict.
+        # `seed_key` overwritten by the second mapping; `retained` preserved
+        # from prior (no writer touches it).
+        update: {registry: [{a: "1"}, {seed_key: "overwritten_in_x", b: "2"}, {a: "1_wins_over_first"}]}
+      y:
+        # Demonstrates cross-write last-write-wins as well: `b` from
+        # node x is overwritten by node y's contribution.
+        update: {registry: [{b: "y_wins"}, {c: "3"}]}
+    edges:
+      - {from: x, to: y}
+      - {from: y, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        registry:
+          seed_key: "overwritten_in_x"
+          retained: "from_prior"
+          a: "1_wins_over_first"
+          b: "y_wins"
+          c: "3"
+      execution_order: [x, y]
+
+  - name: empty_update_is_noop
+    state:
+      fields:
+        registry:
+          type: dict
+          reducer: merge_all
+          default: {k: "v"}
+    entry: x
+    nodes:
+      x:
+        update: {registry: []}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        registry: {k: "v"}
+      execution_order: [x]
+
+  - name: empty_mappings_contribute_zero_keys
+    state:
+      fields:
+        registry:
+          type: dict
+          reducer: merge_all
+          default: {prior_key: "prior_value"}
+    entry: x
+    nodes:
+      x:
+        update: {registry: [{}, {}]}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        registry: {prior_key: "prior_value"}
+      execution_order: [x]
+
+  - name: non_mapping_element_raises_reducer_error
+    state:
+      fields:
+        registry:
+          type: dict
+          reducer: merge_all
+          default: {}
+    entry: x
+    nodes:
+      x:
+        # update[1] is a string, not a mapping — merge_all MUST raise
+        # ReducerError per §4 (engine surfaces the offending field and
+        # reducer name).
+        update: {registry: [{k: "1"}, "not_a_mapping"]}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected_error:
+      category: reducer_error
+      raised_from: x

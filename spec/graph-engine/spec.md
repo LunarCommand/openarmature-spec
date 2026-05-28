@@ -54,8 +54,31 @@ engine constant, not a reserved node name, so a user node may happen to be named
 
 **Reducer.** A function that merges a node's partial update into the prior state for a given field. Each state
 field has exactly one reducer. The default reducer is _last-write-wins_ (the new value replaces the old).
-Implementations MUST provide at least: `last_write_wins`, `append` (for list-typed fields), and `merge`
-(for mapping-typed fields). Users MAY register custom reducers per field.
+Implementations MUST provide at least: `last_write_wins`, `append` (for list-typed fields), `merge`
+(for mapping-typed fields), `concat_flatten` (for list-typed fields whose updates are lists of lists —
+e.g., fan-out target fields collecting list-emitting per-instance values), and `merge_all` (for
+mapping-typed fields whose updates are lists of mappings — e.g., fan-out target fields collecting
+dict-emitting per-instance values). Users MAY register custom reducers per field.
+
+**`concat_flatten` semantics.** `concat_flatten(prior, update)` returns the concatenation of `prior` with the
+one-level flattening of `update`. Both `prior` and `update` MUST be lists, and every element of `update` MUST
+itself be a list. Violations raise `ReducerError` per §4 (the engine MUST surface the offending field, the
+reducer name, and a root-cause naming the non-list value). Empty `update` is a no-op (returns `prior`
+unchanged). Empty sub-lists inside `update` contribute zero elements (the one-to-many fan-out case where an
+instance legitimately produces zero records). Implementations MUST NOT auto-detect whether `update` is a list
+of lists vs. a flat list — `concat_flatten` is strictly the two-level reducer; callers with mixed-shape
+requirements MUST register a custom reducer rather than rely on shape-dependent behavior.
+
+**`merge_all` semantics.** `merge_all(prior, update)` folds the sequence of mappings in `update` into `prior`,
+applying the same shallow merge semantics as `merge` (later writes win on key conflict; non-conflicting keys
+from `prior` are preserved). For `update = [d_1, d_2, ..., d_n]`, the result is equivalent to applying `merge`
+N times sequentially: `merge(merge(...merge(merge(prior, d_1), d_2)...), d_n)`, so within `update`
+last-write-wins applies across all N dicts (e.g., if `d_2` and `d_n` both set key `k`, `d_n`'s value wins).
+`prior` MUST be a mapping, `update` MUST be a list, and every element of `update` MUST itself be a mapping.
+Violations raise `ReducerError` per §4. Empty `update` is a no-op (returns `prior` unchanged). Empty mappings
+inside `update` contribute zero keys. Implementations MUST NOT auto-detect whether `update` is a list of
+mappings vs. a single mapping — `merge_all` is strictly the list-of-mappings reducer; callers needing both
+behaviors on the same field MUST register a custom reducer rather than rely on shape-dependent behavior.
 
 **Subgraph.** A compiled graph used as a node inside another graph. A subgraph executes against its own state
 schema and produces a partial update that is merged into the parent's state. The merge uses the same reducer

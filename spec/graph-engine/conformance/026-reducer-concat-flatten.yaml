@@ -1,0 +1,92 @@
+# §2 concat_flatten reducer: strict list-of-lists → flat list with
+# concatenation onto prior. Mirrors append's strictness but for the
+# two-level shape; raises ReducerError per §4 when its input does
+# not match the contract.
+#
+# Field type is `list` (no element constraint) so the reducer is the
+# layer enforcing the list-of-lists shape rather than the typed-state
+# validation layer. This matches the spec's intent (the REDUCER raises
+# ReducerError on bad input) and isolates this fixture's assertions
+# to reducer behavior rather than state-schema validation.
+
+cases:
+  - name: success_concatenates_and_flattens
+    state:
+      fields:
+        items:
+          type: list
+          reducer: concat_flatten
+          default: ["a", "b"]
+    entry: x
+    nodes:
+      x:
+        update: {items: [["c"], ["d", "e"], []]}
+      y:
+        update: {items: [["f"]]}
+    edges:
+      - {from: x, to: y}
+      - {from: y, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: ["a", "b", "c", "d", "e", "f"]
+      execution_order: [x, y]
+
+  - name: empty_update_is_noop
+    state:
+      fields:
+        items:
+          type: list
+          reducer: concat_flatten
+          default: ["a"]
+    entry: x
+    nodes:
+      x:
+        update: {items: []}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: ["a"]
+      execution_order: [x]
+
+  - name: empty_sub_lists_contribute_zero_elements
+    state:
+      fields:
+        items:
+          type: list
+          reducer: concat_flatten
+          default: []
+    entry: x
+    nodes:
+      x:
+        update: {items: [[], []]}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: []
+      execution_order: [x]
+
+  - name: non_list_element_raises_reducer_error
+    state:
+      fields:
+        items:
+          type: list
+          reducer: concat_flatten
+          default: []
+    entry: x
+    nodes:
+      x:
+        # update[1] is a string, not a list — concat_flatten MUST raise
+        # ReducerError per §4 (engine surfaces the offending field and
+        # reducer name).
+        update: {items: [["a"], "not_a_list"]}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected_error:
+      category: reducer_error
+      raised_from: x

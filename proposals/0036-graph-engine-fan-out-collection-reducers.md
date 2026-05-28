@@ -1,9 +1,10 @@
 # 0036: graph-engine — Fan-Out Collection Reducers (`concat_flatten`, `merge_all`)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-27
-- **Targets:** spec/graph-engine/spec.md (extends §2 *Concepts* — Reducer entry — required-built-in set with two new members, `concat_flatten` and `merge_all`); spec/graph-engine/conformance/ (two new fixture pairs `006-reducer-concat-flatten.{yaml,md}` and `007-reducer-merge-all.{yaml,md}` mirroring the existing reducer-fixture sequence 003 / 004 / 005)
+- **Accepted:** 2026-05-27
+- **Targets:** spec/graph-engine/spec.md (extends §2 *Concepts* — Reducer entry — required-built-in set with two new members, `concat_flatten` and `merge_all`); spec/pipeline-utilities/spec.md (broadens §9.3 *Per-instance fan-in* `target_field` reducer contract — was list-extending-only; now accepts any §2 built-in compatible with the engine-produced list of per-instance values, explicitly enumerating `append` / `concat_flatten` / `merge_all`); spec/graph-engine/conformance/ (two new fixture pairs `026-reducer-concat-flatten.{yaml,md}` and `027-reducer-merge-all.{yaml,md}`, slotted after the existing 003 / 004 / 005 reducer fixtures plus the intervening 006-025 non-reducer fixtures)
 - **Related:** 0001 (graph-engine foundation — established the required-built-in reducer set; this proposal extends it), 0005 (parallel fan-out — defines the per-instance collection pattern that motivates both reducers)
 - **Supersedes:**
 
@@ -208,7 +209,7 @@ Two new fixture pairs under `spec/graph-engine/conformance/`,
 slotting after 003-reducer-last-write-wins / 004-reducer-append /
 005-reducer-merge.
 
-**`006-reducer-concat-flatten.{yaml,md}`** covering:
+**`026-reducer-concat-flatten.{yaml,md}`** covering:
 
 - **Success path.** Two nodes write to a `concat_flatten`-reduced
   list field with list-of-list updates; final state shows the
@@ -218,30 +219,38 @@ slotting after 003-reducer-last-write-wins / 004-reducer-append /
 - **Empty sub-list path.** A node writes `update = [[], []]`; the
   reducer emits no elements but no error.
 - **Non-list-element error path.** A node writes `update = [[a],
-  b]`; the engine raises `ReducerError`; the error surfaces the
-  failing field and reducer.
-- **Non-list-update error path.** A node writes a non-list update;
-  same error contract as `append`'s mismatch case.
-- **Non-list-prior error path.** A field misconfigured with
-  `concat_flatten` but a non-list default; same error contract.
+  "not a list"]`; the engine raises `reducer_error`; the error
+  surfaces the failing field and reducer.
 
-**`007-reducer-merge-all.{yaml,md}`** covering:
+**`027-reducer-merge-all.{yaml,md}`** covering:
 
 - **Success path.** Two nodes write to a `merge_all`-reduced dict
-  field with list-of-dict updates; final state shows the
+  field with list-of-mapping updates; final state shows the
   cumulative shallow merge, with later writes winning on key
-  conflict both within and across writes.
+  conflict both within `update` and across writes.
 - **Empty update path.** A node writes `update = []`; final
   state shows `prior` unchanged.
 - **Empty mapping path.** A node writes `update = [{}, {}]`; the
   reducer adds no keys but no error.
 - **Non-mapping-element error path.** A node writes `update =
-  [{k: 1}, "not a dict"]`; the engine raises `ReducerError`; the
-  error surfaces the failing field and reducer.
-- **Non-list-update error path.** A node writes a non-list update
-  (e.g., a single dict); same error contract.
-- **Non-mapping-prior error path.** A field misconfigured with
-  `merge_all` but a non-mapping default; same error contract.
+  [{k: 1}, "not a mapping"]`; the engine raises `reducer_error`;
+  the error surfaces the failing field and reducer.
+
+Both fixtures use a permissive field type declaration (`type: list`
+for 026, `type: dict` for 027 — no element constraint) so the
+reducer is the layer enforcing the list-of-collections shape rather
+than the typed-state validation layer.
+
+The non-list-`update` and non-list-`prior` error contracts
+(symmetrically, non-list-`update` and non-mapping-`prior` for
+`merge_all`) are spec-normative — the reducer MUST raise on these
+inputs per the semantics paragraphs above — but in strict-typed
+implementations the typed-state validation layer catches them
+BEFORE the reducer, raising a state-validation-style error rather
+than `reducer_error` specifically. The fixture-covered non-element
+error case is the one the reducer is GUARANTEED to be the
+gatekeeper for, independent of how strict the implementation's
+typed-state layer is.
 
 No new harness DSL extensions; the existing
 `state.fields.<f>.reducer` declaration syntax already supports
@@ -291,27 +300,41 @@ and the write paths symmetric.
 
 ## Spec-text changes
 
-Just two-and-a-half edits to `spec/graph-engine/spec.md` §2:
+Edits to `spec/graph-engine/spec.md` §2 — *Reducer* entry:
 
-1. The required-built-in sentence in the *Reducer* entry expands
-   from three named reducers to five.
+1. The required-built-in sentence expands from three named
+   reducers to five.
 2. Two new paragraphs immediately after the *Reducer* entry's
    existing prose specifying the strict semantics, error
    contracts, empty-update and empty-element semantics, and the
    explicit rejection of auto-detect — one paragraph per new
    reducer.
 
-No changes to §3 (Execution model), §4 (Error categories — the
-existing `ReducerError` / `reducer_error` machinery covers both
-new reducers' failures unchanged), §5 (Determinism), §6 (Observer
-hooks), or any other §-section.
+One cross-spec edit to `spec/pipeline-utilities/spec.md` §9.3 —
+*Per-instance fan-in*:
+
+3. The `target_field` reducer contract broadens from
+   list-extending-only (`append` or user equivalent that
+   concatenates list values) to any reducer compatible with the
+   engine-produced list of per-instance values. Permitted §2
+   built-ins are enumerated explicitly: `append`, `concat_flatten`,
+   `merge_all`. User-defined reducers MAY still be used, provided
+   their `update` argument accepts the engine-produced list. The
+   `extra_outputs` reducer contract is unchanged.
+
+No changes to graph-engine §3 (Execution model), §4 (Error
+categories — the existing `ReducerError` / `reducer_error`
+machinery covers both new reducers' failures unchanged), §5
+(Determinism), §6 (Observer hooks), pipeline-utilities §9.1-§9.2
+or §9.4-§9.7 (fan-out engine contract unchanged), or any other
+§-section.
 
 ## Conformance fixtures
 
 Two new pairs:
 
-- `spec/graph-engine/conformance/006-reducer-concat-flatten.{yaml,md}`
-- `spec/graph-engine/conformance/007-reducer-merge-all.{yaml,md}`
+- `spec/graph-engine/conformance/026-reducer-concat-flatten.{yaml,md}`
+- `spec/graph-engine/conformance/027-reducer-merge-all.{yaml,md}`
 
 Existing reducer fixtures 003 (last-write-wins), 004 (append), 005
 (merge) remain unchanged.
