@@ -892,21 +892,36 @@ consecutive messages of the same role; the user message carrying the tool result
 assistant's prior `tool_use` blocks. Anthropic's optional `is_error` field on a `tool_result`
 is supplied via the extras path when a caller signals tool failure.
 
-**Anthropic → Spec (on receive):** each `tool_result` block inside a user message maps back to
-one spec `tool` message (`tool_call_id` ← `tool_use_id`, content ← the block's `content`). Other
-content blocks in the same user message form a separate spec `user` message. The translation is
-lossless and bidirectional.
+**Anthropic → Spec (on receive):** the user message's content blocks are walked in order. Each
+`tool_result` block maps to one spec `tool` message (`tool_call_id` ← `tool_use_id`, content ←
+the block's `content`); each maximal run of non-`tool_result` blocks maps to one spec `user`
+message carrying those blocks. The walk preserves the original block order across the emitted
+spec messages.
+
+The send-side collapse (above) only ever produces `user` messages whose content is entirely
+`tool_result` blocks, so a conversation OA itself produced round-trips exactly. For an
+externally-authored Anthropic `user` message that interleaves `tool_result` blocks with other
+content, the receive split preserves block order and the tool-call/tool-result pairing but
+re-segments the interleaved message into multiple spec `user` / `tool` messages (one per
+maximal run); a subsequent send re-collapses consecutive `tool` messages per the send rule.
+Content and order are preserved; the exact message-boundary segmentation MAY differ from the
+original wire shape.
 
 #### 8.2.2 Response mapping
 
 A successful Anthropic response maps onto a §6 `Response`:
 
-- `message` — built from the response's `role: "assistant"` and `content` array; each entry
-  maps back per §8.2.1.1 (text → TextBlock, tool_use → ToolCall, thinking → ThinkingBlock,
-  redacted_thinking → RedactedThinkingBlock). Block order is preserved on `Message.content`.
-- `tool_calls` — extracted from `tool_use` blocks in the content array onto
-  `Response.message.tool_calls` (mirroring §8.1's flatter shape so callers using either access
-  pattern see the same tool calls).
+- `message` — built from the response's `role: "assistant"` and `content` array. Anthropic
+  `text` / `thinking` / `redacted_thinking` entries map to spec `TextBlock` / `ThinkingBlock` /
+  `RedactedThinkingBlock` content blocks (per §8.2.1.1), preserving their relative order on
+  `Message.content`. Anthropic `tool_use` entries are NOT content blocks — per §3, `ToolCall`
+  is the top-level `message.tool_calls` field, not a §3.1 content-block type — so they are
+  extracted to `Response.message.tool_calls` (next bullet) and do NOT appear on
+  `Message.content`.
+- `tool_calls` — the `tool_use` entries from the content array, extracted in wire order onto
+  `Response.message.tool_calls` as spec `ToolCall` records (mirroring §8.1's flatter shape so
+  callers see tool calls in the same place regardless of provider). Order within the
+  `tool_calls` list follows the order the `tool_use` entries appeared in the Anthropic response.
 - `finish_reason` — derived from Anthropic's `stop_reason`:
 
   | Anthropic `stop_reason` | Spec `finish_reason` |

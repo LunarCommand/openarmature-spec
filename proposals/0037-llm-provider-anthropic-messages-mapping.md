@@ -704,7 +704,42 @@ appeared) but would fail conformance fixture 043 once it lands.
 - **Document blocks.** Anthropic's `document` content blocks
   (PDF inputs) would require a §3.1 ContentBlock expansion
   beyond text/image/thinking/redacted_thinking; deferred to a
-  future proposal.
+  future proposal. The Files API upload lifecycle (upload →
+  `file_id` → reference in a message) rides with document-block
+  support.
+- **Server-side tools.** Anthropic-executed tools (`web_search`,
+  `code_execution`, `web_fetch`, `tool_search`) declared in the
+  request (e.g., `{"type": "web_search_20260209", "name": ...}`)
+  and producing distinct response content blocks
+  (`server_tool_use`, `web_search_tool_result`,
+  `web_fetch_tool_result`, `code_execution_tool_result`). This is
+  a different request/response shape from §8.2's client-tool
+  `tool_use` / `tool_result` (where the caller executes) and is
+  not covered here. A future proposal would add server-tool
+  declaration and result-block mapping — cross-vendor, since
+  OpenAI built-in tools and Gemini grounding are analogous.
+- **Request-side reasoning controls.** §8.2 maps thinking blocks
+  on the *response*; it does not define a first-class surface for
+  *requesting* / budgeting extended thinking (Anthropic's
+  `thinking` request param). Callers reach it today via §6's
+  extras-pass-through (an undeclared `thinking` body field). A
+  first-class cross-vendor reasoning-control surface (pairing
+  with Gemini's `thinkingConfig`) is a future topic; this
+  proposal covers reasoning *content*, not reasoning *control*.
+- **Request-header passthrough (incl. beta features).** §6's
+  extras-pass-through covers request-*body* fields; it does not
+  cover request *headers*. Anthropic pre-GA features gated behind
+  the `anthropic-beta` header are therefore not reachable through
+  the declared surface. A general request-header passthrough
+  mechanism (cross-vendor — any versioned/beta-header API) is a
+  future topic.
+- **Agentic tool-execution loop.** The Anthropic SDK's
+  tool-runner (auto-execute a tool call, feed the result back,
+  iterate) is intentionally NOT a provider concern: per
+  llm-provider §1 the provider is stateless and does not loop on
+  tool calls. An agent is a *graph* whose conditional edge loops
+  back to the LLM node — the loop lives at the graph layer, not
+  in §8.2. This is a design boundary, not an omission.
 - **Cross-vendor reasoning abstraction.** This proposal
   introduces `ThinkingBlock` and `RedactedThinkingBlock` at the
   spec level but only maps them in §8.2 (Anthropic). If a
