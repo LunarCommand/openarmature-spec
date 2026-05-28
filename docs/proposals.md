@@ -33,18 +33,18 @@ lifecycle and the proposal template.
 | [0024](proposals/0024-llm-span-payload-and-semconv.md) | LLM span payload + GenAI semconv            | observability       | Accepted | Shipped (0.8.0) | —          |
 | [0025](proposals/0025-llm-provider-tool-choice.md) | LLM provider `tool_choice` parameter        | llm-provider        | Accepted | Shipped (0.9.0) | —          |
 | [0026](proposals/0026-llm-provider-wire-format-mapping-template.md) | §8.X wire-format mapping subsection template | llm-provider        | Accepted | Textual (0.9.0) | —          |
-| [0027](proposals/0027-fan-out-instance-progress-result-is-error.md) | Explicit `result_is_error` on `fan_out_progress` per-instance entries | pipeline-utilities  | Accepted | Shipped (0.9.0) | —          |
-| [0028](proposals/0028-schema-version-canonical-source.md) | Canonical source for `schema_version` on saved records | pipeline-utilities  | Accepted | Shipped (0.9.0) | —          |
-| [0029](proposals/0029-count-drift-strict.md) | Strict `checkpoint_record_invalid` on fan-out `instance_count` drift | pipeline-utilities  | Accepted | Shipped (0.9.0) | —          |
-| [0030](proposals/0030-drain-snapshot-and-timeout-validation.md) | §6 Drain snapshot semantic and timeout-input validation | graph-engine        | Accepted | Textual (0.9.0) | —          |
+| [0027](proposals/0027-fan-out-instance-progress-result-is-error.md) | `result_is_error` on fan-out progress entries | pipeline-utilities  | Accepted | Shipped (0.9.0) | —          |
+| [0028](proposals/0028-schema-version-canonical-source.md) | Canonical `schema_version` source | pipeline-utilities  | Accepted | Shipped (0.9.0) | —          |
+| [0029](proposals/0029-count-drift-strict.md) | Strict fan-out count-drift detection | pipeline-utilities  | Accepted | Shipped (0.9.0) | —          |
+| [0030](proposals/0030-drain-snapshot-and-timeout-validation.md) | Drain snapshot + timeout-input validation | graph-engine        | Accepted | Textual (0.9.0) | —          |
 | [0031](proposals/0031-observability-langfuse-mapping.md) | Langfuse backend mapping (§8 sibling to OTel)             | observability       | Accepted | Shipped (0.10.0)| —          |
-| [0032](proposals/0032-llm-provider-runtime-config-refinements.md) | RuntimeConfig surface refinements (declared fields, extras pass-through, null-skip) | llm-provider | Accepted | Shipped (0.10.0)| —          |
-| [0033](proposals/0033-prompt-management-surface-refinements.md) | Prompt-management surface refinements (`Prompt.sampling`, `LabelResolver`, filesystem sidecar, `Prompt.observability_entities`) | prompt-management | Accepted | Shipped (0.10.0)| —          |
-| [0034](proposals/0034-caller-supplied-invocation-metadata.md) | Caller-supplied invocation metadata propagation (cross-cutting OTel `openarmature.user.*` + per-backend rules, Langfuse first) | observability | Accepted | Shipped (0.10.0)| —          |
-| [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse §8.3 graph-topology conformance coverage (subgraph, fan-out, detached) | observability | Accepted | Shipped (0.10.0)| —          |
-| [0036](proposals/0036-graph-engine-fan-out-collection-reducers.md) | Fan-out collection reducers (`concat_flatten` for list-of-lists, `merge_all` for list-of-dicts) | graph-engine  | Accepted | Shipped (0.10.0)| —          |
-| [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping (§8.2) — system extraction, tool/tool_result content blocks, `tool` role bidirectional translation, native structured output (`output_config.format`), first-class `ThinkingBlock` + `RedactedThinkingBlock` for extended thinking round-trip | llm-provider  | Accepted | Pending         | —          |
-| [0040](proposals/0040-observability-mid-invocation-metadata-open-span-update.md) | Mid-invocation metadata augmentation MUST reach open spans in the augmenting context (§3.4 SHOULD→MUST, scoped to the augmenting async context's own open spans; §6 augmentation-event mechanism; graph-engine §6 touch) | observability | Accepted | Pending         | —          |
+| [0032](proposals/0032-llm-provider-runtime-config-refinements.md) | RuntimeConfig surface refinements | llm-provider | Accepted | Shipped (0.10.0)| —          |
+| [0033](proposals/0033-prompt-management-surface-refinements.md) | Prompt-management surface refinements | prompt-management | Accepted | Shipped (0.10.0)| —          |
+| [0034](proposals/0034-caller-supplied-invocation-metadata.md) | Caller-supplied invocation metadata | observability | Accepted | Shipped (0.10.0)| —          |
+| [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse graph-topology fixtures | observability | Accepted | Shipped (0.10.0)| —          |
+| [0036](proposals/0036-graph-engine-fan-out-collection-reducers.md) | Fan-out collection reducers | graph-engine  | Accepted | Shipped (0.10.0)| —          |
+| [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping (§8.2) | llm-provider  | Accepted | Pending         | —          |
+| [0040](proposals/0040-observability-mid-invocation-metadata-open-span-update.md) | Mid-invocation metadata open-span update | observability | Accepted | Pending         | —          |
 
 Click any column header to sort.
 
