@@ -57,3 +57,113 @@ cases:
       invoke_rejects_at_api_boundary: true
       no_spans_emitted: true
       no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_oa_name_step
+    description: |
+      Caller supplies the bare key `step`, which exactly matches an
+      OA-emitted top-level Langfuse metadata key name (§8.4.2). It is
+      reserved per §3.4 (exact whole-key match, not a prefix), so the
+      framework MUST reject at the invoke() boundary before any work
+      begins — otherwise the caller value would silently overwrite the
+      OA node step index in Langfuse's flat metadata.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      step: "checkout"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_oa_name_correlation_id
+    description: |
+      Caller supplies the bare key `correlation_id`, a reserved OA-emitted
+      metadata key name (§8.4.1 / §8.5). Reserved per §3.4; the framework
+      MUST reject at the invoke() boundary.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      correlation_id: "req-123"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_oa_name_system
+    description: |
+      Caller supplies the bare key `system`, a reserved OA-emitted
+      generation-metadata key name (§8.4.3, sourced from `gen_ai.system`).
+      Reserved per §3.4; MUST reject at the invoke() boundary. Distinct
+      from the `gen_ai.*` PREFIX case above — here the bare key `system`
+      collides with the Langfuse `generation.metadata.system` field.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      system: "billing"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_name_via_set_invocation_metadata
+    description: |
+      A node body calls the mid-invocation helper with a reserved
+      OA-emitted name (`step`) via the augment_metadata primitive (per
+      fixture 034). Per §3.4 the helper MUST raise at the call site — the
+      reservation is enforced at the helper, not only at the invoke()
+      boundary — so a reserved name cannot be introduced mid-invocation.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: augment
+    nodes:
+      augment:
+        update: {msg: "unreached"}
+        # Harness primitive (per fixture 034): call
+        # set_invocation_metadata(step="checkout") at the top of the body.
+        augment_metadata:
+          step: "checkout"
+    edges:
+      - {from: augment, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+    expected:
+      # §3.4: the helper raises at the call site on a reserved name,
+      # before the reserved key reaches any emission.
+      augment_rejects_at_call_site: true

@@ -4,6 +4,21 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.30.0] — 2026-05-28
+
+**Changed**
+
+- **observability §3.4 — reserve OA-emitted metadata key names against caller collision.** The §3.4 caller-metadata key constraints extend the reserved set: a caller-supplied key MUST NOT exactly match any OA-emitted top-level metadata key name a §8 backend mapping writes alongside caller keys (the §8.4 Langfuse set: `correlation_id`, `entry_node`, `spec_version`, `detached_child_trace_ids`, `namespace`, `step`, `attempt_index`, `fan_out_index`, `subgraph_name`, `fan_out_item_count`, `fan_out_concurrency`, `fan_out_error_policy`, `fan_out_parent_node_name`, `prompt_group_name`, `request_extras`, `finish_reason`, `system`, `response_model`, `response_id`, `prompt`). Such a key is rejected at the `invoke()` boundary (exact whole-key match, backend-set-independent), the same mechanism as the existing `openarmature.*` / `gen_ai.*` prefix reservation. This prevents a caller key from silently overwriting an OA-emitted field in Langfuse's flat top-level metadata. ([proposal 0041](proposals/0041-observability-langfuse-metadata-key-collision.md))
+
+**Added**
+
+- **observability §8.4 — shared-namespace note.** Documents that OA-emitted Langfuse metadata keys and §3.4 caller keys share the top level of the metadata object (both placed there because Langfuse filters reliably only on top-level keys), and that §3.4's reservation keeps both filterable without collision; OA keys are not nested under a sub-object.
+- Conformance: fixture `observability/conformance/028` extended with reserved-exact-name rejection cases (`step`, `correlation_id`, `system`) alongside the existing reserved-prefix cases.
+
+**Notes**
+
+- **MINOR bump.** A caller that previously supplied one of the now-reserved bare names (e.g. `metadata={"step": …}`) is rejected at `invoke()` after this lands — a breaking change for that caller, taken to stop silent overwrite of OA-emitted Langfuse metadata. No Langfuse-metadata-layout change; callers using non-reserved keys, and existing dashboards / filters, are unaffected.
+
 ## [0.29.0] — 2026-05-28
 
 **Changed**

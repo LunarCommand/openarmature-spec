@@ -1,8 +1,9 @@
 # 0041: Observability — Reserve OA-Emitted Metadata Key Names Against Caller-Key Collision
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-28
+- **Accepted:** 2026-05-28
 - **Targets:** spec/observability/spec.md (§3.4 — extend the reserved-namespace rule so caller-supplied invocation-metadata keys may not collide with the OA-emitted top-level metadata key names that backend mappings write; §8.4 — add a note documenting the shared-namespace collision and the §3.4 reservation that prevents it)
 - **Related:** 0031 (Langfuse backend mapping — introduced §8.4), 0034 (caller-supplied invocation metadata — placed caller keys top-level in `trace.metadata` / `observation.metadata`), 0007 (OTel span mapping — `openarmature.*` attribute namespace)
 - **Supersedes:**
@@ -104,7 +105,12 @@ backend mapping writes at the top level of its metadata object:
 > above. The match is exact (the names are reserved as whole keys, not as
 > prefixes). The reservation applies regardless of which backends are wired:
 > these are OA's observability vocabulary and stay reserved for cross-backend
-> consistency, so the same caller code is valid against any backend set.
+> consistency, so the same caller code is valid against any backend set. The
+> same reserved-key rules are enforced by the §3.4 mid-invocation
+> `set_invocation_metadata` helper (which validates added keys against both the
+> reserved namespaces and the reserved names, raising at the call site), so a
+> reserved name cannot be introduced through either the `invoke()` boundary or
+> mid-invocation augmentation.
 
 A maintenance rule accompanies the list: any future proposal that introduces a
 new top-level OA-emitted metadata key in a §8 backend mapping MUST add the key

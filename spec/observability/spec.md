@@ -173,6 +173,21 @@ outermost `invoke()` call, alongside the correlation ID. Implementations MUST:
   implementation-defined per the language's API-boundary error idiom (Python `ValueError`,
   TypeScript `RangeError`, Go error return — same shape as §6 of graph-engine's
   drain-timeout-input validation).
+- Caller keys also MUST NOT exactly match any OA-emitted metadata key name that a backend
+  mapping in §8 writes at the top level of a backend metadata object (alongside caller-supplied
+  keys). These names are reserved so a caller key cannot shadow an OA-emitted field in a backend
+  (e.g. Langfuse, §8.4) whose data model places both at the same top level. The current reserved
+  set, drawn from the §8.4 Langfuse mapping, is: `correlation_id`, `entry_node`, `spec_version`,
+  `detached_child_trace_ids`, `namespace`, `step`, `attempt_index`, `fan_out_index`,
+  `subgraph_name`, `fan_out_item_count`, `fan_out_concurrency`, `fan_out_error_policy`,
+  `fan_out_parent_node_name`, `prompt_group_name`, `request_extras`, `finish_reason`, `system`,
+  `response_model`, `response_id`, `prompt`. Implementations MUST reject a caller key that exactly
+  matches a reserved name at the `invoke()` API boundary, before any work begins, with the same
+  per-language error idiom as the `openarmature.*` / `gen_ai.*` reservation above. The match is
+  exact (whole keys, not prefixes), and the reservation applies regardless of which backends are
+  wired — these are OA's observability vocabulary, reserved for cross-backend consistency. Any
+  future proposal that introduces a new top-level OA-emitted metadata key in a §8 backend mapping
+  MUST add the key name to this reserved set.
 - Key length, value length, and entry count are NOT constrained by the spec; backends MAY
   enforce their own limits (Langfuse caps trace-metadata values at a vendor-defined size,
   etc.) and surface rejections via existing error channels.
@@ -190,9 +205,12 @@ The helper:
 
 - Performs an additive merge into the current async context's metadata. Existing keys with
   the same name are overwritten; other keys are preserved.
-- Validates added keys against the reserved-namespace rule (`openarmature.*`, `gen_ai.*`) and
-  the value-type contract above. Violations MUST raise at the call site, before any
-  downstream span emission picks up the partially-applied state.
+- Validates added keys against the reserved-key rules above — both the reserved
+  `openarmature.*` / `gen_ai.*` namespaces and the reserved OA-emitted metadata key names —
+  and the value-type contract above. Violations MUST raise at the call site, before any
+  downstream span emission picks up the partially-applied state. The reservation is enforced
+  identically at the `invoke()` boundary and at this mid-invocation helper, so a reserved
+  name cannot be introduced through either path.
 - **Forward flow.** Spans emitted after the call returns carry the additions via normal
   propagation through the async context.
 - **Closed spans.** Spans already closed are NOT retroactively updated.
@@ -1060,6 +1078,14 @@ on a root span.
 The §5 OA attribute keys translate to Langfuse fields per the tables below. Implementations MUST
 set the corresponding Langfuse fields when the source OA attribute is set on the source span
 (per §5).
+
+**Shared top-level namespace with caller metadata.** The Langfuse mapping writes OA-emitted
+observability fields as top-level keys of `trace.metadata` / `observation.metadata` /
+`generation.metadata` — the same top level where §3.4 caller-supplied metadata keys land. Both are
+placed at the top level deliberately: Langfuse filters reliably only on top-level metadata keys. To
+keep both sets filterable without collision, §3.4 reserves the OA-emitted key names (listed there)
+so a caller key cannot occupy the same metadata key as an OA-emitted field. OA-emitted keys are NOT
+nested under a sub-object — that would place them where Langfuse filtering does not reach.
 
 Per §3.4, the Langfuse mapping is one specific instance of the per-backend propagation pattern
 for caller-supplied invocation metadata. Langfuse's data model treats `trace.metadata` and
