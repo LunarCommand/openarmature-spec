@@ -44,6 +44,7 @@ lifecycle and the proposal template.
 | [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse §8.3 graph-topology conformance coverage (subgraph, fan-out, detached) | observability | Accepted | Shipped (0.10.0)| —          |
 | [0036](proposals/0036-graph-engine-fan-out-collection-reducers.md) | Fan-out collection reducers (`concat_flatten` for list-of-lists, `merge_all` for list-of-dicts) | graph-engine  | Accepted | Shipped (0.10.0)| —          |
 | [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping (§8.2) — system extraction, tool/tool_result content blocks, `tool` role bidirectional translation, native structured output (`output_config.format`), first-class `ThinkingBlock` + `RedactedThinkingBlock` for extended thinking round-trip | llm-provider  | Accepted | Pending         | —          |
+| [0040](proposals/0040-observability-mid-invocation-metadata-open-span-update.md) | Mid-invocation metadata augmentation MUST reach open spans in the augmenting context (§3.4 SHOULD→MUST, scoped to the augmenting async context's own open spans; §6 augmentation-event mechanism; graph-engine §6 touch) | observability | Draft    | —               | —          |
 
 Click any column header to sort.
 
