@@ -4,6 +4,20 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.28.0] — 2026-05-27
+
+**Added**
+
+- **llm-provider §8.2 — Anthropic Messages wire-format mapping.** New §8.2 subsection (following the §8.X template) mapping the abstract §3/§4/§5/§6/§7 contract onto the Anthropic Messages API (`POST /v1/messages`): system extraction to the top-level `system` field; user/assistant-only `messages`; `tool` role bidirectional translation to/from `tool_result` content blocks (§8.2.1.2); `tool_use` content-block tool calls and `{name, description, input_schema}` tool definitions (§8.2.1.1); `tool_choice` mapping with the `required`→`any` rename; `max_tokens` required (pre-send `provider_invalid_request` when absent); `frequency_penalty`/`presence_penalty` rejected as unsupported; `stop_reason` → `finish_reason` mapping (incl. `pause_turn`); usage mapping with a cached-token note; the §8.2.3 error table (incl. 402 `billing_error`, 504 `timeout_error`); native structured output via `output_config.format` (§8.2.5) with tool-call-coercion and prompt-augmentation fallbacks for pre-native models (§8.2.5.1). ([proposal 0037](proposals/0037-llm-provider-anthropic-messages-mapping.md))
+- **llm-provider §3.1 — `ThinkingBlock` and `RedactedThinkingBlock` content block types.** Two new assistant-message-only block types surfacing provider-emitted reasoning content as first-class spec records. `ThinkingBlock {text, signature}` carries reasoning text plus an opaque provider round-trip token; `RedactedThinkingBlock {data}` carries an opaque redacted slot. Both are preserved verbatim on round-trip and are provider-bound (routing thinking-bearing history to a different provider strips them). §3 assistant per-role constraint relaxed so `assistant` `content` may be a content-block sequence (text + thinking/redacted-thinking; image stays user-only). §3.1 renumbered (Mixing blocks → §3.1.6). §6 `Response.message` note added.
+- **llm-provider §8.1.1 — strip-on-send rule.** The OpenAI mapping strips `ThinkingBlock`/`RedactedThinkingBlock` from outbound assistant messages (OpenAI has no wire representation for reasoning content), enabling cross-provider conversation routing without manual filtering. Generalizes to any mapping that does not surface reasoning content; reasoning signatures are provider-bound.
+- Conformance fixtures `llm-provider/conformance/033-043` (eleven): basic round-trip, tool-call flow, image blocks, tool_choice modes, RuntimeConfig mapping, max_tokens-required, error mapping, native structured output, structured-output fallback, thinking-block round-trip, and OpenAI thinking-block strip. The Anthropic fixtures carry a `mapping: anthropic` discriminator (a harness extension; fixtures without it target the §8.1 OpenAI mapping).
+
+**Notes**
+
+- **MINOR bump.** Additive: a new §8.X wire-format mapping, two new optional content-block types (assistant-only, absent unless a reasoning-surfacing provider emits them), and one strip-on-send rule on §8.1 (affects outbound wire only when thinking blocks are present, which prior to this proposal could not occur). No breaking changes — existing callers and the §8.1 mapping are unaffected.
+- Anthropic provides native structured output (GA on current Claude models) via `output_config.format`; the mapping uses the native path (mirroring §8.1.5), with tool-call coercion and prompt-augmentation demoted to fallbacks for pre-native models.
+
 ## [0.27.1] — 2026-05-27
 
 **Fixed**

@@ -1,0 +1,179 @@
+# §8.2.1 Anthropic tool_choice mapping. Five cases: None/absent
+# (field omitted), "auto" -> {type: auto}, "required" -> {type: any}
+# (the load-bearing rename), "none" -> {type: none}, and a specific
+# tool -> {type: tool, name: X}.
+
+mapping: anthropic
+
+cases:
+  - name: tool_choice_default_omits_wire_field
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Weather?"}
+      tools:
+        - name: get_weather
+          description: "Get weather."
+          parameters:
+            type: object
+            properties: {location: {type: string}}
+            required: [location]
+      config: {max_tokens: 128}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 128
+      messages:
+        - {role: user, content: "Weather?"}
+      tools:
+        - name: get_weather
+          description: "Get weather."
+          input_schema:
+            type: object
+            properties: {location: {type: string}}
+            required: [location]
+    expected_wire_request_checks:
+      tool_choice_absent: true
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_036a
+            model: claude-test
+            role: assistant
+            content: [{type: text, text: "Where?"}]
+            stop_reason: end_turn
+            usage: {input_tokens: 8, output_tokens: 2}
+    expected:
+      response: {finish_reason: stop}
+
+  - name: tool_choice_auto
+    call:
+      operation: complete
+      messages: [{role: user, content: "Weather?"}]
+      tools:
+        - name: get_weather
+          description: "Get weather."
+          parameters: {type: object, properties: {location: {type: string}}, required: [location]}
+      tool_choice: auto
+      config: {max_tokens: 128}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 128
+      messages: [{role: user, content: "Weather?"}]
+      tools:
+        - name: get_weather
+          description: "Get weather."
+          input_schema: {type: object, properties: {location: {type: string}}, required: [location]}
+      tool_choice: {type: auto}
+    mock_provider:
+      responses:
+        - status: 200
+          body: {type: message, id: msg_036b, model: claude-test, role: assistant, content: [{type: text, text: "Where?"}], stop_reason: end_turn, usage: {input_tokens: 8, output_tokens: 2}}
+    expected:
+      response: {finish_reason: stop}
+
+  - name: tool_choice_required_maps_to_any
+    call:
+      operation: complete
+      messages: [{role: user, content: "Weather?"}]
+      tools:
+        - name: get_weather
+          description: "Get weather."
+          parameters: {type: object, properties: {location: {type: string}}, required: [location]}
+      tool_choice: required
+      config: {max_tokens: 128}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 128
+      messages: [{role: user, content: "Weather?"}]
+      tools:
+        - name: get_weather
+          description: "Get weather."
+          input_schema: {type: object, properties: {location: {type: string}}, required: [location]}
+      # Load-bearing rename: spec "required" -> Anthropic {type: any}.
+      tool_choice: {type: any}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_036c
+            model: claude-test
+            role: assistant
+            content:
+              - {type: tool_use, id: toolu_x, name: get_weather, input: {location: "SF"}}
+            stop_reason: tool_use
+            usage: {input_tokens: 8, output_tokens: 6}
+    expected:
+      response:
+        finish_reason: tool_calls
+        message:
+          role: assistant
+          tool_calls:
+            - {id: toolu_x, name: get_weather, arguments: {location: "SF"}}
+
+  - name: tool_choice_none
+    call:
+      operation: complete
+      messages: [{role: user, content: "Weather?"}]
+      tools:
+        - name: get_weather
+          description: "Get weather."
+          parameters: {type: object, properties: {location: {type: string}}, required: [location]}
+      tool_choice: none
+      config: {max_tokens: 128}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 128
+      messages: [{role: user, content: "Weather?"}]
+      tools:
+        - name: get_weather
+          description: "Get weather."
+          input_schema: {type: object, properties: {location: {type: string}}, required: [location]}
+      tool_choice: {type: none}
+    mock_provider:
+      responses:
+        - status: 200
+          body: {type: message, id: msg_036d, model: claude-test, role: assistant, content: [{type: text, text: "I can't call tools."}], stop_reason: end_turn, usage: {input_tokens: 8, output_tokens: 4}}
+    expected:
+      response: {finish_reason: stop}
+
+  - name: tool_choice_specific_tool
+    call:
+      operation: complete
+      messages: [{role: user, content: "Weather?"}]
+      tools:
+        - name: get_weather
+          description: "Get weather."
+          parameters: {type: object, properties: {location: {type: string}}, required: [location]}
+      tool_choice: {type: tool, name: get_weather}
+      config: {max_tokens: 128}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 128
+      messages: [{role: user, content: "Weather?"}]
+      tools:
+        - name: get_weather
+          description: "Get weather."
+          input_schema: {type: object, properties: {location: {type: string}}, required: [location]}
+      tool_choice: {type: tool, name: get_weather}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_036e
+            model: claude-test
+            role: assistant
+            content:
+              - {type: tool_use, id: toolu_y, name: get_weather, input: {location: "SF"}}
+            stop_reason: tool_use
+            usage: {input_tokens: 8, output_tokens: 6}
+    expected:
+      response:
+        finish_reason: tool_calls
+        message:
+          role: assistant
+          tool_calls:
+            - {id: toolu_y, name: get_weather, arguments: {location: "SF"}}

@@ -1,0 +1,32 @@
+# §8.2.1 Anthropic max_tokens requirement. Anthropic requires
+# max_tokens on every request. When RuntimeConfig.max_tokens is absent,
+# the mapping MUST raise provider_invalid_request at pre-send validation
+# (no magic default). When present, the call proceeds normally.
+
+mapping: anthropic
+
+cases:
+  - name: missing_max_tokens_raises
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      # No config / no max_tokens supplied.
+    expected:
+      raises:
+        category: provider_invalid_request
+
+  - name: present_max_tokens_proceeds
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      config: {max_tokens: 100}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 100
+      messages: [{role: user, content: "hi"}]
+    mock_provider:
+      responses:
+        - status: 200
+          body: {type: message, id: msg_038, model: claude-test, role: assistant, content: [{type: text, text: "ok"}], stop_reason: end_turn, usage: {input_tokens: 3, output_tokens: 1}}
+    expected:
+      response: {finish_reason: stop}

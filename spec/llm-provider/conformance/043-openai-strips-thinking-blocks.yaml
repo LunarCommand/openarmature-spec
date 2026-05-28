@@ -1,0 +1,45 @@
+# §8.1.1 strip-on-send rule. A spec assistant message carrying a
+# thinking block (e.g., conversation history that originated from an
+# Anthropic-mapped provider) is routed through the §8.1 OpenAI mapping.
+# OpenAI has no wire representation for thinking blocks, so the mapping
+# MUST strip them before emitting the wire request — deterministically,
+# no error. Only the text content survives.
+#
+# No `mapping` key -> defaults to the §8.1 OpenAI-compatible mapping.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: cc-043
+        object: chat.completion
+        created: 1700000000
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: "Yes."}
+            finish_reason: stop
+        usage: {prompt_tokens: 15, completion_tokens: 2, total_tokens: 17}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "What's the answer?"}
+      - role: assistant
+        content:
+          - {type: thinking, text: "Reasoning carried over from Anthropic.", signature: "sig-xyz"}
+          - {type: text, text: "42."}
+      - {role: user, content: "Are you sure?"}
+    config: {max_tokens: 64}
+    expected_wire_request:
+      model: gpt-test
+      max_tokens: 64
+      messages:
+        - {role: user, content: "What's the answer?"}
+        # Thinking block stripped; only the text survives (collapses to a string).
+        - {role: assistant, content: "42."}
+        - {role: user, content: "Are you sure?"}
+    expected:
+      response:
+        message: {role: assistant, content: "Yes.", tool_calls: null}
+        finish_reason: stop
