@@ -34,14 +34,17 @@ level of the Langfuse metadata object** — nothing is relocated or nested — s
 both stay filterable in the Langfuse UI.
 
 Keeping the layout flat is deliberate and grounded in how Langfuse behaves
-(verified against current Langfuse documentation and behavior): Langfuse
-constrains metadata **keys** to alphanumeric characters, and filtering works
+(verified against current Langfuse documentation and behavior): filtering works
 reliably only on **top-level** metadata keys — nested metadata is poorly
 filterable, and Langfuse's own remediation for nested / OpenTelemetry metadata
 is to **flatten it to the top-level metadata object**. An earlier draft of this
 proposal moved OA's keys under a `metadata.openarmature` sub-object; that would
 have made `correlation_id` (the cross-backend lookup key, §8.5) and the other
-OA keys unfilterable, so it is rejected here in favor of reservation.
+OA keys unfilterable, so it is rejected here in favor of reservation. (The
+OA-emitted key names keep their existing underscore form — `correlation_id`,
+`fan_out_index`, etc.; Langfuse's alphanumeric-key guidance, per §8.4, applies
+to its metadata-*propagation* feature, not to metadata the OA observer sets
+directly on traces / observations.)
 
 ## Motivation
 
