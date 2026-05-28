@@ -205,9 +205,12 @@ The helper:
 
 - Performs an additive merge into the current async context's metadata. Existing keys with
   the same name are overwritten; other keys are preserved.
-- Validates added keys against the reserved-namespace rule (`openarmature.*`, `gen_ai.*`) and
-  the value-type contract above. Violations MUST raise at the call site, before any
-  downstream span emission picks up the partially-applied state.
+- Validates added keys against the reserved-key rules above — both the reserved
+  `openarmature.*` / `gen_ai.*` namespaces and the reserved OA-emitted metadata key names —
+  and the value-type contract above. Violations MUST raise at the call site, before any
+  downstream span emission picks up the partially-applied state. The reservation is enforced
+  identically at the `invoke()` boundary and at this mid-invocation helper, so a reserved
+  name cannot be introduced through either path.
 - **Forward flow.** Spans emitted after the call returns carry the additions via normal
   propagation through the async context.
 - **Closed spans.** Spans already closed are NOT retroactively updated.

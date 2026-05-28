@@ -105,7 +105,12 @@ backend mapping writes at the top level of its metadata object:
 > above. The match is exact (the names are reserved as whole keys, not as
 > prefixes). The reservation applies regardless of which backends are wired:
 > these are OA's observability vocabulary and stay reserved for cross-backend
-> consistency, so the same caller code is valid against any backend set.
+> consistency, so the same caller code is valid against any backend set. The
+> same reserved-key rules are enforced by the §3.4 mid-invocation
+> `set_invocation_metadata` helper (which validates added keys against both the
+> reserved namespaces and the reserved names, raising at the call site), so a
+> reserved name cannot be introduced through either the `invoke()` boundary or
+> mid-invocation augmentation.
 
 A maintenance rule accompanies the list: any future proposal that introduces a
 new top-level OA-emitted metadata key in a §8 backend mapping MUST add the key

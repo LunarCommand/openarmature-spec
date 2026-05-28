@@ -30,6 +30,10 @@ error BEFORE any work begins — no spans emitted, no observability backend arti
 5. `rejects_reserved_oa_name_system` — caller key `system` (an OA generation-metadata name,
    §8.4.3; distinct from the `gen_ai.*` prefix case — here the bare key `system` collides).
    Rejected at `invoke()` entry.
+6. `rejects_reserved_name_via_set_invocation_metadata` — a node body calls the mid-invocation
+   helper with the reserved name `step` (via the `augment_metadata` primitive). The helper
+   MUST raise at the call site — the reservation is enforced at the helper, not only at the
+   `invoke()` boundary.
 
 **Harness extensions:**
 
@@ -40,6 +44,12 @@ error BEFORE any work begins — no spans emitted, no observability backend arti
   for this invocation (work didn't begin).
 - `expected.no_langfuse_observations_emitted: true` — harness verifies the Langfuse recorder
   received no Trace or Observation entries.
+- `nodes.<node>.augment_metadata: {key: value}` — harness primitive (per fixture 034): calls
+  `set_invocation_metadata(...)` at the top of the named node's body. Used in case 6 to drive
+  the mid-invocation helper with a reserved name.
+- `expected.augment_rejects_at_call_site: true` — harness asserts the `set_invocation_metadata`
+  helper raised (the language-idiomatic error) at the call site, before the reserved key
+  reached any emission.
 
 **What passes:**
 
@@ -59,3 +69,6 @@ error BEFORE any work begins — no spans emitted, no observability backend arti
 - Framework's expand-rejected-keys option (§3.4 MAY-expand) introduces additional keys to the
   rejected set; that's permitted per §3.4 but the two reserved-namespace cases MUST always
   be rejected regardless of any expansion.
+- Framework rejects reserved names only at the `invoke()` boundary but NOT in the
+  `set_invocation_metadata` helper — a caller can still inject a reserved name mid-invocation
+  and collide with OA-emitted Langfuse metadata (the gap case 6 guards against).
