@@ -1,0 +1,81 @@
+# §3.4 open-span update MUST — outermost serial context.
+# A single serial node augments the in-scope metadata before its LLM
+# call. The augmenting context is the OUTERMOST (invocation) context, so
+# its own open spans — the invocation span (the Langfuse Trace) and the
+# calling node's span — MUST be updated in place to carry the augmented
+# key, and the LLM generation (opened after the call) carries it too.
+# requestId is NOT supplied at invoke() (baseline is tenantId only), so
+# its presence on the invocation + node spans proves the in-place
+# open-span update rather than forward emission. Complement to 029 / 030,
+# which verify the ancestor / sibling NON-update half of the same MUST.
+
+cases:
+  - name: serial_node_augmentation_updates_open_context_spans
+    description: |
+      Single-node graph. The `ask` node's body calls
+      set_invocation_metadata(requestId="req-xyz") before its LLM call.
+      The harness asserts requestId lands on the invocation span (the
+      Trace), the `ask` node span, AND the LLM generation — all in the
+      outermost async context, the first two updated in place because
+      they were already open at the augmentation call.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "answer the question"}]
+          stores_response_in: answer
+        # Harness primitive: call set_invocation_metadata(requestId=...)
+        # at the top of this node's body, before the LLM call runs.
+        augment_metadata:
+          requestId: "req-xyz"
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-34
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid>"
+        metadata:
+          # The invocation span (the Trace) was open at the augmentation
+          # call and lives in the outermost context, so it is updated in
+          # place to carry requestId alongside the baseline tenantId.
+          tenantId: "acme-corp"
+          requestId: "req-xyz"
+        observations:
+          - type: span
+            name: "ask"
+            metadata:
+              # The calling node's span — open at the call, outermost
+              # context — is updated in place.
+              tenantId: "acme-corp"
+              requestId: "req-xyz"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                metadata:
+                  # Opened after the augmentation call; carries requestId
+                  # via normal forward propagation.
+                  tenantId: "acme-corp"
+                  requestId: "req-xyz"
+                children: []
+      invariants:
+        # requestId was added mid-invocation (NOT at invoke()), yet reaches
+        # the invocation span and the node span — proving the open-span
+        # in-place update, not just forward emission.
+        open_span_update_reaches_invocation_and_node_spans: true
+        baseline_caller_metadata_universal: true

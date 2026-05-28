@@ -1,8 +1,9 @@
 # 0040: Observability — Mid-Invocation Metadata Augmentation MUST Reach Open Spans in the Augmenting Context
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-28
+- **Accepted:** 2026-05-28
 - **Targets:** spec/observability/spec.md (tightens the §3.4 *Mid-invocation augmentation* open-span clause from SHOULD to MUST and adds precise per-async-context scoping; adds a §6 subsection describing how an observer-driven lifecycle reflects augmentation onto already-open spans); spec/graph-engine/spec.md (small §6 clarifying touch: the observer delivery queue MAY carry a framework-emitted metadata-augmentation event in addition to node-boundary `started` / `completed` pairs)
 - **Related:** 0034 (caller-supplied invocation metadata — defines §3.4), 0003 (node-boundary observer hooks — the §6 event model), 0007 (observability OTel span mapping), 0031 (observability Langfuse mapping), 0035 (Langfuse graph-topology fixtures — inner-leaf tree precedent)
 - **Supersedes:**

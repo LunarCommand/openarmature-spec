@@ -104,36 +104,57 @@ cases:
                   tenantId: "acme-corp"
                   productId: "prod-A"
                 children:
-                  - type: generation
-                    name: "openarmature.llm.complete"
+                  - type: span
+                    # inner ask node — open at augmentation time and in the
+                    # instance's own async context, so per §3.4 it MUST be
+                    # updated in place to carry the augmented productId
+                    name: "ask"
                     metadata:
                       tenantId: "acme-corp"
                       productId: "prod-A"
-                    children: []
+                    children:
+                      - type: generation
+                        name: "openarmature.llm.complete"
+                        metadata:
+                          tenantId: "acme-corp"
+                          productId: "prod-A"
+                        children: []
               - type: span
                 # fan-out instance for product B
                 metadata:
                   tenantId: "acme-corp"
                   productId: "prod-B"
                 children:
-                  - type: generation
-                    name: "openarmature.llm.complete"
+                  - type: span
+                    name: "ask"
                     metadata:
                       tenantId: "acme-corp"
                       productId: "prod-B"
-                    children: []
+                    children:
+                      - type: generation
+                        name: "openarmature.llm.complete"
+                        metadata:
+                          tenantId: "acme-corp"
+                          productId: "prod-B"
+                        children: []
               - type: span
                 # fan-out instance for product C
                 metadata:
                   tenantId: "acme-corp"
                   productId: "prod-C"
                 children:
-                  - type: generation
-                    name: "openarmature.llm.complete"
+                  - type: span
+                    name: "ask"
                     metadata:
                       tenantId: "acme-corp"
                       productId: "prod-C"
-                    children: []
+                    children:
+                      - type: generation
+                        name: "openarmature.llm.complete"
+                        metadata:
+                          tenantId: "acme-corp"
+                          productId: "prod-C"
+                        children: []
       invariants:
         # Each fan-out instance's observations carry its own
         # productId; no instance's observations carry another

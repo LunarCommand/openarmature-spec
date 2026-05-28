@@ -193,11 +193,26 @@ The helper:
 - Validates added keys against the reserved-namespace rule (`openarmature.*`, `gen_ai.*`) and
   the value-type contract above. Violations MUST raise at the call site, before any
   downstream span emission picks up the partially-applied state.
-- Affects only spans emitted AFTER the call returns. Spans already closed are NOT
-  retroactively updated. Spans still open at the time of the call (e.g., the invocation span
-  itself, an ancestor node span) MAY pick up the additions per OTel's `set_attribute` /
-  Langfuse SDK's `trace.update` semantics — implementations SHOULD update open spans where
-  the backend SDK supports it, so the augmented metadata is visible end-to-end.
+- **Forward flow.** Spans emitted after the call returns carry the additions via normal
+  propagation through the async context.
+- **Closed spans.** Spans already closed are NOT retroactively updated.
+- **Open spans in the augmenting context (MUST).** Spans that are still open at the time of
+  the call AND were opened from the augmenting async context (or from an open descendant
+  context that shares the mutated mapping copy) MUST be updated in place, where the backend
+  SDK supports in-place attribute / metadata update (OTel `set_attribute`; Langfuse
+  observation / trace `update`). The *augmenting async context* is the copy-on-write context
+  (per the *Per-async-context scoping* paragraph below) in which `set_invocation_metadata`
+  executed: for a call in the outermost serial flow the augmenting context's own open spans
+  include the invocation span and the calling node's span; for a call inside a fan-out
+  instance or parallel branch they include that instance's / branch's dispatch span and any
+  inner node span open beneath it (but NOT the shared parent or invocation span — see the
+  boundary below). The augmented metadata is thereby visible end-to-end across the spans that
+  represent the augmenting work, not only on spans opened afterward.
+- **Ancestor / sibling boundary (MUST NOT).** Spans opened in an ancestor async context
+  (e.g., relative to a fan-out instance's augmentation: the invocation span and the shared
+  fan-out-node span) or in a sibling context (another fan-out instance, another parallel
+  branch) MUST NOT be updated by that augmentation. Updating them would re-introduce the
+  cross-context metadata leakage the per-async-context copy-on-write scoping (below) forbids.
 
 **Per-async-context scoping.** The metadata mapping is held in the language's idiomatic
 async-context primitive (Python `ContextVar`, TypeScript `AsyncLocalStorage`) with
@@ -892,6 +907,35 @@ filters or correlates them by attribute namespace.
 This pattern is non-obvious but production-validated — naive implementations register globally
 and discover the duplication only after deploying. Mandating it in the spec saves every
 implementation from rediscovering the issue.
+
+**Reflecting mid-invocation metadata augmentation on open spans.** §3.4 requires (MUST) that open
+spans in the augmenting async context pick up entries added mid-invocation by
+`set_invocation_metadata`. For the observer-driven lifecycle (the RECOMMENDED driver above) this needs
+a notification path: observers run on the §6 serial delivery queue, not in the node body's call stack,
+so they do not observe the `set_invocation_metadata` call directly and cannot read the node context's
+mapping copy.
+
+The RECOMMENDED mechanism is a framework-emitted **metadata-augmentation event** enqueued onto the same
+strictly-serial observer delivery queue that carries node-boundary `started` / `completed` events
+(graph-engine §6). The event carries the added `(key, value)` entries (post-validation) plus the
+originating lineage identity — `namespace`, `attempt_index`, `fan_out_index`, `branch_name` —
+sufficient for an observer to scope the update to the augmenting async context's own open spans.
+Routing the augmentation through the serial queue (rather than mutating observer state directly from
+the node-body task) preserves the strict-serial invariant the lifecycle driver relies on; ordering
+follows naturally — augmentation happens inside a node body, so the event is delivered after that
+node's `started` event (the inner span is open) and before its `completed` event (the inner span has
+not yet closed), so the target spans are open when the event arrives.
+
+On a metadata-augmentation event, an observer maintaining the in-flight span stack updates, in place,
+every open span whose lineage is within the augmenting context's subtree (its dispatch span and any
+open inner-node spans beneath it), applying the added entries as span attributes (OTel) / observation
+and trace metadata (Langfuse). It MUST NOT touch open spans in ancestor or sibling lineages (§3.4).
+Observers that do not maintain metadata-sensitive spans ignore the event.
+
+As with the `started` / `completed` lifecycle, implementations MAY use a different mechanism (e.g., a
+middleware-driven driver that reads the live context when it closes each span, or a backend SDK's own
+context-update hook) provided the resulting spans satisfy §3.4's open-span-update contract. The
+contract is the emitted spans, not the driver mechanism.
 
 ## 7. Log correlation
 

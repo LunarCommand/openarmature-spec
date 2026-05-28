@@ -498,6 +498,19 @@ registered observers, the sequence of events passed to observers MUST be identic
 extends the §5 determinism guarantee to observer delivery order. Observer side effects (logging, IO)
 remain out of scope for this guarantee.
 
+**Framework-emitted augmentation events.** Beyond node-boundary `started` / `completed` pairs, the
+observer delivery queue MAY also carry framework-emitted observability events that are not node-boundary
+events — specifically the metadata-augmentation event defined in observability §3.4 / §6, emitted when
+`set_invocation_metadata` adds entries mid-invocation. Such events are delivered in the same strict-serial
+order as node-boundary events, at the point the augmentation occurs; they are distinguished from
+node-boundary events by event kind (an augmentation event is not a node `started` / `completed` and
+carries no `pre_state` / `post_state` / `error`, so the closed `phase` enumeration continues to apply to
+node-boundary events only); and they are delivered to every registered observer irrespective of its
+node-phase subscription (the `phases` filter governs node-boundary phases), with observers that do not
+handle augmentation events ignoring them. graph-engine does not define the augmentation event's semantics
+or full field set beyond delivery ordering and the lineage-identity fields it reuses (`namespace`,
+`attempt_index`, `fan_out_index`, `branch_name`); the semantics live in observability §3.4 / §6.
+
 ## 7. Out of scope
 
 Not covered by this specification; deferred to follow-on capabilities or proposals:
