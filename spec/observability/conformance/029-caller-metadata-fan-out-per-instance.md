@@ -42,7 +42,9 @@ reach every instance's spans + observations.
 
 **What passes:**
 
-- Each instance's observations carry both `tenantId` AND its own `productId`.
+- Each instance's observations — the instance-dispatch span, the inner `ask` node span
+  (both open at the augmentation call and updated in place per §3.4's open-span MUST), and
+  the LLM generation — carry both `tenantId` AND that instance's own `productId`.
 - No instance's observations carry a sibling instance's `productId`.
 - The Trace's top-level `metadata` carries the baseline `tenantId` but NOT any
   `productId` (the augmentations were applied inside fan-out instances, in their separate
@@ -61,7 +63,8 @@ reach every instance's spans + observations.
   reset the metadata to only the augmentations within fan-out instances instead of
   additively merging. Violates §3.4's "additive merge" rule.
 - The Langfuse observer applies augmentations only to spans emitted strictly after the
-  helper call but does NOT update the already-open ancestor instance-subgraph span —
-  acceptable per §5.6's SHOULD (not MUST), but lossy for the use case. Implementations
-  SHOULD use `trace.update(metadata=...)` / `span.set_attribute(...)` to update open spans
-  where the SDK supports it.
+  helper call but does NOT update the already-open instance-dispatch span or inner `ask`
+  node span — a §3.4 violation. The open spans in the augmenting instance's async context
+  (its dispatch span and the inner node span open at the call) MUST be updated in place
+  (`trace.update(metadata=...)` / `span.set_attribute(...)`) where the SDK supports it, so
+  the augmented `productId` reaches them and not only the LLM generation.

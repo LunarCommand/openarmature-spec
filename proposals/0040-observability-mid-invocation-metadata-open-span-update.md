@@ -1,8 +1,9 @@
 # 0040: Observability — Mid-Invocation Metadata Augmentation MUST Reach Open Spans in the Augmenting Context
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-28
+- **Accepted:** 2026-05-28
 - **Targets:** spec/observability/spec.md (tightens the §3.4 *Mid-invocation augmentation* open-span clause from SHOULD to MUST and adds precise per-async-context scoping; adds a §6 subsection describing how an observer-driven lifecycle reflects augmentation onto already-open spans); spec/graph-engine/spec.md (small §6 clarifying touch: the observer delivery queue MAY carry a framework-emitted metadata-augmentation event in addition to node-boundary `started` / `completed` pairs)
 - **Related:** 0034 (caller-supplied invocation metadata — defines §3.4), 0003 (node-boundary observer hooks — the §6 event model), 0007 (observability OTel span mapping), 0031 (observability Langfuse mapping), 0035 (Langfuse graph-topology fixtures — inner-leaf tree precedent)
 - **Supersedes:**
@@ -213,19 +214,25 @@ enumeration (`started` / `completed`). This proposal adds a short note:
 >
 > - are delivered in the same strict-serial order as node-boundary events, at
 >   the point the augmentation occurs;
-> - are distinguished from node-boundary events by **event kind** — an
->   augmentation event is not a node `started` / `completed` and carries no
->   `pre_state` / `post_state` / `error`; the closed `phase` enumeration
->   continues to apply to node-boundary events only;
+> - are a **distinct event kind**, carried to observers via a
+>   per-language-idiomatic representation (a discriminated union with an
+>   explicit `kind` discriminator, a separate observer callback, equivalent);
+>   an augmentation event carries no `phase` (the `phase` field and its
+>   `started` / `completed` enumeration are node-boundary-event properties only)
+>   and none of the node-only fields (`pre_state` / `post_state` / `error`),
+>   carrying instead the added entries plus the reused lineage-identity fields;
 > - are delivered to every registered observer irrespective of its node-phase
 >   subscription (the `phases` filter governs node-boundary phases); observers
 >   that do not handle augmentation events ignore them.
 >
 > graph-engine does not define the augmentation event's semantics or full field
-> set beyond delivery ordering and the lineage-identity fields it reuses
-> (`namespace`, `attempt_index`, `fan_out_index`, `branch_name`); the semantics
-> live in observability §3.4 / §6. This touch only makes explicit that the
-> cross-language observer delivery surface carries the event.
+> set beyond this representation, its delivery ordering, and the lineage-identity
+> fields it reuses (`namespace`, `attempt_index`, `fan_out_index`,
+> `branch_name`); the semantics live in observability §3.4 / §6. The touch also
+> scopes the existing *Node event shape* lead-in and the `phases`-subscription
+> delivery rule to node-boundary events, so the `phase`-required shape and the
+> `phases` filter do not read as universal once a phase-less augmentation event
+> kind exists.
 
 ## Conformance fixtures
 

@@ -120,24 +120,38 @@ cases:
                   tenantId: "acme-corp"
                   branchName: "fraud_check"
                 children:
-                  - type: generation
-                    name: "openarmature.llm.complete"
+                  - type: span
+                    # inner ask node — open at augmentation and in the branch's
+                    # own async context, so per §3.4 it MUST carry branchName
+                    name: "ask"
                     metadata:
                       tenantId: "acme-corp"
                       branchName: "fraud_check"
-                    children: []
+                    children:
+                      - type: generation
+                        name: "openarmature.llm.complete"
+                        metadata:
+                          tenantId: "acme-corp"
+                          branchName: "fraud_check"
+                        children: []
               - type: span
                 # policy_audit subgraph dispatch span
                 metadata:
                   tenantId: "acme-corp"
                   branchName: "policy_audit"
                 children:
-                  - type: generation
-                    name: "openarmature.llm.complete"
+                  - type: span
+                    name: "ask"
                     metadata:
                       tenantId: "acme-corp"
                       branchName: "policy_audit"
-                    children: []
+                    children:
+                      - type: generation
+                        name: "openarmature.llm.complete"
+                        metadata:
+                          tenantId: "acme-corp"
+                          branchName: "policy_audit"
+                        children: []
       invariants:
         # Each branch's observations carry only ITS OWN branchName;
         # no leakage to the sibling branch.

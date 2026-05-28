@@ -4,6 +4,22 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.29.0] — 2026-05-28
+
+**Changed**
+
+- **observability §3.4 — mid-invocation augmentation open-span update tightened SHOULD → MUST.** Entries added mid-invocation via `set_invocation_metadata` MUST be applied in place to the spans still open in the augmenting async context — for an outermost-serial-context call, the invocation span and the calling node's span; for a fan-out instance / parallel branch, that instance's / branch's dispatch span and any open inner-node spans — where the backend SDK supports in-place attribute / metadata update. An explicit boundary is added: spans in ancestor or sibling async contexts MUST NOT be updated, preserving the per-async-context copy-on-write isolation. ([proposal 0040](proposals/0040-observability-mid-invocation-metadata-open-span-update.md))
+
+**Added**
+
+- **observability §6 — augmentation-event mechanism.** New §6 guidance for how an observer-driven lifecycle reflects mid-invocation augmentation onto already-open spans: a framework-emitted metadata-augmentation event delivered in serial order on the observer queue, carrying the added entries plus the originating lineage identity (`namespace` / `attempt_index` / `fan_out_index` / `branch_name`). The open-span-update behavior is the MUST; the event is the recommended mechanism (alternatives that produce the same spans are permitted).
+- **graph-engine §6 — observer delivery queue carries augmentation events.** Clarifying note that the queue MAY carry a framework-emitted metadata-augmentation event (a distinct event kind from node-boundary `started` / `completed`, carrying no `pre_state` / `post_state` / `error`, not subject to the `phases` filter) alongside node-boundary events; the closed `phase` enumeration continues to apply to node-boundary events only.
+- Conformance fixtures: `observability/conformance/029` and `030` corrected to add the inner-node span level (which carries the augmented per-instance / per-branch key per the open-span MUST); new fixture `034-caller-metadata-open-span-update-serial` covering the outermost-context case (invocation span + calling node span updated in place).
+
+**Notes**
+
+- **MINOR bump.** Tightens a previously-SHOULD behavior to a MUST — an implementation that declined the open-span update under the SHOULD must now perform it for backends whose SDK supports in-place update — and adds an observer-queue event kind. Callers that do not call `set_invocation_metadata` see no behavior change.
+
 ## [0.28.0] — 2026-05-27
 
 **Added**
