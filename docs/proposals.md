@@ -44,6 +44,7 @@ lifecycle and the proposal template.
 | [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse §8.3 graph-topology conformance coverage (subgraph, fan-out, detached) | observability | Accepted | Shipped (0.10.0)| —          |
 | [0036](proposals/0036-graph-engine-fan-out-collection-reducers.md) | Fan-out collection reducers (`concat_flatten` for list-of-lists, `merge_all` for list-of-dicts) | graph-engine  | Accepted | Shipped (0.10.0)| —          |
 | [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping (§8.2) — system extraction, tool/tool_result content blocks, `tool` role bidirectional translation, native tool-call-coercion structured output, first-class `ThinkingBlock` + `RedactedThinkingBlock` for extended thinking round-trip | llm-provider  | Draft    | —               | —          |
+| [0039](proposals/0039-observability-caller-supplied-invocation-id.md) | Caller-supplied `invocation_id` (opt-in, mirrors caller-supplied `correlation_id`; non-UUID values get a deterministic Langfuse `trace.id` derivation) | observability | Draft    | —               | —          |
 
 Click any column header to sort.
 
