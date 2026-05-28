@@ -577,9 +577,14 @@ When an instance completes, the engine extracts:
 
 Instance contributions are NOT merged into the parent state until ALL instances complete. The
 fan-in step then merges all per-instance contributions into the parent state in instance-index
-order via the parent's reducer for the named field. The reducer for `target_field` MUST be a
-list-extending reducer (`append` or a user-defined equivalent that concatenates list values);
-the reducer for any field named in `extra_outputs` MUST accept the value type the subgraph
+order via the parent's reducer for the named field. The reducer for `target_field` MUST accept
+the engine-produced list of per-instance values (`[s[collect_field] for s in successes]`) as
+its `update` argument. Permitted graph-engine §2 built-ins: `append` (list-of-X → list-of-X),
+`concat_flatten` (list-of-list-of-X → list-of-X; for cases where per-instance values are
+themselves list-shaped), and `merge_all` (list-of-mapping → mapping; for cases where
+per-instance values are dict-shaped and the parent wants a single merged dict). User-defined
+reducers MAY also be used, provided their `update` argument accepts the engine-produced list.
+The reducer for any field named in `extra_outputs` MUST accept the value type the subgraph
 produces.
 
 The collected list at `target_field` preserves instance-index order (instance 0's value, then

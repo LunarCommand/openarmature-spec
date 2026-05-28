@@ -28,18 +28,19 @@ lists and every element of `update` strictly required to itself be a list.
 
 **Harness notes:**
 
-- Field type is `list` (no element constraint) so the reducer is the layer enforcing the
-  list-of-lists shape rather than the typed-state validation layer. Implementations whose
-  typed-state validation rejects non-list updates BEFORE the reducer (e.g., Pydantic with
-  `list[list[X]]` element constraints) will catch the non-list-element case at the state
-  validation layer rather than at the reducer; that behavior also satisfies §2's strict contract
-  but does NOT raise `reducer_error` specifically. The fixture's permissive `type: list` ensures
-  the reducer is the layer enforcing the contract, so the `reducer_error` assertion is
-  meaningful across implementations.
-- Non-list `update` and non-list `prior` cases are spec-normative (the reducer MUST raise on
-  these per §2) but are typically caught at the state validation layer in strict-typed
-  implementations before reaching the reducer. The fixture's non-list-element case is the one
-  the reducer is GUARANTEED to be the gatekeeper for.
+- This fixture asserts the §2 contract that `concat_flatten` raises `reducer_error` on shape
+  violations. The permissive `type: list` (no element constraint) ensures the reducer is the
+  layer reached by the bad shape, making the `reducer_error` assertion the right one for the
+  non-list-element case.
+- A separately constrained field (e.g., a Pydantic field declared `list[list[X]]`) would have
+  its typed-state validation reject the bad shape earlier, before the reducer runs — but that's
+  a different code path, not an alternative satisfaction of §2. The §2 contract for what the
+  reducer does when it sees bad shape is what this fixture asserts.
+- Non-list `update` and non-list `prior` cases are spec-normative (§2 says the reducer MUST
+  raise on these) but require similar permissive-type setups to exercise at the reducer layer;
+  in strict-typed implementations they are typically rejected at the state-validation layer
+  for the field carrying the bad value. The fixture's non-list-element case is the one the
+  reducer is guaranteed to be the gatekeeper for under a permissive field type.
 
 **What passes:**
 

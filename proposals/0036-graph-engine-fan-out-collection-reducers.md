@@ -4,7 +4,7 @@
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-27
 - **Accepted:** 2026-05-27
-- **Targets:** spec/graph-engine/spec.md (extends §2 *Concepts* — Reducer entry — required-built-in set with two new members, `concat_flatten` and `merge_all`); spec/graph-engine/conformance/ (two new fixture pairs `026-reducer-concat-flatten.{yaml,md}` and `027-reducer-merge-all.{yaml,md}`, slotted after the existing 003 / 004 / 005 reducer fixtures plus the intervening 006-025 non-reducer fixtures)
+- **Targets:** spec/graph-engine/spec.md (extends §2 *Concepts* — Reducer entry — required-built-in set with two new members, `concat_flatten` and `merge_all`); spec/pipeline-utilities/spec.md (broadens §9.3 *Per-instance fan-in* `target_field` reducer contract — was list-extending-only; now accepts any §2 built-in compatible with the engine-produced list of per-instance values, explicitly enumerating `append` / `concat_flatten` / `merge_all`); spec/graph-engine/conformance/ (two new fixture pairs `026-reducer-concat-flatten.{yaml,md}` and `027-reducer-merge-all.{yaml,md}`, slotted after the existing 003 / 004 / 005 reducer fixtures plus the intervening 006-025 non-reducer fixtures)
 - **Related:** 0001 (graph-engine foundation — established the required-built-in reducer set; this proposal extends it), 0005 (parallel fan-out — defines the per-instance collection pattern that motivates both reducers)
 - **Supersedes:**
 
@@ -237,7 +237,7 @@ slotting after 003-reducer-last-write-wins / 004-reducer-append /
   the error surfaces the failing field and reducer.
 
 Both fixtures use a permissive field type declaration (`type: list`
-for 006, `type: dict` for 007 — no element constraint) so the
+for 026, `type: dict` for 027 — no element constraint) so the
 reducer is the layer enforcing the list-of-collections shape rather
 than the typed-state validation layer.
 
@@ -300,20 +300,34 @@ and the write paths symmetric.
 
 ## Spec-text changes
 
-Just two-and-a-half edits to `spec/graph-engine/spec.md` §2:
+Edits to `spec/graph-engine/spec.md` §2 — *Reducer* entry:
 
-1. The required-built-in sentence in the *Reducer* entry expands
-   from three named reducers to five.
+1. The required-built-in sentence expands from three named
+   reducers to five.
 2. Two new paragraphs immediately after the *Reducer* entry's
    existing prose specifying the strict semantics, error
    contracts, empty-update and empty-element semantics, and the
    explicit rejection of auto-detect — one paragraph per new
    reducer.
 
-No changes to §3 (Execution model), §4 (Error categories — the
-existing `ReducerError` / `reducer_error` machinery covers both
-new reducers' failures unchanged), §5 (Determinism), §6 (Observer
-hooks), or any other §-section.
+One cross-spec edit to `spec/pipeline-utilities/spec.md` §9.3 —
+*Per-instance fan-in*:
+
+3. The `target_field` reducer contract broadens from
+   list-extending-only (`append` or user equivalent that
+   concatenates list values) to any reducer compatible with the
+   engine-produced list of per-instance values. Permitted §2
+   built-ins are enumerated explicitly: `append`, `concat_flatten`,
+   `merge_all`. User-defined reducers MAY still be used, provided
+   their `update` argument accepts the engine-produced list. The
+   `extra_outputs` reducer contract is unchanged.
+
+No changes to graph-engine §3 (Execution model), §4 (Error
+categories — the existing `ReducerError` / `reducer_error`
+machinery covers both new reducers' failures unchanged), §5
+(Determinism), §6 (Observer hooks), pipeline-utilities §9.1-§9.2
+or §9.4-§9.7 (fan-out engine contract unchanged), or any other
+§-section.
 
 ## Conformance fixtures
 
