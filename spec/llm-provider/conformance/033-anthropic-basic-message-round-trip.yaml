@@ -1,0 +1,44 @@
+# §8.2 Anthropic Messages mapping — basic message round-trip.
+# Verifies system extraction to the top-level `system` field, a
+# user/assistant-only `messages` array, max_tokens on the wire, and
+# response parsing into a §6 Response with text content.
+#
+# `mapping: anthropic` selects the §8.2 Anthropic Messages wire mapping.
+# This is a harness extension introduced with proposal 0037; fixtures
+# WITHOUT this key target the §8.1 OpenAI-compatible mapping (the
+# pre-0037 default).
+
+mapping: anthropic
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        type: message
+        id: msg_033
+        model: claude-test
+        role: assistant
+        content:
+          - {type: text, text: "Hello back."}
+        stop_reason: end_turn
+        usage: {input_tokens: 12, output_tokens: 3}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: system, content: "You are helpful."}
+      - {role: user, content: "Hello."}
+    config:
+      max_tokens: 256
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 256
+      # system is a top-level field, extracted out of the messages list.
+      system: "You are helpful."
+      messages:
+        - {role: user, content: "Hello."}
+    expected:
+      response:
+        message: {role: assistant, content: "Hello back.", tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 12, completion_tokens: 3, total_tokens: 15}

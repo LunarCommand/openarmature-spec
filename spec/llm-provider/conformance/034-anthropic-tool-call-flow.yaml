@@ -1,0 +1,65 @@
+# §8.2 Anthropic tool-call flow. Verifies the §8.2.1.2 `tool` role
+# bidirectional translation on send: a spec assistant message with
+# tool_calls maps to an Anthropic assistant message carrying a
+# `tool_use` content block, and a spec `tool` message maps to an
+# Anthropic `user` message carrying a `tool_result` content block.
+# The §4 Tool maps to the {name, description, input_schema} shape.
+
+mapping: anthropic
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        type: message
+        id: msg_034
+        model: claude-test
+        role: assistant
+        content:
+          - {type: text, text: "It's 72F and sunny in SF."}
+        stop_reason: end_turn
+        usage: {input_tokens: 40, output_tokens: 9}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Weather in SF?"}
+      - role: assistant
+        tool_calls:
+          - {id: toolu_1, name: get_weather, arguments: {location: "SF"}}
+      - {role: tool, tool_call_id: toolu_1, content: "72F sunny"}
+    tools:
+      - name: get_weather
+        description: "Get current weather for a location."
+        parameters:
+          type: object
+          properties:
+            location: {type: string}
+          required: [location]
+    config:
+      max_tokens: 512
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 512
+      messages:
+        - {role: user, content: "Weather in SF?"}
+        # Spec assistant.tool_calls -> Anthropic tool_use content block.
+        - role: assistant
+          content:
+            - {type: tool_use, id: toolu_1, name: get_weather, input: {location: "SF"}}
+        # Spec `tool` message -> Anthropic user message with tool_result block.
+        - role: user
+          content:
+            - {type: tool_result, tool_use_id: toolu_1, content: "72F sunny"}
+      tools:
+        - name: get_weather
+          description: "Get current weather for a location."
+          input_schema:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+    expected:
+      response:
+        message: {role: assistant, content: "It's 72F and sunny in SF.", tool_calls: null}
+        finish_reason: stop
