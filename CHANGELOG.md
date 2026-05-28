@@ -4,6 +4,18 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.27.0] — 2026-05-27
+
+**Added**
+
+- **graph-engine §2 — `concat_flatten` and `merge_all` required built-in reducers.** §2's required-built-in reducer set expands from three (`last_write_wins`, `append`, `merge`) to five with two new members for the fan-out collection case. `concat_flatten(prior, update)` concatenates `prior` with the one-level flattening of `update`; both arguments MUST be lists and every element of `update` MUST itself be a list. `merge_all(prior, update)` folds the sequence of mappings in `update` into `prior` with shallow last-write-wins per key (consistent with `merge`'s single-dict semantics across the N dicts); `prior` MUST be a mapping, `update` MUST be a list, every element of `update` MUST itself be a mapping. Both reducers are strict — non-matching shapes raise `ReducerError` per §4; auto-detection between list-of-lists vs. flat list (and analogously between list-of-mappings vs. single mapping) is explicitly rejected by §2. Both are duals of `append` / `merge` for the fan-out target field case where the per-instance value collected by pipeline-utilities §9's fan-out is itself a collection (list or mapping). ([proposal 0036](proposals/0036-graph-engine-fan-out-collection-reducers.md))
+- Conformance fixtures `graph-engine/conformance/026-reducer-concat-flatten` and `027-reducer-merge-all`, each covering success path, empty-update no-op, empty-inner-collection no-op, and non-element-shape `reducer_error` raise. The non-list-`update` and non-list-`prior` error contracts are spec-normative but caught at the typed-state validation layer in strict-typed implementations before reaching the reducer; the fixture-covered non-element error is the case the reducer is guaranteed to be the gatekeeper for.
+
+**Notes**
+
+- **MINOR bump.** Additive normative change to the conformance surface — the required-built-in reducer set expands from three to five. No breaking changes for caller code (existing reducer declarations continue to work unchanged); implementations that pass the v0.26.x graph-engine fixtures without `concat_flatten` and `merge_all` will no longer pass v0.27.0 conformance, which is the intended behavior.
+- No changes to §3 (Execution model), §4 (Error categories — both new reducers route failures through the existing `ReducerError` / `reducer_error` machinery), §5 (Determinism), §6 (Observer hooks), or any other §-section. No changes to the pipeline-utilities §9 fan-out collection contract — that contract stays "collect one value per successful per-instance subgraph"; the new reducers consume the resulting list-of-collections at the parent state layer.
+
 ## [0.26.1] — 2026-05-27
 
 **Added**

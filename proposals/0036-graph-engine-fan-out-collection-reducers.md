@@ -1,9 +1,10 @@
 # 0036: graph-engine — Fan-Out Collection Reducers (`concat_flatten`, `merge_all`)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-27
-- **Targets:** spec/graph-engine/spec.md (extends §2 *Concepts* — Reducer entry — required-built-in set with two new members, `concat_flatten` and `merge_all`); spec/graph-engine/conformance/ (two new fixture pairs `006-reducer-concat-flatten.{yaml,md}` and `007-reducer-merge-all.{yaml,md}` mirroring the existing reducer-fixture sequence 003 / 004 / 005)
+- **Accepted:** 2026-05-27
+- **Targets:** spec/graph-engine/spec.md (extends §2 *Concepts* — Reducer entry — required-built-in set with two new members, `concat_flatten` and `merge_all`); spec/graph-engine/conformance/ (two new fixture pairs `026-reducer-concat-flatten.{yaml,md}` and `027-reducer-merge-all.{yaml,md}`, slotted after the existing 003 / 004 / 005 reducer fixtures plus the intervening 006-025 non-reducer fixtures)
 - **Related:** 0001 (graph-engine foundation — established the required-built-in reducer set; this proposal extends it), 0005 (parallel fan-out — defines the per-instance collection pattern that motivates both reducers)
 - **Supersedes:**
 
@@ -208,7 +209,7 @@ Two new fixture pairs under `spec/graph-engine/conformance/`,
 slotting after 003-reducer-last-write-wins / 004-reducer-append /
 005-reducer-merge.
 
-**`006-reducer-concat-flatten.{yaml,md}`** covering:
+**`026-reducer-concat-flatten.{yaml,md}`** covering:
 
 - **Success path.** Two nodes write to a `concat_flatten`-reduced
   list field with list-of-list updates; final state shows the
@@ -218,30 +219,38 @@ slotting after 003-reducer-last-write-wins / 004-reducer-append /
 - **Empty sub-list path.** A node writes `update = [[], []]`; the
   reducer emits no elements but no error.
 - **Non-list-element error path.** A node writes `update = [[a],
-  b]`; the engine raises `ReducerError`; the error surfaces the
-  failing field and reducer.
-- **Non-list-update error path.** A node writes a non-list update;
-  same error contract as `append`'s mismatch case.
-- **Non-list-prior error path.** A field misconfigured with
-  `concat_flatten` but a non-list default; same error contract.
+  "not a list"]`; the engine raises `reducer_error`; the error
+  surfaces the failing field and reducer.
 
-**`007-reducer-merge-all.{yaml,md}`** covering:
+**`027-reducer-merge-all.{yaml,md}`** covering:
 
 - **Success path.** Two nodes write to a `merge_all`-reduced dict
-  field with list-of-dict updates; final state shows the
+  field with list-of-mapping updates; final state shows the
   cumulative shallow merge, with later writes winning on key
-  conflict both within and across writes.
+  conflict both within `update` and across writes.
 - **Empty update path.** A node writes `update = []`; final
   state shows `prior` unchanged.
 - **Empty mapping path.** A node writes `update = [{}, {}]`; the
   reducer adds no keys but no error.
 - **Non-mapping-element error path.** A node writes `update =
-  [{k: 1}, "not a dict"]`; the engine raises `ReducerError`; the
-  error surfaces the failing field and reducer.
-- **Non-list-update error path.** A node writes a non-list update
-  (e.g., a single dict); same error contract.
-- **Non-mapping-prior error path.** A field misconfigured with
-  `merge_all` but a non-mapping default; same error contract.
+  [{k: 1}, "not a mapping"]`; the engine raises `reducer_error`;
+  the error surfaces the failing field and reducer.
+
+Both fixtures use a permissive field type declaration (`type: list`
+for 006, `type: dict` for 007 — no element constraint) so the
+reducer is the layer enforcing the list-of-collections shape rather
+than the typed-state validation layer.
+
+The non-list-`update` and non-list-`prior` error contracts
+(symmetrically, non-list-`update` and non-mapping-`prior` for
+`merge_all`) are spec-normative — the reducer MUST raise on these
+inputs per the semantics paragraphs above — but in strict-typed
+implementations the typed-state validation layer catches them
+BEFORE the reducer, raising a state-validation-style error rather
+than `reducer_error` specifically. The fixture-covered non-element
+error case is the one the reducer is GUARANTEED to be the
+gatekeeper for, independent of how strict the implementation's
+typed-state layer is.
 
 No new harness DSL extensions; the existing
 `state.fields.<f>.reducer` declaration syntax already supports
@@ -310,8 +319,8 @@ hooks), or any other §-section.
 
 Two new pairs:
 
-- `spec/graph-engine/conformance/006-reducer-concat-flatten.{yaml,md}`
-- `spec/graph-engine/conformance/007-reducer-merge-all.{yaml,md}`
+- `spec/graph-engine/conformance/026-reducer-concat-flatten.{yaml,md}`
+- `spec/graph-engine/conformance/027-reducer-merge-all.{yaml,md}`
 
 Existing reducer fixtures 003 (last-write-wins), 004 (append), 005
 (merge) remain unchanged.
