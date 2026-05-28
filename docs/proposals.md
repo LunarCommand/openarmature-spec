@@ -43,6 +43,7 @@ lifecycle and the proposal template.
 | [0034](proposals/0034-caller-supplied-invocation-metadata.md) | Caller-supplied invocation metadata propagation (cross-cutting OTel `openarmature.user.*` + per-backend rules, Langfuse first) | observability | Accepted | Pending         | —          |
 | [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse §8.3 graph-topology conformance coverage (subgraph, fan-out, detached) | observability | Accepted | Pending         | —          |
 | [0036](proposals/0036-graph-engine-fan-out-collection-reducers.md) | Fan-out collection reducers (`concat_flatten` for list-of-lists, `merge_all` for list-of-dicts) | graph-engine  | Accepted | Pending         | —          |
+| [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping (§8.2) — system extraction, tool/tool_result content blocks, `tool` role bidirectional translation, native tool-call-coercion structured output, first-class `ThinkingBlock` + `RedactedThinkingBlock` for extended thinking round-trip | llm-provider  | Draft    | —               | —          |
 
 Click any column header to sort.
 
