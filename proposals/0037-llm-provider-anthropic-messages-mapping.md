@@ -124,10 +124,11 @@ and break the cross-language promise.
 image"*) updates to enumerate four block types: text, image,
 thinking, and redacted_thinking.
 
-Two new sub-subsections added at the end of §3.1, before §3.1.4
-*Mixing blocks*:
+Two new sub-subsections added to §3.1 between the existing §3.1.3
+*Image source* and the Mixing blocks section, which renumbers from
+§3.1.4 to §3.1.6:
 
-#### §3.1.5 Thinking block
+#### §3.1.4 Thinking block
 
 A thinking block is a record:
 
@@ -154,7 +155,7 @@ outbound assistant messages per §8.1's strip-on-send rule (see
 inbound responses. Wire-level behavior for each provider is
 specified in its §8.X mapping.
 
-#### §3.1.6 Redacted thinking block
+#### §3.1.5 Redacted thinking block
 
 A redacted thinking block is a record:
 
@@ -170,15 +171,15 @@ conversation can be round-tripped without breaking the provider's
 reasoning continuity. Same scope rules as `ThinkingBlock`:
 assistant-message-content-only, round-trip-load-bearing.
 
-#### §3.1.4 Mixing blocks — clarifying update
+#### §3.1.6 Mixing blocks — clarifying update (renumbered from §3.1.4)
 
-§3.1.4's existing prose covers text and image blocks. Update
-adds one sentence: "Assistant messages MAY also contain thinking
-and redacted-thinking blocks (per §3.1.5 and §3.1.6) when the
-provider mapping surfaces them; thinking blocks SHOULD precede
-text blocks in an assistant message's content sequence, matching
-the order providers emit them. Implementations MUST preserve the
-emitted order on round-trip."
+The existing prose covers text and image blocks. Update adds one
+sentence: "Assistant messages MAY also contain thinking and
+redacted-thinking blocks (per §3.1.4 and §3.1.5) when the provider
+mapping surfaces them; thinking blocks SHOULD precede text blocks
+in an assistant message's content sequence, matching the order
+providers emit them. Implementations MUST preserve the emitted
+order on round-trip."
 
 ### §6 — Response.message.content clarifying note
 
@@ -306,17 +307,29 @@ validate, rename, or transform undeclared keys.
 
 ##### §8.2.1.1 Content-block wire mapping
 
-Each spec content block maps to one Anthropic content-array
-entry:
+This sub-subsection covers two wire-encoding paths:
 
-| Spec block | Anthropic entry |
+- Spec **content blocks** (per §3.1 — `TextBlock`, `ImageBlock`,
+  `ThinkingBlock`, `RedactedThinkingBlock`) appearing in spec
+  message `content` fields map directly to Anthropic wire content
+  entries per the table below.
+- Spec **ToolCall** records appearing in the assistant message's
+  top-level `tool_calls` field (per §3) are NOT §3 content blocks
+  — the wire mapping extracts them and serializes them as
+  Anthropic `tool_use` wire entries in the assistant's content
+  array. Reverse on receive: Anthropic `tool_use` wire entries
+  in the assistant's content array are parsed back into spec
+  `ToolCall` records on the response's `Response.message.tool_calls`
+  field (per §6).
+
+| Spec source | Anthropic wire entry |
 |---|---|
-| `TextBlock { text }` | `{ "type": "text", "text": <text> }` |
-| `ImageBlock` with `source: url { url }` | `{ "type": "image", "source": { "type": "url", "url": <url> } }`. The `detail` hint, when set on the spec block, is dropped — Anthropic does not honor detail. |
-| `ImageBlock { media_type, source: inline { base64_data } }` | `{ "type": "image", "source": { "type": "base64", "media_type": <media_type>, "data": <base64_data> } }`. The `detail` hint, when set, is dropped. |
-| `ToolCall { id, name, arguments }` (in assistant content) | `{ "type": "tool_use", "id": <id>, "name": <name>, "input": <arguments> }`. The spec stores `arguments` as a deserialized mapping; Anthropic's wire format accepts an object directly under `input`. No JSON-string serialization step needed (unlike §8.1.1). |
-| `ThinkingBlock { text, signature }` | `{ "type": "thinking", "thinking": <text>, "signature": <signature> }`. The signature passes through verbatim in both directions. |
-| `RedactedThinkingBlock { data }` | `{ "type": "redacted_thinking", "data": <data> }`. The data blob passes through verbatim in both directions. |
+| `TextBlock { text }` (content block) | `{ "type": "text", "text": <text> }` |
+| `ImageBlock` with `source: url { url }` (content block; user-only per §3.1) | `{ "type": "image", "source": { "type": "url", "url": <url> } }`. The `detail` hint, when set on the spec block, is dropped — Anthropic does not honor detail. |
+| `ImageBlock { media_type, source: inline { base64_data } }` (content block; user-only per §3.1) | `{ "type": "image", "source": { "type": "base64", "media_type": <media_type>, "data": <base64_data> } }`. The `detail` hint, when set, is dropped. |
+| `ToolCall { id, name, arguments }` from assistant `tool_calls` field (NOT a content block; extracted at wire) | `{ "type": "tool_use", "id": <id>, "name": <name>, "input": <arguments> }`. The spec stores `arguments` as a deserialized mapping; Anthropic's wire format accepts an object directly under `input`. No JSON-string serialization step needed (unlike §8.1.1). |
+| `ThinkingBlock { text, signature }` (content block; assistant-only) | `{ "type": "thinking", "thinking": <text>, "signature": <signature> }`. The signature passes through verbatim in both directions. |
+| `RedactedThinkingBlock { data }` (content block; assistant-only) | `{ "type": "redacted_thinking", "data": <data> }`. The data blob passes through verbatim in both directions. |
 
 Empty content blocks (text with empty `text`, image with both
 sources absent) are spec-invalid and MUST be rejected at
@@ -453,9 +466,8 @@ the §6 `response_schema` surface, mirroring the §8.1.5 + §8.1.5.1
 native/fallback split:
 
 **Native: tool-call coercion.** When `complete()` is called with
-a `response_schema` and the caller has not supplied a `tools`
-list (or has set `tool_choice` to `None` / `"auto"`),
-implementations MUST construct a synthetic tool with:
+a `response_schema` AND the caller's `tools` list is empty or
+absent, implementations MUST construct a synthetic tool with:
 
 - `name`: a stable implementation-derived identifier (e.g.,
   `"structured_output"` plus a schema hash; implementations
@@ -477,12 +489,12 @@ spec layer matches §8.1.5's native path: validation happens
 post-receive against `response_schema`; failures raise
 `structured_output_invalid` (§7).
 
-**Fallback: prompt-augmentation.** When the caller already
-supplies a non-empty `tools` list (or a `tool_choice` other than
-the spec defaults), tool-call coercion is unavailable —
-introducing the synthetic tool would conflict with the caller's
-tools. In this case, implementations SHOULD fall back to
-prompt-augmentation per §8.1.5.1's pattern:
+**Fallback: prompt-augmentation.** When `complete()` is called
+with a `response_schema` AND the caller's `tools` list is
+non-empty, tool-call coercion is unavailable — introducing the
+synthetic tool would silently override the caller's tool intent
+(regardless of the supplied `tool_choice` value). Implementations
+SHOULD fall back to prompt-augmentation per §8.1.5.1's pattern:
 
 1. Construct a modified copy of the message list with a system
    directive appended (or with the existing system message
@@ -503,27 +515,40 @@ the choice.
 
 ## Spec-text changes (summary)
 
-Five edits to `spec/llm-provider/spec.md`:
+Eight edits to `spec/llm-provider/spec.md`:
 
-1. **§3.1 intro** — update "v1 defines two block types" to
+1. **§3 assistant per-role constraint** — relax `content` from
+   "non-empty string" to "non-empty string OR a non-empty ordered
+   sequence of content blocks per §3.1." The content-block
+   sequence MAY contain `TextBlock` and
+   `ThinkingBlock`/`RedactedThinkingBlock` entries; `ImageBlock`
+   remains user-only (per §3.1's existing constraints). `ToolCall`
+   stays in the existing top-level `tool_calls` field on assistant
+   messages — it is NOT a §3 content-block type; §8.X mappings
+   that wire-encode tool calls as content blocks (e.g., §8.2's
+   `tool_use` wire blocks) extract from `tool_calls` at the wire
+   boundary.
+2. **§3.1 intro** — update "v1 defines two block types" to
    enumerate four block types.
-2. **§3.1.5 *Thinking block*** — new sub-subsection.
-3. **§3.1.6 *Redacted thinking block*** — new sub-subsection.
-4. **§3.1.4 *Mixing blocks*** — clarifying update for thinking
-   block ordering.
-5. **§6 *Response message*** — one-sentence clarifying note that
+3. **§3.1.4 *Thinking block*** — new sub-subsection (existing
+   *Mixing blocks* §3.1.4 renumbers to §3.1.6).
+4. **§3.1.5 *Redacted thinking block*** — new sub-subsection.
+5. **§3.1.6 *Mixing blocks*** (renumbered from §3.1.4) —
+   clarifying update for thinking block ordering.
+6. **§6 *Response message*** — one-sentence clarifying note that
    `Response.message.content` MAY include `ThinkingBlock` and
    `RedactedThinkingBlock` entries.
-6. **§8.1.1** — strip-on-send rule for `ThinkingBlock` /
+7. **§8.1.1** — strip-on-send rule for `ThinkingBlock` /
    `RedactedThinkingBlock` in assistant messages (since OpenAI
    doesn't accept those wire shapes).
-7. **§8.2 (new)** — full Anthropic Messages mapping per §8.X
+8. **§8.2 (new)** — full Anthropic Messages mapping per §8.X
    template.
 
-No changes to §3 role set, §4 Tool definition, §5 Provider
-interface, §6 Response (beyond the clarifying note), §7 error
-categories, §9 Determinism, §10 *Out of scope*, or any other
-§-section.
+No changes to §3 role set or to `ToolCall` placement (still a
+top-level `tool_calls` field on assistant messages), §4 Tool
+definition, §5 Provider interface, §6 Response (beyond the
+clarifying note), §7 error categories, §9 Determinism, §10
+*Out of scope*, or any other §-section.
 
 ## Conformance fixtures
 
