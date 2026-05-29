@@ -12,8 +12,9 @@ error BEFORE any work begins — no spans emitted, no observability backend arti
   API-boundary error idiom (Python `ValueError`, TypeScript `RangeError`, etc.), same shape
   as §6 of graph-engine's drain-timeout-input validation.
 - §3.4 — reserved exact-name rule: a caller key that exactly matches an OA-emitted top-level
-  metadata key name (the §8.4 set — `correlation_id`, `step`, `system`, etc.) MUST be rejected
-  at the same boundary, by whole-key match (not prefix), regardless of which backends are wired.
+  metadata key name (the §8.4 set — `correlation_id`, `step`, `system`, `branch_name`,
+  `detached`, `detached_from_invocation_id`, etc.) MUST be rejected at the same boundary, by
+  whole-key match (not prefix), regardless of which backends are wired.
 - §3.4 cross-backend portability paragraph: rejection happens before observer emission, NOT
   at the backend's emission layer.
 
@@ -30,7 +31,16 @@ error BEFORE any work begins — no spans emitted, no observability backend arti
 5. `rejects_reserved_oa_name_system` — caller key `system` (an OA generation-metadata name,
    §8.4.3; distinct from the `gen_ai.*` prefix case — here the bare key `system` collides).
    Rejected at `invoke()` entry.
-6. `rejects_reserved_name_via_set_invocation_metadata` — a node body calls the mid-invocation
+6. `rejects_reserved_oa_name_branch_name` — caller key `branch_name` (an OA observation-
+   metadata name, §8.4.2 — per-branch Span observation; added by proposal 0042). Rejected
+   at `invoke()` entry.
+7. `rejects_reserved_oa_name_detached` — caller key `detached` (an OA observation-metadata
+   name, §8.4.2 — dispatching-observation flag for detached subgraph / fan-out instance per
+   §4.4; added by proposal 0042). Rejected at `invoke()` entry.
+8. `rejects_reserved_oa_name_detached_from_invocation_id` — caller key
+   `detached_from_invocation_id` (an OA trace-metadata name, §8.4.1 — detached child trace's
+   pointer back to the parent invocation; added by proposal 0042). Rejected at `invoke()` entry.
+9. `rejects_reserved_name_via_set_invocation_metadata` — a node body calls the mid-invocation
    helper with the reserved name `step` (via the `augment_metadata` primitive). The helper
    MUST raise at the call site — the reservation is enforced at the helper, not only at the
    `invoke()` boundary.
@@ -53,8 +63,11 @@ error BEFORE any work begins — no spans emitted, no observability backend arti
 
 **What passes:**
 
-- Both cases: `invoke()` raises an API-boundary error immediately on entry. No spans, no
-  Langfuse observations, no provider calls. The error propagates up to the harness.
+- All `invoke()`-boundary cases (1–8): `invoke()` raises an API-boundary error immediately on
+  entry. No spans, no Langfuse observations, no provider calls. The error propagates up to
+  the harness.
+- Helper case (9): `set_invocation_metadata` raises at the call site with the same per-language
+  error idiom; no spans / observations follow.
 
 **What fails:**
 
