@@ -48,6 +48,7 @@ lifecycle and the proposal template.
 | [0039](proposals/0039-observability-caller-supplied-invocation-id.md) | Caller-supplied `invocation_id` | observability | Accepted | Pending         | —          |
 | [0040](proposals/0040-observability-mid-invocation-metadata-open-span-update.md) | Mid-invocation metadata open-span update | observability | Accepted | Pending         | —          |
 | [0041](proposals/0041-observability-langfuse-metadata-key-collision.md) | Reserve OA-emitted Langfuse metadata keys | observability | Accepted | Pending         | —          |
+| [0042](proposals/0042-observability-reserved-keys-extension.md) | Reserve `branch_name`, `detached`, `detached_from_invocation_id` metadata keys | observability | Draft    | —               | —          |
 
 Click any column header to sort.
 
