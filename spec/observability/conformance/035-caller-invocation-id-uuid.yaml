@@ -1,0 +1,45 @@
+# §5.1 + §8.4.1: caller supplies a valid UUID invocation_id. It surfaces
+# verbatim on openarmature.invocation_id; the Langfuse mapping sets trace.id
+# to the UUID's 32-char lowercase hex form (dashes stripped), as before.
+
+cases:
+  - name: caller_uuid_invocation_id_used_verbatim
+    description: |
+      The caller passes invocation_id "550e8400-e29b-41d4-a716-446655440000"
+      (a valid UUID) at invoke(). It surfaces verbatim on
+      openarmature.invocation_id; the Langfuse trace.id is its hex form with
+      dashes stripped (550e8400e29b41d4a716446655440000).
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "answer"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    # Harness primitive: supply the invocation_id at invoke() (per §5.1).
+    caller_invocation_id: "550e8400-e29b-41d4-a716-446655440000"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-35
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      # The caller-supplied UUID surfaces verbatim on the span attribute.
+      invocation_id: "550e8400-e29b-41d4-a716-446655440000"
+      langfuse_trace:
+        # trace.id = the UUID's 32-char hex form, dashes stripped.
+        id: "550e8400e29b41d4a716446655440000"
+      invariants:
+        caller_invocation_id_verbatim_on_attribute: true
+        langfuse_trace_id_is_uuid_hex_dashes_stripped: true

@@ -1,0 +1,56 @@
+# §5.1 resume interaction: resume mints a fresh invocation_id and IGNORES a
+# caller-supplied invocation_id. Caller-supplied applies to the
+# fresh-invocation path only; a caller correlating resume attempts uses
+# correlation_id (stable across attempts, per fixture 031). Complement to
+# 031, which preserves correlation_id while letting invocation_id differ.
+
+cases:
+  - name: resume_mints_fresh_invocation_id_ignoring_caller_value
+    description: |
+      Two-node graph; node B fails on first run. The first run supplies a
+      caller invocation_id "run-first-001" (used verbatim per §5.1). After
+      abort, resume — this time supplying caller invocation_id
+      "run-resume-999". The resumed attempt MUST mint a FRESH framework
+      UUIDv4 invocation_id and NOT adopt the caller-supplied
+      "run-resume-999" (nor reuse "run-first-001"): caller-supplied
+      invocation_id applies to the fresh-invocation path only.
+    state:
+      fields:
+        a:
+          type: bool
+          default: false
+        b:
+          type: bool
+          default: false
+    entry: node_a
+    nodes:
+      node_a:
+        update_pure: {a: true}
+      node_b:
+        flaky:
+          fail_first_invocation_only: true
+          on_success: {b: true}
+    edges:
+      - {from: node_a, to: node_b}
+      - {from: node_b, to: END}
+    initial_state: {}
+    # Caller supplies the invocation_id on the first (fresh) invocation.
+    caller_invocation_id: "run-first-001"
+    checkpointer: in_memory
+    first_run_expected_error:
+      category: node_exception
+      raised_from: node_b
+    resume:
+      from_first_run: true
+      # Caller supplies an invocation_id on the resume call — MUST be ignored.
+      caller_invocation_id: "run-resume-999"
+      expected:
+        final_state: {a: true, b: true}
+    invariants:
+      # First (fresh) run uses the caller-supplied id verbatim (§5.1).
+      first_run_invocation_id: "run-first-001"
+      # Resume mints a fresh framework UUIDv4 — NOT the caller's resume value,
+      # NOT the first-run value.
+      resumed_run_invocation_id_is_fresh_uuidv4: true
+      resumed_run_invocation_id_not_caller_supplied: true
+      first_and_resumed_invocation_ids_differ: true

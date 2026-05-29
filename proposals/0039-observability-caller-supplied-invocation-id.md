@@ -1,9 +1,9 @@
 # 0039: Observability — Caller-Supplied `invocation_id`
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-28
-- **Accepted:**
+- **Accepted:** 2026-05-28
 - **Targets:** spec/observability/spec.md (§5.1 *Invocation span attributes* — reframe `openarmature.invocation_id` from "framework-generated UUIDv4" to "caller-supplied or framework-generated," mirroring §3.1's `correlation_id` pattern; §3.2 distinction table touch; §8.4.1 *Trace-level mapping* — define the Langfuse `trace.id` derivation for caller-supplied non-UUID ids); spec/graph-engine/spec.md (§3 clarifying touch — `invoke()` MAY accept a caller-supplied invocation id, mechanism per-language idiomatic, mirroring 0034's `metadata` touch); conformance fixtures under spec/observability/conformance/ and spec/pipeline-utilities/conformance/.
 - **Related:** 0007 (observability OTel span mapping — defined `openarmature.invocation_id`), 0031 (observability Langfuse mapping — defined §8.4.1 `trace.id` = invocation_id), 0034 (caller-supplied invocation metadata — established the per-language `invoke()` caller-surface pattern this proposal mirrors), 0008/0009 (checkpointing / per-instance fan-out resume — the resume-mints-fresh-id interaction this proposal preserves)
 - **Supersedes:**
