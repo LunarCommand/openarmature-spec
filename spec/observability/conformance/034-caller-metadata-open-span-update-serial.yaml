@@ -49,7 +49,7 @@ cases:
           usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
     expected:
       langfuse_trace:
-        id: "<uuid>"
+        id: "<uuid-hex>"
         metadata:
           # The invocation span (the Trace) was open at the augmentation
           # call and lives in the outermost context, so it is updated in

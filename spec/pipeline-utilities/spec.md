@@ -769,8 +769,12 @@ fans out to both.
 
 The `CheckpointRecord` carries:
 
-- `invocation_id` — string. Per graph-engine v0.6.0 / observability §5.1; framework-generated
-  UUIDv4 at invocation start.
+- `invocation_id` — string. Per observability §5.1; caller-supplied or framework-generated
+  (used verbatim when the caller supplies one at invoke time; otherwise a framework-minted
+  UUIDv4). A resume mints a FRESH `invocation_id` — each attempt is its own invocation (§5.1),
+  so a resumed record's `invocation_id` differs from the original's and any caller-supplied
+  `invocation_id` is ignored on the resume path. Correlate attempts via `correlation_id`
+  (below), which is invocation-scoped and stable across resume.
 - `correlation_id` — string. Per observability §3; caller-supplied or framework-generated;
   flows unchanged across resume (a resumed invocation keeps the original `correlation_id`,
   which is invocation-scoped).

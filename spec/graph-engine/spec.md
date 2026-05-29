@@ -176,14 +176,17 @@ concurrently. After a fan-out or parallel-branches node completes, single-thread
 the rest of the parent run.
 
 **Invocation entry surface.** The `invoke()` operation accepts the initial state, an optional
-caller-supplied `correlation_id` (per observability §3.1), and an optional caller-supplied
-metadata mapping (per observability §3.4). The metadata mapping carries arbitrary
-OTel-attribute-compatible key/value entries that propagate to every observability backend the
-implementation emits to. The exact mechanism by which callers supply these arguments at invoke
-time is per-language idiomatic (a keyword argument; a field on an invocation-config record;
-equivalent); the graph-engine spec does not prescribe the mechanism. The contracts for how
-these arguments are validated and propagated live in the observability spec (§3.1 for
-`correlation_id`, §3.4 for caller-supplied metadata).
+caller-supplied `correlation_id` (per observability §3.1), an optional caller-supplied
+`invocation_id` (per observability §5.1 — used verbatim when supplied, framework-minted as a
+UUIDv4 when absent; on a resume call the framework always mints a fresh id and ignores any
+caller-supplied `invocation_id`), and an optional caller-supplied metadata mapping (per
+observability §3.4). The metadata mapping carries arbitrary OTel-attribute-compatible key/value
+entries that propagate to every observability backend the implementation emits to. The exact
+mechanism by which callers supply these arguments at invoke time is per-language idiomatic (a
+keyword argument; a field on an invocation-config record; equivalent); the graph-engine spec
+does not prescribe the mechanism. The contracts for how these arguments are validated and
+propagated live in the observability spec (§3.1 for `correlation_id`, §5.1 for `invocation_id`,
+§3.4 for caller-supplied metadata).
 
 ## 4. Error semantics
 
