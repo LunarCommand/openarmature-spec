@@ -1,10 +1,10 @@
 # 0020: Sessions Capability
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-17
-- **Accepted:**
-- **Targets:** spec/sessions/spec.md (creates), spec/observability/spec.md (modifies §5.1 + §5.6 to add `session_id`), spec/pipeline-utilities/spec.md (modifies §10 cross-reference)
+- **Accepted:** 2026-05-29
+- **Targets:** spec/sessions/spec.md (creates), spec/observability/spec.md (modifies §5.6 cross-cutting + §7 log-record fields to add `openarmature.session_id`), spec/pipeline-utilities/spec.md (adds §10.14 Composition with sessions)
 - **Related:** 0008 (checkpointing — sibling persistence capability), 0014 + 0018 (migration machinery — reuse pattern), 0007 (observability propagation)
 - **Supersedes:**
 
@@ -337,7 +337,12 @@ The engine resolves and applies the chain at invoke entry, between
 `SessionStore.load()` and the §4 projection merge. A session record loading
 under a graph that lacks a migration path raises the canonical
 `session_state_migration_missing` category (mirror of the checkpoint category
-from proposal 0014).
+from proposal 0014). A registered migration function that raises during chain
+application surfaces the failure as the canonical
+`session_state_migration_failed` category (mirror of
+`checkpoint_state_migration_failed` from proposal 0014), preserving the raised
+exception as cause; subsequent migrations in the chain MUST NOT run, and the
+graph MUST NOT run.
 
 **Reuse vs fork:** Implementations MAY share the `MigrationRegistry` type
 between checkpoint state migration (proposal 0014) and session state migration
@@ -406,13 +411,20 @@ suspension proposal specifies the integration; this proposal anticipates it.
 
 ### 10. Errors
 
-Five canonical error categories:
+Six canonical error categories:
 
 - **`session_load_failed`** — `SessionStore.load()` raised an unrecoverable
   error. The invoke MUST NOT proceed.
-- **`session_save_failed`** — `SessionStore.save()` raised at invoke exit (or
-  mid-invoke). The invoke's state was already committed at the time of save;
-  callers see this as a post-completion error and decide how to handle it.
+- **`session_save_failed`** — `SessionStore.save()` raised. When raised by
+  the auto-save at invoke exit (§6.1), the invoke's final state was already
+  committed and the failure surfaces to the `invoke()` caller as a
+  post-completion error; the invoke result does NOT roll back, but subsequent
+  invokes will see the prior session state. When raised by an explicit
+  mid-invoke save (§6.2), the failure surfaces at the point of the save call
+  within the invocation — the node body that requested the save sees the
+  error in the language's idiomatic form and MAY swallow, retry, or propagate
+  it as a normal node failure (which the engine then handles per graph-engine
+  §4).
 - **`session_state_migration_missing`** — `SessionStore.load()` returned a
   record with a `schema_version` for which no migration chain to the current
   schema is registered. Non-transient.
@@ -420,29 +432,38 @@ Five canonical error categories:
   set contains a duplicate `(from_version, to_version)` pair or multiple
   distinct shortest paths between source and target. Mirror of the
   checkpoint category from proposal 0018; same resolution semantics.
+- **`session_state_migration_failed`** — a registered migration function
+  raised during chain application. Mirror of `checkpoint_state_migration_failed`
+  from proposal 0014; the engine surfaces this category preserving the
+  raised exception as cause. Subsequent migrations in the chain MUST NOT
+  run; the graph MUST NOT run.
 - **`session_write_conflict`** — optimistic-concurrency conflict surfaced
   by a backend that supports it. See §8.2.
 
 ### 11. Cross-spec touchpoints
 
-#### 11.1 graph-engine §6 (NodeEvent)
+#### 11.1 observability §5.6 (cross-cutting span attributes) and §7 (log correlation)
 
-`NodeEvent` gains an optional `session_id` field, populated when the
-invocation is bound to a session. Observers reading the event see it
-alongside `invocation_id` / `correlation_id`.
+When the invocation is bound to a session, `openarmature.session_id` is emitted
+as a §5.6 cross-cutting span attribute on every span the invocation produces
+(the invocation root and every node, subgraph, fan-out instance, LLM provider,
+and retry span beneath it), the same scope as `openarmature.correlation_id`.
+Structured logs emitted during the invocation carry `openarmature.session_id`
+as a §7 log-record field on every record, via the same OTel Logs Bridge
+mechanism as `correlation_id`. `session_id` propagates through the ambient
+invocation context (sessions spec §3, mirroring observability §3.1's
+`correlation_id` propagation contract); it is NOT a field on the graph-engine
+§6 `NodeEvent`, which carries only per-node execution-structure fields and no
+invocation-level identity attributes — consistent with the existing treatment
+of `correlation_id` and `invocation_id`.
 
-#### 11.2 observability §5.1 (invocation span attributes) and §5.6 (cross-cutting)
+#### 11.2 pipeline-utilities §10 (checkpointing)
 
-The invocation root span gains an `openarmature.session_id` attribute when
-the invocation is bound to a session. Every span under that invocation
-inherits the attribute (per §5.6 cross-cutting rules). Structured logs emitted
-during the invocation include `session_id` as a field on every record.
-
-#### 11.3 pipeline-utilities §10 (checkpointing)
-
-Add a paragraph at the end of §10 noting that sessions (this proposal) are a
-sibling persistence layer with cross-invoke scope; an invocation MAY use both
-independently.
+Pipeline-utilities §10 gains a new §10.14 *Composition with sessions* noting
+that sessions are a sibling cross-invoke persistence layer. Checkpointing and
+sessions register independently, MAY share a backend, but their resume / load
+flows and error categories surface independently. An invocation MAY use both,
+neither, or either independently.
 
 ### 12. Determinism
 
@@ -513,8 +534,16 @@ New fixtures under `spec/sessions/conformance/`:
   state directly; outer graph projects in / out.
 - **`011-session-composition-fan-out`** — fan-out instances do NOT see
   session state directly.
-- **`012-session-observability`** — `session_id` propagates to NodeEvent +
-  span attribute + log record fields.
+- **`012-session-observability`** — `session_id` propagates as a §5.6
+  cross-cutting span attribute (on every span emitted within the
+  session-bound invocation) and a §7 log-record field; it is NOT a field
+  on the graph-engine §6 `NodeEvent`. Includes a non-session-bound case
+  asserting the attribute and log field are absent.
+- **`013-session-migration-function-raises`** — a registered v1 → v2
+  migration function raises mid-application; the engine MUST surface
+  `session_state_migration_failed`, carrying the offending `(from, to)`
+  pair and preserving the raised exception as cause; the graph MUST NOT
+  run.
 
 In-memory and SQLite reference stores ship as part of the
 `openarmature-python` implementation, not as spec fixtures. The spec defines

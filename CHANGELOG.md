@@ -4,6 +4,20 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.33.0] — 2026-05-29
+
+**Added**
+
+- **sessions capability — new top-level spec.** A `SessionStore` protocol (`load` / `save` / `delete` / `list`), full-state and projected-`SessionState` modes, auto-save-on-completion lifecycle with explicit mid-invoke save and an opt-out, schema migration reusing the chain-resolution semantics from pipeline-utilities §10.12, last-write-wins concurrency with optional optimistic-concurrency and pessimistic-locking extension points, and six canonical error categories (`session_load_failed`, `session_save_failed`, `session_state_migration_missing`, `session_state_migration_chain_ambiguous`, `session_state_migration_failed`, `session_write_conflict`). `session_id` is caller-supplied at `invoke()` and propagates through the ambient invocation context — readable from anywhere in the invocation's async call tree (nodes, middleware, observers), the same channel used for `correlation_id`. ([proposal 0020](proposals/0020-sessions-capability.md))
+- **observability §5.6 — `openarmature.session_id` cross-cutting span attribute.** When the invocation is session-bound, the attribute is emitted on every span (invocation root, node, subgraph, fan-out instance, LLM provider, retry), the same scope as `openarmature.correlation_id`. Absent when the invocation is not session-bound.
+- **observability §7 — `openarmature.session_id` log-record field.** Emitted on every log record during a session-bound invocation via the same OTel Logs Bridge mechanism as `correlation_id`. The §7 detached-trace-mode paragraph is extended to note `session_id` is invocation-scoped and unchanged across detached / parent traces.
+- **pipeline-utilities §10.14 *Composition with sessions*.** Notes that checkpointing and sessions are orthogonal cross-invoke persistence layers; they register independently, MAY share a backend, and surface their respective resume / session-load flows and error categories independently.
+- Conformance fixtures `sessions/conformance/001`–`013` (basic resume; no-store-registered; no-id; projected state; auto-save off; mid-invoke save; migration basic, missing, chain-ambiguous, and function-raises; subgraph and fan-out composition; observability propagation).
+
+**Notes**
+
+- **MINOR bump.** Additive: a new capability spec, two new observability cross-cutting surfaces (absent when invocations are not session-bound), and a new pipeline-utilities subsection. No existing behavior tightens or changes shape.
+
 ## [0.32.0] — 2026-05-29
 
 **Added**

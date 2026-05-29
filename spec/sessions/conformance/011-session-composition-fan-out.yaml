@@ -1,0 +1,71 @@
+# Fan-out composition (§9.2): fan-out instances are subgraph invocations and
+# follow the §9.1 rule — they do NOT see session state directly. Per-instance
+# state comes from the outer graph's projection over the items field.
+
+cases:
+  - name: fan_out_instances_see_only_projected_per_instance_input
+    description: |
+      Outer graph has a SessionStore registered with session_id="s11" and a
+      seeded session containing `items=["a","b","c"]` (in the SessionState
+      projection). A fan-out node dispatches `per_item` over `items`. Each
+      instance receives only its single item via projection, never the full
+      session state. Instances do NOT register their own SessionStore and do
+      NOT observe other session fields.
+    subgraphs:
+      per_item:
+        state:
+          fields:
+            item:
+              type: str
+              default: ""
+            processed:
+              type: str
+              default: ""
+        entry: process
+        nodes:
+          process:
+            update_pure: {processed: "ok"}
+        edges:
+          - {from: process, to: END}
+    state:
+      fields:
+        items:
+          type: list
+          reducer: last_write_wins
+          default: []
+        outputs:
+          type: list
+          reducer: append
+          default: []
+    entry: fan_out_node
+    nodes:
+      fan_out_node:
+        fan_out:
+          subgraph: per_item
+          items_field: items
+          mapping:
+            inputs: {item: "<fan_out_item>"}
+            outputs: {outputs: processed}
+    edges:
+      - {from: fan_out_node, to: END}
+    session_store: in_memory
+    session_id: "s11"
+    seeded_session:
+      state: {items: ["a", "b", "c"]}
+    expected:
+      # Each fan-out instance saw only its projected per-instance input.
+      instance_pre_states:
+        - {item: "a", processed: ""}
+        - {item: "b", processed: ""}
+        - {item: "c", processed: ""}
+      final_state:
+        items: ["a", "b", "c"]
+        outputs: ["ok", "ok", "ok"]
+      saved_session_assertions:
+        state:
+          items: ["a", "b", "c"]
+          outputs: ["ok", "ok", "ok"]
+    invariants:
+      fan_out_instance_state_fields_match_subgraph_schema: true
+      fan_out_instances_do_not_see_session_state_directly: true
+      no_per_instance_session_load_or_save: true

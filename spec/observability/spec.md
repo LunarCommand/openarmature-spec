@@ -10,6 +10,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §8 added — Langfuse backend mapping (sibling to the OTel mapping in §3–§7); covers observation-type mapping (invocation → Trace, node/subgraph/fan-out → Span observation, LLM provider → Generation observation), attribute translation from `openarmature.*` and `gen_ai.*` to Langfuse native fields, correlation ID realization on Trace + Observation metadata, `langfuse.trace.name` source, prompt linkage to a Langfuse Prompt entity when the prompt's source exposes one (falling back to metadata-only otherwise), and composition rules with the OTel observer; renumbers existing §8 Determinism → §9 and §9 Out of scope → §10 by [proposal 0031](../../proposals/0031-observability-langfuse-mapping.md)
   - §5.5.2 attribute list extended with three new GenAI semconv attributes (`gen_ai.request.frequency_penalty`, `gen_ai.request.presence_penalty`, `gen_ai.request.stop_sequences`) corresponding to the three new declared `RuntimeConfig` fields introduced by llm-provider [proposal 0032](../../proposals/0032-llm-provider-runtime-config-refinements.md). The §8.4.3 Langfuse-mapping reference to §5.5.2 expands by inclusion: the three new attributes flow into `generation.modelParameters.{frequency_penalty, presence_penalty, stop_sequences}` automatically, no §8 edit required.
   - §3 extended with new §3.4 *Caller-supplied invocation metadata* subsection — sibling caller surface to `correlation_id` accepting an arbitrary key/value mapping at `invoke()` time, propagated via the language's context primitive, augmentable mid-invocation via a framework helper (each fan-out instance gets its own per-async-context copy so per-instance additions don't leak to siblings), invocation-scoped (flows through detached subgraphs and fan-outs); §5.6 cross-cutting attribute family extended with `openarmature.user.*` (appears on every span and OTel log record, using the in-scope metadata at span emission time); §7 log records extended to carry the same family; §8.4.1 and §8.4.2 Langfuse propagation extended with caller metadata merged into `trace.metadata` and every `observation.metadata` as top-level keys (with a Langfuse-Sessions distinction note clarifying that this is orthogonal to Sessions/`sessionId`, which remain deferred to proposal 0020); graph-engine §3 gains a clarifying paragraph noting `invoke()` accepts the metadata mapping by [proposal 0034](../../proposals/0034-caller-supplied-invocation-metadata.md)
+  - §5.6 cross-cutting attribute family extended with `openarmature.session_id` (appears on every span when the invocation is session-bound; same ambient-context propagation as `correlation_id`, absent otherwise); §7 log records extended to carry `openarmature.session_id` via the same OTel Logs Bridge mechanism; §7 detached-trace-mode paragraph extended to note `session_id` is invocation-scoped and unchanged across detached / parent traces by [proposal 0020](../../proposals/0020-sessions-capability.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -828,6 +829,12 @@ These attributes appear on EVERY span emitted during an invocation, regardless o
   an invocation — so every span emitted during the invocation MUST carry it). The same
   correlation ID appears on spans within detached subgraphs and detached fan-out instances
   (per §4.4 detached mode).
+- `openarmature.session_id` — string. The session id for this invocation, per the sessions
+  capability spec. Set on every span emitted during a session-bound invocation — i.e., when
+  the caller supplied a `session_id` at `invoke()`. Like `correlation_id`, it propagates
+  through the ambient invocation context (sessions §3) and appears uniformly on spans within
+  detached subgraphs and detached fan-out instances (per §4.4 detached mode). Absent when the
+  invocation is not session-bound.
 - `openarmature.user.<key>` — for each entry `(key, value)` in the caller-supplied invocation
   metadata IN SCOPE at the time the span is emitted (per §3.4, where "in scope" reflects
   both the initial mapping supplied at `invoke()` AND any subsequent mid-invocation
@@ -848,10 +855,10 @@ attributes go under `openarmature.*` (the existing namespace) or `gen_ai.*` (whe
 semconv has settled a cross-vendor name). Reserving the `openarmature.user.` prefix gives
 callers a stable, collision-free namespace they can rely on across spec versions.
 
-The cross-cutting nature of `openarmature.correlation_id` and `openarmature.user.*` means
-observability backends can filter for "all spans related to request X" or "all spans for
-tenant Y" with a single attribute query, regardless of which node, subgraph, or fan-out
-instance emitted the span.
+The cross-cutting nature of `openarmature.correlation_id`, `openarmature.session_id`, and
+`openarmature.user.*` means observability backends can filter for "all spans related to
+request X", "all spans for session Y", or "all spans for tenant Z" with a single attribute
+query, regardless of which node, subgraph, or fan-out instance emitted the span.
 
 ## 6. Driving span lifecycle
 
@@ -980,6 +987,11 @@ OTel Logs SDK so that:
 
 - `openarmature.correlation_id` — string. The invocation's correlation ID. Set on every log
   record emitted during the invocation.
+- `openarmature.session_id` — string. The session id for this invocation, per the sessions
+  capability spec. Set on every log record emitted during a session-bound invocation (i.e.,
+  when the caller supplied a `session_id` at `invoke()`). Read from the ambient invocation
+  context via the same OTel Logs Bridge mechanism used for `correlation_id`. Absent when the
+  invocation is not session-bound.
 - `openarmature.user.<key>` — for each entry in the caller-supplied invocation metadata (per
   §3.4), the implementation MUST emit a log-record attribute named `openarmature.user.<key>`
   with the supplied value, on every log record emitted during the invocation. Same OTel Logs
@@ -1004,7 +1016,10 @@ OTel Logs SDK so that:
 subgraph or fan-out instance carry the *detached* trace's `trace_id` and `span_id`, NOT the
 parent invocation's. The `correlation_id` is unchanged (invocation-scoped, not trace-scoped).
 This means filtering logs by `correlation_id` finds all logs across all detached and parent
-traces; filtering by `trace_id` finds only the logs from one specific trace.
+traces; filtering by `trace_id` finds only the logs from one specific trace. When the
+invocation is session-bound, `openarmature.session_id` is also invocation-scoped and is
+unchanged across detached and parent traces, behaving identically to `correlation_id` for
+cross-trace correlation.
 
 **User-emitted logs from within nodes.** Logs emitted by user code inside a node function
 participate in the same correlation rules: if the user uses the language's stdlib logger

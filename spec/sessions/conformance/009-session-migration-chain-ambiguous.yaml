@@ -1,0 +1,41 @@
+# Schema migration — chain ambiguous (§7, §10): two migrations are registered
+# with the same (from_version, to_version) pair. The engine MUST raise
+# `session_state_migration_chain_ambiguous` at registration time, since the
+# resolution is structurally undecidable.
+
+cases:
+  - name: duplicate_migration_pair_raises_at_registration
+    description: |
+      The graph builder attempts to register two distinct migrations for the
+      same (from_version="v1", to_version="v2") pair. Registration MUST raise
+      `session_state_migration_chain_ambiguous` BEFORE any invoke runs. The
+      builder MUST NOT silently keep one and drop the other.
+    state:
+      schema_version: "v2"
+      fields:
+        value:
+          type: int
+          default: 0
+    entry: noop
+    nodes:
+      noop:
+        update_pure: {}
+    edges:
+      - {from: noop, to: END}
+    session_store: in_memory
+    session_migrations:
+      - from_version: "v1"
+        to_version: "v2"
+        migrate: add_ten_to_value
+      - from_version: "v1"
+        to_version: "v2"
+        migrate: multiply_value_by_two
+    expected_error:
+      category: session_state_migration_chain_ambiguous
+      raised_at: registration
+      carries:
+        from_version: "v1"
+        to_version: "v2"
+        duplicate_count: 2
+    invariants:
+      no_invoke_attempted: true

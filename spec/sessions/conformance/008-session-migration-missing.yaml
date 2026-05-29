@@ -1,0 +1,44 @@
+# Schema migration — missing (§7, §10): the store holds a v1 record; the
+# current graph expects v2; NO migration is registered. invoke() MUST raise
+# `session_state_migration_missing` rather than blindly loading.
+
+cases:
+  - name: missing_migration_raises_at_load
+    description: |
+      Single-node graph at schema_version "v2". A pre-seeded record exists in
+      the store at "v1" under session_id="s8". NO session migrations are
+      registered. invoke() with session_id="s8" MUST raise
+      `session_state_migration_missing` carrying the missing (v1, v2) pair.
+      The graph MUST NOT run (the node is never invoked).
+    state:
+      schema_version: "v2"
+      fields:
+        value:
+          type: int
+          default: 0
+    entry: noop
+    nodes:
+      noop:
+        update_pure: {}
+    edges:
+      - {from: noop, to: END}
+    session_store: in_memory
+    session_id: "s8"
+    seeded_session:
+      schema_version: "v1"
+      state: {value: 7}
+    # No session migrations registered.
+    expected_error:
+      category: session_state_migration_missing
+      carries:
+        from_version: "v1"
+        to_version: "v2"
+        registered_migrations_count: 0
+    expected:
+      # The store's record is unchanged (load surfaced the error; no save attempted).
+      store_after:
+        load_returns_for_session_id: "s8"
+        loaded_schema_version: "v1"
+        loaded_state: {value: 7}
+    invariants:
+      node_never_invoked: true

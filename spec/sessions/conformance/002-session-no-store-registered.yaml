@@ -1,0 +1,30 @@
+# No store registered (§3): a session_id is supplied at invoke() but no
+# SessionStore is registered on the graph. The invocation MUST proceed normally
+# with the supplied initial state; nothing is loaded or saved. (session_id still
+# propagates to observability per §11.1, but the persistence machinery is
+# entirely absent without a registered store.)
+
+cases:
+  - name: session_id_without_store_is_inert_for_persistence
+    description: |
+      Single-node graph, no SessionStore registered. invoke() is called with
+      session_id="s1". The graph runs normally from the supplied initial state;
+      because no store is registered, the engine performs no load and no save.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    session_id: "s1"
+    # No `session_store` key — no SessionStore registered.
+    expected:
+      final_state: {x: 1}
+      no_session_load: true
+      no_session_save: true
