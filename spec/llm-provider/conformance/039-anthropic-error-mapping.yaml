@@ -1,0 +1,103 @@
+# §8.2.3 Anthropic error mapping. Each case feeds a mock HTTP error
+# (status + Anthropic error.type body) and asserts the mapped §7
+# category.
+
+mapping: anthropic
+
+cases:
+  - name: auth_401
+    call: {operation: complete, messages: [{role: user, content: "x"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses:
+        - status: 401
+          body: {type: error, error: {type: authentication_error, message: "bad key"}}
+    expected: {raises: {category: provider_authentication}}
+
+  - name: billing_402
+    call: {operation: complete, messages: [{role: user, content: "x"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses:
+        - status: 402
+          body: {type: error, error: {type: billing_error, message: "billing issue"}}
+    expected: {raises: {category: provider_authentication}}
+
+  - name: permission_403
+    call: {operation: complete, messages: [{role: user, content: "x"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses:
+        - status: 403
+          body: {type: error, error: {type: permission_error, message: "no permission"}}
+    expected: {raises: {category: provider_authentication}}
+
+  - name: not_found_404_model
+    call: {operation: complete, messages: [{role: user, content: "x"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses:
+        - status: 404
+          body: {type: error, error: {type: not_found_error, message: "model not found"}}
+    expected: {raises: {category: provider_invalid_model}}
+
+  - name: request_too_large_413
+    call: {operation: complete, messages: [{role: user, content: "x"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses:
+        - status: 413
+          body: {type: error, error: {type: request_too_large, message: "too big"}}
+    expected: {raises: {category: provider_invalid_request}}
+
+  - name: rate_limit_429
+    call: {operation: complete, messages: [{role: user, content: "x"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses:
+        - status: 429
+          body: {type: error, error: {type: rate_limit_error, message: "slow down"}}
+    expected: {raises: {category: provider_rate_limit}}
+
+  - name: api_error_500
+    call: {operation: complete, messages: [{role: user, content: "x"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses:
+        - status: 500
+          body: {type: error, error: {type: api_error, message: "internal"}}
+    expected: {raises: {category: provider_unavailable}}
+
+  - name: timeout_504
+    call: {operation: complete, messages: [{role: user, content: "x"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses:
+        - status: 504
+          body: {type: error, error: {type: timeout_error, message: "timed out"}}
+    expected: {raises: {category: provider_unavailable}}
+
+  - name: overloaded_529
+    call: {operation: complete, messages: [{role: user, content: "x"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses:
+        - status: 529
+          body: {type: error, error: {type: overloaded_error, message: "overloaded"}}
+    expected: {raises: {category: provider_unavailable}}
+
+  - name: content_block_rejected_400
+    call:
+      operation: complete
+      messages:
+        - role: user
+          content:
+            - type: image
+              source: {type: url, url: "https://example.com/x.png"}
+            - {type: text, text: "describe"}
+      config: {max_tokens: 16}
+    mock_provider:
+      capabilities: {supports_image_input: true}
+      responses:
+        - status: 400
+          body: {type: error, error: {type: invalid_request_error, message: "image source not supported by this model"}}
+    expected: {raises: {category: provider_unsupported_content_block}}
+
+  - name: malformed_request_400
+    call: {operation: complete, messages: [{role: user, content: "x"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses:
+        - status: 400
+          body: {type: error, error: {type: invalid_request_error, message: "bad field"}}
+    expected: {raises: {category: provider_invalid_request}}

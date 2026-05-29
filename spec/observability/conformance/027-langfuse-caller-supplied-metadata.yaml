@@ -46,7 +46,7 @@ cases:
           usage: {prompt_tokens: 5, completion_tokens: 2, total_tokens: 7}
     expected:
       langfuse_trace:
-        id: "<uuid>"
+        id: "<uuid-hex>"
         metadata:
           correlation_id: "<uuid>"
           entry_node: "prep"

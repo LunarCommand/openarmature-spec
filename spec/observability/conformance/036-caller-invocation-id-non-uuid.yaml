@@ -1,0 +1,52 @@
+# §5.1 + §8.4.1: caller supplies a NON-UUID invocation_id. It surfaces
+# verbatim on openarmature.invocation_id; the Langfuse mapping derives
+# trace.id = first 16 bytes of SHA-256(invocation_id) as 32 lowercase hex
+# (exactly Langfuse's create_trace_id(seed) algorithm), and writes the raw
+# id to trace.metadata.invocation_id for lookup by the original value.
+
+cases:
+  - name: caller_non_uuid_invocation_id_derives_trace_id
+    description: |
+      The caller passes invocation_id "run_abc123" (not a UUID). It surfaces
+      verbatim on openarmature.invocation_id. The Langfuse trace.id is the
+      deterministic derivation sha256("run_abc123")[:16].hex() =
+      29b50a6c08dabfeaeb1696301f4fabe1, and the raw id is written to
+      trace.metadata.invocation_id.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "answer"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_invocation_id: "run_abc123"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-36
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      # The caller-supplied non-UUID surfaces verbatim on the span attribute.
+      invocation_id: "run_abc123"
+      langfuse_trace:
+        # trace.id = first 16 bytes of SHA-256("run_abc123") as 32 hex —
+        # identical to Langfuse create_trace_id(seed="run_abc123").
+        id: "29b50a6c08dabfeaeb1696301f4fabe1"
+        metadata:
+          # Raw id preserved for lookup via Langfuse metadata filtering.
+          invocation_id: "run_abc123"
+      invariants:
+        caller_invocation_id_verbatim_on_attribute: true
+        langfuse_trace_id_is_sha256_first16_hex: true
+        raw_invocation_id_in_trace_metadata: true

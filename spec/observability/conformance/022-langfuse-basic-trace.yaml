@@ -68,7 +68,7 @@ initial_state: {}
 
 expected:
   langfuse_trace:
-    id: "<uuid>"
+    id: "<uuid-hex>"
     name: "a"
     metadata:
       correlation_id: "<corr_id_1>"
@@ -111,4 +111,4 @@ expected:
     # Invariant: the Trace's id MUST equal the invocation_id (which is
     # how cross-system lookup by invocation_id finds the Langfuse
     # Trace per §8.4.1).
-    trace_id_equals_invocation_id: true
+    trace_id_equals_invocation_id_dashes_stripped: true

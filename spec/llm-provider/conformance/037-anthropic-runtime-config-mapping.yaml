@@ -1,0 +1,57 @@
+# §8.2.1 Anthropic RuntimeConfig field mapping. Verifies that the
+# supported declared fields (temperature, top_p, seed, stop_sequences,
+# max_tokens) reach the wire body verbatim (stop_sequences keeps its
+# name — no rename, unlike OpenAI's `stop`), and that the unsupported
+# declared fields (frequency_penalty, presence_penalty) raise
+# provider_invalid_request rather than being silently dropped.
+
+mapping: anthropic
+
+cases:
+  - name: supported_declared_fields_map_directly
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      config:
+        temperature: 0.7
+        max_tokens: 256
+        top_p: 0.95
+        seed: 42
+        stop_sequences: ["END", "STOP"]
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 256
+      messages: [{role: user, content: "hi"}]
+      temperature: 0.7
+      top_p: 0.95
+      seed: 42
+      # No rename — Anthropic uses `stop_sequences` natively.
+      stop_sequences: ["END", "STOP"]
+    mock_provider:
+      responses:
+        - status: 200
+          body: {type: message, id: msg_037a, model: claude-test, role: assistant, content: [{type: text, text: "ok"}], stop_reason: end_turn, usage: {input_tokens: 3, output_tokens: 1}}
+    expected:
+      response: {finish_reason: stop}
+
+  - name: frequency_penalty_rejected
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      config:
+        max_tokens: 64
+        frequency_penalty: 0.5
+    expected:
+      raises:
+        category: provider_invalid_request
+
+  - name: presence_penalty_rejected
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      config:
+        max_tokens: 64
+        presence_penalty: 0.5
+    expected:
+      raises:
+        category: provider_invalid_request

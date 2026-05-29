@@ -1,10 +1,11 @@
 # 0037: llm-provider — Anthropic Messages Wire-Format Mapping (§8.2)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-27
+- **Accepted:** 2026-05-27
 - **Targets:** spec/llm-provider/spec.md (new §8.2 *Anthropic Messages mapping* subsection following the §8.X template locked in by [proposal 0026](0026-llm-provider-wire-format-mapping-template.md); §3.1 *Content blocks* expanded with two new assistant-message block types — `ThinkingBlock` and `RedactedThinkingBlock` — surfacing provider-emitted reasoning content as first-class spec records; §8.1 *OpenAI-compatible mapping* extended with a strip-on-send rule for the new block types since OpenAI Chat Completions does not surface reasoning tokens); spec/llm-provider/conformance/ (eleven new fixtures `033-043` covering the Anthropic mapping rows, the cross-§-section `ThinkingBlock` semantics, and the §8.1 strip behavior).
-- **Related:** 0006 (llm-provider core + §8.1 OpenAI mapping — established the wire-format-mapping pattern this proposal extends to a second provider), 0015 (multimodal images — defined the §3.1 content-block shape this proposal expands), 0016 (structured output — defined the §6 `response_schema` surface this proposal maps to Anthropic's tool-call-coercion path), 0019 (multi-provider wire-format extension — established the §8 catalog framing), 0025 (tool_choice — defined the §5 `tool_choice` parameter this proposal maps to Anthropic's distinct shape), 0026 (§8.X subsection template — defined the canonical five-subsection structure §8.2 follows), 0032 (RuntimeConfig surface refinements — declared field set this proposal maps to Anthropic's wire body)
+- **Related:** 0006 (llm-provider core + §8.1 OpenAI mapping — established the wire-format-mapping pattern this proposal extends to a second provider), 0015 (multimodal images — defined the §3.1 content-block shape this proposal expands), 0016 (structured output — defined the §6 `response_schema` surface this proposal maps to Anthropic's native `output_config.format` field), 0019 (multi-provider wire-format extension — established the §8 catalog framing), 0025 (tool_choice — defined the §5 `tool_choice` parameter this proposal maps to Anthropic's distinct shape), 0026 (§8.X subsection template — defined the canonical five-subsection structure §8.2 follows), 0032 (RuntimeConfig surface refinements — declared field set this proposal maps to Anthropic's wire body)
 - **Supersedes:**
 
 ## Summary
@@ -39,11 +40,12 @@ sub-subsections:
   this sub-subsection specifies the bidirectional translation
   between spec `tool` messages and Anthropic user messages
   carrying `tool_result` content blocks.
-- **§8.2.5** — Structured output. Anthropic has no native
-  `response_format`; this sub-subsection specifies a native
-  tool-call-coercion path (the documented Anthropic best
-  practice) and a prompt-augmentation fallback path mirroring
-  §8.1.5.1.
+- **§8.2.5** — Structured output. Anthropic provides native
+  schema-constrained decoding via the top-level
+  `output_config.format` field (GA on current models); this
+  sub-subsection specifies the native path (mirroring §8.1.5)
+  plus fallbacks (tool-call coercion, then prompt-augmentation)
+  for models predating native support.
 
 Two §3.1 ContentBlock additions, one §8.1 strip-on-send rule, no
 changes to §3 role set, §4 Tool definition, §5 Provider interface,
@@ -91,8 +93,12 @@ request, response, and structured-output surfaces in ways that make
 - **`max_tokens` requirement.** OpenAI permits `max_tokens` to
   be omitted (with provider default); Anthropic requires it on
   every request.
-- **Structured output.** OpenAI has native `response_format`
-  with JSON Schema constraint; Anthropic has no equivalent.
+- **Structured output.** Both have native schema-constrained
+  decoding, but via different fields: OpenAI's `response_format`
+  (§8.1.5) vs Anthropic's top-level `output_config.format`. The
+  §8.2 mapping targets Anthropic's native field; older Claude
+  models without it fall back to tool-call coercion or
+  prompt-augmentation.
 - **Provider-emitted reasoning content.** Anthropic's
   extended-thinking models (Claude 3.7+ on the line; Claude 4
   family) emit `thinking` and `redacted_thinking` content blocks
@@ -412,19 +418,28 @@ follows:
   | `"max_tokens"` | `"length"` |
   | `"stop_sequence"` | `"stop"` (the matched sequence is preserved in `Response.raw.stop_sequence`) |
   | `"tool_use"` | `"tool_calls"` |
-  | `"refusal"` | `"content_filter"` |
+  | `"pause_turn"` | `"stop"` (a long-running turn the provider paused; the caller MAY continue by passing the response back. The pause is preserved in `Response.raw.stop_reason` for callers implementing the continue protocol) |
+  | `"refusal"` | `"content_filter"` (the refusal category, when present, is preserved in `Response.raw.stop_details`) |
   | (unknown) | `"error"` |
 
 - `usage` — built from Anthropic's `usage` field:
   `usage.prompt_tokens` ← `input_tokens`,
   `usage.completion_tokens` ← `output_tokens`,
-  `usage.total_tokens` ← sum (computed when both subfields are
-  present, otherwise `None` per §6's usage rules).
-  Cache-related Anthropic usage subfields
-  (`cache_creation_input_tokens`,
-  `cache_read_input_tokens`) appear in `Response.raw.usage`
-  unchanged and are NOT promoted to the spec `usage` record
-  (cache primitives are out of scope per *Out of scope* below).
+  `usage.total_tokens` ← sum of the prompt and completion token
+  counts the mapping reports (computed when both are present,
+  otherwise `None` per §6's usage rules).
+  **Cache-token note:** Anthropic's `input_tokens` counts only the
+  non-cached input; cached input is reported separately in
+  `cache_creation_input_tokens` and `cache_read_input_tokens`.
+  Anthropic's own total-input accounting is therefore
+  `input_tokens + cache_creation_input_tokens +
+  cache_read_input_tokens`. The spec `usage.prompt_tokens` maps
+  from `input_tokens` alone (the non-cached portion); the
+  cache-related subfields appear in `Response.raw.usage`
+  unchanged and are NOT promoted to the spec `usage` record (cache
+  primitives are out of scope per *Out of scope* below).
+  Implementations whose cost accounting needs the full input
+  total read the cache subfields from `Response.raw`.
 - `raw` — the parsed JSON body of the Anthropic response,
   verbatim. Implementations MUST NOT redact, rewrite, or omit
   fields. Anthropic-specific extensions (e.g., the response
@@ -435,20 +450,25 @@ follows:
 
 | Anthropic condition | Spec category |
 |---|---|
-| HTTP 401 | `provider_authentication` |
-| HTTP 403 with `permission_error` type | `provider_authentication` (the spec category groups auth + permission failures; the specific Anthropic type appears in `Response.raw` if needed) |
-| HTTP 404 with `not_found_error` type and model-not-found body | `provider_invalid_model` |
-| HTTP 413 with `request_too_large` type | `provider_invalid_request` (the request exceeds Anthropic's size limit) |
-| HTTP 429 with `rate_limit_error` type | `provider_rate_limit` |
-| HTTP 500 with `api_error` type | `provider_unavailable` |
-| HTTP 529 with `overloaded_error` type | `provider_unavailable` |
-| HTTP 5xx (other), connection error, timeout | `provider_unavailable` |
+| HTTP 401 `authentication_error` | `provider_authentication` |
+| HTTP 402 `billing_error` | `provider_authentication` (account-level access failure — the spec groups it with auth; the specific `billing_error` type appears in `Response.raw`) |
+| HTTP 403 `permission_error` | `provider_authentication` (the spec category groups auth + permission failures; the specific Anthropic type appears in `Response.raw` if needed) |
+| HTTP 404 `not_found_error` (model-not-found body) | `provider_invalid_model` |
+| HTTP 413 `request_too_large` | `provider_invalid_request` (the request exceeds Anthropic's size limit) |
+| HTTP 429 `rate_limit_error` | `provider_rate_limit` |
+| HTTP 500 `api_error` | `provider_unavailable` |
+| HTTP 504 `timeout_error` | `provider_unavailable` |
+| HTTP 529 `overloaded_error` | `provider_unavailable` |
+| HTTP 5xx (other), connection error, client timeout | `provider_unavailable` |
 | HTTP 400 with body indicating the bound model rejected a content block (image/media-type/unsupported source variant rejection) | `provider_unsupported_content_block` |
-| HTTP 400 with `invalid_request_error` type (other malformed-request causes) | `provider_invalid_request` |
+| HTTP 400 `invalid_request_error` (other malformed-request causes) | `provider_invalid_request` |
 | Successful HTTP response that fails to parse into §6 shape | `provider_invalid_response` |
 
-Anthropic's per-error `error.type` field surfaces in
-`Response.raw` for callers needing finer-grained handling.
+The error envelope is `{"type": "error", "error": {"type":
+<error_type>, "message": <string>}, "request_id": <string>}`.
+Anthropic's per-error `error.type` field and the `request_id`
+surface in `Response.raw` for callers needing finer-grained
+handling.
 
 #### §8.2.4 Concurrency
 
@@ -460,54 +480,81 @@ middleware, not this layer.
 
 #### §8.2.5 Structured output
 
-Anthropic Messages does not provide a native `response_format`
-field equivalent to §8.1's. The spec defines two strategies for
-the §6 `response_schema` surface, mirroring the §8.1.5 + §8.1.5.1
-native/fallback split:
+The Anthropic Messages API provides native structured output
+(generally available on current Claude models) via the top-level
+`output_config.format` request field. The spec defines a native
+path (mirroring §8.1.5) plus a fallback for models predating
+native support.
 
-**Native: tool-call coercion.** When `complete()` is called with
-a `response_schema` AND the caller's `tools` list is empty or
-absent, implementations MUST construct a synthetic tool with:
+**Native: `output_config.format`.** When `complete()` is called
+with a `response_schema`, the §8.2 mapping sets:
 
-- `name`: a stable implementation-derived identifier (e.g.,
-  `"structured_output"` plus a schema hash; implementations
-  SHOULD document the derivation rule).
-- `description`: a fixed string describing the tool's role
-  ("Return the structured response matching the requested
-  schema." or equivalent).
-- `input_schema`: the supplied `response_schema` verbatim.
+```
+{
+  "output_config": {
+    "format": {
+      "type": "json_schema",
+      "schema": <response_schema verbatim>
+    }
+  }
+}
+```
 
-The synthetic tool is added to the Anthropic `tools` array, and
-`tool_choice` is set to `{"type": "tool", "name": <synthetic
-name>}`. The response's `tool_use.input` for the synthetic tool
-becomes the `Response.parsed` value (already deserialized;
-Anthropic returns object directly under `input`).
+The `type: "json_schema"` discriminator is required; the supplied
+`response_schema` JSON Schema passes through under `schema`. The
+GA path requires no beta header. Anthropic's constrained decoding
+guarantees the generated output conforms to the schema. The
+structured JSON is returned as the assistant message's text
+content; the §8.2 mapping parses it into `Response.parsed` and
+validates against `response_schema` per §6. On validation failure
+raise `structured_output_invalid` (§7).
 
-This is Anthropic's documented best practice for
-schema-constrained generation. The behavioral contract at the
-spec layer matches §8.1.5's native path: validation happens
-post-receive against `response_schema`; failures raise
-`structured_output_invalid` (§7).
+**Two non-conformance cases** are inherent to the provider and
+NOT validation bugs: a `stop_reason: "refusal"` (safety refusal —
+the output may not match the schema because the refusal takes
+precedence) and a `stop_reason: "max_tokens"` (truncation — the
+output is incomplete). In both cases the §8.2 mapping surfaces the
+non-conforming content and the `stop_reason`; whether to raise
+`structured_output_invalid` or surface the degraded response
+follows §6 / §7's existing rules for the corresponding
+`finish_reason` (`content_filter` / `length`). Implementations
+MUST NOT silently coerce these into a schema-conforming shape.
 
-**Fallback: prompt-augmentation.** When `complete()` is called
-with a `response_schema` AND the caller's `tools` list is
-non-empty, tool-call coercion is unavailable — introducing the
-synthetic tool would silently override the caller's tool intent
-(regardless of the supplied `tool_choice` value). Implementations
-SHOULD fall back to prompt-augmentation per §8.1.5.1's pattern:
+When `complete()` is called without a `response_schema`, the
+request MUST NOT include `output_config`; the free-form wire
+shape is preserved.
 
-1. Construct a modified copy of the message list with a system
-   directive appended (or with the existing system message
-   extended) instructing the model to return only valid JSON
-   matching `response_schema`. The directive SHOULD include the
-   schema serialized as part of the prompt. The caller's
-   original `messages` MUST be left unchanged.
-2. Issue the underlying request without modifying `tools` or
-   `tool_choice`.
-3. Parse and validate the assistant's text content against
-   `response_schema` per §6 `parsed`.
-4. On validation failure, raise `structured_output_invalid` per
-   §7.
+(Anthropic also offers a complementary strict-tool-use feature —
+`strict: true` on individual tool definitions — that guarantees
+*tool-call argument* conformance rather than *response* shape.
+That is a tool-parameter feature, not the §6 `response_schema`
+surface; it is reachable via the tool-definition extras path and
+is not part of this structured-output mapping.)
+
+##### §8.2.5.1 Fallback for models without native structured output
+
+Claude models predating native `output_config.format` support
+fall back to one of the pre-native patterns. Two are available;
+implementations SHOULD prefer tool-call coercion (stronger
+conformance) and MUST document which path a given call uses.
+
+**Tool-call coercion** (preferred fallback). When the caller's
+`tools` list is empty or absent, construct a synthetic tool whose
+`input_schema` is the `response_schema`, add it to the `tools`
+array, and set `tool_choice` to `{"type": "tool", "name":
+<synthetic name>}`. The response's `tool_use.input` for the
+synthetic tool becomes `Response.parsed`. This was Anthropic's
+documented best practice before native structured output and
+remains the strongest fallback. Unavailable when the caller
+already supplies tools (the synthetic tool would override the
+caller's tool intent).
+
+**Prompt-augmentation** (last-resort fallback). Per §8.1.5.1:
+append a schema directive to the system field (or message list),
+issue the request unmodified otherwise, parse and validate the
+text response against `response_schema`, raise
+`structured_output_invalid` on failure. The caller's original
+`messages` MUST be left unchanged.
 
 Implementations MUST document which path is selected for a given
 call and SHOULD expose a way for callers to inspect or override
@@ -563,8 +610,8 @@ Eleven new fixture pairs under `spec/llm-provider/conformance/`:
 | `037-anthropic-runtime-config-mapping` | RuntimeConfig declared fields map to the Anthropic body. `temperature`, `top_p`, `seed`, `stop_sequences` pass through verbatim; `max_tokens` passes through; `frequency_penalty` and `presence_penalty` raise `provider_invalid_request` if supplied. |
 | `038-anthropic-max-tokens-required` | Pre-send validation rejects calls without `max_tokens` (raises `provider_invalid_request`); calls with `max_tokens` set proceed. |
 | `039-anthropic-error-mapping` | HTTP status + Anthropic `error.type` → spec §7 category table per §8.2.3. |
-| `040-anthropic-structured-output-coercion` | Tool-call-coercion native path: caller supplies `response_schema` and no tools; the wire request contains the synthetic tool with `tool_choice` set to it; the response's `tool_use.input` becomes `Response.parsed`. |
-| `041-anthropic-structured-output-fallback` | Prompt-augmentation fallback path: caller supplies `response_schema` AND a non-empty `tools` list; the wire request does NOT introduce a synthetic tool (caller's tools preserved); a system directive is appended; the response's text content is parsed into `Response.parsed`. |
+| `040-anthropic-structured-output-native` | Native path: caller supplies `response_schema`; the wire request carries `output_config.format = {type: "json_schema", schema}` with the schema verbatim; the response's text content is parsed into `Response.parsed`. |
+| `041-anthropic-structured-output-fallback` | Tool-call-coercion fallback (for models without native support): the wire request introduces the synthetic tool with `tool_choice` set to it; the response's `tool_use.input` becomes `Response.parsed`. |
 | `042-anthropic-thinking-block-round-trip` | Multi-turn flow with extended-thinking response: first call returns assistant content containing thinking + text blocks; second call passes the assistant message back verbatim; the wire request preserves thinking blocks unchanged with signatures intact; the second response also parses correctly. |
 | `043-openai-strips-thinking-blocks` | Cross-mapping interop: a spec assistant message containing thinking blocks is routed through the §8.1 OpenAI mapping; the wire request to OpenAI strips the thinking blocks and contains only text; no error is raised; the response parses normally. |
 
@@ -657,7 +704,42 @@ appeared) but would fail conformance fixture 043 once it lands.
 - **Document blocks.** Anthropic's `document` content blocks
   (PDF inputs) would require a §3.1 ContentBlock expansion
   beyond text/image/thinking/redacted_thinking; deferred to a
-  future proposal.
+  future proposal. The Files API upload lifecycle (upload →
+  `file_id` → reference in a message) rides with document-block
+  support.
+- **Server-side tools.** Anthropic-executed tools (`web_search`,
+  `code_execution`, `web_fetch`, `tool_search`) declared in the
+  request (e.g., `{"type": "web_search_20260209", "name": ...}`)
+  and producing distinct response content blocks
+  (`server_tool_use`, `web_search_tool_result`,
+  `web_fetch_tool_result`, `code_execution_tool_result`). This is
+  a different request/response shape from §8.2's client-tool
+  `tool_use` / `tool_result` (where the caller executes) and is
+  not covered here. A future proposal would add server-tool
+  declaration and result-block mapping — cross-vendor, since
+  OpenAI built-in tools and Gemini grounding are analogous.
+- **Request-side reasoning controls.** §8.2 maps thinking blocks
+  on the *response*; it does not define a first-class surface for
+  *requesting* / budgeting extended thinking (Anthropic's
+  `thinking` request param). Callers reach it today via §6's
+  extras-pass-through (an undeclared `thinking` body field). A
+  first-class cross-vendor reasoning-control surface (pairing
+  with Gemini's `thinkingConfig`) is a future topic; this
+  proposal covers reasoning *content*, not reasoning *control*.
+- **Request-header passthrough (incl. beta features).** §6's
+  extras-pass-through covers request-*body* fields; it does not
+  cover request *headers*. Anthropic pre-GA features gated behind
+  the `anthropic-beta` header are therefore not reachable through
+  the declared surface. A general request-header passthrough
+  mechanism (cross-vendor — any versioned/beta-header API) is a
+  future topic.
+- **Agentic tool-execution loop.** The Anthropic SDK's
+  tool-runner (auto-execute a tool call, feed the result back,
+  iterate) is intentionally NOT a provider concern: per
+  llm-provider §1 the provider is stateless and does not loop on
+  tool calls. An agent is a *graph* whose conditional edge loops
+  back to the LLM node — the loop lives at the graph layer, not
+  in §8.2. This is a design boundary, not an omission.
 - **Cross-vendor reasoning abstraction.** This proposal
   introduces `ThinkingBlock` and `RedactedThinkingBlock` at the
   spec level but only maps them in §8.2 (Anthropic). If a

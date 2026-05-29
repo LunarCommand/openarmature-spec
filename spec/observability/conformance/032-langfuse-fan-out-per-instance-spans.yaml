@@ -53,7 +53,7 @@ initial_state: {}
 
 expected:
   langfuse_trace:
-    id: "<uuid>"
+    id: "<uuid-hex>"
     name: "process"
     metadata:
       correlation_id: "<corr_id_1>"
@@ -117,7 +117,7 @@ expected:
 
   invariants:
     correlation_id_consistency: true
-    trace_id_equals_invocation_id: true
+    trace_id_equals_invocation_id_dashes_stripped: true
     # Every per-instance observation has a unique fan_out_index in 0..count-1.
     unique_fan_out_indices_under: "process"
     fan_out_index_range: [0, 2]

@@ -1,0 +1,54 @@
+# §8.2.5.1 Anthropic structured-output fallback (tool-call coercion).
+# For a model without native output_config.format support, the mapping
+# falls back to a synthetic tool whose input_schema is the
+# response_schema, with tool_choice set to that tool. The response's
+# tool_use.input becomes Response.parsed.
+#
+# The synthetic tool name and description are implementation-derived
+# (per §8.2.5.1); the literal "*" is the harness wildcard for
+# "present, non-empty string, value exempt from literal comparison".
+
+mapping: anthropic
+
+mock_provider:
+  capabilities:
+    supports_native_structured_output: false
+  responses:
+    - status: 200
+      body:
+        type: message
+        id: msg_041
+        model: claude-legacy
+        role: assistant
+        content:
+          - {type: tool_use, id: toolu_so, name: "*", input: {value: 42}}
+        stop_reason: tool_use
+        usage: {input_tokens: 10, output_tokens: 5}
+
+calls:
+  - operation: complete
+    messages: [{role: user, content: "Generate."}]
+    response_schema:
+      type: object
+      properties:
+        value: {type: integer}
+      required: [value]
+      additionalProperties: false
+    config: {max_tokens: 64}
+    expected_wire_request:
+      model: claude-legacy
+      max_tokens: 64
+      messages: [{role: user, content: "Generate."}]
+      tools:
+        - name: "*"
+          description: "*"
+          input_schema:
+            type: object
+            properties:
+              value: {type: integer}
+            required: [value]
+            additionalProperties: false
+      tool_choice: {type: tool, name: "*"}
+    expected:
+      response:
+        parsed: {value: 42}

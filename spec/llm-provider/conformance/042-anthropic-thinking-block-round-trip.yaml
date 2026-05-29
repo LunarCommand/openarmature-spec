@@ -1,0 +1,77 @@
+# §8.2.1.1 + §3.1.4 Anthropic thinking-block round-trip. First call:
+# the response carries a thinking block (with signature) + a text
+# block; the mapping surfaces both on Response.message.content (spec
+# ThinkingBlock uses the `text` field; the wire uses `thinking`).
+# Second call: the assistant message (with the thinking block) is
+# passed back; the wire request preserves the thinking block verbatim,
+# including its signature, in original position.
+
+mapping: anthropic
+
+mock_provider:
+  responses:
+    # Consumed by the first call.
+    - status: 200
+      body:
+        type: message
+        id: msg_042a
+        model: claude-test
+        role: assistant
+        content:
+          - {type: thinking, thinking: "Let me reason about this.", signature: "sig-abc"}
+          - {type: text, text: "The answer is 42."}
+        stop_reason: end_turn
+        usage: {input_tokens: 20, output_tokens: 10}
+    # Consumed by the second call.
+    - status: 200
+      body:
+        type: message
+        id: msg_042b
+        model: claude-test
+        role: assistant
+        content:
+          - {type: text, text: "Yes, I'm sure."}
+        stop_reason: end_turn
+        usage: {input_tokens: 35, output_tokens: 5}
+
+calls:
+  # Call 1 — receive a thinking + text response.
+  - operation: complete
+    messages:
+      - {role: user, content: "What's the answer?"}
+    config: {max_tokens: 256}
+    expected:
+      response:
+        message:
+          role: assistant
+          content:
+            # Spec ThinkingBlock uses `text` (wire used `thinking`); signature preserved.
+            - {type: thinking, text: "Let me reason about this.", signature: "sig-abc"}
+            - {type: text, text: "The answer is 42."}
+        finish_reason: stop
+
+  # Call 2 — pass the assistant thinking back; wire preserves it verbatim.
+  - operation: complete
+    messages:
+      - {role: user, content: "What's the answer?"}
+      - role: assistant
+        content:
+          - {type: thinking, text: "Let me reason about this.", signature: "sig-abc"}
+          - {type: text, text: "The answer is 42."}
+      - {role: user, content: "Are you sure?"}
+    config: {max_tokens: 256}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 256
+      messages:
+        - {role: user, content: "What's the answer?"}
+        - role: assistant
+          content:
+            # Spec `text` field maps back to the wire `thinking` field; signature intact and in position.
+            - {type: thinking, thinking: "Let me reason about this.", signature: "sig-abc"}
+            - {type: text, text: "The answer is 42."}
+        - {role: user, content: "Are you sure?"}
+    expected:
+      response:
+        message: {role: assistant, content: "Yes, I'm sure.", tool_calls: null}
+        finish_reason: stop
