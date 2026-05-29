@@ -1,10 +1,10 @@
 # 0043: Observability — §8 Langfuse `trace.input` / `trace.output` Population
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-29
-- **Accepted:**
-- **Targets:** spec/observability/spec.md (§8.4.1 — adds `trace.input` and `trace.output` rows with a three-lever source decision tree plus a follow-on *Trace input/output sourcing* paragraph defining the caller-hook contract; §8.9 — adds the `disable_state_payload` privacy knob symmetric to `disable_llm_payload`)
+- **Accepted:** 2026-05-29
+- **Targets:** spec/observability/spec.md (§8.2 — Trace entity definition extends with `input` / `output` payload fields; §8.4.1 — adds `trace.input` and `trace.output` rows with a follow-on *Trace input/output sourcing* paragraph defining the `disable_state_payload` Langfuse-observer privacy knob, three-lever source decision tree, `status` enum on the minimal stub, caller-hook contract, and resume semantics)
 - **Related:** 0031 (Langfuse backend mapping — introduced §8), 0034 (caller-supplied invocation metadata — established the orthogonal `trace.metadata` surface), 0024 (LLM span payload — established the symmetric `disable_llm_payload` privacy knob the new knob mirrors)
 - **Supersedes:**
 
@@ -19,11 +19,11 @@ sees them blank at the canonical entry point of the dashboard.
 This proposal extends §8.4.1 to populate `trace.input` / `trace.output` via
 a three-lever design:
 
-1. **`disable_state_payload`** — a privacy knob symmetric to
-   `disable_llm_payload`. Default ON per §8.9's privacy-safe posture; when
-   OFF, the observer serializes `initial_state` → `trace.input` and final
-   state → `trace.output`, subject to the existing payload-byte-cap
-   truncation.
+1. **`disable_state_payload`** — a Langfuse-observer-level privacy knob
+   symmetric to `disable_llm_payload`. Default ON, mirroring §5.5.4's
+   `disable_llm_payload` privacy-safe posture; when OFF, the observer
+   serializes `initial_state` → `trace.input` and final state →
+   `trace.output`, subject to the existing payload-byte-cap truncation.
 2. **Default-off minimal stub** — when the privacy knob is ON (the default)
    and no caller hook is supplied, populate
    `trace.input = {entry_node, correlation_id}` and
@@ -63,28 +63,16 @@ trace-level input/output hooks read live state at entry and exit).
 The proposed normative changes are below. Anticipated bump: **MINOR**
 (pre-1.0). The concrete spec version is assigned at acceptance.
 
-### observability §8.9 — `disable_state_payload` privacy knob
+### observability §8.2 — Trace entity gains `input` / `output` fields
 
-§8.9 currently defines `disable_llm_payload` (default ON) as the
-implementation-level opt-out for LLM-span input/output payload emission.
-This proposal adds a symmetric knob:
+§8.2's Trace entity enumeration extends to include `input` and `output`
+as JSON-typed payload fields, top-level on the Trace object alongside
+`id`, `name`, `metadata`, etc. These are existing Langfuse Trace fields
+visible in the Langfuse Traces list view as headline columns; this
+proposal documents them in §8.2 (they had not been enumerated) so the
+§8.4.1 mapping rows below have a defined target.
 
-> **`disable_state_payload: bool`** — opt-out for Trace-level `input` /
-> `output` payload emission. Default ON. When ON, the observer does NOT
-> serialize `initial_state` / final state directly onto `trace.input` /
-> `trace.output`; the default-off minimal stub (§8.4.1) applies unless a
-> caller hook overrides. When OFF, the observer serializes `initial_state`
-> → `trace.input` and final state → `trace.output`, subject to the
-> existing payload-byte-cap truncation (§5.5.5).
-
-The two payload-privacy knobs are independent: `disable_llm_payload`
-controls Generation-level input/output; `disable_state_payload` controls
-Trace-level input/output. Implementations MAY expose them as a single
-combined flag for convenience, but the spec defines them as two separate
-concerns so callers can opt into Trace-level payload without enabling
-LLM-payload emission (or vice versa).
-
-### observability §8.4.1 — `trace.input` and `trace.output` rows
+### observability §8.4.1 — `trace.input` / `trace.output` rows + sourcing paragraph
 
 Two new rows are added to the §8.4.1 Trace-level mapping table:
 
@@ -95,9 +83,30 @@ Two new rows are added to the §8.4.1 Trace-level mapping table:
 
 A new paragraph follows the table:
 
-**Trace input/output sourcing.** The Trace-level input/output sources
-resolve via the decision tree below, applied independently to each of
-`trace.input` and `trace.output`:
+**Trace input/output sourcing.** Trace-level input/output emission is
+governed by a Langfuse-observer-level privacy knob and a three-lever
+decision tree.
+
+**`disable_state_payload: bool`** — Langfuse-observer-level opt-out for
+Trace-level `input` / `output` payload emission. Default ON, mirroring
+§5.5.4's `disable_llm_payload` privacy-safe posture. When ON, the
+observer does NOT serialize `initial_state` / final state directly onto
+`trace.input` / `trace.output`; the default-off minimal stub (below)
+applies unless a caller hook overrides. When OFF, the observer
+serializes `initial_state` → `trace.input` and final state →
+`trace.output`, subject to the existing payload-byte-cap truncation
+(§5.5.5). The two payload-privacy knobs are independent: §5.5.4's
+`disable_llm_payload` controls Generation-level input/output; the new
+`disable_state_payload` controls Trace-level input/output.
+Implementations MAY expose them as a single combined flag for
+convenience, but the spec defines them as two separate concerns so
+callers can opt one in without the other — they're independent concerns
+with different threat models (LLM payload = model interaction
+transcript; Trace-level state payload = application state shape).
+
+**Decision tree.** The Trace-level input/output sources resolve as
+follows, applied independently to each of `trace.input` and
+`trace.output`:
 
 1. **Caller hook supplied AND returns a non-null value** → the hook's
    return value is serialized to the Trace field.
@@ -199,10 +208,12 @@ existing ones.
 **MINOR bump** (pre-1.0). On acceptance the whole-spec SemVer increments
 (concrete version assigned at acceptance):
 
-- §8.9 gains the `disable_state_payload` knob (additive opt-out, default
-  ON — privacy-safe default).
+- §8.2 Trace entity definition gains `input` / `output` field
+  enumerations (documenting existing Langfuse Trace fields).
 - §8.4.1 gains two new mapping-table rows + the *Trace input/output
-  sourcing* sub-paragraph defining the decision tree and hook contract.
+  sourcing* paragraph defining the `disable_state_payload` privacy knob,
+  the three-lever decision tree, the closed `status` enum, the
+  caller-hook contract, and resume semantics.
 - A new conformance fixture exercises the four-lever decision tree + the
   resume case.
 
@@ -262,7 +273,7 @@ observer for these specific fields are affected.
   observer-decoupled-from-concrete-SDK framing the §8 mapping is built
   on.
 - **Default the privacy knob OFF** (raw `initial_state` / final state on
-  the Trace fields by default). Rejected: inconsistent with §8.9's
+  the Trace fields by default). Rejected: inconsistent with §5.5.4's
   privacy-safe-by-default posture (`disable_llm_payload` defaults ON);
   raw state may contain user-PII fields and should require an explicit
   opt-in.
