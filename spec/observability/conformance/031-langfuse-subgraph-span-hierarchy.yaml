@@ -58,7 +58,7 @@ initial_state: {}
 
 expected:
   langfuse_trace:
-    id: "<uuid>"
+    id: "<uuid-hex>"
     name: "outer_in"
     metadata:
       correlation_id: "<corr_id_1>"
@@ -116,4 +116,4 @@ expected:
     # §8.5: correlation_id MUST appear on the Trace metadata AND on every Observation metadata.
     correlation_id_consistency: true
     # §8.4.1: Trace.id MUST equal the invocation_id for cross-system lookup.
-    trace_id_equals_invocation_id: true
+    trace_id_equals_invocation_id_dashes_stripped: true

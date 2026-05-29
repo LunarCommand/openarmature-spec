@@ -88,7 +88,7 @@ cases:
           usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
     expected:
       langfuse_trace:
-        id: "<uuid>"
+        id: "<uuid-hex>"
         metadata:
           tenantId: "acme-corp"
         # The Trace metadata does NOT include per-instance productId.

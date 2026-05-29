@@ -60,8 +60,9 @@ parent invocation's trace as nested spans. Implementations MUST also support an 
 its own trace and the parent's dispatch span carries an OTel `Link` to that new trace.
 
 **Correlation ID.** A per-invocation identifier that flows across observability backends.
-Distinct from `invocation_id` — the framework-generated `invocation_id` correlates spans within
-a single backend, while `correlation_id` is application-supplied (or auto-generated when absent)
+Distinct from `invocation_id` — the `invocation_id` (caller-supplied or framework-generated, per
+§5.1) correlates spans within a single backend, while `correlation_id` is application-supplied
+(or auto-generated when absent)
 and is intended to be visible in every backend the implementation emits to. A user running an
 LLM workflow with both an OTel backend (system traces, logs) and a Langfuse backend
 (LLM-specific traces) uses the `correlation_id` as a join key between them: find a slow request

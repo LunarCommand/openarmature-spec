@@ -44,7 +44,7 @@ cases:
       disable_llm_payload: false
     expected:
       langfuse_trace:
-        id: "<uuid>"
+        id: "<uuid-hex>"
         observations:
           - type: span
             name: "ask_llm"
@@ -116,7 +116,7 @@ cases:
       payload_byte_cap: 256
     expected:
       langfuse_trace:
-        id: "<uuid>"
+        id: "<uuid-hex>"
         observations:
           - type: span
             name: "ask_llm"
