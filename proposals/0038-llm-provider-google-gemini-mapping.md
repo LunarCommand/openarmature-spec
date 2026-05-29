@@ -3,7 +3,7 @@
 - **Status:** Draft
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-27
-- **Targets:** spec/llm-provider/spec.md (new §8.3 *Google Gemini mapping* subsection following the §8.X template; §3 *Message shape* extended so `TextBlock` and `ToolCall` carry an optional opaque `signature` field — a provider round-trip token mirroring `ThinkingBlock.signature`, for providers whose reasoning-continuity signatures attach to non-thinking parts; §3 reasoning-block round-trip rule generalized to single-provider scope); spec/llm-provider/conformance/ (new fixtures `044-053` covering the Gemini mapping rows, the thought-summary / thought-signature round-trip, and the cross-provider signature-strip rule).
+- **Targets:** spec/llm-provider/spec.md (new §8.3 *Google Gemini mapping* subsection following the §8.X template; §3 *Message shape* extended so `TextBlock` and `ToolCall` carry an optional opaque `signature` field — a provider round-trip token mirroring `ThinkingBlock.signature`, for providers whose reasoning-continuity signatures attach to non-thinking parts; §3 reasoning-block round-trip rule generalized to single-provider scope; `ThinkingBlock.signature` relaxed from required to optional); spec/llm-provider/conformance/ (new fixtures `044-053` covering the Gemini mapping rows, the thought-summary / thought-signature round-trip, and the cross-provider signature-strip rule).
 - **Related:** 0037 (Anthropic Messages mapping — introduced `ThinkingBlock`/`RedactedThinkingBlock`, the `tool` role bidirectional-translation pattern, and the §8.1 strip-on-send rule this proposal builds on and generalizes; **0038 depends on 0037 being accepted first**), 0006 (llm-provider core + §8.1 OpenAI mapping), 0015 (multimodal images — §3.1 content-block shape), 0016 (structured output — §6 `response_schema`), 0025 (tool_choice — §5 parameter), 0026 (§8.X subsection template), 0032 (RuntimeConfig declared fields)
 - **Supersedes:**
 
@@ -22,7 +22,7 @@ role); tools nest under `functionDeclarations`; tool-choice is
 `toolConfig.functionCallingConfig` with a four-mode enum; sampling
 parameters nest under `generationConfig`; and structured output is
 natively supported via `generationConfig.responseMimeType` +
-`responseJsonSchema`.
+`generationConfig.responseJsonSchema`.
 
 Gemini's extended-thinking surface (Gemini 2.5+) differs
 structurally from Anthropic's: the thought summary is a `parts`
@@ -40,10 +40,11 @@ uniformly (read `ThinkingBlock.text`, branch, log) regardless of
 provider; the wire-level capture and round-trip of signatures is
 provider-specific and handled entirely within each §8.X mapping.
 
-Structured output uses the native path (mirroring §8.1.5, not
-§8.2.5's coercion) — Gemini, like OpenAI and the
-GA Anthropic surface, has a native schema-constrained-decoding
-field.
+Structured output uses the native path. Gemini, like OpenAI (§8.1.5)
+and Anthropic (§8.2.5), has a native schema-constrained-decoding
+field (`generationConfig.responseJsonSchema`); the prompt-augmentation
+fallback applies only to older models lacking native support
+(§8.3.5.1, mirroring Anthropic's §8.2.5.1).
 
 ## Motivation
 
@@ -81,8 +82,8 @@ both that neither existing mapping applies:
   request root.
 - **Native structured output.** `generationConfig.responseMimeType:
   "application/json"` + `generationConfig.responseJsonSchema` —
-  schema-constrained decoding without the tool-call coercion
-  §8.2.5 needs for the Anthropic case.
+  native schema-constrained decoding, as OpenAI (§8.1.5) and
+  Anthropic (§8.2.5) also provide.
 - **Thought-signature placement.** Gemini's reasoning-continuity
   signatures attach to sibling parts (function-call / text),
   not to the thought summary — structurally different from
@@ -104,7 +105,10 @@ provider-issued, round-trip-preserved token. That shape fits
 Anthropic, where the signature is a property of the thinking
 block itself. Gemini attaches its `thoughtSignature` to *sibling*
 parts (function-call and text parts), so the spec needs a place to
-carry a round-trip signature on those block types too.
+carry a round-trip signature on those block types too — and,
+because Gemini's thought summary itself carries no signature,
+`ThinkingBlock.signature` is relaxed from required (0037) to
+optional.
 
 **§3 ToolCall record** — add an optional field:
 
@@ -117,6 +121,13 @@ carry a round-trip signature on those block types too.
 | Field | Required | Description |
 |---|---|---|
 | `signature` | optional | Same semantics as `ToolCall.signature` — an opaque provider reasoning-continuity token, present only when the provider attaches one to a text block. |
+
+**§3.1.4 ThinkingBlock** — relax `signature` from required to
+optional:
+
+| Field | Required | Description |
+|---|---|---|
+| `signature` | optional | Opaque provider reasoning-continuity token. Present only when the provider attaches it to the thinking block itself (Anthropic). Absent when the provider carries the signature on sibling parts — e.g. Gemini's `thoughtSignature`, where the thought summary maps to a `ThinkingBlock` with no own signature. 0037 introduced this field as required; Gemini's sibling-part placement requires relaxing it. |
 
 **Single-provider round-trip rule (new §3 normative paragraph).**
 Reasoning-continuity signatures — `ThinkingBlock.signature`,
@@ -270,6 +281,11 @@ This sub-subsection covers two wire-encoding paths, mirroring
 | `ThinkingBlock { text, signature? }` | A `Part` flagged `{ "text": <text>, "thought": true }`. Gemini's thought summary is a text part with `thought: true`; the `signature`, when present, is reattached per the thought-signature mapping in §8.3.2 below. |
 | `TextBlock { text, signature }` (assistant, signature present) | `{ "text": <text>, "thoughtSignature": <signature> }`. A text part carrying a captured Gemini thought signature. |
 
+`thoughtSignature` is emitted on a part only when the corresponding
+spec block carries a non-empty `signature`. When the block has no
+signature (the common case), the key MUST be omitted entirely — not
+set to `null` — so the wire request matches Gemini's contract.
+
 Empty content blocks are rejected at pre-send validation per §3 /
 `provider_invalid_request`.
 
@@ -294,10 +310,10 @@ message, preserving order:
 
 The `name` is the tool name from the matching `functionCall`; the
 `id` is the spec `tool_call_id` (matching the `functionCall.id`);
-the `response` wraps the spec `tool` message's content (Gemini
-expects a structured object under `response` — implementations
-wrap a string result as `{"result": <content>}` when the content
-is not already an object).
+the `response` wraps the spec `tool` message's content. Gemini
+expects a structured object under `response`, and §3 tool content is
+a string, so the mapping always wraps it as `{"result": <content>}`
+(it does not attempt to JSON-parse the string).
 
 **Gemini → Spec (on receive):** each `functionResponse` part in a
 user-role `Content` maps back to one spec `tool` message with
@@ -421,9 +437,11 @@ When `complete()` is called without `response_schema`, the request
 MUST NOT include `responseMimeType` / `responseJsonSchema`; the
 free-form wire shape is preserved.
 
-This is the native path (mirroring §8.1.5 OpenAI), NOT the
-tool-call coercion §8.2.5 needs for Anthropic — Gemini, like
-OpenAI, provides native schema-constrained decoding.
+This is the native path: Gemini, like OpenAI (§8.1.5) and Anthropic
+(§8.2.5), provides native schema-constrained decoding. The
+prompt-augmentation fallback (§8.3.5.1) applies only to models
+lacking native support, mirroring how §8.2.5.1 handles older
+Anthropic models.
 
 ##### §8.3.5.1 Fallback for older models
 
@@ -442,18 +460,26 @@ Edits to `spec/llm-provider/spec.md`:
    (provider reasoning-continuity round-trip token).
 2. **§3.1.1 TextBlock** — add optional opaque `signature` field
    (same semantics).
-3. **§3 reasoning-continuity round-trip rule** — new normative
+3. **§3.1.4 ThinkingBlock** — relax `signature` from required to
+   optional (a provider may emit a thought summary with no own
+   signature, e.g. Gemini).
+4. **§3 reasoning-continuity round-trip rule** — new normative
    paragraph: signatures are provider-bound; cross-provider
    routing strips them (generalizes 0037's §8.1 strip rule).
-4. **§8.3 (new)** — full Google Gemini mapping per the §8.X
+5. **§8.3 (new)** — full Google Gemini mapping per the §8.X
    template, with sub-subsections §8.3.1.1 (parts wire mapping),
    §8.3.1.2 (`tool` role translation), and §8.3.5.1 (structured-
    output fallback).
 
 No changes to §3 role set, §4 Tool definition (beyond the
 `ToolCall.signature` field), §5 Provider interface, §6 Response
-shape, §7 error categories, §9 Determinism, §10 *Out of scope*,
-§8.1, or §8.2.
+shape, §7 error categories, §9 Determinism, or §10 *Out of scope*.
+
+§8.1 and §8.2 gain no provider-specific text, but the generalized §3
+strip rule applies to them uniformly: on a cross-provider hop they
+strip the new `TextBlock.signature` / `ToolCall.signature` fields
+(and any thinking blocks), exactly as §8.1 already strips thinking
+blocks for OpenAI. Fixture 053 verifies this.
 
 ## Conformance fixtures
 
