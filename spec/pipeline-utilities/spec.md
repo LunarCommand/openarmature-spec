@@ -15,6 +15,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §10.11 per-instance entry shape gained `result_is_error: bool` field (success vs `collect`-mode-error discriminator for resume routing); §10.11.2 `collect` bullet amended to name the field as the discrimination mechanism and forbid heuristic inspection of `result` shape by [proposal 0027](../../proposals/0027-fan-out-instance-progress-result-is-error.md)
   - §10.2 `schema_version` paragraph clarified: the outermost declared graph state class is the canonical source for the value written onto saved records; implementations MUST NOT source `schema_version` from the runtime instance's class when a State subclass shadows the declared value by [proposal 0028](../../proposals/0028-schema-version-canonical-source.md)
   - §10.11 gained a "Count drift on resume" rule: when a saved `fan_out_progress` entry's `instance_count` differs from the resumed run's resolved count, the engine MUST raise `checkpoint_record_invalid` (per §10.10); silent pad/truncate of the saved `instances` list is not permitted. §10.10 `checkpoint_record_invalid` description extended to enumerate count drift as a failure mode by [proposal 0029](../../proposals/0029-count-drift-strict.md)
+  - §10.14 *Composition with sessions* added — notes that the new sessions capability is an orthogonal cross-invoke persistence layer; checkpointing and sessions register independently, MAY share a backend, but resume / session-load and the respective error categories surface independently by [proposal 0020](../../proposals/0020-sessions-capability.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1405,6 +1406,25 @@ Sibling-package adapters (informative, NOT specified by this section):
 
 Each adapter package MAY add its own configuration ergonomics on top of the Checkpointer
 protocol (e.g., Temporal namespace selection); none change the protocol's behavioral contract.
+
+### 10.14 Composition with sessions
+
+Sessions (sessions §3 *Identity scoping*) are a sibling persistence layer keyed on a
+caller-supplied `session_id`, with cross-invoke lifetime. Checkpointing and
+sessions are orthogonal: an invocation MAY use both, neither, or either independently. They
+MAY share a backend store, but the semantics are distinct — checkpoints capture per-invocation
+progress for crash recovery and resume; session records carry per-session typed state that
+survives across separate `invoke()` calls.
+
+Composition rules:
+
+- Both layers register independently on the compiled graph; a registered `Checkpointer` does
+  NOT imply a `SessionStore` and vice versa.
+- Resume (§10.4) and session load (sessions §6.1) are independent operations: resuming an
+  invocation reloads its checkpoint record; binding to a session reloads the session record.
+  Both MAY happen on the same `invoke()`.
+- A `session_save_failed` (sessions §10) does NOT signal a checkpoint failure and vice versa;
+  the error categories are distinct and surface independently.
 
 ## 11. Parallel branches
 

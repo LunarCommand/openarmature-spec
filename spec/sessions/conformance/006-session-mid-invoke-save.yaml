@@ -1,0 +1,51 @@
+# Explicit mid-invoke save (§6.2): a node explicitly requests a session save
+# mid-invocation. The save commits the projected state at that point; if the
+# invocation later errors before END, the auto-save (§6.1) does NOT run, but
+# the mid-invoke save has already committed and a subsequent load() against
+# the store returns it.
+
+cases:
+  - name: mid_invoke_save_persists_partial_state_on_crash
+    description: |
+      Three-node graph A → B → C. Node B's body explicitly requests a session
+      save after its `update_pure` merges (per §6.2; implementations expose
+      this as `save_session()` or an equivalent surface). Node C raises a
+      `node_exception`. The invocation errors before END, so auto-save (§6.1)
+      does NOT run; however, B's mid-invoke save has already committed. A
+      subsequent `load()` under the same session_id returns the partial state
+      `{step: "B"}`.
+    state:
+      fields:
+        step:
+          type: str
+          default: ""
+    entry: A
+    nodes:
+      A:
+        update_pure: {step: "A"}
+      B:
+        update_pure: {step: "B"}
+        # After B's update merges, the node body invokes save_session() (§6.2).
+        explicit_save_session: true
+      C:
+        raises:
+          category: node_exception
+    edges:
+      - {from: A, to: B}
+      - {from: B, to: C}
+      - {from: C, to: END}
+    initial_state: {}
+    session_store: in_memory
+    session_id: "s6"
+    expected_error:
+      category: node_exception
+      raised_from: C
+    expected:
+      # B's mid-invoke save committed before C raised.
+      store_after:
+        load_returns_for_session_id: "s6"
+        loaded_state: {step: "B"}
+      # Auto-save at END did NOT run (invoke errored before END).
+      no_auto_save_on_end: true
+    invariants:
+      mid_invoke_save_survives_subsequent_crash: true

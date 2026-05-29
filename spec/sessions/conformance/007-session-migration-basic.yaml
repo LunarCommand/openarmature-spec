@@ -1,0 +1,45 @@
+# Schema migration — basic (§7): the store holds a record at schema_version
+# "v1"; the current graph's SessionState is at "v2"; a v1 → v2 migration is
+# registered. On load, the engine applies the migration before merging into the
+# initial state. After END, the engine saves the new state at schema_version
+# "v2".
+
+cases:
+  - name: registered_migration_applies_at_load
+    description: |
+      Single-node graph at schema_version "v2". A pre-seeded record exists in
+      the store at "v1" with state `{value: 1}`. A `v1 → v2` migration is
+      registered that adds 10 to `value`. invoke() with session_id="s7" loads
+      the v1 record, runs the migration to produce `{value: 11}` at v2, merges
+      that into the initial state, and the node observes value=11. At END, the
+      engine saves the state at v2.
+    state:
+      schema_version: "v2"
+      fields:
+        value:
+          type: int
+          default: 0
+    entry: noop
+    nodes:
+      noop:
+        update_pure: {}
+    edges:
+      - {from: noop, to: END}
+    session_store: in_memory
+    session_id: "s7"
+    seeded_session:
+      schema_version: "v1"
+      state: {value: 1}
+    session_migrations:
+      - from_version: "v1"
+        to_version: "v2"
+        migrate: add_ten_to_value          # harness mock: value' = value + 10
+    expected:
+      migrations_run: ["v1->v2"]
+      final_state: {value: 11}
+      saved_session_assertions:
+        schema_version: "v2"
+        state: {value: 11}
+    invariants:
+      single_migration_invocation: true
+      migration_runs_before_projection_merge: true

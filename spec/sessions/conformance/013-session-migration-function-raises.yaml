@@ -1,0 +1,52 @@
+# Session schema migration — function raises (§7, §10): a registered session
+# migration function raises during chain application. The engine MUST surface
+# the failure as `session_state_migration_failed`, carrying the (from, to)
+# pair and preserving the raised exception as cause. Subsequent migrations in
+# the chain MUST NOT run, and the engine MUST NOT route to `session_load_failed`
+# or `session_state_migration_missing`. Mirrors pipeline-utilities/046 for
+# checkpoint-state migration.
+
+cases:
+  - name: buggy_migration_routes_to_failed_category
+    description: |
+      A user-supplied v1 → v2 session migration function raises KeyError mid-
+      execution (simulating a buggy migration). Per §7 + §10, the engine wraps
+      the exception as `session_state_migration_failed` and propagates it. The
+      graph's entry node MUST NOT be invoked.
+    state:
+      schema_version: "v2"
+      fields:
+        value:
+          type: int
+          default: 0
+    entry: noop
+    nodes:
+      noop:
+        update_pure: {}
+    edges:
+      - {from: noop, to: END}
+    session_store: in_memory
+    session_id: "s13"
+    seeded_session:
+      schema_version: "v1"
+      state: {value: 0}
+    session_migrations:
+      - from_version: "v1"
+        to_version: "v2"
+        # Harness mock that raises KeyError mid-execution.
+        migrate: raises_keyerror
+    expected_error:
+      category: session_state_migration_failed
+      carries:
+        from_version: "v1"
+        to_version: "v2"
+      cause:
+        exception_type: KeyError
+    invariants:
+      node_never_invoked: true
+      # The engine routes to the dedicated migration-failed category, not to
+      # any of the other migration-related categories.
+      error_category_not:
+        - session_load_failed
+        - session_state_migration_missing
+        - session_state_migration_chain_ambiguous

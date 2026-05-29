@@ -1,0 +1,29 @@
+# Store registered, no session_id (§3): a SessionStore IS registered but
+# invoke() is called WITHOUT a session_id. The engine MUST NOT call into the
+# store (no load, no save) — the session machinery is opt-in per-invoke.
+
+cases:
+  - name: omitted_session_id_never_touches_store
+    description: |
+      Single-node graph with an in-memory SessionStore registered. invoke() is
+      called with NO session_id. The engine MUST NOT load or save; the store is
+      untouched for this invocation.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    session_store: in_memory
+    # No `session_id` supplied to invoke().
+    expected:
+      final_state: {x: 1}
+      no_session_load: true
+      no_session_save: true
+      store_untouched: true

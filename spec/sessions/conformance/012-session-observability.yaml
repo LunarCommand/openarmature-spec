@@ -1,0 +1,101 @@
+# Session observability propagation (§11.1): when an invocation is bound to a
+# session, `openarmature.session_id` MUST appear as a §5.6 cross-cutting span
+# attribute on EVERY span emitted during the invocation, and as a §7 log-record
+# field on every log record. Like correlation_id, session_id propagates through
+# the ambient invocation context — it is NOT a field on the §6 NodeEvent.
+
+cases:
+  - name: session_id_on_every_span_and_log_record
+    description: |
+      Two-node graph; in-memory SessionStore registered; invoke() with
+      session_id="s12". Each node emits a log line. Every span (the invocation
+      root and both node spans) MUST carry `openarmature.session_id="s12"`,
+      and every log record MUST carry `session_id="s12"`. The §6 NodeEvent
+      delivered to observers does NOT carry session_id as a field; observers
+      that need it read it from the ambient invocation context.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+        emits_log:
+          message: "node a executing"
+          level: INFO
+      b:
+        update_pure: {x: 2}
+        emits_log:
+          message: "node b executing"
+          level: INFO
+    edges:
+      - {from: a, to: b}
+      - {from: b, to: END}
+    initial_state: {}
+    session_store: in_memory
+    session_id: "s12"
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          attributes:
+            openarmature.session_id: "s12"
+          children:
+            - name: "a"
+              attributes:
+                openarmature.session_id: "s12"
+              children: []
+            - name: "b"
+              attributes:
+                openarmature.session_id: "s12"
+              children: []
+      log_records:
+        - body: "node a executing"
+          attributes:
+            openarmature.session_id: "s12"
+        - body: "node b executing"
+          attributes:
+            openarmature.session_id: "s12"
+    invariants:
+      session_id_uniform_across_span_tree: "s12"
+      all_logs_carry_session_id: "s12"
+      # session_id is NOT a field on §6 NodeEvent — it lives in the ambient
+      # invocation context, the same channel as invocation_id and correlation_id.
+      node_event_does_not_carry_session_id_field: true
+
+  - name: no_session_id_attribute_when_invocation_not_session_bound
+    description: |
+      Same graph and store, but invoke() is called WITHOUT a session_id. Spans
+      and log records MUST NOT carry the `openarmature.session_id` attribute —
+      the attribute exists only when the invocation is session-bound.
+    state:
+      fields:
+        x:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+        emits_log:
+          message: "node a executing"
+          level: INFO
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    session_store: in_memory
+    # No session_id supplied.
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          attributes_absent: [openarmature.session_id]
+          children:
+            - name: "a"
+              attributes_absent: [openarmature.session_id]
+              children: []
+      log_records:
+        - body: "node a executing"
+          attributes_absent: [openarmature.session_id]

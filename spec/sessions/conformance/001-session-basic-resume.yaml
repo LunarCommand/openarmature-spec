@@ -1,0 +1,48 @@
+# Basic session resume (§3, §6.1): a first invoke under a session_id auto-saves
+# the final state to the registered SessionStore; a second invoke under the SAME
+# session_id loads that saved state and merges it into the initial state, so the
+# graph observes the accumulated value.
+
+cases:
+  - name: second_invoke_loads_first_invoke_state
+    description: |
+      Single-node graph; `history` is a list field with the `append` reducer.
+      An in-memory SessionStore is registered; auto_save is the default (true).
+      The node appends a constant `["x"]` to `history` each run. Invoke #1
+      (session_id="s1") starts from an empty store and ends with
+      `history=["x"]`; the engine saves it at END. Invoke #2 (session_id="s1")
+      loads the saved record and merges it into the initial state before the
+      node runs, so the append reducer yields `["x","x"]`. The growth from one
+      to two elements is the load-bearing proof that invoke #2 resumed invoke
+      #1's saved state.
+    state:
+      fields:
+        history:
+          type: list
+          reducer: append
+          default: []
+    entry: record_turn
+    nodes:
+      record_turn:
+        update_pure: {history: ["x"]}
+    edges:
+      - {from: record_turn, to: END}
+    session_store: in_memory
+    invocations:
+      - session_id: "s1"
+        initial_state: {}
+        # No prior record in the store; the loaded session state is None.
+        loaded_session_state: null
+        expected_final_state: {history: ["x"]}
+        saved_session_assertions:
+          state: {history: ["x"]}
+      - session_id: "s1"
+        initial_state: {}
+        # Loads invoke #1's saved record before the node runs.
+        loaded_session_state: {history: ["x"]}
+        expected_final_state: {history: ["x", "x"]}
+        saved_session_assertions:
+          state: {history: ["x", "x"]}
+    invariants:
+      second_invoke_loads_first_invoke_state: true
+      saved_record_overwrites_prior: true

@@ -104,6 +104,7 @@ nav:
     - LLM Provider: capabilities/llm-provider.md
     - Observability: capabilities/observability.md
     - Prompt Management: capabilities/prompt-management.md
+    - Sessions: capabilities/sessions.md
   - Proposals: proposals.md
   - Open questions: open-questions.md
   - Changelog: changelog.md

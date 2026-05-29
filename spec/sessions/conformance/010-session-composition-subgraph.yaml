@@ -1,0 +1,64 @@
+# Subgraph composition (§9.1): subgraphs do NOT see session state directly.
+# Inner state is whatever the outer graph projects in via normal inputs/outputs
+# mapping. Session state is an outermost-graph concern; the inner subgraph
+# observes only its declared state fields.
+
+cases:
+  - name: subgraph_sees_only_projected_input_not_session_state
+    description: |
+      The outer graph has a SessionStore registered with session_id="s10" and a
+      seeded session containing `summary="outer-data"`. The outer state
+      includes `summary` and `outer_result`. An inner subgraph has its own
+      state schema (`inner_input`, `inner_output`) and is invoked from the
+      outer graph via explicit input/output mapping: `inner_input` ← outer
+      `summary`; outer `outer_result` ← inner `inner_output`. The inner
+      subgraph does NOT register a SessionStore and MUST observe only the two
+      fields declared in its schema — never the outer `summary` directly, and
+      never a session-state surface.
+    subgraphs:
+      inner_capability:
+        state:
+          fields:
+            inner_input:
+              type: str
+              default: ""
+            inner_output:
+              type: str
+              default: ""
+        entry: inner_node
+        nodes:
+          inner_node:
+            update_pure: {inner_output: "inner-done"}
+        edges:
+          - {from: inner_node, to: END}
+    state:
+      fields:
+        summary:
+          type: str
+          default: ""
+        outer_result:
+          type: str
+          default: ""
+    entry: outer_dispatch
+    nodes:
+      outer_dispatch:
+        subgraph: inner_capability
+        mapping:
+          inputs: {inner_input: summary}
+          outputs: {outer_result: inner_output}
+    edges:
+      - {from: outer_dispatch, to: END}
+    session_store: in_memory
+    session_id: "s10"
+    seeded_session:
+      state: {summary: "outer-data"}
+    expected:
+      # Inner subgraph saw ONLY the projected input; no session-state leakage.
+      inner_pre_state: {inner_input: "outer-data", inner_output: ""}
+      final_state: {summary: "outer-data", outer_result: "inner-done"}
+      saved_session_assertions:
+        state: {summary: "outer-data", outer_result: "inner-done"}
+    invariants:
+      subgraph_state_fields_match_subgraph_schema: true
+      subgraph_does_not_see_session_state_directly: true
+      no_inner_session_load_or_save: true

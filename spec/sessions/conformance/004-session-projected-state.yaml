@@ -1,0 +1,49 @@
+# Projected sessions (§4.2): a SessionState projection narrower than the invoke
+# State. Only the projected (cross-invoke) fields are persisted; per-invoke
+# scratch fields are NOT saved, and on resume they start from their defaults.
+
+cases:
+  - name: scratch_fields_excluded_from_session_record
+    description: |
+      State has two fields: `summary` (cross-invoke, in the SessionState
+      projection) and `scratch` (per-invoke, NOT projected). The node sets
+      both. Invoke #1 (session_id="s1") saves only `summary`; `scratch` is
+      excluded from the record. Invoke #2 (session_id="s1") loads `summary`,
+      but `scratch` starts from its default (the prior invoke's scratch value
+      did not persist).
+    state:
+      fields:
+        summary:
+          type: str
+          default: ""
+        scratch:
+          type: str
+          default: ""
+    session_state:
+      # SessionState projection — only `summary` survives across invokes.
+      fields: [summary]
+    entry: work
+    nodes:
+      work:
+        update_pure: {summary: "done", scratch: "tmp"}
+    edges:
+      - {from: work, to: END}
+    session_store: in_memory
+    invocations:
+      - session_id: "s1"
+        initial_state: {}
+        expected_final_state: {summary: "done", scratch: "tmp"}
+        saved_session_assertions:
+          # Only the projected field is in the record.
+          state: {summary: "done"}
+          excludes_fields: [scratch]
+      - session_id: "s1"
+        initial_state: {}
+        # Loads `summary` from the saved record; `scratch` is NOT loaded
+        # (defaults to "").
+        loaded_session_state: {summary: "done"}
+        loaded_invoke_state_for_scratch: ""
+        expected_final_state: {summary: "done", scratch: "tmp"}
+    invariants:
+      scratch_field_never_persisted: true
+      projected_field_persists_across_invokes: true
