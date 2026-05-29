@@ -45,9 +45,9 @@ lifecycle and the proposal template.
 | [0036](proposals/0036-graph-engine-fan-out-collection-reducers.md) | Fan-out collection reducers | graph-engine  | Accepted | Shipped (0.10.0)| —          |
 | [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping (§8.2) | llm-provider  | Accepted | Pending         | —          |
 | [0038](proposals/0038-llm-provider-google-gemini-mapping.md) | Google Gemini wire-format mapping (§8.3) | llm-provider  | Accepted | Pending         | —          |
-| [0039](proposals/0039-observability-caller-supplied-invocation-id.md) | Caller-supplied `invocation_id` | observability | Accepted | Pending         | —          |
+| [0039](proposals/0039-observability-caller-supplied-invocation-id.md) | Caller-supplied `invocation_id` | observability | Accepted | Shipped (0.11.0)| —          |
 | [0040](proposals/0040-observability-mid-invocation-metadata-open-span-update.md) | Mid-invocation metadata open-span update | observability | Accepted | Pending         | —          |
-| [0041](proposals/0041-observability-langfuse-metadata-key-collision.md) | Reserve OA-emitted Langfuse metadata keys | observability | Accepted | Pending         | —          |
+| [0041](proposals/0041-observability-langfuse-metadata-key-collision.md) | Reserve OA-emitted Langfuse metadata keys | observability | Accepted | Shipped (0.11.0)| —          |
 | [0042](proposals/0042-observability-reserved-keys-extension.md) | Reserve `branch_name`, `detached`, `detached_from_invocation_id` metadata keys | observability | Draft    | —               | —          |
 
 Click any column header to sort.
