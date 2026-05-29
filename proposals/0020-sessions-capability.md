@@ -415,9 +415,16 @@ Six canonical error categories:
 
 - **`session_load_failed`** — `SessionStore.load()` raised an unrecoverable
   error. The invoke MUST NOT proceed.
-- **`session_save_failed`** — `SessionStore.save()` raised at invoke exit (or
-  mid-invoke). The invoke's state was already committed at the time of save;
-  callers see this as a post-completion error and decide how to handle it.
+- **`session_save_failed`** — `SessionStore.save()` raised. When raised by
+  the auto-save at invoke exit (§6.1), the invoke's final state was already
+  committed and the failure surfaces to the `invoke()` caller as a
+  post-completion error; the invoke result does NOT roll back, but subsequent
+  invokes will see the prior session state. When raised by an explicit
+  mid-invoke save (§6.2), the failure surfaces at the point of the save call
+  within the invocation — the node body that requested the save sees the
+  error in the language's idiomatic form and MAY swallow, retry, or propagate
+  it as a normal node failure (which the engine then handles per graph-engine
+  §4).
 - **`session_state_migration_missing`** — `SessionStore.load()` returned a
   record with a `schema_version` for which no migration chain to the current
   schema is registered. Non-transient.

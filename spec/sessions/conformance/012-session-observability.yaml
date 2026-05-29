@@ -10,7 +10,7 @@ cases:
       Two-node graph; in-memory SessionStore registered; invoke() with
       session_id="s12". Each node emits a log line. Every span (the invocation
       root and both node spans) MUST carry `openarmature.session_id="s12"`,
-      and every log record MUST carry `session_id="s12"`. The §6 NodeEvent
+      and every log record MUST carry `openarmature.session_id="s12"`. The §6 NodeEvent
       delivered to observers does NOT carry session_id as a field; observers
       that need it read it from the ambient invocation context.
     state:

@@ -13,8 +13,8 @@ NOT a field on the §6 NodeEvent — it propagates through the ambient invocatio
   propagation contract).
 - observability §5.6 — `openarmature.session_id` is a cross-cutting span attribute (every span)
   when the invocation is session-bound.
-- observability §7 — `session_id` is a log-record field on every log record emitted during a
-  session-bound invocation.
+- observability §7 — `openarmature.session_id` is a log-record field on every log record
+  emitted during a session-bound invocation.
 - graph-engine §6 — NodeEvent does NOT carry `session_id`; observers that need it read the
   ambient context.
 
@@ -28,7 +28,7 @@ NOT a field on the §6 NodeEvent — it propagates through the ambient invocatio
 **What passes:**
 
 - Every span across the trace tree carries `openarmature.session_id="s12"` (case 1).
-- Every log record carries `session_id="s12"` (case 1).
+- Every log record carries `openarmature.session_id="s12"` (case 1).
 - `openarmature.session_id` is absent from spans and log records when no `session_id` is
   supplied (case 2).
 - The NodeEvent delivered to observers does NOT contain a `session_id` field.
@@ -37,7 +37,7 @@ NOT a field on the §6 NodeEvent — it propagates through the ambient invocatio
 
 - A span (root, node, or otherwise) is missing `openarmature.session_id` despite session
   binding.
-- A log record is missing `session_id`.
+- A log record is missing `openarmature.session_id`.
 - The non-session invoke emits the attribute anyway.
 - The implementation adds `session_id` as a field on NodeEvent (contradicts the §3 / §11.1
   propagation model).
