@@ -1,0 +1,50 @@
+# §8.3.5 Gemini native structured output. When response_schema is
+# supplied, the wire request sets generationConfig.responseMimeType =
+# "application/json" and generationConfig.responseJsonSchema =
+# <response_schema verbatim> (the full-JSON-Schema field, not the lossy
+# OpenAPI-subset responseSchema). The response text is parsed into
+# Response.parsed.
+
+mapping: gemini
+
+mock_provider:
+  capabilities:
+    supports_native_structured_output: true
+  responses:
+    - status: 200
+      body:
+        candidates:
+          - content:
+              role: model
+              parts:
+                - {text: '{"value":42}'}
+            finishReason: STOP
+        usageMetadata: {promptTokenCount: 10, candidatesTokenCount: 4, totalTokenCount: 14}
+
+calls:
+  - operation: complete
+    messages: [{role: user, content: "Generate."}]
+    response_schema:
+      type: object
+      properties:
+        value: {type: integer}
+      required: [value]
+      additionalProperties: false
+    config: {max_tokens: 64}
+    expected_wire_request:
+      model: gemini-test
+      contents: [{role: user, parts: [{text: "Generate."}]}]
+      generationConfig:
+        maxOutputTokens: 64
+        responseMimeType: "application/json"
+        responseJsonSchema:
+          type: object
+          properties:
+            value: {type: integer}
+          required: [value]
+          additionalProperties: false
+    expected:
+      response:
+        message: {role: assistant, content: '{"value":42}', tool_calls: null}
+        finish_reason: stop
+        parsed: {value: 42}

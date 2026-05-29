@@ -1,6 +1,6 @@
 # 0038: llm-provider — Google Gemini Wire-Format Mapping (§8.3)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-27
 - **Targets:** spec/llm-provider/spec.md (new §8.3 *Google Gemini mapping* subsection following the §8.X template; §3 *Message shape* extended so `TextBlock` and `ToolCall` carry an optional opaque `signature` field — a provider round-trip token mirroring `ThinkingBlock.signature`, for providers whose reasoning-continuity signatures attach to non-thinking parts; §3 reasoning-block round-trip rule generalized to single-provider scope; `ThinkingBlock.signature` relaxed from required to optional); spec/llm-provider/conformance/ (new fixtures `044-053` covering the Gemini mapping rows, the thought-summary / thought-signature round-trip, and the cross-provider signature-strip rule).

@@ -1,0 +1,88 @@
+# §8.3.2 + §8.3.1.1 Gemini thought-signature round-trip. Call 1: the
+# response carries a `thought: true` summary part (-> ThinkingBlock.text,
+# no own signature) and a functionCall part carrying a thoughtSignature
+# (-> ToolCall.signature). Call 2: the assistant message is passed back;
+# the wire request reattaches the thoughtSignature to the functionCall
+# part in its original position.
+
+mapping: gemini
+
+mock_provider:
+  responses:
+    # Consumed by call 1.
+    - status: 200
+      body:
+        candidates:
+          - content:
+              role: model
+              parts:
+                - {text: "Let me check the weather.", thought: true}
+                - {functionCall: {name: get_weather, id: call_1, args: {location: "SF"}}, thoughtSignature: "sig-g1"}
+            finishReason: STOP
+        usageMetadata: {promptTokenCount: 20, candidatesTokenCount: 10, totalTokenCount: 30}
+    # Consumed by call 2.
+    - status: 200
+      body:
+        candidates:
+          - content:
+              role: model
+              parts:
+                - {text: "It's 72F in SF."}
+            finishReason: STOP
+        usageMetadata: {promptTokenCount: 45, candidatesTokenCount: 6, totalTokenCount: 51}
+
+calls:
+  # Call 1 — receive a thought summary + a signed functionCall.
+  - operation: complete
+    messages:
+      - {role: user, content: "Weather in SF?"}
+    tools:
+      - {name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}
+    config: {max_tokens: 256}
+    expected:
+      response:
+        message:
+          role: assistant
+          content:
+            # thought:true summary -> ThinkingBlock.text (the summary carries no signature).
+            - {type: thinking, text: "Let me check the weather."}
+          tool_calls:
+            # thoughtSignature on the functionCall part -> ToolCall.signature.
+            - {id: call_1, name: get_weather, arguments: {location: "SF"}, signature: "sig-g1"}
+        finish_reason: tool_calls
+
+  # Call 2 — pass the assistant turn back; wire reattaches the signature in position.
+  - operation: complete
+    messages:
+      - {role: user, content: "Weather in SF?"}
+      - role: assistant
+        content:
+          - {type: thinking, text: "Let me check the weather."}
+        tool_calls:
+          - {id: call_1, name: get_weather, arguments: {location: "SF"}, signature: "sig-g1"}
+      - {role: tool, tool_call_id: call_1, content: "72F sunny"}
+    tools:
+      - {name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}
+    config: {max_tokens: 256}
+    expected_wire_request:
+      model: gemini-test
+      contents:
+        - {role: user, parts: [{text: "Weather in SF?"}]}
+        - role: model
+          parts:
+            # ThinkingBlock -> thought:true summary part (no signature on the summary).
+            - {text: "Let me check the weather.", thought: true}
+            # ToolCall.signature reattaches as thoughtSignature on the functionCall part, in position.
+            - {functionCall: {name: get_weather, id: call_1, args: {location: "SF"}}, thoughtSignature: "sig-g1"}
+        - role: user
+          parts:
+            - {functionResponse: {name: get_weather, id: call_1, response: {result: "72F sunny"}}}
+      tools:
+        - functionDeclarations:
+            - {name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}
+      generationConfig:
+        maxOutputTokens: 256
+    expected:
+      response:
+        message: {role: assistant, content: "It's 72F in SF.", tool_calls: null}
+        finish_reason: stop

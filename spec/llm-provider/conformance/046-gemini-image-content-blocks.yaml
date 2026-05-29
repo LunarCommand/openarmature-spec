@@ -1,0 +1,44 @@
+# §8.3.1.1 Gemini image content blocks. Inline images map to
+# inlineData {mimeType, data}; URL images map to fileData
+# {mimeType, fileUri} (mimeType inferred from the URL). The `detail`
+# hint is dropped — Gemini does not honor it.
+
+mapping: gemini
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        candidates:
+          - content:
+              role: model
+              parts:
+                - {text: "Two images received."}
+            finishReason: STOP
+        usageMetadata: {promptTokenCount: 30, candidatesTokenCount: 4, totalTokenCount: 34}
+
+calls:
+  - operation: complete
+    messages:
+      - role: user
+        content:
+          - {type: text, text: "Describe these."}
+          - {type: image, source: {type: inline, base64_data: "aGVsbG8="}, media_type: "image/png", detail: "high"}
+          - {type: image, source: {type: url, url: "https://example.com/cat.jpg"}}
+    config: {max_tokens: 128}
+    expected_wire_request:
+      model: gemini-test
+      contents:
+        - role: user
+          parts:
+            - {text: "Describe these."}
+            # Inline -> inlineData; the `detail: high` hint is dropped.
+            - {inlineData: {mimeType: "image/png", data: "aGVsbG8="}}
+            # URL -> fileData.fileUri; mimeType inferred from the URL.
+            - {fileData: {mimeType: "image/jpeg", fileUri: "https://example.com/cat.jpg"}}
+      generationConfig:
+        maxOutputTokens: 128
+    expected:
+      response:
+        message: {role: assistant, content: "Two images received.", tool_calls: null}
+        finish_reason: stop

@@ -1,0 +1,49 @@
+# §8.3.5.1 Gemini structured-output fallback (prompt augmentation).
+# For a model without native responseJsonSchema support, the mapping
+# falls back to appending a schema directive to systemInstruction (per
+# §8.1.5.1's pattern) and parsing the text response. The wire request
+# carries NO responseJsonSchema / responseMimeType.
+#
+# The appended directive text is implementation-derived (per §8.3.5.1);
+# the literal "*" is the harness wildcard for "present, non-empty
+# string, value exempt from literal comparison".
+
+mapping: gemini
+
+mock_provider:
+  capabilities:
+    supports_native_structured_output: false
+  responses:
+    - status: 200
+      body:
+        candidates:
+          - content:
+              role: model
+              parts:
+                - {text: '{"value":42}'}
+            finishReason: STOP
+        usageMetadata: {promptTokenCount: 18, candidatesTokenCount: 4, totalTokenCount: 22}
+
+calls:
+  - operation: complete
+    messages: [{role: user, content: "Generate."}]
+    response_schema:
+      type: object
+      properties:
+        value: {type: integer}
+      required: [value]
+      additionalProperties: false
+    config: {max_tokens: 64}
+    expected_wire_request:
+      model: gemini-test
+      contents: [{role: user, parts: [{text: "Generate."}]}]
+      # Schema directive appended to systemInstruction (impl-derived text).
+      systemInstruction:
+        parts:
+          - {text: "*"}
+      generationConfig:
+        maxOutputTokens: 64
+      # No native structured-output fields on the fallback path.
+    expected:
+      response:
+        parsed: {value: 42}

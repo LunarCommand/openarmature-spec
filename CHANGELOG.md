@@ -4,6 +4,22 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.32.0] — 2026-05-29
+
+**Added**
+
+- **llm-provider §8.3 — Google Gemini `generateContent` wire-format mapping.** A new §8 catalog entry mapping OA's provider abstraction onto Gemini's `contents` / `parts` protocol: system extraction to `systemInstruction`, the `assistant`↔`model` role rename, `tool` role bidirectional translation via `functionResponse` parts, §4 tools → `functionDeclarations`, `tool_choice` → `toolConfig.functionCallingConfig` (including the `"required"`→`ANY` rename), all seven declared `RuntimeConfig` fields → `generationConfig`, native structured output via `responseJsonSchema`, and the `finishReason` → `finish_reason` mapping. ([proposal 0038](proposals/0038-llm-provider-google-gemini-mapping.md))
+- **llm-provider §3 — optional reasoning-continuity `signature` on `TextBlock` and `ToolCall`** (mirroring `ThinkingBlock.signature`), for providers whose signatures attach to non-thinking parts (Gemini's `thoughtSignature`). New §3.1.7 generalizes the strip-on-send rule: reasoning-continuity signatures are provider-bound and stripped when a message list is routed to a different provider's mapping.
+- Conformance fixtures `llm-provider/conformance/044`–`053` (Gemini message round-trip, function-call flow, image blocks, tool-choice modes, RuntimeConfig mapping, error mapping, structured output native + fallback, thought-signature round-trip, cross-provider signature strip).
+
+**Changed**
+
+- **llm-provider §3.1.4 — `ThinkingBlock.signature` relaxed from required to optional.** A provider may emit a thought summary that carries no own signature (Gemini, where the signature rides on sibling `TextBlock` / `ToolCall` parts). The field is preserved verbatim when present.
+
+**Notes**
+
+- **MINOR bump.** Additive: §8.3 is a new mapping; the new §3 `signature` fields are optional; §3.1.7 generalizes an existing strip rule. The one relaxation (`ThinkingBlock.signature` required→optional) widens, not tightens, the contract.
+
 ## [0.31.0] — 2026-05-28
 
 **Changed**
