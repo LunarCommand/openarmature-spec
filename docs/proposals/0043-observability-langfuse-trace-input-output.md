@@ -1,0 +1,1 @@
+../../proposals/0043-observability-langfuse-trace-input-output.md
