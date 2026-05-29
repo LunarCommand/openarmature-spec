@@ -110,6 +110,7 @@ A `ToolCall` record:
 | `id` | String identifier, unique within the message. The matching `tool` message bears this `id` as `tool_call_id`. For provider-returned tool calls, implementations MUST preserve the provider's `id` verbatim — neither rewriting nor normalizing it. Ids are opaque correlators within a single message list; preserving the original lets users correlate with provider-side logs/billing and persists naturally as conversations are stored, replayed, or routed. |
 | `name` | The tool name. MUST match a `Tool.name` declared in the call's `tools` argument under non-error responses; on `finish_reason: "error"`, an unmatched `name` MAY appear (see below). |
 | `arguments` | A JSON-serializable mapping of argument names to values. Under non-error responses, MUST be a parsed mapping conforming to the tool's `parameters` schema. Under `finish_reason: "error"`, MAY be `null` (the implementation could not parse the provider's bytes as JSON) or a parsed mapping that does not conform to the schema. |
+| `signature` | Optional. An opaque provider-issued reasoning-continuity token, present only when a provider attaches reasoning-continuity signatures to tool calls (e.g. Gemini's `thoughtSignature`). Implementations MUST preserve it verbatim and pass it back to the same provider on round-trip; spec callers MUST NOT construct, modify, or interpret it. Provider-bound (§3.1.7); absent for providers that do not attach signatures to tool calls. |
 
 **Validation timing.** Implementations MUST validate message-shape constraints (per-role required
 fields, `tool_call_id` matching, etc.) at the boundary of `complete()` — before sending to the
@@ -162,6 +163,7 @@ A text block is a record:
 |---|---|---|
 | `type` | yes | The literal string `"text"`. |
 | `text` | yes | A non-empty string. |
+| `signature` | optional | An opaque provider-issued reasoning-continuity token, present only when the provider attaches one to a text block (e.g. Gemini's `thoughtSignature` on a text part). Same semantics as `ToolCall.signature`: preserved verbatim, passed back to the same provider, never constructed / modified / interpreted by callers; provider-bound (§3.1.7). |
 
 A text block is the content-array equivalent of the text-string form. A user message containing
 exactly one text block with text `T` is normatively equivalent to a user message with
@@ -203,7 +205,7 @@ A thinking block is a record:
 |---|---|---|
 | `type` | yes | The literal string `"thinking"`. |
 | `text` | yes | The reasoning content the provider emitted. A non-empty string. |
-| `signature` | yes | An opaque provider-issued token used by the provider to verify the block on round-trip. Implementations MUST pass the value through unchanged; spec callers MUST NOT construct, modify, or fabricate the field. |
+| `signature` | optional | An opaque provider-issued token used by the provider to verify the block on round-trip. Present when the provider attaches the signature to the thinking block itself (e.g. Anthropic). Absent when the provider carries reasoning-continuity signatures on sibling parts instead (e.g. Gemini, where the thought summary maps to a thinking block with no own signature — the signature rides on the adjacent `TextBlock` / `ToolCall`). Implementations MUST pass the value through unchanged when present; spec callers MUST NOT construct, modify, or fabricate the field. |
 
 Thinking blocks represent provider-emitted reasoning content. They MAY appear in `assistant`
 message content sequences. They MUST NOT appear in `user`, `system`, or `tool` message content.
@@ -248,6 +250,25 @@ the order it wants the model to perceive it.
 A content-block sequence MUST NOT be empty (per the §3 per-role constraint). A content-block
 sequence consisting entirely of text blocks is valid (and is the multi-text-block shape some
 applications prefer for prompt-composition reasons).
+
+#### 3.1.7 Reasoning-continuity signatures
+
+Reasoning-continuity signatures — `ThinkingBlock.signature`,
+`RedactedThinkingBlock.data`, and the optional `ToolCall.signature` /
+`TextBlock.signature` fields — are **provider-bound**. A signature
+produced by one provider is meaningful only to that provider's wire
+mapping; it is NOT portable across providers. When a message list
+carrying reasoning-continuity signatures is routed through a §8.X
+mapping for a different provider than the one that produced them, that
+mapping MUST strip the signatures (and any `ThinkingBlock` /
+`RedactedThinkingBlock` entries) before emitting the wire request —
+the same strip-on-send behavior the §8.1 OpenAI mapping applies to
+thinking blocks. Thinking-bearing conversations are thus
+single-provider for round-trip purposes.
+
+The OA-level use of reasoning content — reading `ThinkingBlock.text`,
+branching on it, logging it — is uniform across providers; only the
+wire-level capture and round-trip of signatures is provider-specific.
 
 ## 4. Tool definition
 
@@ -1028,6 +1049,303 @@ already supplies tools (the synthetic tool would override the caller's tool inte
 `system` field (or message list), issue the request otherwise unmodified, parse and validate the
 text response against `response_schema`, raise `structured_output_invalid` on failure. The
 caller's original `messages` MUST be left unchanged.
+
+### 8.3 Google Gemini mapping
+
+The Gemini `generateContent` API
+(`POST /v1beta/models/{model}:generateContent`) is the
+provider-native protocol for Google's Gemini model family.
+
+#### 8.3.1 Request mapping
+
+**System extraction.** Any §3 messages with `role: "system"` are
+removed from the spec message list; their text content is
+concatenated (joined with `\n\n` when more than one is present,
+preserving order) into Gemini's top-level `systemInstruction`
+field as a `Content` object: `{"parts": [{"text": <concatenated>}]}`.
+The `contents` array sent to Gemini contains only `user` and
+`model` role entries. Non-text content in system messages is
+rejected at pre-send validation (`provider_invalid_request`).
+
+**Role + body shape.** Each remaining spec message maps to one
+Gemini `Content`:
+
+| Spec role | Gemini `role` | Notes |
+|---|---|---|
+| `user` | `user` | `content` maps to `parts` per §8.3.1.1. |
+| `assistant` | `model` | `content` blocks + `tool_calls` map to `parts` per §8.3.1.1. |
+| `tool` | (no direct Gemini role) | Maps via §8.3.1.2 bidirectional translation to a `user`-role `Content` containing `functionResponse` parts. |
+
+The spec `assistant` role name translates to Gemini's `model` on
+send and back to `assistant` on receive.
+
+**Tool definitions.** A §4 `Tool` `{name, description, parameters}`
+maps into Gemini's `tools[].functionDeclarations[]`:
+
+```
+{
+  "tools": [
+    {
+      "functionDeclarations": [
+        { "name": <name>, "description": <description>, "parameters": <parameters> }
+      ]
+    }
+  ]
+}
+```
+
+The spec `parameters` JSON Schema passes through under
+`parameters` verbatim.
+
+**Tool-choice mapping.** The §5 `tool_choice` parameter maps to
+Gemini's `toolConfig.functionCallingConfig`:
+
+| Spec `tool_choice` | Gemini `functionCallingConfig` |
+|---|---|
+| `None` / absent | (field omitted) |
+| `"auto"` | `{"mode": "AUTO"}` |
+| `"required"` | `{"mode": "ANY"}` |
+| `"none"` | `{"mode": "NONE"}` |
+| `{type: "tool", name: X}` | `{"mode": "ANY", "allowedFunctionNames": [X]}` |
+
+The `"required"` → `"ANY"` rename is the load-bearing translation
+(spec's cross-vendor name → Gemini's wire name). A specific-tool
+choice maps to `ANY` mode constrained to a single allowed function
+name. Gemini's fourth mode, `VALIDATED` (the model may call only
+declared functions, validated against their schemas, or respond
+in natural language), has no §5 `tool_choice` analogue; it is
+reachable via the extras-pass-through path (`toolConfig` supplied
+as an undeclared field) and is documented here so implementations
+recognize it rather than treating it as invalid.
+
+**RuntimeConfig field mapping.** The §6 `RuntimeConfig` declared
+fields map to `generationConfig`:
+
+- `temperature` → `generationConfig.temperature`
+- `top_p` → `generationConfig.topP`
+- `max_tokens` → `generationConfig.maxOutputTokens`
+- `stop_sequences` → `generationConfig.stopSequences`
+- `seed` → `generationConfig.seed`
+- `frequency_penalty` → `generationConfig.frequencyPenalty`
+- `presence_penalty` → `generationConfig.presencePenalty`
+
+`max_tokens` is optional for Gemini (server default applies when
+absent) — unlike Anthropic, no required-field validation.
+
+All seven §6 declared `RuntimeConfig` fields map to `generationConfig`:
+Gemini's `GenerationConfig` carries `seed`, `frequencyPenalty`, and
+`presencePenalty` alongside `temperature` / `topP` / `maxOutputTokens` /
+`stopSequences`. So, like the §8.1 OpenAI mapping (and unlike §8.2
+Anthropic, which lacks the penalties), the Gemini mapping has no
+unsupported-sampling-field rejections — every declared field has a
+direct `generationConfig` target. Out-of-range values (e.g.,
+`frequencyPenalty` / `presencePenalty` outside Gemini's documented
+bounds) are surfaced by Gemini per §8.3.3, not pre-validated by the
+mapping.
+
+Gemini's `topK` is not a §6 declared field; callers needing it
+supply it via the extras-pass-through path, which the §8.3
+mapping places under `generationConfig`.
+
+The bound model identifier becomes the `{model}` path segment in
+the request URL (not a body field).
+
+**Undeclared `RuntimeConfig` fields** pass through per §6's
+extras-pass-through contract. Because Gemini nests sampling
+parameters under `generationConfig`, the §8.3 mapping places
+undeclared keys under `generationConfig` (not the request root),
+matching where Gemini expects generation parameters. The mapping
+does NOT validate, rename, or transform undeclared keys.
+
+##### 8.3.1.1 Parts wire mapping
+
+This sub-subsection covers two wire-encoding paths, mirroring
+§8.2.1.1:
+
+- Spec **content blocks** (per §3.1) appearing in message
+  `content` map to Gemini `Part` entries per the table below.
+- Spec **ToolCall** records in the assistant message's
+  `tool_calls` field are extracted and serialized as Gemini
+  `functionCall` parts; reverse on receive.
+
+| Spec source | Gemini `Part` entry |
+|---|---|
+| `TextBlock { text }` | `{ "text": <text> }` |
+| `ImageBlock` with `source: inline { base64_data }` + `media_type` | `{ "inlineData": { "mimeType": <media_type>, "data": <base64_data> } }`. The `detail` hint, when set, is dropped — Gemini does not honor it. |
+| `ImageBlock` with `source: url { url }` | `{ "fileData": { "mimeType": <inferred>, "fileUri": <url> } }`. Gemini references external media via `fileData.fileUri`; the `detail` hint is dropped. (Note: Gemini's `fileUri` typically expects a Gemini Files API URI or a supported storage URI; arbitrary `http(s)` image URLs may be rejected by the provider — surfaced as `provider_unsupported_content_block` per §8.3.3.) |
+| `ToolCall { id, name, arguments, signature? }` from assistant `tool_calls` field | `{ "functionCall": { "name": <name>, "id": <id>, "args": <arguments> }, "thoughtSignature": <signature> }`. The `id` round-trips Gemini's per-call identifier. `args` is the deserialized mapping (Gemini accepts an object directly). When the spec `ToolCall` carries an opaque `signature` (a Gemini `thoughtSignature` captured on receive), it is reattached to this part on send. |
+| `ThinkingBlock { text, signature? }` | A `Part` flagged `{ "text": <text>, "thought": true }`. Gemini's thought summary is a text part with `thought: true`; the `signature`, when present, is reattached per the thought-signature mapping in §8.3.2 below. |
+| `TextBlock { text, signature }` (assistant, signature present) | `{ "text": <text>, "thoughtSignature": <signature> }`. A text part carrying a captured Gemini thought signature. |
+
+`thoughtSignature` is emitted on a part only when the corresponding
+spec block carries a non-empty `signature`. When the block has no
+signature (the common case), the key MUST be omitted entirely — not
+set to `null` — so the wire request matches Gemini's contract.
+
+Empty content blocks are rejected at pre-send validation per §3 /
+`provider_invalid_request`.
+
+##### 8.3.1.2 `tool` role bidirectional translation
+
+As with §8.2.1.2, spec `tool` messages have no Gemini role.
+
+**Spec → Gemini (on send):** each consecutive run of spec `tool`
+messages collapses into a single Gemini `user`-role `Content`
+whose `parts` are `functionResponse` entries — one per spec `tool`
+message, preserving order:
+
+```
+{
+  "role": "user",
+  "parts": [
+    { "functionResponse": { "name": <name>, "id": <tool_call_id>, "response": <wrapped content> } }
+    /* one per consecutive spec tool message */
+  ]
+}
+```
+
+The `name` is the tool name from the matching `functionCall`; the
+`id` is the spec `tool_call_id` (matching the `functionCall.id`);
+the `response` wraps the spec `tool` message's content. Gemini
+expects a structured object under `response`, and §3 tool content is
+a string, so the mapping always wraps it as `{"result": <content>}`
+(it does not attempt to JSON-parse the string).
+
+**Gemini → Spec (on receive):** each `functionResponse` part in a
+user-role `Content` maps back to one spec `tool` message with
+`tool_call_id` from the part's `id` and content from `response`.
+
+The translation is lossless and bidirectional.
+
+#### 8.3.2 Response mapping
+
+A successful Gemini response maps onto a §6 `Response`:
+
+- `message` — built from `candidates[0].content` (role `model` →
+  spec `assistant`). Each `parts` entry maps back to its spec form
+  per §8.3.1.1: `text` parts → `TextBlock` (or `ThinkingBlock`
+  when flagged `thought: true`); `functionCall` parts → `ToolCall`
+  entries. Block order is preserved.
+- **Thought-signature capture.** When a `parts` entry carries a
+  `thoughtSignature`, the §8.3 mapping captures it onto the
+  corresponding spec block's opaque `signature` field:
+  `functionCall` part → `ToolCall.signature`; text part →
+  `TextBlock.signature`; a `thought: true` summary part's own
+  text → `ThinkingBlock.text` (Gemini's summary part does not
+  itself carry the signature). The mapping MUST preserve every
+  `thoughtSignature` it receives so that, on the next
+  `complete()` call passing the assistant message back, the
+  signatures reattach to their parts in original position (per
+  Gemini's "return all parts with signatures intact" rule). OA-level
+  code never reads these signatures; they are opaque round-trip
+  state.
+- `tool_calls` — extracted from `functionCall` parts (mirrors
+  §8.2.2's dual surfacing on `Response.message.tool_calls`).
+- `finish_reason` — derived from `candidates[0].finishReason`:
+
+  | Gemini `finishReason` | Spec `finish_reason` |
+  |---|---|
+  | `STOP` | `"stop"` |
+  | `MAX_TOKENS` | `"length"` |
+  | `SAFETY` / `RECITATION` / `BLOCKLIST` / `PROHIBITED_CONTENT` / `SPII` | `"content_filter"` |
+  | `MALFORMED_FUNCTION_CALL` / `UNEXPECTED_TOOL_CALL` / `LANGUAGE` / `OTHER` | `"error"` |
+  | (a `functionCall` part is present) | `"tool_calls"` |
+  | (any other / unknown value) | `"error"` |
+
+  Note: Gemini does not use a dedicated tool-call finish reason in
+  all versions — when the response contains a `functionCall` part,
+  the mapping reports `"tool_calls"` regardless of the raw
+  `finishReason`. The table above covers the documented Gemini
+  `finishReason` enum; image-generation-only variants (`IMAGE_SAFETY`,
+  `IMAGE_PROHIBITED_CONTENT`, `IMAGE_RECITATION`, `IMAGE_OTHER`,
+  `NO_IMAGE`) are out of scope for this text/tool mapping and fall to
+  the `"error"` fallback, as does any value not listed. The raw value
+  is preserved in `Response.raw`.
+
+- `usage` — built from `usageMetadata`:
+  `usage.prompt_tokens` ← `promptTokenCount`,
+  `usage.completion_tokens` ← `candidatesTokenCount`,
+  `usage.total_tokens` ← `totalTokenCount`. Gemini-specific
+  subfields (`cachedContentTokenCount`, `toolUsePromptTokenCount`,
+  `thoughtsTokenCount`, the `*TokensDetails` modality breakdowns)
+  surface in `Response.raw.usageMetadata` unchanged and are NOT
+  promoted to the spec `usage` record.
+- `raw` — the parsed JSON response body, verbatim. Gemini-specific
+  fields (`promptFeedback`, `safetyRatings`, `modelVersion`,
+  `responseId`) surface here unchanged.
+
+#### 8.3.3 Error mapping
+
+Gemini returns errors with an HTTP status and a body
+`{"error": {"code": <int>, "message": <string>, "status": <string>}}`.
+
+| Gemini condition | Spec category |
+|---|---|
+| HTTP 400 `INVALID_ARGUMENT` (malformed request) | `provider_invalid_request` |
+| HTTP 400 / 403 indicating the model rejected a content part (unsupported media type, unsupported `fileUri` scheme) | `provider_unsupported_content_block` |
+| HTTP 401 / 403 `PERMISSION_DENIED` / `UNAUTHENTICATED` | `provider_authentication` |
+| HTTP 404 `NOT_FOUND` (model not found) | `provider_invalid_model` |
+| HTTP 429 `RESOURCE_EXHAUSTED` | `provider_rate_limit` |
+| HTTP 500 `INTERNAL` | `provider_unavailable` |
+| HTTP 503 `UNAVAILABLE` | `provider_unavailable` |
+| HTTP 504 `DEADLINE_EXCEEDED` | `provider_unavailable` |
+| Successful HTTP response that fails to parse into §6 shape | `provider_invalid_response` |
+
+Gemini's `error.status` string surfaces in `Response.raw` for
+finer-grained handling.
+
+#### 8.3.4 Concurrency
+
+Matches §8.1.4. Gemini's hosted API supports concurrent requests;
+implementations MUST NOT add a serialization layer. Client-side
+rate-limit needs use the pipeline-utilities rate limiter or
+middleware.
+
+#### 8.3.5 Structured output
+
+Gemini natively supports schema-constrained decoding. When
+`complete()` is called with a `response_schema`, the §8.3 mapping
+sets:
+
+```
+{
+  "generationConfig": {
+    "responseMimeType": "application/json",
+    "responseJsonSchema": <response_schema>
+  }
+}
+```
+
+Gemini exposes two schema fields: `responseSchema` (an OpenAPI 3.0
+Schema subset) and `responseJsonSchema` (a full JSON Schema). Because
+the §6 `response_schema` is a full JSON Schema, the §8.3 mapping
+targets `responseJsonSchema`, so the schema round-trips faithfully —
+`responseSchema` would silently drop JSON Schema constructs outside
+the OpenAPI subset. The `response_schema` passes through under
+`responseJsonSchema` unchanged. The response's text content is the
+JSON string conforming to the schema; the §8.3 mapping parses it into
+`Response.parsed` and validates against `response_schema` per §6. On
+validation failure, raise `structured_output_invalid` per §7. The
+behavioral contract matches §8.1.5's native path.
+
+When `complete()` is called without `response_schema`, the request
+MUST NOT include `responseMimeType` / `responseJsonSchema`; the
+free-form wire shape is preserved.
+
+This is the native path: Gemini, like OpenAI (§8.1.5) and Anthropic
+(§8.2.5), provides native schema-constrained decoding. The
+prompt-augmentation fallback (§8.3.5.1) applies only to models
+lacking native support, mirroring how §8.2.5.1 handles older
+Anthropic models.
+
+##### 8.3.5.1 Fallback for older models
+
+Gemini model versions predating native JSON-Schema-constrained
+decoding fall back to prompt-augmentation per §8.1.5.1's pattern
+(append a schema directive to `systemInstruction` or the message
+list, parse the text response, validate, raise
+`structured_output_invalid` on failure). Implementations MUST
+document which path a given call uses.
 
 ## 9. Determinism
 
