@@ -22,7 +22,7 @@ role); tools nest under `functionDeclarations`; tool-choice is
 `toolConfig.functionCallingConfig` with a four-mode enum; sampling
 parameters nest under `generationConfig`; and structured output is
 natively supported via `generationConfig.responseMimeType` +
-`responseSchema`.
+`responseJsonSchema`.
 
 Gemini's extended-thinking surface (Gemini 2.5+) differs
 structurally from Anthropic's: the thought summary is a `parts`
@@ -80,7 +80,7 @@ both that neither existing mapping applies:
   `stopSequences`) nest under `generationConfig`, not at the
   request root.
 - **Native structured output.** `generationConfig.responseMimeType:
-  "application/json"` + `generationConfig.responseSchema` —
+  "application/json"` + `generationConfig.responseJsonSchema` —
   schema-constrained decoding without the tool-call coercion
   §8.2.5 needs for the Anthropic case.
 - **Thought-signature placement.** Gemini's reasoning-continuity
@@ -218,19 +218,23 @@ fields map to `generationConfig`:
 - `top_p` → `generationConfig.topP`
 - `max_tokens` → `generationConfig.maxOutputTokens`
 - `stop_sequences` → `generationConfig.stopSequences`
+- `seed` → `generationConfig.seed`
+- `frequency_penalty` → `generationConfig.frequencyPenalty`
+- `presence_penalty` → `generationConfig.presencePenalty`
 
 `max_tokens` is optional for Gemini (server default applies when
 absent) — unlike Anthropic, no required-field validation.
 
-`seed`, `frequency_penalty`, and `presence_penalty` are NOT among
-Gemini's documented `generationConfig` fields as of this proposal.
-If supplied (non-`None`), implementations MUST raise
-`provider_invalid_request` at pre-send validation identifying the
-unsupported field — same handling as §8.2's treatment of fields
-Anthropic doesn't support. (If a future Gemini API version adds
-these fields, a follow-on proposal updates the mapping; the
-extras-pass-through path remains available in the interim for
-callers who want to send provider-version-specific fields.)
+All seven §6 declared `RuntimeConfig` fields map to `generationConfig`:
+Gemini's `GenerationConfig` carries `seed`, `frequencyPenalty`, and
+`presencePenalty` alongside `temperature` / `topP` / `maxOutputTokens` /
+`stopSequences`. So, like the §8.1 OpenAI mapping (and unlike §8.2
+Anthropic, which lacks the penalties), the Gemini mapping has no
+unsupported-sampling-field rejections — every declared field has a
+direct `generationConfig` target. Out-of-range values (e.g.,
+`frequencyPenalty` / `presencePenalty` outside Gemini's documented
+bounds) are surfaced by Gemini per §8.3.3, not pre-validated by the
+mapping.
 
 Gemini's `topK` is not a §6 declared field; callers needing it
 supply it via the extras-pass-through path, which the §8.3
@@ -331,19 +335,20 @@ A successful Gemini response maps onto a §6 `Response`:
   |---|---|
   | `STOP` | `"stop"` |
   | `MAX_TOKENS` | `"length"` |
-  | `SAFETY` | `"content_filter"` |
-  | `RECITATION` | `"content_filter"` |
+  | `SAFETY` / `RECITATION` / `BLOCKLIST` / `PROHIBITED_CONTENT` / `SPII` | `"content_filter"` |
+  | `MALFORMED_FUNCTION_CALL` / `UNEXPECTED_TOOL_CALL` / `LANGUAGE` / `OTHER` | `"error"` |
   | (a `functionCall` part is present) | `"tool_calls"` |
   | (any other / unknown value) | `"error"` |
 
   Note: Gemini does not use a dedicated tool-call finish reason in
   all versions — when the response contains a `functionCall` part,
   the mapping reports `"tool_calls"` regardless of the raw
-  `finishReason`. The full Gemini `finishReason` enum
-  (including `OTHER`, `BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII`,
-  `MALFORMED_FUNCTION_CALL`, and others) maps any value not in the
-  table above to `"error"`; the raw value is preserved in
-  `Response.raw`.
+  `finishReason`. The table above covers the documented Gemini
+  `finishReason` enum; image-generation-only variants (`IMAGE_SAFETY`,
+  `IMAGE_PROHIBITED_CONTENT`, `IMAGE_RECITATION`, `IMAGE_OTHER`,
+  `NO_IMAGE`) are out of scope for this text/tool mapping and fall to
+  the `"error"` fallback, as does any value not listed. The raw value
+  is preserved in `Response.raw`.
 
 - `usage` — built from `usageMetadata`:
   `usage.prompt_tokens` ← `promptTokenCount`,
@@ -394,20 +399,26 @@ sets:
 {
   "generationConfig": {
     "responseMimeType": "application/json",
-    "responseSchema": <response_schema>
+    "responseJsonSchema": <response_schema>
   }
 }
 ```
 
-The `response_schema` JSON Schema passes through under
-`responseSchema`. The response's text content is the JSON string
-conforming to the schema; the §8.3 mapping parses it into
-`Response.parsed` and validates against `response_schema` per §6.
-On validation failure, raise `structured_output_invalid` per §7.
-The behavioral contract matches §8.1.5's native path.
+Gemini exposes two schema fields: `responseSchema` (an OpenAPI 3.0
+Schema subset) and `responseJsonSchema` (a full JSON Schema). Because
+OA's §6 `response_schema` is a full JSON Schema (per 0016), the §8.3
+mapping targets `responseJsonSchema`, so the schema round-trips
+faithfully — `responseSchema` would silently drop JSON Schema
+constructs outside the OpenAPI subset. The `response_schema` passes
+through under `responseJsonSchema` unchanged. The response's text
+content is the JSON string conforming to the schema; the §8.3 mapping
+parses it into `Response.parsed` and validates against
+`response_schema` per §6. On validation failure, raise
+`structured_output_invalid` per §7. The behavioral contract matches
+§8.1.5's native path.
 
 When `complete()` is called without `response_schema`, the request
-MUST NOT include `responseMimeType` / `responseSchema`; the
+MUST NOT include `responseMimeType` / `responseJsonSchema`; the
 free-form wire shape is preserved.
 
 This is the native path (mirroring §8.1.5 OpenAI), NOT the
@@ -416,7 +427,7 @@ OpenAI, provides native schema-constrained decoding.
 
 ##### §8.3.5.1 Fallback for older models
 
-Gemini model versions predating native `responseSchema` support
+Gemini model versions predating native JSON-Schema-constrained decoding
 fall back to prompt-augmentation per §8.1.5.1's pattern (append a
 schema directive to `systemInstruction` or the message list,
 parse the text response, validate, raise
@@ -454,9 +465,9 @@ Ten new fixture pairs under `spec/llm-provider/conformance/`:
 | `045-gemini-function-call-flow` | model `functionCall` (with `id`) → spec `tool` messages → Gemini `functionResponse` parts in user content (§8.3.1.2) → final response. |
 | `046-gemini-image-content-blocks` | inline (`inlineData`) and URL (`fileData.fileUri`) image variants; `detail` hint dropped. |
 | `047-gemini-tool-choice-modes` | all mappings: `None`/absent, `auto`→AUTO, `required`→ANY, `none`→NONE, specific-tool→ANY+allowedFunctionNames. |
-| `048-gemini-runtime-config-mapping` | `temperature`/`top_p`→topP/`max_tokens`→maxOutputTokens/`stop_sequences`→stopSequences map; `seed`/`frequency_penalty`/`presence_penalty` raise `provider_invalid_request`. |
+| `048-gemini-runtime-config-mapping` | all seven §6 declared fields map: `temperature`/`top_p`→topP/`max_tokens`→maxOutputTokens/`stop_sequences`→stopSequences/`seed`→seed/`frequency_penalty`→frequencyPenalty/`presence_penalty`→presencePenalty. |
 | `049-gemini-error-mapping` | HTTP status + Gemini `error.status` → §7 category table per §8.3.3. |
-| `050-gemini-structured-output-native` | native path: `response_schema` → `generationConfig.responseSchema` + `responseMimeType`; response text parsed into `Response.parsed`. |
+| `050-gemini-structured-output-native` | native path: `response_schema` → `generationConfig.responseJsonSchema` + `responseMimeType`; response text parsed into `Response.parsed`. |
 | `051-gemini-structured-output-fallback` | prompt-augmentation fallback for models without native support. |
 | `052-gemini-thought-signature-round-trip` | thinking response: `thought: true` summary → `ThinkingBlock.text`; `thoughtSignature` on a `functionCall` part → `ToolCall.signature`; second call reattaches the signature to the reconstructed `functionCall` part in position. |
 | `053-cross-provider-signature-strip` | a spec assistant message carrying Gemini-origin signatures (on `ToolCall`/`TextBlock`) routed through the §8.1 OpenAI mapping (or §8.2 Anthropic mapping) strips the signatures and any thinking blocks; no error raised; wire request is valid. |
@@ -527,15 +538,18 @@ once accepted in sequence (0037 then 0038).
 
 ## Open questions
 
-None blocking at draft time. Two items flagged for verification
-before the Accept PR writes normative text (both noted inline):
+None. Both items flagged at draft time were verified against the
+current Gemini API during revision and are now reflected in
+normative text:
 
 1. **`seed` / `frequency_penalty` / `presence_penalty` Gemini
-   support** — not in the documented `generationConfig` field set
-   as of drafting; provisionally raise `provider_invalid_request`.
-   Confirm against the current API before accept; if supported in
-   the targeted API version, the mapping direct-maps them instead.
-2. **Full `finishReason` enum** — the table maps the common values
-   and routes all others to `"error"`; confirm the complete enum
-   at accept time so any value warranting a non-`error` mapping
-   (none currently anticipated) is handled.
+   support** — confirmed: `GenerationConfig` carries `seed`,
+   `frequencyPenalty`, and `presencePenalty`. §8.3.1 direct-maps all
+   seven §6 declared fields (no `provider_invalid_request` for
+   sampling fields), matching the §8.1 OpenAI mapping.
+2. **Full `finishReason` enum** — confirmed and finalized in §8.3.2:
+   `BLOCKLIST` / `PROHIBITED_CONTENT` / `SPII` join the
+   `content_filter` row; `MALFORMED_FUNCTION_CALL` /
+   `UNEXPECTED_TOOL_CALL` / `LANGUAGE` / `OTHER` map to `"error"`;
+   image-generation-only variants are out of scope and fall to the
+   `"error"` fallback.
