@@ -1,0 +1,66 @@
+# §8.3.1.2 Gemini tool-call flow. A spec assistant message with
+# tool_calls maps to a Gemini `model` Content carrying a functionCall
+# part; a spec `tool` message maps to a `user` Content carrying a
+# functionResponse part (string content wrapped as {result: ...}). The
+# §4 Tool maps to tools[].functionDeclarations[].
+
+mapping: gemini
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        candidates:
+          - content:
+              role: model
+              parts:
+                - {text: "It's 72F and sunny in SF."}
+            finishReason: STOP
+        usageMetadata: {promptTokenCount: 40, candidatesTokenCount: 9, totalTokenCount: 49}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Weather in SF?"}
+      - role: assistant
+        tool_calls:
+          - {id: call_1, name: get_weather, arguments: {location: "SF"}}
+      - {role: tool, tool_call_id: call_1, content: "72F sunny"}
+    tools:
+      - name: get_weather
+        description: "Get current weather for a location."
+        parameters:
+          type: object
+          properties:
+            location: {type: string}
+          required: [location]
+    config: {max_tokens: 512}
+    expected_wire_request:
+      model: gemini-test
+      contents:
+        - role: user
+          parts:
+            - {text: "Weather in SF?"}
+        # Spec assistant.tool_calls -> Gemini model Content with a functionCall part.
+        - role: model
+          parts:
+            - {functionCall: {name: get_weather, id: call_1, args: {location: "SF"}}}
+        # Spec `tool` message -> Gemini user Content with a functionResponse part.
+        - role: user
+          parts:
+            - {functionResponse: {name: get_weather, id: call_1, response: {result: "72F sunny"}}}
+      tools:
+        - functionDeclarations:
+            - name: get_weather
+              description: "Get current weather for a location."
+              parameters:
+                type: object
+                properties:
+                  location: {type: string}
+                required: [location]
+      generationConfig:
+        maxOutputTokens: 512
+    expected:
+      response:
+        message: {role: assistant, content: "It's 72F and sunny in SF.", tool_calls: null}
+        finish_reason: stop

@@ -1,0 +1,56 @@
+# §3.1.7 cross-provider signature strip. A spec assistant message
+# carrying Gemini-origin reasoning-continuity signatures (a ThinkingBlock,
+# a signed TextBlock, and a signed ToolCall) is routed through the §8.1
+# OpenAI mapping. OpenAI has no wire representation for these, so the
+# mapping MUST strip the thinking block and the signatures before
+# emitting the wire request — deterministically, no error. Surviving
+# text and tool-call structure are unaffected.
+#
+# No `mapping` key -> defaults to the §8.1 OpenAI-compatible mapping.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: cc-053
+        object: chat.completion
+        created: 1700000000
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: "Done."}
+            finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 2, total_tokens: 22}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Weather in SF?"}
+      - role: assistant
+        content:
+          - {type: thinking, text: "Reasoning carried over from Gemini."}
+          - {type: text, text: "Checking.", signature: "sig-g-text"}
+        tool_calls:
+          - {id: call_1, name: get_weather, arguments: {location: "SF"}, signature: "sig-g-call"}
+      - {role: tool, tool_call_id: call_1, content: "72F sunny"}
+    tools:
+      - {name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}
+    config: {max_tokens: 64}
+    expected_wire_request:
+      model: gpt-test
+      max_tokens: 64
+      messages:
+        - {role: user, content: "Weather in SF?"}
+        # Thinking block stripped; TextBlock.signature stripped (text survives, collapses to a
+        # string); ToolCall.signature stripped (the tool call survives).
+        - role: assistant
+          content: "Checking."
+          tool_calls:
+            - {id: call_1, type: function, function: {name: get_weather, arguments: '{"location": "SF"}'}}
+        - {role: tool, tool_call_id: call_1, content: "72F sunny"}
+      tools:
+        - {type: function, function: {name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}}
+    expected:
+      response:
+        message: {role: assistant, content: "Done.", tool_calls: null}
+        finish_reason: stop

@@ -1,0 +1,37 @@
+# §8.3.1 Gemini RuntimeConfig field mapping. All seven §6 declared
+# fields map under generationConfig: temperature, top_p->topP,
+# max_tokens->maxOutputTokens, stop_sequences->stopSequences, seed,
+# frequency_penalty->frequencyPenalty, presence_penalty->presencePenalty.
+# Unlike the §8.2 Anthropic mapping (which lacks the penalties), Gemini
+# has no unsupported-sampling-field rejections.
+
+mapping: gemini
+
+mock_provider:
+  responses:
+    - {status: 200, body: {candidates: [{content: {role: model, parts: [{text: "ok"}]}, finishReason: STOP}], usageMetadata: {promptTokenCount: 3, candidatesTokenCount: 1, totalTokenCount: 4}}}
+
+calls:
+  - operation: complete
+    messages: [{role: user, content: "hi"}]
+    config:
+      temperature: 0.7
+      max_tokens: 256
+      top_p: 0.95
+      seed: 42
+      stop_sequences: ["END", "STOP"]
+      frequency_penalty: 0.5
+      presence_penalty: 0.25
+    expected_wire_request:
+      model: gemini-test
+      contents: [{role: user, parts: [{text: "hi"}]}]
+      generationConfig:
+        temperature: 0.7
+        maxOutputTokens: 256
+        topP: 0.95
+        seed: 42
+        stopSequences: ["END", "STOP"]
+        frequencyPenalty: 0.5
+        presencePenalty: 0.25
+    expected:
+      response: {finish_reason: stop}

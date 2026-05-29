@@ -1,0 +1,41 @@
+# §8.3.3 Gemini error mapping. HTTP status + the Gemini error.status
+# string map to §7 error categories.
+
+mapping: gemini
+
+cases:
+  - name: invalid_argument_400
+    call: {operation: complete, messages: [{role: user, content: "hi"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses: [{status: 400, body: {error: {code: 400, message: "bad request", status: "INVALID_ARGUMENT"}}}]
+    expected: {raises: {category: provider_invalid_request}}
+
+  - name: permission_denied_403
+    call: {operation: complete, messages: [{role: user, content: "hi"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses: [{status: 403, body: {error: {code: 403, message: "denied", status: "PERMISSION_DENIED"}}}]
+    expected: {raises: {category: provider_authentication}}
+
+  - name: not_found_model_404
+    call: {operation: complete, messages: [{role: user, content: "hi"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses: [{status: 404, body: {error: {code: 404, message: "model not found", status: "NOT_FOUND"}}}]
+    expected: {raises: {category: provider_invalid_model}}
+
+  - name: resource_exhausted_429
+    call: {operation: complete, messages: [{role: user, content: "hi"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses: [{status: 429, body: {error: {code: 429, message: "rate limited", status: "RESOURCE_EXHAUSTED"}}}]
+    expected: {raises: {category: provider_rate_limit}}
+
+  - name: internal_500
+    call: {operation: complete, messages: [{role: user, content: "hi"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses: [{status: 500, body: {error: {code: 500, message: "internal", status: "INTERNAL"}}}]
+    expected: {raises: {category: provider_unavailable}}
+
+  - name: unavailable_503
+    call: {operation: complete, messages: [{role: user, content: "hi"}], config: {max_tokens: 16}}
+    mock_provider:
+      responses: [{status: 503, body: {error: {code: 503, message: "unavailable", status: "UNAVAILABLE"}}}]
+    expected: {raises: {category: provider_unavailable}}

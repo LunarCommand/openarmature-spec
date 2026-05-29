@@ -6,7 +6,7 @@ specification text, conformance fixtures, governance rules, and numbered
 RFC-style proposals. **No implementation code lives here.** Implementations
 are in sibling repositories.
 
-**Current spec version:** [v0.31.0](CHANGELOG.md)
+**Current spec version:** [v0.32.0](CHANGELOG.md)
 
 ---
 
@@ -70,7 +70,7 @@ and architecture are in [`docs/openarmature.md`](docs/openarmature.md).
 |---|---|---|---|---|
 | [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.31.0 | 27 | Typed state, async nodes, conditional/static edges, reducers (five required built-ins: `last_write_wins`, `append`, `merge`, `concat_flatten` for fan-out list-of-lists collection, `merge_all` for fan-out list-of-mappings collection), subgraph composition, observer hooks (with bounded `drain` — optional caller-supplied timeout + summary of undelivered events; snapshot semantic for covered invocations; MUST-reject for invalid timeout inputs); `invoke()` accepts caller-supplied invocation metadata for observability propagation |
 | [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.22.0 | 56 | Middleware (canonical retry + timing), parallel fan-out, checkpointing (per-instance fan-out resume with explicit success/error discrimination, strict count-drift detection on resume, state migration with canonical declared-class `schema_version` source, configurable backend batching for fan-out internal saves), parallel branches |
-| [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.28.0 | 43 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, first-class `ThinkingBlock` / `RedactedThinkingBlock` reasoning content (assistant-only, provider-bound round-trip signatures), structured output via `response_schema`, request-side tool-calling control via `tool_choice`, a wire-format-mapping catalog (§8.1 OpenAI-compatible and §8.2 Anthropic Messages; in-spec default for cross-language provider mappings), and a `RuntimeConfig` surface covering seven declared cross-vendor sampling parameters with an explicit extras-pass-through contract and null-skip semantics |
+| [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.32.0 | 53 | Stateless LLM-provider abstraction with canonical error categories, image content blocks for user messages, first-class `ThinkingBlock` / `RedactedThinkingBlock` reasoning content (assistant-only, provider-bound round-trip signatures, optionally on `TextBlock` / `ToolCall` too), structured output via `response_schema`, request-side tool-calling control via `tool_choice`, a wire-format-mapping catalog (§8.1 OpenAI-compatible, §8.2 Anthropic Messages, and §8.3 Google Gemini; in-spec default for cross-language provider mappings), and a `RuntimeConfig` surface covering seven declared cross-vendor sampling parameters with an explicit extras-pass-through contract and null-skip semantics |
 | [observability](spec/observability/spec.md) | 0.7.0 | 0.31.0 | 36 | Cross-backend correlation IDs, caller-supplied invocation metadata (cross-cutting `openarmature.user.*` span attributes + per-backend propagation rules; mid-invocation augmentation per-async-context-scoped for fan-out / parallel-branches per-instance identifiers), OpenTelemetry mapping (spans, log correlation, detached trace mode), LLM-span payload + GenAI semconv attributes (default-off payload, request parameters under `gen_ai.request.*` covering the seven cross-vendor sampling parameters, GenAI semconv response attributes for LLM-aware backends), Langfuse backend mapping (sibling §-section to OTel; Trace + Observation type mapping covering subgraph dispatch, fan-out per-instance, and detached-trace mode; attribute translation, prompt-entity linkage with spec-defined lookup at `Prompt.observability_entities['langfuse_prompt']`, OTel-observer composition; caller metadata merges into `trace.metadata` + every `observation.metadata`) |
 | [prompt-management](spec/prompt-management/spec.md) | 0.15.0 | 0.26.0 | 16 | Named/versioned template fetch + render; composite backends with infrastructure-only fallback; PromptGroup tracing primitive; strict-undefined-by-default variable injection; typed `Prompt.sampling` sub-record mirroring `RuntimeConfig` for per-prompt sampling config; typed `Prompt.observability_entities` for backend-keyed entity references (spec-normative `langfuse_prompt` key for observability §8.4.4 linkage); `LabelResolver` primitive for deployment-time A/B label override on `PromptManager.fetch()`; informative filesystem sidecar conventions for sourcing `sampling` |
 
@@ -85,7 +85,6 @@ they are Accepted.
 | [0021](proposals/0021-graph-suspension.md) | Draft | spec/suspension/spec.md (new), graph-engine §3 + §6, observability §4 + §5, pipeline-utilities §10 | Graph suspension and external-signal resume — generalized pause primitive (HITL + async-job-wait + scheduled wakeup as flavors of one suspend) |
 | [0022](proposals/0022-harness-contract.md) | Draft | spec/harness/spec.md (new) | Harness contract — abstract behavioral contract for any harness wrapping the OA engine to serve a deployment runtime (three inbound dispatch paths, turn lifecycle, error categorization, runtime-neutral) |
 | [0023](proposals/0023-canonical-state-reducers.md) | Draft | graph-engine §2 | Canonical state reducers — extend baseline reducers with `bounded_append`, `dedupe_append`, `merge_by_key` (factory-style closures for chat-agent and tool-loop patterns) |
-| [0038](proposals/0038-llm-provider-google-gemini-mapping.md) | Draft | llm-provider §8.3 | Google Gemini wire-format mapping (§8.3) — contents/parts, `model` role, systemInstruction, functionResponse `tool` translation, RuntimeConfig mapping, native structured output, thought-signature round-trip |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
@@ -134,15 +133,15 @@ and not yet started; no committed date.
 Active design areas. These are questions the next round of proposals will
 address, not scheduled deliverables.
 
-- **Per-provider wire-format mappings.** §8 of llm-provider is now a catalog
-  of wire-format mappings (§8.1 OpenAI-compatible is the first; the v0.17.1
-  reframing established the default rule that any mapping intended for
-  cross-language implementation lives in spec). Follow-on proposals will add
-  §8.2+ subsections for Anthropic Messages, Google Gemini, and Mistral as
-  their concrete implementations take shape. With v0.24.0's `RuntimeConfig`
-  surface refinements landed, those future mappings inherit the uniform
-  seven-declared-field set and the extras-pass-through contract without
-  per-mapping re-derivation — wire-format consistency across language
+- **Per-provider wire-format mappings.** §8 of llm-provider is a catalog
+  of wire-format mappings — §8.1 OpenAI-compatible, §8.2 Anthropic Messages,
+  and §8.3 Google Gemini are landed; the v0.17.1 reframing established the
+  default rule that any mapping intended for cross-language implementation
+  lives in spec. Follow-on proposals will add further provider subsections
+  (e.g. Mistral) as their concrete implementations take shape. With the
+  `RuntimeConfig` surface refinements landed, those mappings inherit the
+  uniform seven-declared-field set and the extras-pass-through contract
+  without per-mapping re-derivation — wire-format consistency across language
   siblings is part of OA's cross-language promise.
 - **Observability backend mappings.** The observability spec now defines
   two concrete backend mappings — OpenTelemetry (§3–§7) and Langfuse

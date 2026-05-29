@@ -1,0 +1,104 @@
+# §8.3.1 Gemini tool-choice mapping. The §5 tool_choice maps to
+# toolConfig.functionCallingConfig: absent -> field omitted; "auto" ->
+# AUTO; "required" -> ANY; "none" -> NONE; a specific tool -> ANY +
+# allowedFunctionNames. The "required" -> "ANY" rename is the
+# load-bearing translation (spec cross-vendor name -> Gemini wire name).
+
+mapping: gemini
+
+cases:
+  - name: absent_tool_choice_omits_tool_config
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      tools: [{name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}]
+      config: {max_tokens: 64}
+    expected_wire_request:
+      model: gemini-test
+      contents: [{role: user, parts: [{text: "hi"}]}]
+      tools: [{functionDeclarations: [{name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}]}]
+      generationConfig: {maxOutputTokens: 64}
+      # toolConfig is omitted entirely when tool_choice is absent.
+    mock_provider:
+      responses:
+        - {status: 200, body: {candidates: [{content: {role: model, parts: [{text: "ok"}]}, finishReason: STOP}], usageMetadata: {promptTokenCount: 5, candidatesTokenCount: 1, totalTokenCount: 6}}}
+    expected:
+      response: {finish_reason: stop}
+
+  - name: auto_maps_to_AUTO
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      tools: [{name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}]
+      tool_choice: "auto"
+      config: {max_tokens: 64}
+    expected_wire_request:
+      model: gemini-test
+      contents: [{role: user, parts: [{text: "hi"}]}]
+      tools: [{functionDeclarations: [{name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}]}]
+      toolConfig: {functionCallingConfig: {mode: AUTO}}
+      generationConfig: {maxOutputTokens: 64}
+    mock_provider:
+      responses:
+        - {status: 200, body: {candidates: [{content: {role: model, parts: [{text: "ok"}]}, finishReason: STOP}], usageMetadata: {promptTokenCount: 5, candidatesTokenCount: 1, totalTokenCount: 6}}}
+    expected:
+      response: {finish_reason: stop}
+
+  - name: required_maps_to_ANY
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      tools: [{name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}]
+      tool_choice: "required"
+      config: {max_tokens: 64}
+    expected_wire_request:
+      model: gemini-test
+      contents: [{role: user, parts: [{text: "hi"}]}]
+      tools: [{functionDeclarations: [{name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}]}]
+      # "required" renames to Gemini's "ANY".
+      toolConfig: {functionCallingConfig: {mode: ANY}}
+      generationConfig: {maxOutputTokens: 64}
+    mock_provider:
+      responses:
+        - {status: 200, body: {candidates: [{content: {role: model, parts: [{functionCall: {name: get_weather, id: call_1, args: {location: "SF"}}}]}, finishReason: STOP}], usageMetadata: {promptTokenCount: 5, candidatesTokenCount: 3, totalTokenCount: 8}}}
+    expected:
+      response: {finish_reason: tool_calls}
+
+  - name: none_maps_to_NONE
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      tools: [{name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}]
+      tool_choice: "none"
+      config: {max_tokens: 64}
+    expected_wire_request:
+      model: gemini-test
+      contents: [{role: user, parts: [{text: "hi"}]}]
+      tools: [{functionDeclarations: [{name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}]}]
+      toolConfig: {functionCallingConfig: {mode: NONE}}
+      generationConfig: {maxOutputTokens: 64}
+    mock_provider:
+      responses:
+        - {status: 200, body: {candidates: [{content: {role: model, parts: [{text: "ok"}]}, finishReason: STOP}], usageMetadata: {promptTokenCount: 5, candidatesTokenCount: 1, totalTokenCount: 6}}}
+    expected:
+      response: {finish_reason: stop}
+
+  - name: specific_tool_maps_to_ANY_with_allowed_names
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      tools: [{name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}]
+      tool_choice: {type: tool, name: get_weather}
+      config: {max_tokens: 64}
+    expected_wire_request:
+      model: gemini-test
+      contents: [{role: user, parts: [{text: "hi"}]}]
+      tools: [{functionDeclarations: [{name: get_weather, description: "Weather.", parameters: {type: object, properties: {location: {type: string}}, required: [location]}}]}]
+      # Specific tool -> ANY mode constrained to a single allowed function name.
+      toolConfig: {functionCallingConfig: {mode: ANY, allowedFunctionNames: [get_weather]}}
+      generationConfig: {maxOutputTokens: 64}
+    mock_provider:
+      responses:
+        - {status: 200, body: {candidates: [{content: {role: model, parts: [{functionCall: {name: get_weather, id: call_1, args: {location: "SF"}}}]}, finishReason: STOP}], usageMetadata: {promptTokenCount: 5, candidatesTokenCount: 3, totalTokenCount: 8}}}
+    expected:
+      response: {finish_reason: tool_calls}

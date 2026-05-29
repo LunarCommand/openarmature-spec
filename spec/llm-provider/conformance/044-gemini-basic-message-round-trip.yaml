@@ -1,0 +1,41 @@
+# §8.3.1 Gemini basic message round-trip. Verifies system extraction to
+# the top-level systemInstruction, the spec assistant <-> Gemini `model`
+# role rename, and that the `contents` array holds only user/model
+# entries. The bound model is the {model} URL path segment for Gemini,
+# carried here as `model` in the expected wire request.
+
+mapping: gemini
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        candidates:
+          - content:
+              role: model
+              parts:
+                - {text: "It's sunny in SF."}
+            finishReason: STOP
+        usageMetadata: {promptTokenCount: 12, candidatesTokenCount: 6, totalTokenCount: 18}
+
+calls:
+  - operation: complete
+    messages:
+      - {role: system, content: "You are a weather bot."}
+      - {role: user, content: "Weather in SF?"}
+    config: {max_tokens: 256}
+    expected_wire_request:
+      model: gemini-test
+      systemInstruction:
+        parts:
+          - {text: "You are a weather bot."}
+      contents:
+        - role: user
+          parts:
+            - {text: "Weather in SF?"}
+      generationConfig:
+        maxOutputTokens: 256
+    expected:
+      response:
+        message: {role: assistant, content: "It's sunny in SF.", tool_calls: null}
+        finish_reason: stop
