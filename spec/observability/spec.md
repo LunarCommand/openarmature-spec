@@ -11,6 +11,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.5.2 attribute list extended with three new GenAI semconv attributes (`gen_ai.request.frequency_penalty`, `gen_ai.request.presence_penalty`, `gen_ai.request.stop_sequences`) corresponding to the three new declared `RuntimeConfig` fields introduced by llm-provider [proposal 0032](../../proposals/0032-llm-provider-runtime-config-refinements.md). The §8.4.3 Langfuse-mapping reference to §5.5.2 expands by inclusion: the three new attributes flow into `generation.modelParameters.{frequency_penalty, presence_penalty, stop_sequences}` automatically, no §8 edit required.
   - §3 extended with new §3.4 *Caller-supplied invocation metadata* subsection — sibling caller surface to `correlation_id` accepting an arbitrary key/value mapping at `invoke()` time, propagated via the language's context primitive, augmentable mid-invocation via a framework helper (each fan-out instance gets its own per-async-context copy so per-instance additions don't leak to siblings), invocation-scoped (flows through detached subgraphs and fan-outs); §5.6 cross-cutting attribute family extended with `openarmature.user.*` (appears on every span and OTel log record, using the in-scope metadata at span emission time); §7 log records extended to carry the same family; §8.4.1 and §8.4.2 Langfuse propagation extended with caller metadata merged into `trace.metadata` and every `observation.metadata` as top-level keys (with a Langfuse-Sessions distinction note clarifying that this is orthogonal to Sessions/`sessionId`, which remain deferred to proposal 0020); graph-engine §3 gains a clarifying paragraph noting `invoke()` accepts the metadata mapping by [proposal 0034](../../proposals/0034-caller-supplied-invocation-metadata.md)
   - §5.6 cross-cutting attribute family extended with `openarmature.session_id` (appears on every span when the invocation is session-bound; same ambient-context propagation as `correlation_id`, absent otherwise); §7 log records extended to carry `openarmature.session_id` via the same OTel Logs Bridge mechanism; §7 detached-trace-mode paragraph extended to note `session_id` is invocation-scoped and unchanged across detached / parent traces by [proposal 0020](../../proposals/0020-sessions-capability.md)
+  - §3.4 reserved-key enumeration extended with `branch_name`, `detached`, `detached_from_invocation_id` (24-name set total) — closes a coverage gap in 0041's reservation against the §8.4 Langfuse top-level metadata keys; §8.4.1 gains a `trace.metadata.detached_from_invocation_id` row (detached child trace's inverse pointer to the parent invocation); §8.4.2 gains `observation.metadata.branch_name` (per-branch Span observation) and `observation.metadata.detached` (dispatching observation flag) rows by [proposal 0042](../../proposals/0042-observability-reserved-keys-extension.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -183,7 +184,8 @@ outermost `invoke()` call, alongside the correlation ID. Implementations MUST:
   `detached_child_trace_ids`, `namespace`, `step`, `attempt_index`, `fan_out_index`,
   `subgraph_name`, `fan_out_item_count`, `fan_out_concurrency`, `fan_out_error_policy`,
   `fan_out_parent_node_name`, `prompt_group_name`, `request_extras`, `finish_reason`, `system`,
-  `response_model`, `response_id`, `prompt`, `invocation_id`. Implementations MUST reject a caller key that exactly
+  `response_model`, `response_id`, `prompt`, `invocation_id`, `branch_name`, `detached`,
+  `detached_from_invocation_id`. Implementations MUST reject a caller key that exactly
   matches a reserved name at the `invoke()` API boundary, before any work begins, with the same
   per-language error idiom as the `openarmature.*` / `gen_ai.*` reservation above. The match is
   exact (whole keys, not prefixes), and the reservation applies regardless of which backends are
@@ -1146,6 +1148,7 @@ to also catch Langfuse-specific constraints early, per §3.4's MAY-expand allowa
 | `openarmature.graph.entry_node` | `trace.metadata.entry_node` |
 | `openarmature.graph.spec_version` | `trace.metadata.spec_version` |
 | (caller-supplied invocation label OR entry node name, per §8.6) | `trace.name` |
+| §4.4 detached-mode dispatch context: the parent invocation's `invocation_id` | `trace.metadata.detached_from_invocation_id` — emitted on the detached child trace only (a trace produced by detached-mode dispatch per §4.4). Points back to the parent invocation for inverse lookup. Sibling to `trace.metadata.correlation_id` (preserved across detached / parent traces per §3.1, providing the forward direction). Absent on non-detached traces. |
 | Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at trace emission time (per §3.4, including any mid-invocation augmentations applied before trace closure) | `trace.metadata.<key>` (top level, sibling to `correlation_id` / `entry_node` / `spec_version`; NOT nested under a `user` sub-object so Langfuse UI filtering on `metadata.<key>` matches what callers supplied; implementations SHOULD use Langfuse SDK's `trace.update(metadata=...)` to apply mid-invocation augmentations to the open Trace) |
 
 **`trace.id` derivation (caller-supplied `invocation_id`).** Langfuse (OTel-based) requires
@@ -1176,11 +1179,13 @@ collision per §3.4.)
 | `openarmature.node.step` | `observation.metadata.step` |
 | `openarmature.node.attempt_index` | `observation.metadata.attempt_index` |
 | `openarmature.node.fan_out_index` | `observation.metadata.fan_out_index` (when present) |
+| graph-engine §6 NodeEvent `branch_name` (per parallel branches, proposal 0011) | `observation.metadata.branch_name` (when present, per-branch Span observation; sibling to `fan_out_index` for parallel-branches disambiguation, the same role `fan_out_index` plays for fan-out). Absent on observations from nodes outside any parallel-branches subgraph. |
 | `openarmature.subgraph.name` | `observation.metadata.subgraph_name` (when present) |
 | `openarmature.fan_out.item_count` | `observation.metadata.fan_out_item_count` (fan-out node Span observation only) |
 | `openarmature.fan_out.concurrency` | `observation.metadata.fan_out_concurrency` (fan-out node Span observation only) |
 | `openarmature.fan_out.error_policy` | `observation.metadata.fan_out_error_policy` (fan-out node Span observation only) |
 | `openarmature.fan_out.parent_node_name` | `observation.metadata.fan_out_parent_node_name` (fan-out instance Span observation only) |
+| §4.4 detached-mode: dispatching observation marks itself when it fires a detached child | `observation.metadata.detached` — boolean `true` on the parent-side dispatching observation that dispatches a detached subgraph or fan-out instance. Absent (or `false`) on non-dispatch observations and on observations that dispatch non-detached children. |
 | `openarmature.correlation_id` | `observation.metadata.correlation_id` (cross-cutting per §8.5) |
 | Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at the observation's emission time (per §3.4) | `observation.metadata.<key>` on EVERY Observation (top level, same propagation rationale as `correlation_id`; lets users filter across observations from detached subgraphs / fan-outs in one Langfuse UI query). For the fan-out per-instance use case, each instance's observations carry that instance's augmented metadata (per §3.4 per-async-context scoping), so adopters can filter Langfuse by the per-instance identifier (e.g., `productId`) to find that specific instance's subtree. |
 | `openarmature.error.category` | `observation.level = "ERROR"`, `observation.statusMessage = <category>` |

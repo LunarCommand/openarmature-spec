@@ -1,9 +1,9 @@
 # 0042: Observability — Reserve `branch_name`, `detached`, `detached_from_invocation_id` Metadata Keys
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-29
-- **Accepted:**
+- **Accepted:** 2026-05-29
 - **Targets:** spec/observability/spec.md (§3.4 — extend the reserved-key enumeration with three keys the §8.4 Langfuse mapping writes to top-level metadata; §8.4.1 — add the `detached_from_invocation_id` Trace-metadata row; §8.4.2 — add `branch_name` and `detached` Observation-metadata rows)
 - **Related:** 0041 (the predecessor reservation — extended), 0034 (caller-supplied invocation metadata — established the top-level placement), 0031 (Langfuse backend mapping — introduced §8.4), 0011 (parallel branches — defined `branch_name` on the §6 NodeEvent)
 - **Supersedes:**
