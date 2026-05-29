@@ -55,6 +55,10 @@ cases:
               metadata:
                 detached_child_trace_ids: ["<trace_id_detached>"]
                 correlation_id: "<corr_id_1>"
+                # `detached: true` per §8.4.2 (proposal 0042) — the
+                # parent-side dispatching observation marks itself
+                # when it fires a detached child.
+                detached: true
               level: DEFAULT
               children: []   # detached — no nested children in parent Trace
             - type: span
@@ -68,6 +72,9 @@ cases:
           metadata:
             # correlation_id is the SAME as the parent Trace per §8.5.
             correlation_id: "<corr_id_1>"
+            # detached_from_invocation_id points back to the parent
+            # invocation per §8.4.1 (proposal 0042).
+            detached_from_invocation_id: "<invocation_id_parent>"
           observations:
             - type: span
               name: "long_running_workflow"
@@ -148,6 +155,10 @@ cases:
                 fan_out_item_count: 3
                 detached_child_trace_ids: ["<trace_id_instance_0>", "<trace_id_instance_1>", "<trace_id_instance_2>"]
                 correlation_id: "<corr_id_1>"
+                # `detached: true` per §8.4.2 (proposal 0042) — the
+                # fan-out node observation marks itself when its
+                # instances are detached.
+                detached: true
               level: DEFAULT
               children: []
       # Three additional Traces — one per instance.
@@ -162,3 +173,6 @@ cases:
         # Parent's fan-out node observation references exactly three detached children
         # in metadata.detached_child_trace_ids.
         dispatch_detached_child_trace_id_count: 3
+        # Each per-instance Trace carries metadata.detached_from_invocation_id
+        # pointing back to the parent invocation per §8.4.1 (proposal 0042).
+        all_instance_traces_carry_detached_from_invocation_id: "<invocation_id_parent>"

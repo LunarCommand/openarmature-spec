@@ -4,6 +4,24 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.34.0] — 2026-05-29
+
+**Changed**
+
+- **observability §3.4 — reserved-key enumeration extends from 21 to 24 names.** Adds `branch_name`, `detached`, `detached_from_invocation_id` to the §3.4 reserved set the §8.4 Langfuse mapping writes to top-level `trace.metadata` / `observation.metadata` but proposal 0041 had not enumerated. Mechanism unchanged from 0041 (`invoke()`-boundary rejection + same enforcement at the `set_invocation_metadata` helper); breaking for callers that previously supplied one of the three names as caller metadata. ([proposal 0042](proposals/0042-observability-reserved-keys-extension.md))
+
+**Added**
+
+- **observability §8.4.1 — `trace.metadata.detached_from_invocation_id` row.** Emitted on the detached child trace produced by §4.4 detached-mode dispatch; points back to the parent invocation for inverse lookup (the forward direction is `correlation_id`, preserved across detached and parent traces).
+- **observability §8.4.2 — `branch_name` and `detached` Observation-metadata rows.** `branch_name` is sourced from the graph-engine §6 NodeEvent field (parallel branches, proposal 0011), emitted on per-branch Span observations as the parallel-branches disambiguator (analogous to `fan_out_index` for fan-out). `detached` is a boolean flag on the parent-side dispatching observation that fires a detached subgraph or fan-out instance.
+- Conformance fixture `observability/conformance/028-caller-metadata-namespace-rejection` extended with three new cases (`rejects_reserved_oa_name_branch_name`, `rejects_reserved_oa_name_detached`, `rejects_reserved_oa_name_detached_from_invocation_id`).
+- Conformance fixture `observability/conformance/030-caller-metadata-parallel-branches-per-branch` extended with `observation.metadata.branch_name` assertions on every per-branch observation (dispatch span, inner `ask` span, generation) in both branches, plus a per-branch isolation invariant for the OA-emitted key.
+- Conformance fixture `observability/conformance/033-langfuse-detached-trace-mode` extended with `observation.metadata.detached: true` on the parent dispatch observation (case 1) / parent fan-out node observation (case 2), `trace.metadata.detached_from_invocation_id` on the detached child trace (case 1), and an invariant asserting the same field on every per-instance detached trace (case 2).
+
+**Notes**
+
+- **MINOR bump.** Additive to the §8.4.x mapping tables; rejects previously-accepted caller code using one of the three names as caller metadata — the same disposition 0041 took for its 20 names, taken deliberately to prevent silent shadowing of OA-emitted Langfuse metadata fields. Callers using non-reserved keys are unaffected; no Langfuse-metadata-layout change.
+
 ## [0.33.0] — 2026-05-29
 
 **Added**

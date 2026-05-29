@@ -115,10 +115,14 @@ cases:
               tenantId: "acme-corp"
             children:
               - type: span
-                # fraud_check subgraph dispatch span
+                # fraud_check subgraph dispatch span; the OA-emitted
+                # `branch_name` lands on every per-branch observation
+                # per §8.4.2 (proposal 0042), sibling to the caller's
+                # `branchName` augmentation.
                 metadata:
                   tenantId: "acme-corp"
                   branchName: "fraud_check"
+                  branch_name: "fraud_check"
                 children:
                   - type: span
                     # inner ask node — open at augmentation and in the branch's
@@ -127,30 +131,36 @@ cases:
                     metadata:
                       tenantId: "acme-corp"
                       branchName: "fraud_check"
+                      branch_name: "fraud_check"
                     children:
                       - type: generation
                         name: "openarmature.llm.complete"
                         metadata:
                           tenantId: "acme-corp"
                           branchName: "fraud_check"
+                          branch_name: "fraud_check"
                         children: []
               - type: span
-                # policy_audit subgraph dispatch span
+                # policy_audit subgraph dispatch span; carries
+                # OA-emitted `branch_name` per §8.4.2 (proposal 0042).
                 metadata:
                   tenantId: "acme-corp"
                   branchName: "policy_audit"
+                  branch_name: "policy_audit"
                 children:
                   - type: span
                     name: "ask"
                     metadata:
                       tenantId: "acme-corp"
                       branchName: "policy_audit"
+                      branch_name: "policy_audit"
                     children:
                       - type: generation
                         name: "openarmature.llm.complete"
                         metadata:
                           tenantId: "acme-corp"
                           branchName: "policy_audit"
+                          branch_name: "policy_audit"
                         children: []
       invariants:
         # Each branch's observations carry only ITS OWN branchName;
@@ -159,3 +169,7 @@ cases:
         # The baseline caller metadata (tenantId) reaches every
         # span / observation regardless of which branch.
         baseline_caller_metadata_universal: true
+        # Per §8.4.2 (proposal 0042), every observation in a branch's
+        # subtree carries the OA-emitted `branch_name` matching its
+        # branch; siblings do not leak.
+        per_branch_oa_emitted_branch_name_isolation: true

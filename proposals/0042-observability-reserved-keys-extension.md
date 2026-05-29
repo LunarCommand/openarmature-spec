@@ -1,9 +1,9 @@
 # 0042: Observability — Reserve `branch_name`, `detached`, `detached_from_invocation_id` Metadata Keys
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-29
-- **Accepted:**
+- **Accepted:** 2026-05-29
 - **Targets:** spec/observability/spec.md (§3.4 — extend the reserved-key enumeration with three keys the §8.4 Langfuse mapping writes to top-level metadata; §8.4.1 — add the `detached_from_invocation_id` Trace-metadata row; §8.4.2 — add `branch_name` and `detached` Observation-metadata rows)
 - **Related:** 0041 (the predecessor reservation — extended), 0034 (caller-supplied invocation metadata — established the top-level placement), 0031 (Langfuse backend mapping — introduced §8.4), 0011 (parallel branches — defined `branch_name` on the §6 NodeEvent)
 - **Supersedes:**
@@ -126,14 +126,21 @@ would be a natural future tightening but is out of scope here.
   Same rejection-at-boundary mechanism as the existing fixture cases — the
   fixture's name still fits its scope.
 
-### Unaffected
+- **`observability/conformance/030-caller-metadata-parallel-branches-per-branch`** —
+  every per-branch observation (dispatch span + inner `ask` span + generation,
+  in both branches) gains an `observation.metadata.branch_name` assertion
+  alongside the existing caller-supplied `branchName` (camelCase) metadata,
+  plus a per-branch isolation invariant for the OA-emitted key.
+- **`observability/conformance/033-langfuse-detached-trace-mode`** — case 1
+  (detached subgraph) gains `observation.metadata.detached: true` on the
+  parent dispatch observation and `trace.metadata.detached_from_invocation_id`
+  on the detached child trace; case 2 (detached fan-out) gains
+  `detached: true` on the parent fan-out node observation and an invariant
+  asserting `detached_from_invocation_id` on every per-instance detached
+  trace.
 
-The existing Langfuse-mapping fixtures (detached-mode and parallel-branches
-Langfuse fixtures) are unaffected by this proposal. The three keys'
-Langfuse emissions are already exercised by those fixtures; this proposal
-documents the emissions in §8.4 normative text but does not change the
-emissions themselves, so the expected `metadata` payloads in those fixtures
-remain correct.
+The §8.4 emissions documented by this proposal are normative-from-now-on;
+the fixture extensions ensure cross-implementation conformance is testable.
 
 ## Versioning
 

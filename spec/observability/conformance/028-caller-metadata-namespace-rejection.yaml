@@ -138,6 +138,86 @@ cases:
       no_spans_emitted: true
       no_langfuse_observations_emitted: true
 
+  - name: rejects_reserved_oa_name_branch_name
+    description: |
+      Caller supplies the bare key `branch_name`, a reserved OA-emitted
+      Observation-metadata key name added by proposal 0042 (§8.4.2 — per-
+      branch Span observation; sibling to `fan_out_index`). Reserved per
+      §3.4; the framework MUST reject at the invoke() boundary.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      branch_name: "primary"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_oa_name_detached
+    description: |
+      Caller supplies the bare key `detached`, a reserved OA-emitted
+      Observation-metadata key name added by proposal 0042 (§8.4.2 — the
+      dispatching observation flag for detached subgraph / fan-out
+      instance per §4.4). Reserved per §3.4; the framework MUST reject at
+      the invoke() boundary.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      detached: true
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_oa_name_detached_from_invocation_id
+    description: |
+      Caller supplies the bare key `detached_from_invocation_id`, a
+      reserved OA-emitted Trace-metadata key name added by proposal 0042
+      (§8.4.1 — emitted on the detached child trace pointing back to the
+      parent invocation). Reserved per §3.4; the framework MUST reject at
+      the invoke() boundary.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      detached_from_invocation_id: "parent-invoke-abc"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
   - name: rejects_reserved_name_via_set_invocation_metadata
     description: |
       A node body calls the mid-invocation helper with a reserved
