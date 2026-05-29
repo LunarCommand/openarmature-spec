@@ -55,10 +55,9 @@ covers are emitted by the same Langfuse mapping but were not in §8.4.1 /
 the gap. The §3.4 reserved set is a cross-implementation contract (§3.4's
 maintenance rule requires new emitted keys to be added to it in the
 introducing proposal), and the gap predates the reservation mechanism — it
-was not introduced by 0041. Adopters using one of the three names as caller
-metadata (an unlikely but legitimate domain key choice) see the same silent
-corruption 0041 was built to prevent. Closing the gap before the names
-accumulate adopter usage keeps the breakage surface small.
+was not introduced by 0041. A caller using one of the three names as caller
+metadata (an unlikely but legitimate domain key choice) sees the same
+silent corruption 0041 was built to prevent.
 
 ## Design
 
@@ -182,24 +181,31 @@ CHANGELOG entry references this proposal.
   enforced at the backend-agnostic §3.4 boundary for cross-backend
   consistency.
 
-## Open questions
+## Alternatives considered
 
-The design decisions are settled in the text above:
-
-- **Reserve vs. document-only.** Reserve. The shared-namespace collision
-  shape is identical to 0041's; reservation is the only mechanism that
-  prevents silent corruption while keeping both key sets top-level (the
-  design rationale 0041 settled).
-- **Tight (§3.4 only) vs. full (§3.4 + §8.4.x).** Full. Reserving names
-  whose emission is not formally specified in §8.4 would leave the
-  emission as a per-implementation convention rather than a normative
-  requirement, risking cross-implementation divergence on the underlying
-  observability data. Documenting the emission in §8.4.1 / §8.4.2 grounds
-  the reservation in normative spec text and obligates conforming
-  implementations to emit the keys.
-- **Where to source `branch_name` from.** From graph-engine §6 NodeEvent.
-  Adding a corresponding `openarmature.node.branch_name` §5.x attribute
-  (paralleling `openarmature.node.fan_out_index`) would be a natural
-  completion of §5's parallel-branches surface but is out of scope here —
-  it would require touching graph-engine and §5; the present proposal
-  scopes to §3.4 + §8.4.
+- **Document-only (no reservation).** Add §8.4.1 / §8.4.2 rows for the three
+  keys, but leave §3.4's reserved enumeration at 21 names. Rejected: the
+  shared-namespace collision shape is identical to 0041's, so a caller key
+  matching any of the three would silently shadow the OA-emitted field —
+  exactly the hazard 0041 was designed to prevent. Reservation is the only
+  mechanism that prevents silent corruption while keeping both key sets at
+  the top level (the design 0041 settled, which this proposal extends).
+- **Reserve-only (tight scope, §3.4 only).** Extend §3.4's enumeration with
+  the three names but leave §8.4.1 / §8.4.2 silent. Rejected: reserving names
+  whose emission is not formally specified in §8.4 would leave the emission
+  as a per-implementation convention rather than a normative requirement,
+  risking cross-implementation divergence on the underlying observability
+  data. Documenting the emission in §8.4.1 / §8.4.2 grounds the reservation
+  in normative spec text and obligates conforming implementations to emit
+  the keys.
+- **Add an `openarmature.node.branch_name` §5.x span attribute.** Source the
+  Langfuse `branch_name` row in §8.4.2 from a new `openarmature.*` attribute
+  paralleling `openarmature.node.fan_out_index` in §5.4. Rejected for scope:
+  it would require touching graph-engine §6 and observability §5, expanding
+  this proposal beyond closing the reserved-key coverage gap. Left as a
+  natural future tightening (flagged under Out of scope above); 0042 sources
+  `branch_name` directly from the graph-engine §6 NodeEvent field.
+- **Do nothing.** Leave the three keys unreserved and undocumented in §8.4.
+  Rejected: same disposition 0041 took for its 20 names — the silent-
+  corruption hazard is real, and these three are known emissions that
+  should not remain a per-implementation convention.
