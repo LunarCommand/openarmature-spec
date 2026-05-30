@@ -220,12 +220,14 @@ existing ones.
 A caller working around the missing `trace.input` / `trace.output` by
 calling the Langfuse SDK's `update_trace(input=..., output=...)` directly
 will see OA-observer-supplied values appearing on the Trace fields after
-this lands. The OA observer's values follow Langfuse SDK update semantics
-(last-writer-wins on the same field), so the caller's direct update may be
-clobbered or not depending on call order. Migration path: replace direct
-`update_trace` calls with the new caller hooks (lever 3). The
-breaking-change surface is narrow — only callers actively bypassing the
-observer for these specific fields are affected.
+this lands. Both the OA observer and the caller's direct calls emit trace
+input/output via the Langfuse SDK's OTel span-attribute path, where
+`set_attributes` overwrites the prior value at the same attribute key
+(standard OTel behavior), so the caller's direct update may be clobbered
+by the OA observer's writes or vice versa depending on call order.
+Migration path: replace direct `update_trace` calls with the new caller
+hooks (lever 3). The breaking-change surface is narrow — only callers
+actively bypassing the observer for these specific fields are affected.
 
 ## Out of scope
 
