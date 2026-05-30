@@ -375,6 +375,14 @@ Spans are parented as follows, using the §6 `namespace`, `fan_out_index`, and `
   the invocation span, subgraph span, fan-out instance span, or per-branch dispatch span
   depending on context).
 
+When a node event has BOTH `fan_out_index` AND `branch_name` populated (a node inside a
+parallel-branches branch nested in a fan-out instance, or vice versa — graph-engine §6
+explicitly allows both), the immediate parent span is the **innermost** containing wrapper
+among the per-branch dispatch span and the fan-out instance span — determined by namespace
+ancestry depth (each wrapper's namespace position fixes its ancestor depth in the trace tree).
+The other span is a higher ancestor in the trace tree, not the immediate parent. The single-
+population bullets above describe the common case; this rule handles the mixed-nesting case.
+
 The invariant `len(parent_states) == len(namespace) - 1` from §6 is preserved by this mapping: each
 parent-state entry corresponds to exactly one ancestor span. The `attempt_index`, `fan_out_index`,
 and `branch_name` fields disambiguate sibling spans at the same hierarchy level.
@@ -903,6 +911,11 @@ fields, preserving the two-span-category distinction above:
   event (via `parallel_branches_config.parent_node_name`) and applies it on each synthesized
   dispatch span. The branch's `branch_name` is sourced from the first inner event of that
   branch (`event.branch_name`).
+
+**Per-branch dispatch span name.** The OTel observer MUST set the per-branch dispatch span's
+`name` attribute to the branch's `branch_name` value (e.g., `"fraud_check"`, `"policy_audit"`).
+This matches the Langfuse mapping's per-branch Span observation naming and gives operators a
+directly meaningful span name in the trace tree.
 
 ## 6. Driving span lifecycle
 
