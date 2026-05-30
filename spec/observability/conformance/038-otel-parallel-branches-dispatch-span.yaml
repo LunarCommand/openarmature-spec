@@ -1,0 +1,117 @@
+# OTel parallel-branches dispatch span synthesis (§4.3, §5.7, §6, per
+# proposal 0044). Asserts that the OTel observer synthesizes a per-branch
+# dispatch span between the parallel-branches NODE span and each branch's
+# inner-node spans (matching the Langfuse fixture 030 shape on the OTel
+# side). Also exercises the new §5.7 attributes on both the parallel-
+# branches NODE span and the synthesized dispatch spans.
+
+cases:
+  - name: parallel_branches_dispatch_span_synthesized_per_branch
+    description: |
+      Two-branch parallel-branches node (`dispatcher` with branches
+      `fraud_check` and `policy_audit`, each containing an `ask` inner
+      node that makes an LLM call). The OTel observer MUST synthesize
+      a per-branch dispatch span between the parallel-branches NODE
+      span and each branch's inner-node spans. Per §4.3, the inner
+      `ask` spans parent under their respective dispatch spans, NOT
+      directly under the `dispatcher` NODE span. Per §5.7, the dispatch
+      spans carry `openarmature.node.branch_name` and
+      `openarmature.parallel_branches.parent_node_name`; the inner spans
+      carry `openarmature.node.branch_name` matching their branch; the
+      parallel-branches NODE span carries
+      `openarmature.parallel_branches.branch_count` and
+      `openarmature.parallel_branches.error_policy`.
+    subgraphs:
+      fraud_check:
+        state:
+          fields:
+            msg:
+              type: string
+              default: ""
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              model: "gpt-4o"
+              response: "fraud_check response"
+        edges:
+          - {from: ask, to: END}
+      policy_audit:
+        state:
+          fields:
+            msg:
+              type: string
+              default: ""
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              model: "gpt-4o"
+              response: "policy_audit response"
+        edges:
+          - {from: ask, to: END}
+    state:
+      fields:
+        result:
+          type: string
+          default: ""
+    entry: dispatcher
+    nodes:
+      dispatcher:
+        parallel_branches:
+          branches:
+            fraud_check:
+              subgraph: fraud_check
+            policy_audit:
+              subgraph: policy_audit
+          error_policy: fail_fast
+    edges:
+      - {from: dispatcher, to: END}
+    initial_state: {}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "dispatcher"   # parallel-branches NODE span
+              status: OK
+              attributes:
+                openarmature.parallel_branches.branch_count: 2
+                openarmature.parallel_branches.error_policy: "fail_fast"
+              children:
+                - name: "fraud_check"   # synthesized per-branch dispatch span
+                  status: OK
+                  attributes:
+                    openarmature.node.branch_name: "fraud_check"
+                    openarmature.parallel_branches.parent_node_name: "dispatcher"
+                  children:
+                    - name: "ask"
+                      attributes:
+                        openarmature.node.branch_name: "fraud_check"
+                      children:
+                        - name: "openarmature.llm.complete"
+                          children: []
+                - name: "policy_audit"   # synthesized per-branch dispatch span
+                  status: OK
+                  attributes:
+                    openarmature.node.branch_name: "policy_audit"
+                    openarmature.parallel_branches.parent_node_name: "dispatcher"
+                  children:
+                    - name: "ask"
+                      attributes:
+                        openarmature.node.branch_name: "policy_audit"
+                      children:
+                        - name: "openarmature.llm.complete"
+                          children: []
+      invariants:
+        # Same-named inner `ask` spans (one per branch) are disambiguated
+        # by their distinct dispatch-span parents — not by an internal
+        # stack-key recovery on the observer's part. This is the
+        # structural disambiguation 0044 provides.
+        same_named_inner_spans_disambiguated_by_dispatch_parent: true
+        # Per-branch dispatch spans close before the parallel-branches
+        # NODE span (children-before-parents).
+        dispatch_spans_close_before_node_span: true
+        # Dispatch spans close in declaration order
+        # (`parallel_branches_config.branch_names` order).
+        dispatch_spans_close_in_declaration_order: ["fraud_check", "policy_audit"]

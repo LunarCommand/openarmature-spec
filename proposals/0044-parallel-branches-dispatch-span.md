@@ -1,9 +1,9 @@
 # 0044: Parallel-Branches Dispatch Span Synthesis
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-29
-- **Accepted:**
+- **Accepted:** 2026-05-29
 - **Targets:** spec/graph-engine/spec.md (§6 NodeEvent — adds `parallel_branches_config` field, mirroring `fan_out_config` from proposal 0013); spec/observability/spec.md (§5 — adds an `openarmature.node.branch_name` per-branch span attribute paralleling `openarmature.node.fan_out_index`; new §5.7 *Parallel-branches span attributes* paralleling §5.4 *Fan-out span attributes*; §4 / §6 driving-span lifecycle — defines per-branch dispatch span synthesis behavior); new conformance fixture exercising the OTel parallel-branches dispatch span shape.
 - **Related:** 0011 (parallel branches — established the §6 NodeEvent `branch_name` field), 0013 (fan-out config on NodeEvent — the template this proposal mirrors), 0042 (reserved-keys extension — included `branch_name` in §8.4.2 Langfuse mapping; this proposal completes the §5 / §6 OTel side)
 - **Supersedes:**
@@ -157,10 +157,14 @@ attributes*:
 > ### 5.7 Parallel-branches span attributes
 >
 > The following attributes MUST appear on per-branch dispatch spans
-> (synthesized by the observer per §4 / §6 below):
+> (synthesized by the OTel observer per §4.3 and §6):
 >
-> - `openarmature.parallel_branches.branch_name` — string. The branch's
->   identifier, sourced from the synthesized span's keying tuple.
+> - `openarmature.node.branch_name` — string. The branch's identifier,
+>   sourced from the §6 NodeEvent `branch_name` field. Also appears on
+>   every inner-node span beneath the per-branch dispatch span —
+>   consistent with how `openarmature.node.fan_out_index` propagates onto
+>   inner nodes from §5.4. (Newly introduced by this proposal; prior spec
+>   versions did not define an OTel span attribute carrying `branch_name`.)
 > - `openarmature.parallel_branches.parent_node_name` — string. The
 >   parallel-branches NODE's name in the parent graph, cached by the
 >   observer from the parallel-branches NODE's `started` event.
@@ -171,7 +175,8 @@ attributes*:
 > - `openarmature.parallel_branches.branch_count` — int. The number of
 >   branches dispatched.
 > - `openarmature.parallel_branches.error_policy` — string. One of
->   `"fail_fast"` or `"collect"`. Useful for filtering traces by policy.
+>   `"fail_fast"` or `"collect"` (per pipeline-utilities §11.5). Useful
+>   for filtering traces by policy.
 >
 > Implementations source these attributes from the corresponding
 > graph-engine §6 NodeEvent fields, preserving the two-span-category
@@ -183,14 +188,19 @@ attributes*:
 >   parallel-branches node span. Sourced from
 >   `event.parallel_branches_config` on the parallel-branches node's own
 >   `started` / `completed` events.
-> - **Per-branch dispatch span attributes.**
->   `openarmature.parallel_branches.branch_name` and
->   `openarmature.parallel_branches.parent_node_name` go on the
->   synthesized per-branch dispatch span. The observer caches the value
->   from the parallel-branches node's `started` event (via
->   `parallel_branches_config.parent_node_name`) and applies it on each
->   synthesized dispatch span. The branch's `branch_name` is sourced
+> - **Per-branch dispatch span attributes.** `openarmature.node.branch_name`
+>   and `openarmature.parallel_branches.parent_node_name` go on the
+>   synthesized per-branch dispatch span. The observer caches the
+>   `parent_node_name` from the parallel-branches node's `started` event
+>   (via `parallel_branches_config.parent_node_name`) and applies it on
+>   each synthesized dispatch span. The branch's `branch_name` is sourced
 >   from the first inner event of that branch (`event.branch_name`).
+>
+> **Per-branch dispatch span name.** The OTel observer MUST set the
+> per-branch dispatch span's `name` attribute to the branch's
+> `branch_name` value (e.g., `"fraud_check"`, `"policy_audit"`). This
+> matches the Langfuse mapping's per-branch Span observation naming and
+> gives operators a directly meaningful span name in the trace tree.
 
 ### observability §4 / §6 — driving-span lifecycle: per-branch dispatch span synthesis
 
@@ -200,23 +210,26 @@ synthesis, paralleling the existing fan-out synthesis rule:
 > **Parallel-branches dispatch span synthesis.** On a parallel-branches
 > node's `started` event, the OTel observer:
 >
-> 1. Opens the parallel-branches NODE span and attaches the §5.7
->    node-level attributes from `parallel_branches_config`.
-> 2. Caches the parallel-branches NODE's identity — its `namespace`,
->    `attempt_index`, `fan_out_index`, and
->    `parallel_branches_config.parent_node_name` — keyed by
->    `(namespace, attempt_index, fan_out_index)`. The parallel-branches
->    NODE's own `branch_name` is absent on its event (the NODE is the
->    dispatcher, not a node inside a branch), so the cache key omits
->    `branch_name`. Including `attempt_index` and `fan_out_index` in the
->    cache key disambiguates concurrent and retried executions of the
->    same parallel-branches NODE (a parallel-branches node nested inside
->    a fan-out instance, or replayed under retry middleware, would
->    otherwise collide on `namespace` alone).
+> 1. Opens the parallel-branches NODE span (per the observer-driven model
+>    above) and attaches the §5.7 node-level attributes from
+>    `parallel_branches_config`.
+> 2. Caches the resolved `parallel_branches_config` (carrying
+>    `parent_node_name` for the dispatch-span attribute and `branch_names`
+>    for step 5's close ordering) under the parallel-branches NODE's full
+>    §6 event-source identity `(namespace, attempt_index, fan_out_index,
+>    branch_name)`. The NODE's `branch_name` is null when the NODE itself
+>    runs outside any parallel-branches branch (the common case — the
+>    NODE is the dispatcher, not a node inside a branch); it is non-null
+>    when the NODE executes inside an outer parallel-branches branch
+>    (nested parallel-branches), where per §6 the NODE's event carries
+>    the outer branch's `branch_name`. Including `branch_name` in the
+>    cache key disambiguates such nested executions; `attempt_index` and
+>    `fan_out_index` similarly disambiguate retried attempts and fan-out-
+>    instance contexts.
 >
-> On the **first inner event** received whose containing parallel-branches
-> NODE matches a cached entry (matched by the inner event's
-> `attempt_index` and `fan_out_index` — which propagate from the
+> On the **first inner `started` event** received whose containing
+> parallel-branches NODE matches a cached entry (matched by the inner
+> event's `attempt_index` and `fan_out_index` — which propagate from the
 > parallel-branches NODE per §6's nested-retry / nested-fan-out rules —
 > and a namespace prefix that matches the cached NODE's namespace), and
 > whose `branch_name` value hasn't yet been seen for that cached entry,
@@ -226,36 +239,34 @@ synthesis, paralleling the existing fan-out synthesis rule:
 >    parallel-branches NODE span, attaches the §5.7 dispatch-span
 >    attributes (`branch_name`, `parent_node_name` from the cache), and
 >    pushes it onto the span-stack keyed by the parallel-branches NODE's
->    full event-source identity plus the branch:
+>    full event-source identity plus the inner branch:
 >    `(parallel_branches_node_namespace, parallel_branches_node_attempt_index,
->    parallel_branches_node_fan_out_index, branch_name)`. This full tuple
->    disambiguates per-branch dispatch spans across multiple executions of
->    the same parallel-branches NODE (retried attempts, fan-out instances).
->    The dispatch span's `started_at` is the inner event's `started_at`.
+>    parallel_branches_node_fan_out_index, branch_name)`. The dispatch
+>    span's start time is the moment the inner `started` event fires.
 > 4. The inner event itself opens its span as a child of the synthesized
 >    per-branch dispatch span (not a direct child of the parallel-branches
 >    NODE span).
 >
 > On the parallel-branches NODE's `completed` event, the observer:
 >
-> 5. Closes all per-branch dispatch spans whose key prefix matches the
->    completing parallel-branches NODE's
->    `(namespace, attempt_index, fan_out_index)` — i.e., dispatch spans
->    for any `branch_name` value under THIS execution of the NODE.
->    Dispatch spans belonging to a different execution (other fan-out
->    instance, other retry attempt) remain open until THAT execution's
->    `completed` event fires. Order within this execution: declaration
->    order per `parallel_branches_config.branch_names`. Each dispatch
->    span's `ended_at` is the parallel-branches NODE's `completed`
->    timestamp.
+> 5. Looks up the cache entry by the completing parallel-branches NODE's
+>    full §6 event-source identity `(namespace, attempt_index,
+>    fan_out_index, branch_name)`, then closes the per-branch dispatch
+>    spans associated with that cache entry in declaration order per the
+>    cached `parallel_branches_config.branch_names`. Dispatch spans
+>    associated with other NODE executions (other fan-out instances,
+>    other retry attempts, other outer-branch contexts) remain open until
+>    their respective NODEs' `completed` events fire. Each dispatch span's
+>    end-time is the moment the parallel-branches NODE's `completed`
+>    event fires.
 > 6. Closes the parallel-branches NODE span itself (children-before-parents
 >    — this is the standard close order for nested-span emission).
 >
 > The synthesis is **lazy**: the dispatch span is created on the first
-> inner event, not eagerly at the parallel-branches NODE's `started`.
-> This matches the `_StackKey`-pattern existing observer implementations
-> use and keeps the synthesis observable-from-events without requiring
-> the engine to emit per-branch lifecycle events.
+> inner `started` event for each branch, not eagerly at the parallel-
+> branches NODE's `started`. This keeps the synthesis observable from
+> existing NodeEvents without requiring the engine to emit per-branch
+> lifecycle events.
 
 The §4 OTel span-tree definition gains a corresponding bullet documenting
 the per-branch dispatch span as a child of the parallel-branches NODE
@@ -272,10 +283,9 @@ side. The fixture asserts:
 
 - Per-branch dispatch spans exist between the parallel-branches NODE
   span and the inner-node spans (one dispatch span per declared branch).
-- Each per-branch dispatch span carries
-  `openarmature.parallel_branches.branch_name` and
-  `openarmature.parallel_branches.parent_node_name` attributes with the
-  expected values.
+- Each per-branch dispatch span carries `openarmature.node.branch_name`
+  and `openarmature.parallel_branches.parent_node_name` attributes with
+  the expected values.
 - The parallel-branches NODE span carries
   `openarmature.parallel_branches.branch_count` and
   `openarmature.parallel_branches.error_policy` attributes sourced from
