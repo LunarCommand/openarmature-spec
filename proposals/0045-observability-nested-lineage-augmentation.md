@@ -240,24 +240,24 @@ break.
 
 ## Alternatives considered
 
-- **(A) Strict per-async-context copy-on-write extends to nested
-  cases unchanged.** The outer-instance dispatch span is NOT updated
-  (per the current text's literal reading). Rejected: less useful
-  for filtering ("show me all spans for this specific outer
-  instance" doesn't work at the augmented-metadata level), and the
-  rule's intent (per the "no sibling leakage" framing) supports
-  updating the augmenter's own call-stack ancestor.
-- **(C) Specify only the event shape; defer the scope decision.**
+- **Strict per-async-context copy-on-write extends to nested cases
+  unchanged.** The outer-instance dispatch span is NOT updated (per
+  the current text's literal reading). Rejected: less useful for
+  filtering ("show me all spans for this specific outer instance"
+  doesn't work at the augmented-metadata level), and the rule's
+  intent (per the "no sibling leakage" framing) supports updating
+  the augmenter's own call-stack ancestor.
+- **Specify only the event shape; defer the scope decision.**
   Extend the augmentation event to carry per-depth lineage
   information but leave the scope rule (which spans update) for a
   future proposal. Rejected: kicks the actual design question down
   the road. The event-shape extension is a *consequence* of the
   scope decision, not an independent choice — without settling the
   scope, implementations don't know what to do with the chain.
-- **(D) Do nothing.** Leave the nested case under-specified.
-  Rejected: the v0.11.0 batch deliberately addresses the gap so
-  downstream implementations have a defined contract for nested
-  fan-out / parallel-branches usage.
+- **Do nothing.** Leave the nested case under-specified. Rejected:
+  the v0.11.0 batch deliberately addresses the gap so downstream
+  implementations have a defined contract for nested fan-out /
+  parallel-branches usage.
 - **Apply augmentation to ALL ancestor contexts including shared
   parents and invocation.** Maximally inclusive. Rejected: shared
   parents are by definition visible to multiple sibling instances;
