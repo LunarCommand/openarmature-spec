@@ -14,7 +14,7 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 **Notes**
 
-- **MINOR bump.** Additive: §8.2 documents pre-existing Langfuse fields; §8.4.1's `trace.input` / `trace.output` fields were previously always-blank for OA-emitted traces. Callers using the workaround of calling Langfuse SDK's `update_trace(input=..., output=...)` directly will see OA-observer-supplied values appearing on the Trace fields after this lands (last-writer-wins on the same attribute, per the OTel span-attribute overwrite semantics the Langfuse SDK uses to emit trace input/output); migration path is to replace direct `update_trace` calls with the new caller hooks (lever 3). The breaking-change surface is narrow — only callers actively bypassing the observer for these specific fields are affected.
+- **MINOR bump.** Additive: §8.2 documents pre-existing Langfuse fields; §8.4.1's `trace.input` / `trace.output` fields were previously always-blank for OA-emitted traces. Callers using the workaround of calling Langfuse SDK's `update_trace(input=..., output=...)` directly will see OA-observer-supplied values appearing on the Trace fields after this lands (last-writer-wins on the same attribute, per the OTel span-attribute overwrite semantics the Langfuse SDK uses to emit trace input/output); migration path is to replace direct `update_trace` calls with the new caller hooks (`trace_input_from_state` / `trace_output_from_state`). The breaking-change surface is narrow — only callers actively bypassing the observer for these specific fields are affected.
 
 ## [0.34.0] — 2026-05-29
 

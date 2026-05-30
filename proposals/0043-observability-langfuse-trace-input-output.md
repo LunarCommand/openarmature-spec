@@ -227,8 +227,9 @@ input/output via the Langfuse SDK's OTel span-attribute path, where
 (standard OTel behavior), so the caller's direct update may be clobbered
 by the OA observer's writes or vice versa depending on call order.
 Migration path: replace direct `update_trace` calls with the new caller
-hooks (lever 3). The breaking-change surface is narrow — only callers
-actively bypassing the observer for these specific fields are affected.
+hooks (`trace_input_from_state` / `trace_output_from_state`). The
+breaking-change surface is narrow — only callers actively bypassing the
+observer for these specific fields are affected.
 
 ## Out of scope
 
