@@ -90,8 +90,6 @@ cases:
                         openarmature.node.branch_name: "fraud_check"
                       children:
                         - name: "openarmature.llm.complete"
-                          attributes:
-                            openarmature.node.branch_name: "fraud_check"
                           children: []
                 - name: "policy_audit"   # synthesized per-branch dispatch span
                   status: OK
@@ -104,8 +102,6 @@ cases:
                         openarmature.node.branch_name: "policy_audit"
                       children:
                         - name: "openarmature.llm.complete"
-                          attributes:
-                            openarmature.node.branch_name: "policy_audit"
                           children: []
       invariants:
         # Same-named inner `ask` spans (one per branch) are disambiguated

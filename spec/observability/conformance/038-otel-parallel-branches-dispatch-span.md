@@ -31,7 +31,7 @@ dispatch span, not the parallel-branches NODE span directly.
 - `nodes.<name>.parallel_branches.error_policy` — `"fail_fast"` or `"collect"` per §11.5.
 - `expected.span_tree[*].attributes.openarmature.parallel_branches.*` — assertion on the §5.7
   attribute family on the relevant span.
-- `expected.span_tree[*].attributes.openarmature.node.branch_name` — assertion that the §5.2
+- `expected.span_tree[*].attributes.openarmature.node.branch_name` — assertion that the §5.7
   per-branch attribute appears on inner spans inside a parallel-branches branch (newly
   introduced by 0044).
 - `invariants.same_named_inner_spans_disambiguated_by_dispatch_parent: bool` — harness asserts
@@ -50,8 +50,7 @@ dispatch span, not the parallel-branches NODE span directly.
   `openarmature.parallel_branches.error_policy = "fail_fast"`.
 - Each dispatch span carries `openarmature.node.branch_name` matching its branch and
   `openarmature.parallel_branches.parent_node_name = "dispatcher"`.
-- Inner `ask` spans and the nested `openarmature.llm.complete` span both carry
-  `openarmature.node.branch_name` matching their branch.
+- Inner `ask` spans carry `openarmature.node.branch_name` matching their branch.
 - Same-named inner spans across the two branches are disambiguated by their distinct dispatch-
   span parents (no stack-key collision).
 - Dispatch spans close before the parallel-branches NODE span; close order matches

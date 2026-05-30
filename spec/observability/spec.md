@@ -319,8 +319,8 @@ invocation span is the OTel parent for all top-level node spans within that invo
 
 Implementations drive span lifecycle by registering an observer with the default phase
 subscription (both `started` and `completed`); the OTel observer maintains a stack of open spans
-keyed by `(namespace, attempt_index, fan_out_index)` and pairs each `completed` event with its
-corresponding `started`. Because the §6 delivery queue is strictly serial across an invocation,
+keyed by `(namespace, attempt_index, fan_out_index, branch_name)` and pairs each `completed`
+event with its corresponding `started`. Because the §6 delivery queue is strictly serial across an invocation,
 the start/close pairing is unambiguous.
 
 Implementations MAY also use pipeline-utilities middleware as the lifecycle driver if they prefer
@@ -939,38 +939,42 @@ OTel observer:
 
 1. Opens the parallel-branches NODE span (per the observer-driven model above) and attaches the
    §5.7 node-level attributes from `parallel_branches_config`.
-2. Caches the parallel-branches NODE's identity — its `namespace`, `attempt_index`,
-   `fan_out_index`, and `parallel_branches_config.parent_node_name` — keyed by
-   `(namespace, attempt_index, fan_out_index)`. The parallel-branches NODE's own `branch_name`
-   is absent on its event (the NODE is the dispatcher, not a node inside a branch), so the cache
-   key omits `branch_name`. Including `attempt_index` and `fan_out_index` in the cache key
-   disambiguates concurrent and retried executions of the same parallel-branches NODE.
+2. Caches the resolved `parallel_branches_config` (carrying `parent_node_name` for the
+   dispatch-span attribute and `branch_names` for step 5's close ordering) under the
+   parallel-branches NODE's full §6 event-source identity
+   `(namespace, attempt_index, fan_out_index, branch_name)`. The NODE's `branch_name` is null
+   when the NODE itself runs outside any parallel-branches branch (the common case — the NODE
+   is the dispatcher, not a node inside a branch); it is non-null when the NODE executes inside
+   an outer parallel-branches branch (nested parallel-branches), where per §6 the NODE's event
+   carries the outer branch's `branch_name`. Including `branch_name` in the cache key
+   disambiguates such nested executions; `attempt_index` and `fan_out_index` similarly
+   disambiguate retried attempts and fan-out-instance contexts.
 
-On the **first inner event** received whose containing parallel-branches NODE matches a cached
-entry (matched by the inner event's `attempt_index` and `fan_out_index` — which propagate from
-the parallel-branches NODE per §6's nested-retry / nested-fan-out rules — and a namespace prefix
-that matches the cached NODE's namespace), and whose `branch_name` value hasn't yet been seen
-for that cached entry, the observer:
+On the **first inner `started` event** received whose containing parallel-branches NODE matches
+a cached entry (matched by the inner event's `attempt_index` and `fan_out_index` — which
+propagate from the parallel-branches NODE per §6's nested-retry / nested-fan-out rules — and a
+namespace prefix that matches the cached NODE's namespace), and whose `branch_name` value
+hasn't yet been seen for that cached entry, the observer:
 
 3. Synthesizes a per-branch dispatch span as a child of the parallel-branches NODE span,
    attaches the §5.7 dispatch-span attributes (`branch_name`, `parent_node_name` from the
    cache), and pushes it onto the span-stack keyed by the parallel-branches NODE's full
    event-source identity plus the branch:
    `(parallel_branches_node_namespace, parallel_branches_node_attempt_index,
-   parallel_branches_node_fan_out_index, branch_name)`. The dispatch span's `started_at` is the
-   inner event's `started_at`.
+   parallel_branches_node_fan_out_index, branch_name)`. The dispatch span's start time is the
+   moment the inner `started` event fires.
 4. The inner event itself opens its span as a child of the synthesized per-branch dispatch span
    (not a direct child of the parallel-branches NODE span).
 
 On the parallel-branches NODE's `completed` event, the observer:
 
-5. Closes all per-branch dispatch spans whose key prefix matches the completing
-   parallel-branches NODE's `(namespace, attempt_index, fan_out_index)` — i.e., dispatch spans
-   for any `branch_name` value under THIS execution of the NODE. Dispatch spans belonging to
-   a different execution (other fan-out instance, other retry attempt) remain open until THAT
-   execution's `completed` event fires. Order within this execution: declaration order per
-   `parallel_branches_config.branch_names`. Each dispatch span's `ended_at` is the
-   parallel-branches NODE's `completed` timestamp.
+5. Looks up the cache entry by the completing parallel-branches NODE's full §6 event-source
+   identity `(namespace, attempt_index, fan_out_index, branch_name)`, then closes the
+   per-branch dispatch spans associated with that cache entry in declaration order per the
+   cached `parallel_branches_config.branch_names`. Dispatch spans associated with other NODE
+   executions (other fan-out instances, other retry attempts, other outer-branch contexts)
+   remain open until their respective NODEs' `completed` events fire. Each dispatch span's
+   end-time is the moment the parallel-branches NODE's `completed` event fires.
 6. Closes the parallel-branches NODE span itself (children-before-parents — this is the
    standard close order for nested-span emission).
 
