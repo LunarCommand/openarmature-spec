@@ -53,9 +53,15 @@ dispatcher (parallel-branches NODE observation)
 
 The OTel mapping currently does NOT synthesize the per-branch dispatch
 span; inner-branch spans parent directly under the parallel-branches
-NODE span, differentiated only by an `openarmature.branch_name` attribute.
-The OTel trace tree is "works but doesn't match the Langfuse shape," and
-the two mappings diverge structurally on the same graph topology.
+NODE span, with no spec-defined OTel span attribute disambiguating which
+branch they belong to. (The §6 NodeEvent's `branch_name` field is
+observer-readable, and 0042 added an `observation.metadata.branch_name`
+row to §8.4.2's Langfuse mapping, but observability §5 does not currently
+define an `openarmature.*` span attribute carrying the value — this
+proposal also introduces `openarmature.node.branch_name` to fill that
+gap.) The OTel trace tree is "works but doesn't match the Langfuse
+shape," and the two mappings diverge structurally on the same graph
+topology.
 
 Two consequences:
 
@@ -196,29 +202,52 @@ synthesis, paralleling the existing fan-out synthesis rule:
 >
 > 1. Opens the parallel-branches NODE span and attaches the §5.7
 >    node-level attributes from `parallel_branches_config`.
-> 2. Caches the parallel-branches NODE's `namespace` and
->    `parallel_branches_config.parent_node_name` for use by subsequent
->    branch synthesis. Cache key: the NODE's `namespace` value.
+> 2. Caches the parallel-branches NODE's identity — its `namespace`,
+>    `attempt_index`, `fan_out_index`, and
+>    `parallel_branches_config.parent_node_name` — keyed by
+>    `(namespace, attempt_index, fan_out_index)`. The parallel-branches
+>    NODE's own `branch_name` is absent on its event (the NODE is the
+>    dispatcher, not a node inside a branch), so the cache key omits
+>    `branch_name`. Including `attempt_index` and `fan_out_index` in the
+>    cache key disambiguates concurrent and retried executions of the
+>    same parallel-branches NODE (a parallel-branches node nested inside
+>    a fan-out instance, or replayed under retry middleware, would
+>    otherwise collide on `namespace` alone).
 >
-> On the **first inner event** received for each `branch_name` value
-> within the parallel-branches NODE's namespace, the observer:
+> On the **first inner event** received whose containing parallel-branches
+> NODE matches a cached entry (matched by the inner event's
+> `attempt_index` and `fan_out_index` — which propagate from the
+> parallel-branches NODE per §6's nested-retry / nested-fan-out rules —
+> and a namespace prefix that matches the cached NODE's namespace), and
+> whose `branch_name` value hasn't yet been seen for that cached entry,
+> the observer:
 >
 > 3. Synthesizes a per-branch dispatch span as a child of the
 >    parallel-branches NODE span, attaches the §5.7 dispatch-span
 >    attributes (`branch_name`, `parent_node_name` from the cache), and
->    pushes it onto the span-stack keyed by
->    `(parallel_branches_node_namespace, branch_name)`. The dispatch
->    span's `started_at` is the inner event's `started_at`.
+>    pushes it onto the span-stack keyed by the parallel-branches NODE's
+>    full event-source identity plus the branch:
+>    `(parallel_branches_node_namespace, parallel_branches_node_attempt_index,
+>    parallel_branches_node_fan_out_index, branch_name)`. This full tuple
+>    disambiguates per-branch dispatch spans across multiple executions of
+>    the same parallel-branches NODE (retried attempts, fan-out instances).
+>    The dispatch span's `started_at` is the inner event's `started_at`.
 > 4. The inner event itself opens its span as a child of the synthesized
 >    per-branch dispatch span (not a direct child of the parallel-branches
 >    NODE span).
 >
 > On the parallel-branches NODE's `completed` event, the observer:
 >
-> 5. Closes all per-branch dispatch spans keyed under the
->    parallel-branches NODE's namespace, in declaration order
->    (`parallel_branches_config.branch_names`). Each dispatch span's
->    `ended_at` is the parallel-branches NODE's `completed` timestamp.
+> 5. Closes all per-branch dispatch spans whose key prefix matches the
+>    completing parallel-branches NODE's
+>    `(namespace, attempt_index, fan_out_index)` — i.e., dispatch spans
+>    for any `branch_name` value under THIS execution of the NODE.
+>    Dispatch spans belonging to a different execution (other fan-out
+>    instance, other retry attempt) remain open until THAT execution's
+>    `completed` event fires. Order within this execution: declaration
+>    order per `parallel_branches_config.branch_names`. Each dispatch
+>    span's `ended_at` is the parallel-branches NODE's `completed`
+>    timestamp.
 > 6. Closes the parallel-branches NODE span itself (children-before-parents
 >    — this is the standard close order for nested-span emission).
 >
@@ -286,10 +315,12 @@ shape: inner-branch spans previously parented directly under the
 parallel-branches NODE span now parent under a per-branch dispatch span.
 Downstream consumers that hard-code the previous "inner spans are direct
 children of the parallel-branches NODE span" assumption need to update
-to the new nesting. This is the only behavioral change; the
-`openarmature.branch_name` attribute on inner spans (the pre-existing
-disambiguator) continues to be emitted via the new
-`openarmature.node.branch_name` attribute name.
+to the new nesting. The proposal also introduces
+`openarmature.node.branch_name` as a new OTel span attribute on
+inner-branch spans (paralleling `openarmature.node.fan_out_index`),
+surfacing the §6 NodeEvent `branch_name` field into §5's attribute
+namespace for the first time — this is a new attribute, not a rename of
+a pre-existing one.
 
 ## Out of scope
 
@@ -308,8 +339,8 @@ disambiguator) continues to be emitted via the new
 ## Alternatives considered
 
 - **Keep the current OTel shape** (inner-branch spans direct children
-  of the parallel-branches NODE span, disambiguated only by an
-  `openarmature.branch_name` attribute). Rejected: structural divergence
+  of the parallel-branches NODE span, with no spec-defined OTel
+  disambiguator at the attribute level). Rejected: structural divergence
   between OTel and Langfuse mappings on the same graph topology, and the
   observer-internal `_StackKey` collision when two branches share an
   identically-named inner node forces implementations into a workaround
