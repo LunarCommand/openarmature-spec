@@ -4,6 +4,18 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.35.0] — 2026-05-29
+
+**Added**
+
+- **observability §8.2 — Trace entity gains `input` / `output` payload fields.** Documents existing Langfuse Trace fields surfaced as headline columns in the Langfuse Traces list view. ([proposal 0043](proposals/0043-observability-langfuse-trace-input-output.md))
+- **observability §8.4.1 — `trace.input` / `trace.output` mapping rows + *Trace input/output sourcing* paragraph.** The paragraph defines a Langfuse-observer-level `disable_state_payload` privacy knob (default ON, symmetric to §5.5.4's `disable_llm_payload`), a three-lever source decision tree (caller hook → raw state when the knob is OFF → privacy-safe minimal stub by default), a closed `{completed, failed}` `status` enum on the minimal stub's `trace.output`, the caller-hook contract (`trace_input_from_state` / `trace_output_from_state`, raw-state input, null fallthrough), and resume semantics (each `resume_invocation` mints a fresh Langfuse trace per §8.4.1; hooks re-fire on the resumed trace; original trace not mutated).
+- Conformance fixture `observability/conformance/037-langfuse-trace-input-output` exercising the three-lever decision tree across four cases (including the lever-1 null-fallthrough case) + the resume case.
+
+**Notes**
+
+- **MINOR bump.** Additive: §8.2 documents pre-existing Langfuse fields; §8.4.1's `trace.input` / `trace.output` fields were previously always-blank for OA-emitted traces. Callers using the workaround of calling Langfuse SDK's `update_trace(input=..., output=...)` directly will see OA-observer-supplied values appearing on the Trace fields after this lands (last-writer-wins on the same attribute, per the OTel span-attribute overwrite semantics the Langfuse SDK uses to emit trace input/output); migration path is to replace direct `update_trace` calls with the new caller hooks (`trace_input_from_state` / `trace_output_from_state`). The breaking-change surface is narrow — only callers actively bypassing the observer for these specific fields are affected.
+
 ## [0.34.0] — 2026-05-29
 
 **Changed**

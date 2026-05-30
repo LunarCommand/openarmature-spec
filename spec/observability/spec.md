@@ -12,6 +12,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §3 extended with new §3.4 *Caller-supplied invocation metadata* subsection — sibling caller surface to `correlation_id` accepting an arbitrary key/value mapping at `invoke()` time, propagated via the language's context primitive, augmentable mid-invocation via a framework helper (each fan-out instance gets its own per-async-context copy so per-instance additions don't leak to siblings), invocation-scoped (flows through detached subgraphs and fan-outs); §5.6 cross-cutting attribute family extended with `openarmature.user.*` (appears on every span and OTel log record, using the in-scope metadata at span emission time); §7 log records extended to carry the same family; §8.4.1 and §8.4.2 Langfuse propagation extended with caller metadata merged into `trace.metadata` and every `observation.metadata` as top-level keys (with a Langfuse-Sessions distinction note clarifying that this is orthogonal to Sessions/`sessionId`, which remain deferred to proposal 0020); graph-engine §3 gains a clarifying paragraph noting `invoke()` accepts the metadata mapping by [proposal 0034](../../proposals/0034-caller-supplied-invocation-metadata.md)
   - §5.6 cross-cutting attribute family extended with `openarmature.session_id` (appears on every span when the invocation is session-bound; same ambient-context propagation as `correlation_id`, absent otherwise); §7 log records extended to carry `openarmature.session_id` via the same OTel Logs Bridge mechanism; §7 detached-trace-mode paragraph extended to note `session_id` is invocation-scoped and unchanged across detached / parent traces by [proposal 0020](../../proposals/0020-sessions-capability.md)
   - §3.4 reserved-key enumeration extended with `branch_name`, `detached`, `detached_from_invocation_id` (24-name set total) — closes a coverage gap in 0041's reservation against the §8.4 Langfuse top-level metadata keys; §8.4.1 gains a `trace.metadata.detached_from_invocation_id` row (detached child trace's inverse pointer to the parent invocation); §8.4.2 gains `observation.metadata.branch_name` (per-branch Span observation) and `observation.metadata.detached` (dispatching observation flag) rows by [proposal 0042](../../proposals/0042-observability-reserved-keys-extension.md)
+  - §8.2 Trace entity definition extends with `input` / `output` payload fields (documenting existing Langfuse Trace fields surfaced as headline columns); §8.4.1 gains `trace.input` and `trace.output` mapping rows + a *Trace input/output sourcing* paragraph defining the `disable_state_payload` Langfuse-observer privacy knob (symmetric to §5.5.4's `disable_llm_payload`, default ON), the three-lever source decision tree (caller hook → raw state when knob is off → privacy-safe minimal stub), a closed `{completed, failed}` status enum on the stub's `trace.output`, the caller-hook contract for optional domain-shaped summaries, and resume semantics (fresh Langfuse trace per resumed `invocation_id`, hooks re-fire on the resumed trace) by [proposal 0043](../../proposals/0043-observability-langfuse-trace-input-output.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1058,8 +1059,9 @@ surfaces are deferred (§8.10).
 Langfuse exposes a small set of entity types relevant to this mapping:
 
 - **Trace.** Top-level container for one logical interaction. Carries identity (`id`), metadata
-  (`name`, `userId`, `sessionId`, `tags`, `version`, arbitrary `metadata` map), and contains a
-  tree of Observations.
+  (`name`, `userId`, `sessionId`, `tags`, `version`, arbitrary `metadata` map), JSON-typed
+  `input` / `output` payload fields surfaced as headline columns in the Langfuse Traces list
+  view, and contains a tree of Observations.
 - **Observation.** A unit of work nested under a Trace. Three concrete types:
   - **Span.** Generic timed work — node executions, subgraph dispatch, fan-out dispatch.
   - **Generation.** LLM call. Adds `input`, `output`, `model`, `modelParameters`, `usage`,
@@ -1150,6 +1152,8 @@ to also catch Langfuse-specific constraints early, per §3.4's MAY-expand allowa
 | (caller-supplied invocation label OR entry node name, per §8.6) | `trace.name` |
 | §4.4 detached-mode dispatch context: the parent invocation's `invocation_id` | `trace.metadata.detached_from_invocation_id` — emitted on the detached child trace only (a trace produced by detached-mode dispatch per §4.4). Points back to the parent invocation for inverse lookup. Sibling to `trace.metadata.correlation_id` (preserved across detached / parent traces per §3.1, providing the forward direction). Absent on non-detached traces. |
 | Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at trace emission time (per §3.4, including any mid-invocation augmentations applied before trace closure) | `trace.metadata.<key>` (top level, sibling to `correlation_id` / `entry_node` / `spec_version`; NOT nested under a `user` sub-object so Langfuse UI filtering on `metadata.<key>` matches what callers supplied; implementations SHOULD use Langfuse SDK's `trace.update(metadata=...)` to apply mid-invocation augmentations to the open Trace) |
+| `initial_state` at invocation entry — sourced via the *Trace input/output sourcing* paragraph below | `trace.input` |
+| Final state at invocation exit — sourced via the *Trace input/output sourcing* paragraph below | `trace.output` |
 
 **`trace.id` derivation (caller-supplied `invocation_id`).** Langfuse (OTel-based) requires
 `trace.id` to be a 128-bit value rendered as 32 lowercase hex characters. Per §5.1 the
@@ -1169,6 +1173,81 @@ This non-UUID derivation is exactly Langfuse's own `create_trace_id(seed)` helpe
 `create_trace_id(seed=invocation_id)` — a consumer can reproduce or look up the trace id from its
 raw id via the helper. (`trace.metadata.invocation_id` is reserved against caller-metadata
 collision per §3.4.)
+
+**Trace input/output sourcing.** Trace-level input/output emission is governed by a
+Langfuse-observer-level privacy knob and a three-lever decision tree.
+
+**`disable_state_payload: bool`** — Langfuse-observer-level opt-out for Trace-level `input` /
+`output` payload emission. Default ON, mirroring §5.5.4's `disable_llm_payload` privacy-safe
+posture. When ON, the observer does NOT serialize `initial_state` / final state directly onto
+`trace.input` / `trace.output`; the default-off minimal stub (below) applies unless a caller
+hook overrides. When OFF, the observer serializes `initial_state` → `trace.input` and final
+state → `trace.output`, subject to the existing payload-byte-cap truncation (§5.5.5). The two
+payload-privacy knobs (`disable_llm_payload` from §5.5.4 and the new `disable_state_payload`
+here) are independent: the former controls Generation-level input/output; the latter controls
+Trace-level input/output. Implementations MAY expose them as a single combined flag for
+convenience, but the spec defines them as two separate concerns so callers can opt one in
+without the other — they're independent concerns with different threat models (LLM payload =
+model interaction transcript; Trace-level state payload = application state shape).
+
+The Trace-level input/output sources resolve via the following decision tree, applied
+independently to each of `trace.input` and `trace.output`:
+
+1. **Caller hook supplied AND returns a non-null value** → the hook's return value is
+   serialized to the Trace field.
+2. **`disable_state_payload` is OFF** → the raw state object (`initial_state` for input, final
+   state for output) is serialized to the Trace field, subject to the existing
+   payload-byte-cap truncation.
+3. **Otherwise (default)** → the minimal stub:
+   - `trace.input` = `{"entry_node": <entry node name>, "correlation_id": <correlation ID>}`.
+   - `trace.output` = `{"final_node": <name of the node whose execution preceded the
+     END-reached transition, or that raised>, "status": <status enum below>}`.
+
+The minimal stub carries no application payload — `entry_node` is the graph's declared entry
+node name (already emitted as `trace.metadata.entry_node` above) and `correlation_id` is the
+invocation's correlation ID (already emitted as `trace.metadata.correlation_id` per §8.5);
+`final_node` is the graph-level identifier of the last node executed, not the node's payload.
+The stub is therefore privacy-safe by construction.
+
+**`status` enum.** The stub `trace.output.status` MUST be one of:
+
+- `"completed"` — invocation reached END normally.
+- `"failed"` — invocation raised at any node, edge, reducer, or boundary validator before
+  reaching END.
+
+The enum is closed at this spec version. Future proposals may extend it (e.g., suspension
+states once that capability lands) via the same maintenance discipline §8.4's emitted-key set
+uses.
+
+**Caller-hook contract.** Implementations MAY expose two optional hook callables on the §8
+LangfuseObserver construction surface (per-language idiomatic naming and shape — keyword
+constructor arguments, configuration record fields, builder methods, etc.; the spec defines the
+contract, not the surface syntax):
+
+- `trace_input_from_state(state) → InputValue | None` — called once per invocation, at
+  invocation entry, after the engine has constructed `initial_state` and before any node runs.
+  Takes the raw state object (the typed-state instance in language-idiomatic form). Returns
+  the value to use as `trace.input`. Returning the language's null sentinel falls through to
+  the next lever in the decision tree.
+- `trace_output_from_state(state) → OutputValue | None` — called once per invocation, at
+  invocation exit, after the engine has produced the final state (whether the invocation
+  reached END or failed). Same signature shape; falls through to the next lever on null.
+
+Hook return types: any JSON-serializable value (object, array, primitive, or string).
+Implementations MUST apply the existing payload-byte-cap truncation if a hook's return value
+exceeds the cap.
+
+Hook signature takes the raw state, not a typed wrapper or `NodeEvent` — minimum added surface
+area, consistent with the framework's "transparency over abstraction" framing.
+
+**Resume semantics.** On a resumed invocation (`invoke(resume_invocation=...)` per
+pipeline-utilities §10.4), the framework mints a fresh `invocation_id` and therefore a fresh
+Langfuse trace per the *`trace.id` derivation* note above. The hooks fire on the resumed
+invocation as if it were a new invocation, writing to the resumed trace's `input` / `output`.
+They do NOT overwrite the original (now-completed) trace's fields — Langfuse trace identity is
+per-`invocation_id`, and the resumed trace is a separate Langfuse object. The `correlation_id`
+is preserved across the original and resumed traces (per §3.1), so the operator can correlate
+the resume to its original via metadata filtering.
 
 #### 8.4.2 Observation-level mapping (sourced from node / subgraph / fan-out span attributes)
 

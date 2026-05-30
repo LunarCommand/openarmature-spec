@@ -1,0 +1,207 @@
+# §8.4.1 trace.input / trace.output sourcing (proposal 0043). The three-
+# lever decision tree (caller hook → raw state when disable_state_payload
+# is OFF → privacy-safe minimal stub by default) plus resume semantics
+# (each resume mints a fresh Langfuse trace per §8.4.1; hooks re-fire on
+# the resumed trace; original trace is not mutated).
+
+cases:
+  - name: default_privacy_no_hooks_stub_emitted
+    description: |
+      Lever 3 (default). `disable_state_payload` defaults ON; no hooks
+      supplied. The minimal stub appears on `trace.input` and
+      `trace.output`: `trace.input = {entry_node, correlation_id}` and
+      `trace.output = {final_node, status}`.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: greet
+    nodes:
+      greet:
+        update_pure: {msg: "hello"}
+    edges:
+      - {from: greet, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-1"
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex-1>"
+        input:
+          entry_node: "greet"
+          correlation_id: "corr-1"
+        output:
+          final_node: "greet"
+          status: "completed"
+
+  - name: disable_state_payload_off_raw_state_emitted
+    description: |
+      Lever 2. `disable_state_payload=False`; no hooks. The observer
+      serializes `initial_state` → `trace.input` and final state →
+      `trace.output`, subject to the existing payload-byte-cap truncation
+      (§5.5.5).
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: greet
+    nodes:
+      greet:
+        update_pure: {msg: "hello"}
+    edges:
+      - {from: greet, to: END}
+    initial_state: {msg: "start"}
+    caller_correlation_id: "corr-2"
+    langfuse_observer:
+      disable_state_payload: false
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex-2>"
+        input:
+          msg: "start"
+        output:
+          msg: "hello"
+
+  - name: hooks_non_null_replace_decision_tree
+    description: |
+      Lever 1. Both `trace_input_from_state` and `trace_output_from_state`
+      hooks return non-null domain summaries. Their return values appear
+      on `trace.input` / `trace.output` verbatim; `disable_state_payload`
+      is irrelevant when the hook short-circuits at lever 1.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: greet
+    nodes:
+      greet:
+        update_pure: {msg: "hello"}
+    edges:
+      - {from: greet, to: END}
+    initial_state: {msg: "start"}
+    caller_correlation_id: "corr-3"
+    langfuse_observer:
+      # Harness mocks (per-language idiomatic): `returns_job_input_summary`
+      # returns {"summary": "job-input"}; `returns_job_output_summary`
+      # returns {"summary": "job-output"}.
+      trace_input_from_state: returns_job_input_summary
+      trace_output_from_state: returns_job_output_summary
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex-3>"
+        input:
+          summary: "job-input"
+        output:
+          summary: "job-output"
+
+  - name: hooks_null_fallthrough_to_stub
+    description: |
+      Lever 1 fallthrough. Both hooks supplied but return the language's
+      null sentinel. Per the decision tree, fallthrough applies —
+      `disable_state_payload` defaults ON, so the minimal stub from
+      lever 3 appears.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: greet
+    nodes:
+      greet:
+        update_pure: {msg: "hello"}
+    edges:
+      - {from: greet, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-4"
+    langfuse_observer:
+      # Both hooks return the language's null sentinel.
+      trace_input_from_state: returns_null
+      trace_output_from_state: returns_null
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex-4>"
+        input:
+          entry_node: "greet"
+          correlation_id: "corr-4"
+        output:
+          final_node: "greet"
+          status: "completed"
+
+  - name: resume_hooks_refire_to_resumed_trace
+    description: |
+      Resume semantics. A two-invoke flow: the first invoke aborts in
+      node_b (after node_a's `completed` event fires and the checkpointer
+      saves); the second invoke is a `resume_invocation` of the first.
+      Per §8.4.1, each invoke mints its own Langfuse trace
+      (`trace.id` = the invoke's `invocation_id`); the hooks fire on
+      each invoke independently. The resumed trace's input/output reflect
+      the hooks running over the resumed invocation's state; the first
+      trace's fields are NOT mutated by the resume. `correlation_id` is
+      preserved across both traces per §3.1.
+    state:
+      fields:
+        a_ran:
+          type: bool
+          default: false
+        b_ran:
+          type: bool
+          default: false
+    entry: node_a
+    nodes:
+      node_a:
+        update_pure: {a_ran: true}
+      node_b:
+        flaky:
+          fail_first_invocation_only: true
+          on_success: {b_ran: true}
+    edges:
+      - {from: node_a, to: node_b}
+      - {from: node_b, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-5"
+    checkpointer: in_memory
+    langfuse_observer:
+      # Both hooks return a snapshot of the state's a_ran/b_ran flags.
+      trace_input_from_state: returns_state_snapshot
+      trace_output_from_state: returns_state_snapshot
+    first_run_expected_error:
+      category: node_exception
+      raised_from: node_b
+    first_run_expected:
+      langfuse_trace:
+        id: "<uuid-hex-5-a>"
+        input:
+          # Hook return at first invoke's entry: a_ran=false, b_ran=false.
+          a_ran: false
+          b_ran: false
+        # First invoke aborts at node_b; the output hook fires at exit
+        # with the partial final state captured at the failure point.
+        output:
+          a_ran: true
+          b_ran: false
+    resume:
+      from_first_run: true
+      expected:
+        langfuse_trace:
+          id: "<uuid-hex-5-b>"   # DIFFERENT trace.id from first run
+          input:
+            # Hook re-fires at the resumed invocation's entry; restored
+            # state from the checkpoint has a_ran=true after the first
+            # invoke saved past node_a.
+            a_ran: true
+            b_ran: false
+          output:
+            # Resumed invoke completes; final state has both flags set.
+            a_ran: true
+            b_ran: true
+        first_trace_unchanged: true
+    invariants:
+      # The two traces have DIFFERENT trace.id values per §8.4.1.
+      distinct_trace_ids: true
+      # correlation_id is SHARED across both traces per §3.1.
+      correlation_id_consistent_across_traces: true
+      # Hooks fired independently on each invoke; the resumed trace's
+      # input/output reflect the resumed invocation's state.
+      hooks_refire_on_resumed_trace: true
