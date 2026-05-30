@@ -1,0 +1,638 @@
+# §3.4 nested-lineage augmentation containment scope (proposal 0045).
+# Three nested-dispatch cases verify the lineage-aware boundary rule —
+# augmentation reaches every dispatch ancestor on the augmenter's call-
+# stack path (a new MUST), while sibling instances / branches at every
+# depth and the shared NODE / invocation spans remain isolated.
+#
+# Single-level scope (one fan-out instance OR one parallel branch on the
+# augmenter's path) is exercised by fixtures 029 / 030 / 034 and remains
+# unchanged under the lineage-aware rule (the call-stack ancestor chain
+# is length one and the update set is identical).
+
+cases:
+
+  # ------------------------------------------------------------------
+  # Case 1: inner fan-out inside outer fan-out instance.
+  # ------------------------------------------------------------------
+  - name: inner_fan_out_augmenter_propagates_to_outer_dispatch_span
+    description: |
+      Two-level fan-out nesting. Outer fan-out over two products
+      ({id: "alpha"}, {id: "beta"}); each outer-instance subgraph runs
+      an inner fan-out over a single-element list (the per-outer
+      `inner_seed` field), so each outer-instance has exactly one
+      inner-instance under it. Each leaf augments
+      `note=<inner_seed.value>` via `augment_metadata_from_field`. With
+      one inner-instance per outer-instance there is no last-writer
+      race on the outer dispatch span.
+
+      Per the lineage-aware boundary in §3.4 the augmenter's full call-
+      stack ancestor chain (inner-instance dispatch span + outer-
+      instance dispatch span) MUST carry the augmented metadata. The
+      shared-parent boundaries (inner fan-out NODE under each outer,
+      outer fan-out NODE, invocation) MUST NOT. The sibling boundary
+      isolates the alpha and beta subtrees from each other.
+    state:
+      fields:
+        results:
+          type: list<dict>
+          reducer: append
+          default: []
+    entry: outer_fan_out
+    nodes:
+      outer_fan_out:
+        fan_out:
+          items_field: products
+          inner_subgraph: per_product
+    inner_subgraphs:
+      per_product:
+        state:
+          fields:
+            score:
+              type: string
+              default: ""
+        entry: inner_fan_out
+        nodes:
+          inner_fan_out:
+            fan_out:
+              # The seed is a per-outer-instance single-element list,
+              # so each outer-instance has exactly one inner-instance.
+              items_field: inner_seed
+              inner_subgraph: per_category
+              # Each leaf augments `note=<inner_seed.value>` before its
+              # LLM call. Same key across both outer subtrees, distinct
+              # value per leaf — no key collision on shared parents
+              # (which are not updated) and a unique value on each
+              # outer dispatch span.
+              augment_metadata_from_field:
+                note: value
+        edges:
+          - {from: inner_fan_out, to: END}
+      per_category:
+        state:
+          fields:
+            picked:
+              type: string
+              default: ""
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "pick"}]
+              stores_response_in: picked
+        edges:
+          - {from: ask, to: END}
+    edges:
+      - {from: outer_fan_out, to: END}
+    initial_state:
+      products:
+        - {id: "alpha", inner_seed: [{value: "a-only"}]}
+        - {id: "beta",  inner_seed: [{value: "b-only"}]}
+    caller_metadata:
+      tenantId: "acme-corp"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-39-a
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "a-pick"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-39-b
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "b-pick"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        metadata:
+          # Invocation (the Trace) is a shared parent of all outer
+          # dispatch contexts — MUST NOT receive any augmented `note`.
+          tenantId: "acme-corp"
+        observations:
+          - type: span
+            name: "outer_fan_out"
+            # Outer fan-out NODE span is a shared parent of both
+            # outer-instance dispatch contexts — MUST NOT carry `note`.
+            metadata:
+              tenantId: "acme-corp"
+            children:
+              - type: span
+                # Outer instance for product alpha. The leaf inside
+                # this subtree augments `note=a-only`; per 0045 the
+                # augmentation MUST reach this dispatch span even
+                # though the augmentation happened inside the inner-
+                # instance dispatch context one level deeper.
+                metadata:
+                  tenantId: "acme-corp"
+                  note: "a-only"
+                children:
+                  - type: span
+                    name: "inner_fan_out"
+                    # Inner fan-out NODE span is a shared parent of
+                    # the inner-instance dispatch contexts under this
+                    # outer instance — MUST NOT carry `note`.
+                    metadata:
+                      tenantId: "acme-corp"
+                    children:
+                      - type: span
+                        # Inner instance under outer-alpha. Augmenter
+                        # context — MUST carry `note=a-only`.
+                        metadata:
+                          tenantId: "acme-corp"
+                          note: "a-only"
+                        children:
+                          - type: span
+                            name: "ask"
+                            metadata:
+                              tenantId: "acme-corp"
+                              note: "a-only"
+                            children:
+                              - type: generation
+                                name: "openarmature.llm.complete"
+                                metadata:
+                                  tenantId: "acme-corp"
+                                  note: "a-only"
+                                children: []
+              - type: span
+                # Outer instance for product beta. Sibling of alpha at
+                # the outer-fan-out depth. MUST NOT carry `note=a-only`
+                # (sibling boundary); MUST carry its own `note=b-only`
+                # from its own subtree's augmenter (lineage-aware rule).
+                metadata:
+                  tenantId: "acme-corp"
+                  note: "b-only"
+                children:
+                  - type: span
+                    name: "inner_fan_out"
+                    metadata:
+                      tenantId: "acme-corp"
+                    children:
+                      - type: span
+                        metadata:
+                          tenantId: "acme-corp"
+                          note: "b-only"
+                        children:
+                          - type: span
+                            name: "ask"
+                            metadata:
+                              tenantId: "acme-corp"
+                              note: "b-only"
+                            children:
+                              - type: generation
+                                name: "openarmature.llm.complete"
+                                metadata:
+                                  tenantId: "acme-corp"
+                                  note: "b-only"
+                                children: []
+      invariants:
+        # Augmenter's call-stack ancestor chain (inner-instance
+        # dispatch + outer-instance dispatch) MUST be updated by the
+        # augmentation.
+        outer_dispatch_span_carries_inner_augmentation: true
+        # Sibling outer dispatch spans do NOT cross-pollinate.
+        outer_dispatch_spans_isolated: true
+        # Shared-parent boundary: outer fan-out NODE, each inner
+        # fan-out NODE, and the invocation MUST NOT receive `note`.
+        shared_parent_spans_not_augmented: true
+
+  # ------------------------------------------------------------------
+  # Case 2: parallel-branches inside fan-out instance.
+  # ------------------------------------------------------------------
+  - name: parallel_branch_augmenter_propagates_to_outer_fan_out_instance
+    description: |
+      Outer fan-out over two products. Each outer-instance subgraph
+      runs a parallel-branches node with two branches; only ONE branch
+      (`probe`) augments `note=<outer.id>` via the branch's
+      `augment_metadata`, the other branch (`baseline`) does not. Each
+      branch is a single-node ask subgraph.
+
+      Per §3.4 the augmentation MUST reach the augmenting branch's
+      dispatch span (existing 030 rule) AND the outer fan-out instance's
+      dispatch span (the new lineage-aware rule from 0045). The sibling
+      branch (`baseline`) MUST NOT carry the augmentation; the parallel-
+      branches NODE span and the outer fan-out NODE span MUST NOT (shared
+      parents); sibling outer-instance subtrees MUST NOT.
+    subgraphs:
+      probe:
+        state:
+          fields:
+            verdict:
+              type: string
+              default: ""
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "probe"}]
+              stores_response_in: verdict
+        edges:
+          - {from: ask, to: END}
+      baseline:
+        state:
+          fields:
+            verdict:
+              type: string
+              default: ""
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "baseline"}]
+              stores_response_in: verdict
+        edges:
+          - {from: ask, to: END}
+    state:
+      fields:
+        results:
+          type: list<dict>
+          reducer: append
+          default: []
+    entry: outer_fan_out
+    nodes:
+      outer_fan_out:
+        fan_out:
+          items_field: products
+          inner_subgraph: per_product
+    inner_subgraphs:
+      per_product:
+        state:
+          fields:
+            outcome:
+              type: string
+              default: ""
+        entry: dispatcher
+        nodes:
+          dispatcher:
+            parallel_branches:
+              branches:
+                probe:
+                  subgraph: probe
+                  # Branch-level augmentation; harness primitive
+                  # equivalent to set_invocation_metadata(note=<id>)
+                  # at the top of the probe branch's body, sourced
+                  # from the surrounding outer-instance item.
+                  augment_metadata_from_outer_item:
+                    note: id
+                baseline:
+                  subgraph: baseline
+                  # baseline branch does not augment.
+        edges:
+          - {from: dispatcher, to: END}
+    edges:
+      - {from: outer_fan_out, to: END}
+    initial_state:
+      products:
+        - {id: "alpha"}
+        - {id: "beta"}
+    caller_metadata:
+      tenantId: "acme-corp"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-39-2-a-probe
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-39-2-a-baseline
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-39-2-b-probe
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-39-2-b-baseline
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        metadata:
+          tenantId: "acme-corp"
+        observations:
+          - type: span
+            name: "outer_fan_out"
+            # Shared parent of all outer-instance dispatch contexts.
+            metadata:
+              tenantId: "acme-corp"
+            children:
+              - type: span
+                # Outer fan-out instance for product alpha. The `probe`
+                # branch inside augments `note=alpha`; per 0045 this
+                # MUST reach the outer-instance dispatch span.
+                metadata:
+                  tenantId: "acme-corp"
+                  note: "alpha"
+                children:
+                  - type: span
+                    name: "dispatcher"
+                    # Parallel-branches NODE span — shared parent of
+                    # the two branch dispatch contexts under this
+                    # outer-instance. MUST NOT carry `note`.
+                    metadata:
+                      tenantId: "acme-corp"
+                    children:
+                      - type: span
+                        # probe branch (augmenter's branch). MUST
+                        # carry `note=alpha` on its dispatch span and
+                        # every inner span.
+                        metadata:
+                          tenantId: "acme-corp"
+                          branch_name: "probe"
+                          note: "alpha"
+                        children:
+                          - type: span
+                            name: "ask"
+                            metadata:
+                              tenantId: "acme-corp"
+                              branch_name: "probe"
+                              note: "alpha"
+                            children:
+                              - type: generation
+                                name: "openarmature.llm.complete"
+                                metadata:
+                                  tenantId: "acme-corp"
+                                  branch_name: "probe"
+                                  note: "alpha"
+                                children: []
+                      - type: span
+                        # baseline branch — sibling of probe. MUST NOT
+                        # carry probe's `note`.
+                        metadata:
+                          tenantId: "acme-corp"
+                          branch_name: "baseline"
+                        children:
+                          - type: span
+                            name: "ask"
+                            metadata:
+                              tenantId: "acme-corp"
+                              branch_name: "baseline"
+                            children:
+                              - type: generation
+                                name: "openarmature.llm.complete"
+                                metadata:
+                                  tenantId: "acme-corp"
+                                  branch_name: "baseline"
+                                children: []
+              - type: span
+                # Outer fan-out instance for product beta. Sibling of
+                # alpha at the outer-fan-out depth — MUST NOT carry
+                # alpha's note; MUST carry its own `note=beta`.
+                metadata:
+                  tenantId: "acme-corp"
+                  note: "beta"
+                children:
+                  - type: span
+                    name: "dispatcher"
+                    metadata:
+                      tenantId: "acme-corp"
+                    children:
+                      - type: span
+                        metadata:
+                          tenantId: "acme-corp"
+                          branch_name: "probe"
+                          note: "beta"
+                        children:
+                          - type: span
+                            name: "ask"
+                            metadata:
+                              tenantId: "acme-corp"
+                              branch_name: "probe"
+                              note: "beta"
+                            children:
+                              - type: generation
+                                name: "openarmature.llm.complete"
+                                metadata:
+                                  tenantId: "acme-corp"
+                                  branch_name: "probe"
+                                  note: "beta"
+                                children: []
+                      - type: span
+                        metadata:
+                          tenantId: "acme-corp"
+                          branch_name: "baseline"
+                        children:
+                          - type: span
+                            name: "ask"
+                            metadata:
+                              tenantId: "acme-corp"
+                              branch_name: "baseline"
+                            children:
+                              - type: generation
+                                name: "openarmature.llm.complete"
+                                metadata:
+                                  tenantId: "acme-corp"
+                                  branch_name: "baseline"
+                                children: []
+      invariants:
+        # The augmenting branch's dispatch ancestor (the outer fan-out
+        # instance's dispatch span) MUST be updated by the
+        # augmentation — the new lineage-aware rule.
+        outer_fan_out_instance_carries_branch_augmentation: true
+        # Sibling branch (`baseline`) does NOT carry the probe
+        # branch's augmentation.
+        sibling_branch_isolated_from_probe_augmentation: true
+        # Sibling outer-instance subtrees do NOT carry each other's
+        # augmentations.
+        sibling_outer_instances_isolated: true
+        # Shared parents (parallel-branches NODE, outer fan-out NODE,
+        # invocation) MUST NOT receive the augmentation.
+        shared_parent_spans_not_augmented: true
+
+  # ------------------------------------------------------------------
+  # Case 3: fan-out inside serial subgraph.
+  # ------------------------------------------------------------------
+  - name: fan_out_in_serial_subgraph_augmenter_propagates_to_wrapper_span
+    description: |
+      A serial subgraph wrapper contains a fan-out node. The outer
+      graph has a single subgraph-call node `wrap` that descends into
+      the serial subgraph `wrapped_fan_out`; the wrapper subgraph
+      contains a `pick` fan-out node over two products. Each fan-out
+      instance's leaf augments `note=<product.id>` via
+      `augment_metadata_from_field`.
+
+      Per the lineage-aware boundary in §3.4: the fan-out-instance
+      dispatch span MUST carry the augmentation (existing single-level
+      rule from 029) AND the outer serial subgraph wrapper span MUST
+      ALSO carry it (the new lineage-aware rule from 0045 — a
+      `descend_into_subgraph` boundary is a dispatch ancestor on the
+      augmenter's call-stack path, distinct from the fan-out NODE
+      which is the fork point). The fan-out NODE inside the wrapper is
+      a shared parent of the two instances and MUST NOT carry the
+      augmentation; the invocation span is a shared parent above the
+      wrapper and MUST NOT carry it; sibling fan-out instances MUST
+      NOT cross-pollinate.
+
+      With each instance writing a distinct value to the same key,
+      the wrapper span ends up with one of the values; the fixture
+      pins the wrapper span's `note` to the LAST instance's value
+      (`note=beta`) consistent with last-writer-wins observable on the
+      OTel `set_attribute` / Langfuse `update_observation` write path.
+    subgraphs:
+      wrapped_fan_out:
+        state:
+          fields:
+            picks:
+              type: list<dict>
+              reducer: append
+              default: []
+        entry: pick
+        nodes:
+          pick:
+            fan_out:
+              items_field: products
+              inner_subgraph: per_product
+              augment_metadata_from_field:
+                note: id
+        edges:
+          - {from: pick, to: END}
+    inner_subgraphs:
+      per_product:
+        state:
+          fields:
+            picked:
+              type: string
+              default: ""
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "pick"}]
+              stores_response_in: picked
+        edges:
+          - {from: ask, to: END}
+    state:
+      fields:
+        result:
+          type: dict
+          default: {}
+    entry: wrap
+    nodes:
+      wrap:
+        subgraph_call:
+          subgraph: wrapped_fan_out
+          outputs:
+            result: picks
+    edges:
+      - {from: wrap, to: END}
+    initial_state:
+      products:
+        - {id: "alpha"}
+        - {id: "beta"}
+    caller_metadata:
+      tenantId: "acme-corp"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-39-3-a
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok-a"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-39-3-b
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok-b"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        metadata:
+          # Invocation is a shared parent of the wrapper subgraph
+          # dispatch context — MUST NOT carry the augmentation.
+          tenantId: "acme-corp"
+        observations:
+          - type: span
+            name: "wrap"
+            # Outer serial subgraph wrapper span. Per the lineage-
+            # aware rule MUST carry the augmentation — both fan-out
+            # instances inside augment `note`; last-writer-wins lands
+            # the last instance's value (`note=beta`) on this span.
+            metadata:
+              tenantId: "acme-corp"
+              note: "beta"
+            children:
+              - type: span
+                name: "pick"
+                # Fan-out NODE inside the wrapper — shared parent of
+                # the two fan-out instances. MUST NOT carry `note`.
+                metadata:
+                  tenantId: "acme-corp"
+                children:
+                  - type: span
+                    # Fan-out instance for product alpha. MUST carry
+                    # its own `note=alpha`; MUST NOT carry beta's.
+                    metadata:
+                      tenantId: "acme-corp"
+                      note: "alpha"
+                    children:
+                      - type: span
+                        name: "ask"
+                        metadata:
+                          tenantId: "acme-corp"
+                          note: "alpha"
+                        children:
+                          - type: generation
+                            name: "openarmature.llm.complete"
+                            metadata:
+                              tenantId: "acme-corp"
+                              note: "alpha"
+                            children: []
+                  - type: span
+                    # Fan-out instance for product beta. MUST carry
+                    # its own `note=beta`; MUST NOT carry alpha's.
+                    metadata:
+                      tenantId: "acme-corp"
+                      note: "beta"
+                    children:
+                      - type: span
+                        name: "ask"
+                        metadata:
+                          tenantId: "acme-corp"
+                          note: "beta"
+                        children:
+                          - type: generation
+                            name: "openarmature.llm.complete"
+                            metadata:
+                              tenantId: "acme-corp"
+                              note: "beta"
+                            children: []
+      invariants:
+        # The outer serial-subgraph wrapper span MUST be updated by
+        # augmentations originating inside the inner fan-out
+        # instances — the new lineage-aware rule. Last-writer-wins on
+        # the same key.
+        serial_subgraph_wrapper_carries_inner_augmentation: true
+        # Fan-out NODE inside the wrapper is the shared-parent fork
+        # point of the two instances and MUST NOT receive the
+        # augmentation.
+        fan_out_node_shared_parent_not_augmented: true
+        # Sibling fan-out instances do NOT cross-pollinate.
+        sibling_fan_out_instances_isolated: true
+        # Invocation span is a shared parent above the wrapper and
+        # MUST NOT carry the augmentation.
+        invocation_span_not_augmented: true

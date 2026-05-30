@@ -1,9 +1,9 @@
 # 0045: Observability — Nested-Lineage Augmentation Containment Scope
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-29
-- **Accepted:**
+- **Accepted:** 2026-05-30
 - **Targets:** spec/observability/spec.md (§3.4 *Mid-invocation augmentation* — rewrite the ancestor / sibling boundary rule to be lineage-aware in nested cases; §3.4 *Per-async-context scoping* — add a per-depth lineage clarification covering nested fan-out / parallel-branches / fan-out-inside-subgraph variants; new conformance fixture exercising the nested cases)
 - **Related:** 0040 (mid-invocation augmentation open-span update — this proposal extends the boundary rule from single-level to nested), 0034 (caller-supplied invocation metadata), 0011 (parallel branches), 0009 (per-instance fan-out resume), 0044 (parallel-branches dispatch span synthesis — adjacent observer-side surface)
 - **Supersedes:**

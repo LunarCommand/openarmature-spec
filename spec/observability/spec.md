@@ -14,6 +14,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §3.4 reserved-key enumeration extended with `branch_name`, `detached`, `detached_from_invocation_id` (24-name set total) — closes a coverage gap in 0041's reservation against the §8.4 Langfuse top-level metadata keys; §8.4.1 gains a `trace.metadata.detached_from_invocation_id` row (detached child trace's inverse pointer to the parent invocation); §8.4.2 gains `observation.metadata.branch_name` (per-branch Span observation) and `observation.metadata.detached` (dispatching observation flag) rows by [proposal 0042](../../proposals/0042-observability-reserved-keys-extension.md)
   - §8.2 Trace entity definition extends with `input` / `output` payload fields (documenting existing Langfuse Trace fields surfaced as headline columns); §8.4.1 gains `trace.input` and `trace.output` mapping rows + a *Trace input/output sourcing* paragraph defining the `disable_state_payload` Langfuse-observer privacy knob (symmetric to §5.5.4's `disable_llm_payload`, default ON), the three-lever source decision tree (caller hook → raw state when knob is off → privacy-safe minimal stub), a closed `{completed, failed}` status enum on the stub's `trace.output`, the caller-hook contract for optional domain-shaped summaries, and resume semantics (fresh Langfuse trace per resumed `invocation_id`, hooks re-fire on the resumed trace) by [proposal 0043](../../proposals/0043-observability-langfuse-trace-input-output.md)
   - §4.3 *Parent-child rules* gained a parallel-branches dispatch span rule (inner-branch spans parent under a synthesized per-branch dispatch span); §6 *Driving span lifecycle* span-stack key widens to include `branch_name` and gains a *Parallel-branches dispatch span synthesis* sub-paragraph (cache + key by the parallel-branches NODE's full event-source identity + lazy per-branch dispatch span creation on first inner event); new §5.7 *Parallel-branches span attributes* added — `openarmature.node.branch_name` (new OTel attribute paralleling `openarmature.node.fan_out_index`), `openarmature.parallel_branches.parent_node_name` on dispatch spans, plus `openarmature.parallel_branches.branch_count` and `openarmature.parallel_branches.error_policy` on the parallel-branches node span by [proposal 0044](../../proposals/0044-parallel-branches-dispatch-span.md)
+  - §3.4 *Mid-invocation augmentation* ancestor/sibling boundary rewritten as a lineage-aware three-rule structure — *Augmenter's call-stack ancestor chain (MUST)* (each strict dispatch ancestor on the augmenter's specific call-stack path — outer fan-out instance, outer parallel-branches branch, outer serial-subgraph wrapper — gets the update), *Sibling boundary (MUST NOT)* (siblings at any depth do not), *Shared-parent boundary (MUST NOT)* (the fan-out node, parallel-branches node, invocation span — visible to multiple sibling instances — do not), plus a three-step boundary decision tree; §3.4 *Per-async-context scoping* gained a follow-up *Per-depth lineage tracking* paragraph requiring implementations to preserve the dispatch-context lineage as a list (one entry per dispatch depth) rather than a single scalar identifier, so the observer can locate ancestor open spans at augmentation time by [proposal 0045](../../proposals/0045-observability-nested-lineage-augmentation.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -232,11 +233,41 @@ The helper:
   inner node span open beneath it (but NOT the shared parent or invocation span — see the
   boundary below). The augmented metadata is thereby visible end-to-end across the spans that
   represent the augmenting work, not only on spans opened afterward.
-- **Ancestor / sibling boundary (MUST NOT).** Spans opened in an ancestor async context
-  (e.g., relative to a fan-out instance's augmentation: the invocation span and the shared
-  fan-out-node span) or in a sibling context (another fan-out instance, another parallel
-  branch) MUST NOT be updated by that augmentation. Updating them would re-introduce the
-  cross-context metadata leakage the per-async-context copy-on-write scoping (below) forbids.
+- **Augmenter's call-stack ancestor chain (MUST).** Spans opened in async contexts that are
+  ANCESTORS of the augmenting async context **on the augmenter's specific call-stack path**
+  MUST be updated by the augmentation, where the backend SDK supports in-place attribute /
+  metadata update. The augmenter's call-stack ancestor chain is the sequence of dispatch-
+  context boundaries the augmenter crossed to reach the augmenting context — each outer
+  fan-out instance dispatch, each outer parallel-branches branch dispatch, each outer
+  serial-subgraph wrapper. Each such ancestor context's open spans (the corresponding
+  dispatch / wrapper span and any open node spans within it that share the same call-stack
+  path) MUST be updated. For example, a leaf in inner-fan-out instance #0 inside outer-fan-out
+  instance #1 has call-stack ancestors outer-instance #1's dispatch span (NOT the shared
+  outer fan-out node span, NOT instances #0 / #2); an augmentation at that leaf updates the
+  outer-instance #1 dispatch span in addition to the inner-instance dispatch span and the
+  leaf's own span.
+- **Sibling boundary (MUST NOT).** Spans opened in a SIBLING async context — another fan-out
+  instance at any depth, another parallel-branches branch at any depth — MUST NOT be updated
+  by the augmentation. The augmentation is per-call-stack-path, not per-fan-out-node and not
+  per-invocation: siblings get their own copies of the metadata mapping at dispatch time
+  (see *Per-async-context scoping* below), and the augmenter's mutation does not leak across
+  the sibling boundary.
+- **Shared-parent boundary (MUST NOT).** Spans for a SHARED parent (the fan-out node itself,
+  the parallel-branches node itself, the invocation span) MUST NOT be updated. A shared
+  parent is by definition visible to multiple sibling instances / branches; updating it would
+  propagate the augmentation to siblings indirectly. Identify a shared parent by: a span
+  whose async context is an ancestor of MULTIPLE sibling instance / branch contexts (i.e.,
+  the fork point above the dispatch).
+
+The boundary decision tree, applied to each open span at augmentation time:
+
+1. Is the span's opening context the augmenting context itself, or a descendant of it that
+   shares the mutated mapping copy? → **Update** (the existing same-context rule above).
+2. Is the span's opening context on the augmenter's call-stack ancestor path (a strict
+   dispatch ancestor on the augmenter's specific path, not a shared parent above the fork)?
+   → **Update.**
+3. Is the span's opening context a sibling of any context on the augmenter's call-stack
+   path, OR a shared parent at any depth? → **Do not update.**
 
 **Per-async-context scoping.** The metadata mapping is held in the language's idiomatic
 async-context primitive (Python `ContextVar`, TypeScript `AsyncLocalStorage`) with
@@ -248,6 +279,20 @@ common fan-out pattern (each instance adds its own per-item identifier — `prod
 instances. Augmentation within the parent context (before fan-out dispatch, or in code that
 runs serially) flows forward to subsequent spans in that context, per normal context-primitive
 semantics.
+
+**Per-depth lineage tracking.** The per-async-context copy-on-write rule above is necessary
+but not sufficient on its own — the *Augmenter's call-stack ancestor chain (MUST)* boundary
+requires implementations to know which dispatch contexts the augmenter has crossed. This
+lineage is the chain of outer fan-out instances, outer parallel-branches branches, and outer
+serial-subgraph wrappers on the augmenter's specific call-stack path; it is naturally
+available to the engine's dispatch machinery, as each `descend_into_fan_out_instance`,
+`descend_into_branch`, and `descend_into_subgraph` step pushes a new dispatch boundary onto
+the active path. Implementations MUST preserve this lineage as a *list* (one entry per
+dispatch depth) — a single scalar identifier (e.g., a lone `fan_out_index` ContextVar that
+gets clobbered on each nested descent) is insufficient. When an augmentation fires at a leaf,
+the observer uses the lineage to locate the open spans for each ancestor dispatch context on
+the augmenter's path (and only those — sibling and shared-parent contexts are not on the
+list and therefore not updated).
 
 **Backend-mapping contract.** The OTel mapping is the primary cross-vendor propagation: §5.6
 specifies the `openarmature.user.*` cross-cutting attribute family, which appears on every
