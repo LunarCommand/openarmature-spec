@@ -40,6 +40,16 @@ decision tree for `trace.input` / `trace.output` emission plus resume semantics.
   `trace_input_from_state`, but fired at invocation exit.
 - `expected.langfuse_trace.input` / `expected.langfuse_trace.output` — assertion on the
   Trace's JSON-typed payload fields (§8.2).
+- `first_run_expected.langfuse_trace` — resume-case-specific: assertions on the FIRST
+  invoke's Langfuse trace before the resume runs (distinct from `resume.expected.langfuse_trace`,
+  which asserts the resumed second invoke's trace).
+- `resume.expected.first_trace_unchanged: bool` — resume-case-specific: harness asserts the
+  first invoke's Langfuse trace `input` / `output` fields are unchanged after the resume
+  completes. Confirms the resumed invocation writes to its own (new) trace, not back to the
+  original.
+- `invariants.hooks_refire_on_resumed_trace: bool` — resume-case-specific: harness asserts the
+  `trace_input_from_state` / `trace_output_from_state` hooks fired on the resumed invocation
+  (in addition to the first invocation), with the resumed values landing on the resumed trace.
 
 **What passes:**
 

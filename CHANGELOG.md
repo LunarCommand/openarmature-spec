@@ -10,7 +10,7 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 - **observability §8.2 — Trace entity gains `input` / `output` payload fields.** Documents existing Langfuse Trace fields surfaced as headline columns in the Langfuse Traces list view. ([proposal 0043](proposals/0043-observability-langfuse-trace-input-output.md))
 - **observability §8.4.1 — `trace.input` / `trace.output` mapping rows + *Trace input/output sourcing* paragraph.** The paragraph defines a Langfuse-observer-level `disable_state_payload` privacy knob (default ON, symmetric to §5.5.4's `disable_llm_payload`), a three-lever source decision tree (caller hook → raw state when the knob is OFF → privacy-safe minimal stub by default), a closed `{completed, failed}` `status` enum on the minimal stub's `trace.output`, the caller-hook contract (`trace_input_from_state` / `trace_output_from_state`, raw-state input, null fallthrough), and resume semantics (each `resume_invocation` mints a fresh Langfuse trace per §8.4.1; hooks re-fire on the resumed trace; original trace not mutated).
-- Conformance fixture `observability/conformance/037-langfuse-trace-input-output` exercising the four-lever decision tree + the resume case.
+- Conformance fixture `observability/conformance/037-langfuse-trace-input-output` exercising the three-lever decision tree across four cases (including the lever-1 null-fallthrough case) + the resume case.
 
 **Notes**
 

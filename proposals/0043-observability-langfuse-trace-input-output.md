@@ -214,7 +214,8 @@ existing ones.
   sourcing* paragraph defining the `disable_state_payload` privacy knob,
   the three-lever decision tree, the closed `status` enum, the
   caller-hook contract, and resume semantics.
-- A new conformance fixture exercises the four-lever decision tree + the
+- A new conformance fixture exercises the three-lever decision tree
+  across four cases (including the lever-1 null-fallthrough case) + the
   resume case.
 
 A caller working around the missing `trace.input` / `trace.output` by
