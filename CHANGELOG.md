@@ -4,6 +4,19 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.36.0] — 2026-05-29
+
+**Added**
+
+- **graph-engine §6 NodeEvent — `parallel_branches_config` field.** Optional structured value populated on every `started` / `completed` event for a parallel-branches node, mirroring the existing `fan_out_config` field from proposal 0013. Carries `branch_names` (ordered branch identifiers), `branch_count`, `error_policy` (`"fail_fast"` or `"collect"` per pipeline-utilities §11.5), and `parent_node_name`. Surfaces the resolved parallel-branches configuration to the observability §5.7 attribute surface. ([proposal 0044](proposals/0044-parallel-branches-dispatch-span.md))
+- **observability §5.7 — *Parallel-branches span attributes* (new subsection).** `openarmature.node.branch_name` (a new OTel span attribute, paralleling `openarmature.node.fan_out_index`; appears on per-branch dispatch spans and on every inner-node span within a branch), `openarmature.parallel_branches.parent_node_name` (on per-branch dispatch spans), `openarmature.parallel_branches.branch_count` and `openarmature.parallel_branches.error_policy` (on the parallel-branches NODE span).
+- **observability §4.3 + §6 — OTel parallel-branches dispatch span synthesis.** §4.3 *Parent-child rules* gains a new bullet for the per-branch dispatch span (inner-branch spans parent under the synthesized dispatch span, not directly under the parallel-branches NODE span). §6 *Driving span lifecycle* widens the span-stack key from `(namespace, attempt_index, fan_out_index)` to `(namespace, attempt_index, fan_out_index, branch_name)` to disambiguate concurrent same-named inner spans across branches, and gains a *Parallel-branches dispatch span synthesis* sub-paragraph defining lazy per-branch dispatch span creation on the first inner event of each branch (keyed by the parallel-branches NODE's full event-source identity + branch) and close on the parent's `completed` in declaration order, children-before-parents.
+- Conformance fixture `observability/conformance/038-otel-parallel-branches-dispatch-span` asserts the OTel trace tree shape matches the Langfuse fixture 030 shape, plus the §5.7 attributes and the close-order invariants.
+
+**Notes**
+
+- **MINOR bump.** Additive NodeEvent field; new §5.7 subsection; new OTel span attribute. The §4.3 + §6 updates change the OTel trace tree shape for invocations using parallel-branches (inner-branch spans previously parented directly under the parallel-branches NODE span now parent under a per-branch dispatch span). Downstream consumers hard-coding the previous nesting need to update. The span-stack-key widening to include `branch_name` aligns the spec's observer-driven example with the implementation-internal `_StackKey` widening that had been a workaround for the inner-span collision; combined with the dispatch-span synthesis, the workaround is no longer needed.
+
 ## [0.35.0] — 2026-05-29
 
 **Added**

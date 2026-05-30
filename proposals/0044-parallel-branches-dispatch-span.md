@@ -1,9 +1,9 @@
 # 0044: Parallel-Branches Dispatch Span Synthesis
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-29
-- **Accepted:**
+- **Accepted:** 2026-05-29
 - **Targets:** spec/graph-engine/spec.md (§6 NodeEvent — adds `parallel_branches_config` field, mirroring `fan_out_config` from proposal 0013); spec/observability/spec.md (§5 — adds an `openarmature.node.branch_name` per-branch span attribute paralleling `openarmature.node.fan_out_index`; new §5.7 *Parallel-branches span attributes* paralleling §5.4 *Fan-out span attributes*; §4 / §6 driving-span lifecycle — defines per-branch dispatch span synthesis behavior); new conformance fixture exercising the OTel parallel-branches dispatch span shape.
 - **Related:** 0011 (parallel branches — established the §6 NodeEvent `branch_name` field), 0013 (fan-out config on NodeEvent — the template this proposal mirrors), 0042 (reserved-keys extension — included `branch_name` in §8.4.2 Langfuse mapping; this proposal completes the §5 / §6 OTel side)
 - **Supersedes:**

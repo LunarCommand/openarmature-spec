@@ -14,6 +14,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 Observer hooks `drain` operation gained an optional caller-supplied `timeout` parameter and now MUST return a summary (`undelivered_count`, `timeout_reached`, with implementations permitted to add richer detail); under timeout, workers MUST be cancelled and graph state MUST remain usable for subsequent invocations by [proposal 0010](../../proposals/0010-drain-timeout.md)
   - §6 Drain gained two clarifications of implicit rules: the snapshot semantic for "prior invocations" (drain covers workers active at call time; invocations started during the drain are NOT covered), and the MUST-reject rule for negative / NaN timeout inputs (with the error surface per-language idiomatic) by [proposal 0030](../../proposals/0030-drain-snapshot-and-timeout-validation.md)
   - §3 *Execution model* gained a clarifying paragraph noting that `invoke()` accepts an optional caller-supplied metadata mapping (per observability §3.4) alongside the existing `correlation_id` argument and per-language invocation surface by [proposal 0034](../../proposals/0034-caller-supplied-invocation-metadata.md)
+  - §6 NodeEvent gained an optional `parallel_branches_config` field (mirroring the existing `fan_out_config` field from proposal 0013), populated on every `started` / `completed` event for a parallel-branches node and carrying the resolved `branch_names`, `branch_count`, `error_policy`, and `parent_node_name` for the observability §5.7 attribute surface by [proposal 0044](../../proposals/0044-parallel-branches-dispatch-span.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -437,6 +438,38 @@ this section, which carry no `phase` — carries the following fields:
   `fan_out_config` takes for partially-resolved configurations, is left to a future proposal.
   Conformance does not depend on this corner: existing fixtures exercise the success path and
   the post-config-resolution runtime-failure paths only.
+
+- `parallel_branches_config` — optional structured value, populated on EVERY `started` and
+  `completed` event for a parallel-branches node (i.e., events whose `node_name` resolves to a
+  parallel-branches node per pipeline-utilities §11), including retried attempts of the
+  parallel-branches node itself (`attempt_index > 0`). Carries the resolved values for the
+  observability §5.7 parallel-branches attributes. Absent (null / None / equivalent) on all
+  events from non-parallel-branches nodes — inner-node events from inside a parallel-branches
+  branch (those carry `branch_name` instead), subgraph wrapper events, fan-out events,
+  function-node events, and so on. The value carries four fields:
+  - `branch_names` — non-empty ordered sequence of strings. The branch identifiers in
+    declaration / dispatch order, as configured on the parallel-branches node (pipeline-
+    utilities §11.1). Available at parallel-branches entry, so populated on both `started` and
+    `completed` events.
+  - `branch_count` — positive integer. The number of branches dispatched. Equals
+    `len(branch_names)`; surfaced explicitly so observers and downstream consumers do not need
+    to derive it. Populated on both `started` and `completed` events.
+  - `error_policy` — string, exactly one of `"fail_fast"` or `"collect"` (per pipeline-utilities
+    §11.5). Populated on both `started` and `completed` events.
+  - `parent_node_name` — string. The parallel-branches node's own name in the parent graph
+    (i.e., equal to `node_name` on this event). Surfaced explicitly so observers and downstream
+    consumers do not need to rederive it from `namespace`. Populated on both `started` and
+    `completed` events.
+
+  Implementations MUST present all four keys of `parallel_branches_config` whenever the field
+  itself is populated on a parallel-branches node event. Keys are never individually omitted on
+  the basis of an implementation's representation; observers can rely on key presence.
+
+  `parallel_branches_config` MUST be populated on a parallel-branches node's `completed` event
+  regardless of whether the event carries `post_state` or `error` — even when the
+  parallel-branches itself raised (e.g., a per-branch error escaping under `fail_fast` per
+  §11.5) at runtime after config resolution succeeded, the resolved configuration visible at
+  parallel-branches entry MUST appear on the completed event with all four keys populated.
 
 `pre_state` is populated on both `started` and `completed` events (it is the state the node received,
 identical across the pair). `post_state` and `error` are populated only on `completed` events;
