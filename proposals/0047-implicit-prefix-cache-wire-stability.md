@@ -194,9 +194,10 @@ Add a follow-up paragraph:
 
 > **Cross-variable substring stability.** The static substring of a rendered
 > output — the portion of `messages` content not derived from variable
-> substitution — MUST be identical across renders that differ only in
-> unrelated variable bindings. A render with `variables={"a": "x"}` and a
-> subsequent render with `variables={"a": "y"}` MUST produce
+> substitution — MUST be identical across renders with different variable
+> bindings; changes to variable values affect only the variable-derived
+> bytes. A render with `variables={"a": "x"}` and a subsequent render with
+> `variables={"a": "y"}` MUST produce
 > `PromptResult.messages` content whose non-variable-derived bytes (system
 > prefix text, few-shot exchange text, segment role markers, etc.) are
 > bytewise identical between the two renders. This rule is implementation-
@@ -261,11 +262,11 @@ Add a new §14 subsection (renumbering the existing §14 *Out of scope* to
 >    relevance) breaks the cache; if reordering is needed, the resulting
 >    requests are inherently uncacheable.
 > 5. **Long-enough static prefix.** Inference engines typically require a
->    minimum prefix length (vLLM's default block size is 16 tokens; OpenAI's
->    prompt cache requires ≥1024 tokens) before caching is worthwhile. Very
->    short system prompts may not benefit; longer static contexts (system +
->    few-shot + tool definitions, before user variables) hit the threshold
->    naturally.
+>    minimum prefix length before caching activates (engine-specific;
+>    consult your engine's documentation for current thresholds). Very
+>    short system prompts may not benefit; longer static contexts (system
+>    + few-shot + tool definitions, before user variables) cross the
+>    threshold naturally.
 >
 > The guidance is informative — application code that follows none of these
 > patterns is spec-conformant, but is unlikely to see APC benefits. Apps
@@ -327,10 +328,12 @@ llm-provider §6 *Response and configuration* extends:
 >
 > - `cached_tokens` — int, optional. The count of input tokens that hit a
 >   prefix cache, as reported by the provider's response. Absent (`null` /
->   `None` / `undefined`, per the language's idiom) when the provider does
->   not report cache statistics or when no cache hit occurred. Each §8.X
->   wire-format mapping documents the provider response field this value is
->   sourced from.
+>   `None` / `undefined`, per the language's idiom) when the provider
+>   does not report cache statistics; set to `0` when the provider
+>   reports zero cache-hit tokens (the "reported miss" case is distinct
+>   from "not reported" and the two MUST be observable separately).
+>   Each §8.X wire-format mapping documents the provider response field
+>   this value is sourced from.
 
 Each §8.X subsection's Response mapping (§8.1.2, §8.2.2, §8.3.2) extends
 with a row mapping the provider's cache-stat field to `Response.usage.cached_tokens`:
