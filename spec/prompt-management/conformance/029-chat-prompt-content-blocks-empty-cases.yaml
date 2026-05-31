@@ -1,0 +1,78 @@
+# §11 (Chat-prompt) — content-blocks empty cases. Two distinct §11
+# triggers within content-blocks segments: an empty rendered text
+# block (a {type: "text"} block whose rendered `text` is empty after
+# substitution), and a content-blocks segment with an empty block
+# list (zero blocks). Both raise prompt_render_error per §11. Parallel
+# in spirit to fixture 021 (empty text-template segment) but exercised
+# inside the content-blocks shape.
+
+backends:
+  - name: local
+    prompts:
+      - name: empty_text_block_prompt
+        label: production
+        version: v1
+        chat_template:
+          - role: user
+            content:
+              - {type: text, text: "{{ description }}"}
+              - type: image
+                source:
+                  type: url
+                  url: "https://example.com/widget.png"
+        template_hash: "sha256:empty-text-block-v1"
+      - name: empty_block_list_prompt
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You answer questions."}
+          - {role: user, content: []}
+        template_hash: "sha256:empty-block-list-v1"
+
+cases:
+  - name: empty_rendered_text_block_in_content_blocks_raises
+    description: |
+      A user content-blocks segment with a text block and an image
+      block; the text block's `text` template renders to the empty
+      string (variable substituted with ""). Per §11 the empty-text-
+      block trigger MUST raise prompt_render_error — the empty-segment
+      rule applies per text block within content-blocks segments, not
+      only at the segment level.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: empty_text_block_prompt, label: production}
+        variables: {description: ""}
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: empty_text_block_prompt
+              version: v1
+              label: production
+              description_mentions: "empty"
+  - name: empty_content_blocks_list_raises
+    description: |
+      A user content-blocks segment whose block list is empty (zero
+      blocks). Per §11 the empty-block-list trigger MUST raise
+      prompt_render_error at render. A content-blocks segment with no
+      blocks renders to nothing meaningful and is a bug worth
+      surfacing, parallel to the empty text-template segment rule
+      (fixture 021).
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: empty_block_list_prompt, label: production}
+        variables: {}
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: empty_block_list_prompt
+              version: v1
+              label: production
+              description_mentions: "empty"

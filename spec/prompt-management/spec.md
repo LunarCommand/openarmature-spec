@@ -143,8 +143,13 @@ shape — per the language idiom).
     template is a `prompt_render_error` (§11).
 - **Placeholder segment** — `{placeholder: str}`. The `placeholder` is a name identifying a
   slot that the caller fills at render time with a `list[Message]` (per llm-provider §3).
-  Placeholder names MUST be unique within a single `chat_template`; a duplicate name is a
-  `prompt_render_error` (§11).
+  Placeholder names MUST match the regex `[A-Za-z_][A-Za-z0-9_]*` (ASCII-identifier shape:
+  non-empty; starts with a letter or underscore; remaining characters are letters, digits,
+  or underscores). The constraint is pinned for cross-impl portability and to avoid
+  collision with backend-specific placeholder syntax (e.g., Langfuse's `{{name}}`
+  delimiters). Placeholder names MUST be unique within a single `chat_template`; a
+  duplicate name is a `prompt_render_error` (§11). A placeholder name that does not match
+  the identifier regex is also a `prompt_render_error`.
 
 **ContentBlockTemplate shapes.** A `ContentBlockTemplate` mirrors an llm-provider §3.1
 ContentBlock with variable-substitutable text fields. The v1 set covers the user-message-
@@ -330,10 +335,12 @@ Render semantics common to both variants:
 
 **Text-prompt render contract.** When `prompt` is a Text-prompt variant, `render` produces
 exactly one `Message` with `role: "user"` and `content` equal to the rendered template
-text. The `placeholders` parameter is ignored (or, at implementation discretion, a non-
-empty `placeholders` mapping passed alongside a Text prompt raises — the spec does not
-constrain the choice; the normative contract is single-text-Message output). Multi-message
-and multimodal prompts MUST use the Chat-prompt variant (`chat_template`).
+text. The `placeholders` parameter MUST be ignored when rendering a Text prompt;
+implementations MUST NOT raise on a non-empty `placeholders` mapping passed alongside a
+Text prompt. (Pinned for cross-impl portability — callers wrapping `render()` generically
+across both variants can pass `placeholders` unconditionally without per-variant
+discrimination.) Multi-message and multimodal prompts MUST use the Chat-prompt variant
+(`chat_template`).
 
 **Chat-prompt render contract.** When `prompt` is a Chat-prompt variant, render produces
 `PromptResult.messages` by walking `chat_template` in order:
@@ -367,6 +374,13 @@ and multimodal prompts MUST use the Chat-prompt variant (`chat_template`).
 An injected `list[Message]` MAY be empty; an empty list contributes zero messages to the
 output and is NOT an error. This natively handles the chat-history "first turn / no prior
 messages" case without weakening the §8 / §11 empty-segment rule below.
+
+The FINAL rendered `messages` sequence MUST be non-empty per §4. A Chat-prompt render
+that produces zero messages — e.g., a `chat_template` consisting only of placeholder
+segments that all inject empty lists, or any other combination that yields no rendered
+Message — raises `prompt_render_error` (§11). The per-placeholder empty-list-valid rule
+above remains: empty per-placeholder injections are valid when other segments contribute;
+only the all-empty global result fails the non-empty invariant.
 
 Render is synchronous because it is purely a transformation step over the in-memory
 template; no backend I/O is involved. Async render would surface no benefits and would
@@ -543,20 +557,33 @@ Three canonical error categories:
 - `prompt_render_error` — render failed. Raised by `PromptManager.render()` when:
   - the template references an undefined variable under strict-by-default §8 handling, OR
   - the template fails to parse (syntax error in the template language), OR
-  - a variable's value is not coercible to the template's expected type, OR
-  - **(Chat-prompt)** a text-template content segment renders to the empty string (or, for
-    a content-blocks segment, a `{type: "text"}` block renders to the empty string), OR
-  - **(Chat-prompt)** a content-blocks segment has an empty block list (zero blocks), OR
-  - **(Chat-prompt)** a `{placeholder: <name>}` segment's `<name>` is absent from the
-    `placeholders` mapping passed to `render` (distinct from
-    `placeholders[<name>] = []` — present-with-empty-value is valid and contributes zero
-    messages), OR
-  - **(Chat-prompt)** a `chat_template` contains duplicate placeholder names, OR
-  - **(Chat-prompt)** a content-blocks segment contains an image block with `role` other
-    than `"user"` (per llm-provider §3.1.2's user-only constraint on image blocks; this is
-    enforced at render time as the earliest point at which both the segment's role and its
-    block list are known; implementations MAY also detect at prompt-construction time for
-    faster feedback, but the spec-normative point of enforcement is render).
+  - a variable's value is not coercible to the template's expected type.
+
+  *Additional Chat-prompt-specific triggers* (raised under the same `prompt_render_error`
+  category):
+
+  - a text-template content segment renders to the literally-empty string (zero
+    characters), OR a content-blocks segment contains a `{type: "text"}` block whose
+    rendered `text` is the literally-empty string. **Pinned: "empty" means literally
+    zero characters after variable substitution; no leading / trailing whitespace
+    stripping is applied.** A content segment whose template is empty before substitution
+    OR whose template resolves any variable to `""` such that the rendered text is `""`
+    raises. Cross-impl portability requires the same trigger condition.
+  - a content-blocks segment has an empty block list (zero blocks).
+  - a `{placeholder: <name>}` segment's `<name>` is absent from the `placeholders` mapping
+    passed to `render` (distinct from `placeholders[<name>] = []` — present-with-empty-
+    value is valid and contributes zero messages per §6.render).
+  - a `chat_template` contains duplicate placeholder names (§3.1 placeholder uniqueness
+    rule), OR a placeholder name that does not match the §3.1 identifier regex
+    (`[A-Za-z_][A-Za-z0-9_]*`).
+  - a content-blocks segment contains an image block with `role` other than `"user"` (per
+    llm-provider §3.1.2's user-only constraint on image blocks; this is enforced at
+    render time as the earliest point at which both the segment's role and its block list
+    are known; implementations MAY also detect at prompt-construction time for faster
+    feedback, but the spec-normative point of enforcement is render).
+  - the final rendered `messages` sequence is empty (e.g., a `chat_template` consisting
+    only of placeholder segments that all inject empty lists). The non-empty
+    `PromptResult.messages` invariant (§4) MUST hold for every successful render.
 
   The error MUST expose the prompt's `name`, `version`, `label`, the variable mapping
   (with sensitive values redacted per implementation policy), and a description of the

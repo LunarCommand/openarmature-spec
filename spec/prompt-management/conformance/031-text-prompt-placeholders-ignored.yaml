@@ -1,0 +1,42 @@
+# §6.render — placeholders parameter MUST be ignored for Text-prompt.
+# A caller passing a non-empty placeholders mapping alongside a Text-
+# prompt MUST NOT trigger an error; render produces the same single-
+# Message result as if placeholders were omitted. Enables generic
+# wrappers that pass placeholders unconditionally across both variants.
+
+backends:
+  - name: local
+    prompts:
+      - name: greet
+        label: production
+        version: v1
+        template: "Hello, {{ name }}!"
+        template_hash: "sha256:greet-v1"
+
+cases:
+  - name: text_prompt_ignores_placeholders
+    description: |
+      Render a Text-prompt with a non-empty placeholders mapping. Per
+      §6.render the parameter MUST be ignored; the result is the
+      identical single-user-Message that omitting placeholders would
+      have produced. No error raised.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: greet, label: production}
+        variables: {name: "Alice"}
+        placeholders:
+          history:
+            - {role: user, content: "ignored"}
+          examples:
+            - {role: assistant, content: "ignored"}
+        capture_as: rendered
+    expected:
+      rendered:
+        name: greet
+        version: v1
+        label: production
+        messages:
+          - {role: user, content: "Hello, Alice!"}

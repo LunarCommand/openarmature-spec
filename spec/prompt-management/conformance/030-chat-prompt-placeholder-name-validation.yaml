@@ -1,0 +1,106 @@
+# §3.1 + §11 (Chat-prompt) — placeholder name identifier-shape rule.
+# Placeholder names MUST match the regex `[A-Za-z_][A-Za-z0-9_]*`
+# (ASCII-identifier shape). Two negative cases: leading digit; non-
+# ASCII / disallowed character. Plus a positive case confirming
+# identifier-shaped names render successfully (regression guard
+# against an over-eager regex implementation).
+
+backends:
+  - name: local
+    prompts:
+      - name: leading_digit_placeholder
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You answer questions."}
+          - {placeholder: "1history"}
+          - {role: user, content: "{{ question }}"}
+        template_hash: "sha256:leading-digit-placeholder-v1"
+      - name: disallowed_char_placeholder
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You answer questions."}
+          - {placeholder: "chat-history"}
+          - {role: user, content: "{{ question }}"}
+        template_hash: "sha256:disallowed-char-placeholder-v1"
+      - name: identifier_shaped_placeholder
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You answer questions."}
+          - {placeholder: "_history_v2"}
+          - {role: user, content: "{{ question }}"}
+        template_hash: "sha256:identifier-shaped-placeholder-v1"
+
+cases:
+  - name: placeholder_leading_digit_raises
+    description: |
+      Placeholder name `"1history"` starts with a digit — violates the
+      §3.1 identifier-shape rule (first char must be letter or
+      underscore). Render MUST raise prompt_render_error.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: leading_digit_placeholder, label: production}
+        variables: {question: "what is OA?"}
+        placeholders:
+          "1history": []
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: leading_digit_placeholder
+              version: v1
+              label: production
+              description_mentions: "1history"
+  - name: placeholder_disallowed_char_raises
+    description: |
+      Placeholder name `"chat-history"` contains a hyphen — not in the
+      §3.1 character set (letters, digits, underscores). Render MUST
+      raise prompt_render_error.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: disallowed_char_placeholder, label: production}
+        variables: {question: "what is OA?"}
+        placeholders:
+          "chat-history": []
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: disallowed_char_placeholder
+              version: v1
+              label: production
+              description_mentions: "chat-history"
+  - name: placeholder_identifier_shaped_succeeds
+    description: |
+      Positive control: `"_history_v2"` matches the §3.1 regex
+      (leading underscore + letters / digits / underscores). Render
+      succeeds. Regression guard against an over-eager regex that
+      rejects valid identifier-shaped names.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: identifier_shaped_placeholder, label: production}
+        variables: {question: "what is OA?"}
+        placeholders:
+          "_history_v2":
+            - {role: user, content: "earlier turn"}
+        capture_as: rendered
+    expected:
+      rendered:
+        name: identifier_shaped_placeholder
+        version: v1
+        label: production
+        messages:
+          - {role: system, content: "You answer questions."}
+          - {role: user, content: "earlier turn"}
+          - {role: user, content: "what is OA?"}

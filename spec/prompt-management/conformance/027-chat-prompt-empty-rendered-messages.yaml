@@ -1,0 +1,76 @@
+# §11 (Chat-prompt) — empty rendered messages. A chat_template
+# consisting only of a placeholder segment, rendered with an empty
+# list at that slot, produces zero rendered Messages. Per §4 the
+# rendered messages MUST be non-empty; per §11 the global-empty
+# result MUST raise prompt_render_error. The per-placeholder empty-
+# list rule (fixture 019) still holds for partial cases — only the
+# all-empty global result is rejected here.
+
+backends:
+  - name: local
+    prompts:
+      - name: history_only_prompt
+        label: production
+        version: v1
+        chat_template:
+          - {placeholder: history}
+        template_hash: "sha256:history-only-v1"
+      - name: two_placeholders_prompt
+        label: production
+        version: v1
+        chat_template:
+          - {placeholder: examples}
+          - {placeholder: history}
+        template_hash: "sha256:two-placeholders-v1"
+
+cases:
+  - name: single_empty_placeholder_raises
+    description: |
+      The chat_template's only segment is a placeholder slot;
+      placeholders={"history": []} contributes zero Messages. Per the
+      §4 non-empty invariant and §11 empty-rendered-messages trigger,
+      render MUST raise prompt_render_error. Contrast with fixture
+      019 (placeholder empty-list valid when other segments contribute
+      non-empty Messages).
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: history_only_prompt, label: production}
+        variables: {}
+        placeholders:
+          history: []
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: history_only_prompt
+              version: v1
+              label: production
+              description_mentions: "empty"
+  - name: multiple_empty_placeholders_raise
+    description: |
+      chat_template with two placeholder segments; both rendered with
+      empty injection lists. Combined output is still zero Messages.
+      Per §11 the global empty-rendered-messages trigger fires
+      regardless of how many placeholder segments contributed zero —
+      the rule is on the final result, not on per-slot cardinality.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: two_placeholders_prompt, label: production}
+        variables: {}
+        placeholders:
+          examples: []
+          history: []
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: two_placeholders_prompt
+              version: v1
+              label: production
+              description_mentions: "empty"

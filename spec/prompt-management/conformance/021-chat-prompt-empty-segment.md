@@ -30,7 +30,7 @@ behavior.
   the §11 paragraph.
 - The empty segment was rendered to a `{role: "system", content: ""}` Message and passed
   through to the LLM — equally a violation; the spec mandates render-time rejection.
-- Implementation treated "empty after stripping" differently from "literally empty" without
-  documenting the choice; per §11 implementations document their convention, but at least
-  one of the two MUST raise. The literal-empty case asserted here covers the unambiguous
-  trigger.
+- Implementation applied whitespace stripping before the empty check (e.g., treated
+  `content: " "` as empty after stripping) — per §11 "empty" is pinned to the
+  literally-zero-character case after variable substitution; no stripping is permitted.
+  The literal-empty case asserted here is the spec-normative trigger.

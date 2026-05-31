@@ -1,0 +1,49 @@
+# §11 (Chat-prompt) — duplicate placeholder names. A chat_template
+# containing two {placeholder: <same name>} segments violates §3.1's
+# uniqueness rule. Per §11 the violation MUST raise prompt_render_error
+# at render time (the earliest point at which the full chat_template
+# is walked). Implementations MAY also detect at prompt-construction
+# time; the spec-normative enforcement point is render.
+
+backends:
+  - name: local
+    prompts:
+      - name: duplicate_placeholder_prompt
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You are a helpful assistant."}
+          - {placeholder: examples}
+          - {role: user, content: "{{ question }}"}
+          - {placeholder: examples}
+        template_hash: "sha256:duplicate-placeholder-v1"
+
+cases:
+  - name: duplicate_placeholder_name_raises
+    description: |
+      The chat_template has two `{placeholder: examples}` segments —
+      a §3.1 uniqueness violation. Render with placeholders={"examples":
+      [<msg>]} and variables={"question": "..."}. Per §11 the duplicate-
+      name case MUST raise prompt_render_error at render time. The
+      validation is intrinsic to the chat_template (does not depend on
+      what `placeholders` contains); supplying the placeholder mapping
+      does NOT bypass the rule.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: duplicate_placeholder_prompt, label: production}
+        variables: {question: "what is OA?"}
+        placeholders:
+          examples:
+            - {role: user, content: "example input"}
+            - {role: assistant, content: "example reply"}
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: duplicate_placeholder_prompt
+              version: v1
+              label: production
+              description_mentions: "examples"
