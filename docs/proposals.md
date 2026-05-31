@@ -50,9 +50,10 @@ lifecycle and the proposal template.
 | [0041](proposals/0041-observability-langfuse-metadata-key-collision.md) | Reserve OA-emitted Langfuse metadata keys | observability | Accepted | Shipped (0.11.0)| —          |
 | [0042](proposals/0042-observability-reserved-keys-extension.md) | Reserve `branch_name`, `detached`, `detached_from_invocation_id` metadata keys | observability | Accepted | Shipped (0.11.0)| —          |
 | [0043](proposals/0043-observability-langfuse-trace-input-output.md) | §8 Langfuse `trace.input` / `trace.output` population | observability | Accepted | Shipped (0.11.0)| —          |
-| [0044](proposals/0044-parallel-branches-dispatch-span.md) | Parallel-branches dispatch span synthesis | graph-engine  | Accepted | Pending         | —          |
+| [0044](proposals/0044-parallel-branches-dispatch-span.md) | Parallel-branches dispatch span synthesis | graph-engine  | Accepted | Shipped (0.11.0)| —          |
 | [0045](proposals/0045-observability-nested-lineage-augmentation.md) | Nested-lineage augmentation containment scope | observability | Accepted | Pending         | —          |
 | [0046](proposals/0046-prompt-management-multi-message-rendering.md) | Multi-message / chat prompt rendering | prompt-management | Accepted | Pending         | —          |
+| [0047](proposals/0047-implicit-prefix-cache-wire-stability.md) | Implicit prefix-cache wire-byte stability | llm-provider | Draft | —               | —          |
 
 Click any column header to sort.
 
