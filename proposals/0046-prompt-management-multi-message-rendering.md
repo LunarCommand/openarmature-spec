@@ -86,8 +86,14 @@ A `Prompt` is one of two variants:
   place of `template`. The ChatSegment record is one of:
   - **Content segment** — `{role: "system" | "user" | "assistant",
     content: <text-template OR content-blocks-template>}`. The `role`
-    matches the canonical message roles from llm-provider §3 (Message
-    shape). The `content` is one of:
+    is one of the three canonical authoring roles from llm-provider §3
+    (Message shape); the fourth llm-provider §3 role (`"tool"`) is
+    intentionally excluded from authored ChatSegments — tool-result
+    messages have a distinct per-message shape (`tool_call_id` and
+    related metadata) that does not map to a template-author surface,
+    and tool-loop content can still be injected via placeholder
+    segments below when needed (see also *Out of scope*). The
+    `content` is one of:
     - **Text template** — the per-segment unrendered text in the
       implementation's chosen template representation (analogous to
       the Text-prompt `template` field — Jinja2 `Template` instance,
