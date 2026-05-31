@@ -255,9 +255,12 @@ The helper:
 - **Shared-parent boundary (MUST NOT).** Spans for a SHARED parent (the fan-out node itself,
   the parallel-branches node itself, the invocation span) MUST NOT be updated. A shared
   parent is by definition visible to multiple sibling instances / branches; updating it would
-  propagate the augmentation to siblings indirectly. Identify a shared parent by: a span
-  whose async context is an ancestor of MULTIPLE sibling instance / branch contexts (i.e.,
-  the fork point above the dispatch).
+  propagate the augmentation to siblings indirectly. Identify a shared parent structurally by
+  dispatch-node type — any span representing a fan-out node, any span representing a
+  parallel-branches node, and the invocation span — regardless of runtime cardinality. The
+  rule applies even in degenerate cases (a fan-out over a single-element list, a parallel-
+  branches dispatcher with one branch) where no sibling exists at runtime: the structural
+  classification governs, not the live sibling count.
 
 The boundary decision tree, applied to each open span at augmentation time:
 
