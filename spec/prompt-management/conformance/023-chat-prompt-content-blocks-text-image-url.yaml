@@ -1,0 +1,57 @@
+# §3.1 + §6.render — content-blocks render (text + image-URL). A
+# chat_template with a system text-template segment + a user content-
+# blocks segment whose blocks are one text block and one URL-source
+# image block, each with a variable. Render produces a 2-Message
+# PromptResult; the user Message carries a content-block sequence with
+# the substituted text and substituted URL.
+
+backends:
+  - name: local
+    prompts:
+      - name: describe_product
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You describe product photos."}
+          - role: user
+            content:
+              - {type: text, text: "Describe {{ product }}:"}
+              - type: image
+                source:
+                  type: url
+                  url: "{{ photo_url }}"
+        template_hash: "sha256:describe-product-v1"
+
+cases:
+  - name: content_blocks_text_image_url_render
+    description: |
+      Two-segment chat_template; the user segment uses content-blocks
+      content (text block + URL-source image block). Render with
+      variables={product: "widget", photo_url:
+      "https://example.com/widget.png"}. Asserts the PromptResult has
+      two Messages; the user Message's content is a content-block
+      sequence of length 2 mirroring llm-provider §3.1 shapes — a text
+      block with the substituted text and an image block with `url`-
+      source carrying the substituted URL.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: describe_product, label: production}
+        variables: {product: "widget", photo_url: "https://example.com/widget.png"}
+        capture_as: rendered
+    expected:
+      rendered:
+        name: describe_product
+        version: v1
+        label: production
+        messages:
+          - {role: system, content: "You describe product photos."}
+          - role: user
+            content:
+              - {type: text, text: "Describe widget:"}
+              - type: image
+                source:
+                  type: url
+                  url: "https://example.com/widget.png"

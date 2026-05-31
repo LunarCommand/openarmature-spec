@@ -7,6 +7,7 @@ Canonical behavioral specification for the OpenArmature prompt-management capabi
 - **History:**
   - created by [proposal 0017](../../proposals/0017-prompt-management-core.md)
   - §3 *Prompt shape* extended with two new optional typed fields (`sampling` — sub-record mirroring llm-provider §6 `RuntimeConfig`'s declared-fields-plus-extras shape for per-prompt sampling configuration; `observability_entities` — backend-keyed mapping for first-class entity references, with spec-normative key `langfuse_prompt` for the Langfuse Prompt entity). §4 *PromptResult shape* propagates both new fields. §5 *PromptBackend protocol* gains an informative filesystem sidecar convention (per-prompt `<root>/<name>.config.json` and unified `<root>/prompt_configs.json` shapes) for sourcing `sampling`. §6 *PromptManager interface* gains optional `LabelResolver` integration on `fetch()`; the default label parameter shifts from `"production"` to `None`/sentinel with a fallback chain (explicit > resolver > spec-fallback `"production"`). New §7 *LabelResolver* primitive added (renumbers existing §7-§13 → §8-§14). §12 (was §11) *Cross-spec touchpoints* gains two new touchpoints: `Prompt.sampling` → llm-provider §6 `RuntimeConfig` wiring at the LLM call site, and `Prompt.observability_entities['langfuse_prompt']` → observability §8.4.4 Langfuse Generation linkage lookup by [proposal 0033](../../proposals/0033-prompt-management-surface-refinements.md)
+  - §3 *Prompt shape* gains a new §3.1 *Chat-prompt variant* subsection introducing a Chat-prompt variant alongside the existing Text-prompt variant (Chat-prompt carries `chat_template: list[ChatSegment]` in place of `template`; ChatSegments are either content segments — text-template or content-blocks-template `content`, with content-blocks mirroring llm-provider §3.1 text + image-URL + image-inline block shapes for multimodal user-message authoring, image blocks user-only per §3.1.2 — or placeholder segments naming a slot filled at render time with a `list[Message]`; Chat-prompt `template_hash` covers the canonical chat_template serialization). §6.render gains a `placeholders` parameter, a per-segment / per-block render rule for Chat prompts (text-template segments render to a text Message; content-blocks segments render to a Message with a rendered block sequence; placeholder segments inject the caller-supplied message list, empty injected lists valid), and a narrowing of the Text-prompt render clause to "exactly one Message with text content; multi-message and multimodal MUST use chat_template" (replaces the prior vague "MAY produce multiple messages" line). §8 *Variable injection* gains a per-segment / per-block strict-undefined paragraph. §11 *Errors* extends `prompt_render_error` with five new Chat-prompt triggers (empty content segment, empty content-blocks list, unfilled placeholder, duplicate placeholder name, role-block compatibility violation). §5 *PromptBackend protocol* gains a paragraph noting returned Prompts MAY be either variant. §12 cross-spec touchpoints confirms the §8.4.4 Langfuse Prompt-entity linkage is unaffected by Prompt variant or message count by [proposal 0046](../../proposals/0046-prompt-management-multi-message-rendering.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -77,6 +78,13 @@ treats fetch and render as separable.
 
 ## 3. Prompt shape
 
+A prompt is one of two variants (see §3.1 below): a **Text prompt** (the existing single-
+template shape) or a **Chat prompt** (a list of role-tagged segments, optionally with
+placeholder slots for variable-length message-list injection at render time). The table
+below describes the fields common to both variants; the `template` row applies to the
+Text-prompt variant and is replaced with `chat_template` on the Chat-prompt variant per
+§3.1.
+
 A `Prompt` record:
 
 | Field | Description |
@@ -100,6 +108,89 @@ entities returns prompts with those fields as `None`. Callers consume the fields
 (checking for absence) or rely on the language's idiom for unset optional fields. The spec
 does NOT mandate a default sampling config in the absence of a supplied one — callers fall
 back to `RuntimeConfig()` defaults at the provider layer.
+
+### 3.1 Chat-prompt variant
+
+A `Prompt` is one of two variants:
+
+- **Text prompt** — the shape described by the §3 table above; carries `template` (a single
+  template per the implementation's chosen representation) and renders to a single text
+  Message per §6.render. The simple lane for single-message prompts; remains text-only.
+- **Chat prompt** — carries `chat_template: list[ChatSegment]` IN PLACE OF `template`. All
+  other §3 fields (`name`, `version`, `label`, `template_hash`, `fetched_at`, `sampling`,
+  `observability_entities`, `metadata`) apply identically. Renders to a multi-message
+  `PromptResult` per §6.render. The lane for any prompt with structure: multiple roles,
+  multimodal content (text + image), and / or variable-length chat-history injection.
+
+A given Prompt is exactly one variant — `template` and `chat_template` are mutually
+exclusive on the same Prompt record. The variant MUST be implementation-discriminable
+(presence of `chat_template` versus `template`; an explicit type tag; a discriminated-union
+shape — per the language idiom).
+
+**ChatSegment.** Each segment in a `chat_template` is one of:
+
+- **Content segment** — `{role: "system" | "user" | "assistant", content: <text-template OR
+  content-blocks-template>}`. The `role` is one of the three canonical authoring roles
+  from llm-provider §3 (Message shape); the fourth llm-provider §3 role (`"tool"`) is
+  intentionally excluded from authored ChatSegments — tool-result messages have a
+  distinct per-message shape (`tool_call_id` and related metadata) that does not map to
+  a template-author surface, and tool-loop content can still be injected via placeholder
+  segments below when needed. The `content` is one of:
+  - **Text template** — the per-segment unrendered text in the implementation's chosen
+    template representation (analogous to the Text-prompt `template` field). Renders to a
+    Message with text content. The common case; valid for any role.
+  - **Content-blocks template** — a non-empty ordered list of `ContentBlockTemplate` records
+    (see *ContentBlockTemplate shapes* below) mirroring llm-provider §3.1 ContentBlock
+    shapes. Renders to a Message with a content-blocks `content` per llm-provider §3. Image
+    blocks are user-only per llm-provider §3.1.2 — a content-blocks segment containing any
+    image block MUST have `role: "user"`; a non-user role with an image-block-containing
+    template is a `prompt_render_error` (§11).
+- **Placeholder segment** — `{placeholder: str}`. The `placeholder` is a name identifying a
+  slot that the caller fills at render time with a `list[Message]` (per llm-provider §3).
+  Placeholder names MUST match the regex `[A-Za-z_][A-Za-z0-9_]*` (ASCII-identifier shape:
+  non-empty; starts with a letter or underscore; remaining characters are letters, digits,
+  or underscores). The constraint is pinned for cross-impl portability and to avoid
+  collision with backend-specific placeholder syntax (e.g., Langfuse's `{{name}}`
+  delimiters). Placeholder names MUST be unique within a single `chat_template`; a
+  duplicate name is a `prompt_render_error` (§11). A placeholder name that does not match
+  the identifier regex is also a `prompt_render_error`.
+
+**ContentBlockTemplate shapes.** A `ContentBlockTemplate` mirrors an llm-provider §3.1
+ContentBlock with variable-substitutable text fields. The v1 set covers the user-message-
+authoring blocks (text + image); thinking and redacted-thinking blocks per llm-provider
+§3.1.4 / §3.1.5 are assistant-side round-trip content with provider-bound signatures, not
+author-template content, and are not in the v1 ContentBlockTemplate set.
+
+- **Text block template** — `{type: "text", text: <template representation>}`. The `text`
+  is a per-block template. Variable substitution (per §6 / §8) produces an llm-provider
+  §3.1.1 text block with the rendered text.
+- **Image block template (URL source)** — `{type: "image", source: {type: "url", url:
+  <template representation>}, media_type?, detail?}`. The `url` field is a per-block
+  template; variable substitution produces the final URL. `media_type` and `detail` are
+  literal values per llm-provider §3.1.2 / §3.1.3 (not templates) — they're fixed at
+  authoring time and don't typically vary per render. Renders to an llm-provider §3.1.2
+  image block with `url`-source per §3.1.3.
+- **Image block template (inline source)** — `{type: "image", source: {type: "inline",
+  base64_data: <template representation>}, media_type: <template representation>,
+  detail?}`. The `base64_data` and `media_type` fields are per-block templates (variable
+  substitution lets a caller supply pre-encoded bytes and the media type at render time).
+  `detail` is literal. Renders to an llm-provider §3.1.2 image block with `inline`-source
+  per §3.1.3.
+
+A ContentBlockTemplate's `type` discriminator matches the corresponding llm-provider §3.1
+ContentBlock `type`; the rendered ContentBlock shape matches the llm-provider §3.1 shape
+exactly. Implementations MAY accept any image `media_type` llm-provider §3.1.2 declares
+supported, with the same minimum-set guarantee (`image/png`, `image/jpeg`, `image/webp`).
+
+**Chat-prompt `template_hash`.** For a Chat prompt, `template_hash` is computed over a
+canonical serialization of `chat_template` that includes segment order, segment kind, role
++ content for content segments (and for content-blocks segments, the full block sequence
+including each block's type, source variant, and template fields), and name for placeholder
+segments. Two distinct chat_templates MUST hash to distinct values; two structurally-
+identical chat_templates (same segments in the same order with the same roles + content /
+blocks + placeholder names) MUST hash to identical values. Implementations SHOULD use the
+same hash function as for Text-prompt `template_hash` (e.g., SHA-256 over a canonical
+serialization).
 
 ## 4. PromptResult shape
 
@@ -152,6 +243,13 @@ correct for the served template (caching MUST NOT break content-addressing).
 
 The protocol is deliberately small — backends are fetchers, nothing more. Composition,
 fallback, and rendering are the manager's concern.
+
+**Returned `Prompt` variant.** The returned `Prompt` MAY be either variant per §3.1 (Text-
+prompt or Chat-prompt). The protocol does not constrain which variant a backend produces;
+backends SHOULD document which variants they emit (e.g., a Langfuse-backed `PromptBackend`
+returns a Text-prompt for Langfuse TEXT prompts and a Chat-prompt for Langfuse
+`ChatPromptClient` prompts, mapped one-to-one). Callers that need a specific variant
+should validate the returned Prompt at the call site.
 
 **Backends MAY populate `Prompt.sampling` and `Prompt.observability_entities`** from any
 source the backend has access to. Common sources:
@@ -213,30 +311,84 @@ want the resolver to decide simply omit the argument.
 Returns a `Prompt`. Raises `prompt_not_found` if no backend produces the prompt; raises
 `prompt_store_unavailable` only when ALL backends are unavailable.
 
-### `render(prompt, variables=None)`
+### `render(prompt, variables=None, placeholders=None)`
 
-Synchronous (rendering is local — no I/O). Applies `variables` to `prompt.template` and
-returns a `PromptResult` (§4).
+Synchronous (rendering is local — no I/O). Applies `variables` (and, for Chat prompts,
+`placeholders`) to `prompt.template` or `prompt.chat_template` and returns a `PromptResult`
+(§4).
 
-- `prompt` — a `Prompt` record (§3). Required.
+- `prompt` — a `Prompt` record (§3), Text-prompt or Chat-prompt variant. Required.
 - `variables` — mapping of template variable names to values. Default empty.
+- `placeholders` — optional mapping of placeholder name → `list[Message]` (each `Message`
+  per llm-provider §3). Default empty. Meaningful only when `prompt` is a Chat-prompt
+  variant containing placeholder segments.
 
-Render semantics:
+Render semantics common to both variants:
 
-- The result's `name`, `version`, `label`, `template_hash` are propagated from the
-  input `prompt`.
-- `messages` is the rendered output, decomposed into LLM-provider messages per the
-  template's structure (templates MAY produce multiple messages — e.g., a system +
-  user split — when the template language supports it).
-- `variables` (the input) are recorded on the result.
+- The result's `name`, `version`, `label`, `template_hash` are propagated from the input
+  `prompt`.
+- `variables` (the input) are recorded on the result. The `placeholders` mapping is NOT
+  recorded on `variables`; implementations MAY surface it on a separate field on
+  `PromptResult` for audit symmetry but the spec does not require it.
 - `rendered_at` is set to the call time; `fetched_at` is propagated from `Prompt.fetched_at`
   (per §3).
-- `rendered_hash` is computed from the rendered messages.
+- `rendered_hash` is computed from the rendered messages (over the canonical serialization
+  of the full `messages` sequence per §4 — including the content-block sequence for
+  messages whose `content` is a block sequence).
 - Variable handling follows §8.
 
-Render is synchronous because it is purely a string-transformation step over the
-in-memory template; no backend I/O is involved. Async render would surface no
-benefits and would needlessly couple the operation to the host's event loop.
+**Text-prompt render contract.** When `prompt` is a Text-prompt variant, `render` produces
+exactly one `Message` with `role: "user"` and `content` equal to the rendered template
+text. The `placeholders` parameter MUST be ignored when rendering a Text prompt;
+implementations MUST NOT raise on a non-empty `placeholders` mapping passed alongside a
+Text prompt. (Pinned for cross-impl portability — callers wrapping `render()` generically
+across both variants can pass `placeholders` unconditionally without per-variant
+discrimination.) Multi-message and multimodal prompts MUST use the Chat-prompt variant
+(`chat_template`).
+
+**Chat-prompt render contract.** When `prompt` is a Chat-prompt variant, render produces
+`PromptResult.messages` by walking `chat_template` in order:
+
+- **Content segment, text-template `content`.** Apply per-segment variable substitution to
+  `content` using `variables` (§8 strict-undefined rule applies per segment, per §8). The
+  rendered text becomes a single `Message` whose `role` matches the segment's `role` and
+  whose `content` is the rendered text. The resulting Message appends to
+  `PromptResult.messages`.
+- **Content segment, content-blocks-template `content`.** For each block in the segment's
+  content-blocks list, in order:
+  - **Text block template.** Apply variable substitution to the block's `text` field;
+    produce an llm-provider §3.1.1 text block with the rendered text.
+  - **Image block template.** Apply variable substitution to the block's template fields
+    per the *ContentBlockTemplate shapes* enumeration in §3.1 (URL form: substitute into
+    `url`; inline form: substitute into `base64_data` and `media_type`); produce an
+    llm-provider §3.1.2 image block with the resolved source. The literal `detail` field
+    passes through unchanged.
+
+  The rendered block list becomes the `content` of a single Message whose `role` matches
+  the segment's `role`. The resulting Message appends to `PromptResult.messages`. §8
+  strict-undefined applies per text-template substitution within each block. Role-block
+  compatibility (image blocks user-only) is enforced per §11.
+- **Placeholder segment.** Look up `placeholders[<placeholder name>]`. If present, the
+  resolved `list[Message]` appends to `PromptResult.messages` in order — each injected
+  Message MUST appear as a standalone Message in the output (no merging across adjacent
+  placeholder slots and no merging with surrounding content segments). If the placeholder
+  name is absent from `placeholders` (including the case where `placeholders` itself is
+  `None` / omitted), raise `prompt_render_error` (§11).
+
+An injected `list[Message]` MAY be empty; an empty list contributes zero messages to the
+output and is NOT an error. This natively handles the chat-history "first turn / no prior
+messages" case without weakening the §8 / §11 empty-segment rule below.
+
+The FINAL rendered `messages` sequence MUST be non-empty per §4. A Chat-prompt render
+that produces zero messages — e.g., a `chat_template` consisting only of placeholder
+segments that all inject empty lists, or any other combination that yields no rendered
+Message — raises `prompt_render_error` (§11). The per-placeholder empty-list-valid rule
+above remains: empty per-placeholder injections are valid when other segments contribute;
+only the all-empty global result fails the non-empty invariant.
+
+Render is synchronous because it is purely a transformation step over the in-memory
+template; no backend I/O is involved. Async render would surface no benefits and would
+needlessly couple the operation to the host's event loop.
 
 ### `get(name, label=None, variables=None)`
 
@@ -313,6 +465,18 @@ opting out per-call is small for the rare cases where leniency is wanted.
 This requirement maps to Jinja2's `StrictUndefined` (Python) and to per-language
 equivalents (TypeScript template engines vary; implementations document their concrete
 choice). The spec mandates the behavior; the configuration knob is per-implementation.
+
+**Per-segment and per-block scope (Chat-prompt variant).** When rendering a Chat prompt,
+strict-undefined applies INDEPENDENTLY per segment, and within a content-blocks segment
+also INDEPENDENTLY per block. A variable referenced inside one segment but absent from
+`variables` raises `prompt_render_error` for that segment and aborts the render; a variable
+referenced in segment N but not in segment M (where both appear in the same
+`chat_template`) is checked only against segment N's references when segment N is rendered.
+Within a content-blocks segment, a variable referenced inside a text-block template's
+`text` field, an image-block template's `url` field, or an image-block template's
+`base64_data` / `media_type` fields raises `prompt_render_error` when missing —
+independently per block. The implementation-specific opt-out (when offered per the
+paragraph above) applies per segment and per block.
 
 ## 9. Composite backends and fallback
 
@@ -399,9 +563,36 @@ Three canonical error categories:
   - the template fails to parse (syntax error in the template language), OR
   - a variable's value is not coercible to the template's expected type.
 
+  *Additional Chat-prompt-specific triggers* (raised under the same `prompt_render_error`
+  category):
+
+  - a text-template content segment renders to the literally-empty string (zero
+    characters), OR a content-blocks segment contains a `{type: "text"}` block whose
+    rendered `text` is the literally-empty string. **Pinned: "empty" means literally
+    zero characters after variable substitution; no leading / trailing whitespace
+    stripping is applied.** A content segment whose template is empty before substitution
+    OR whose template resolves any variable to `""` such that the rendered text is `""`
+    raises. Cross-impl portability requires the same trigger condition.
+  - a content-blocks segment has an empty block list (zero blocks).
+  - a `{placeholder: <name>}` segment's `<name>` is absent from the `placeholders` mapping
+    passed to `render` (distinct from `placeholders[<name>] = []` — present-with-empty-
+    value is valid and contributes zero messages per §6.render).
+  - a `chat_template` contains duplicate placeholder names (§3.1 placeholder uniqueness
+    rule), OR a placeholder name that does not match the §3.1 identifier regex
+    (`[A-Za-z_][A-Za-z0-9_]*`).
+  - a content-blocks segment contains an image block with `role` other than `"user"` (per
+    llm-provider §3.1.2's user-only constraint on image blocks; this is enforced at
+    render time as the earliest point at which both the segment's role and its block list
+    are known; implementations MAY also detect at prompt-construction time for faster
+    feedback, but the spec-normative point of enforcement is render).
+  - the final rendered `messages` sequence is empty (e.g., a `chat_template` consisting
+    only of placeholder segments that all inject empty lists). The non-empty
+    `PromptResult.messages` invariant (§4) MUST hold for every successful render.
+
   The error MUST expose the prompt's `name`, `version`, `label`, the variable mapping
   (with sensitive values redacted per implementation policy), and a description of the
-  render failure. Non-transient.
+  render failure (which segment / block / placeholder triggered, where applicable).
+  Non-transient.
 
 - `prompt_store_unavailable` — backend infrastructure failure (network unreachable,
   filesystem I/O error, vendor API 5xx, vendor API timeout). Raised by
@@ -480,6 +671,12 @@ When the key is absent or `observability_entities` itself is `None`, §8.4.4 cas
 applies (metadata-only, no Prompt-entity link). The trigger semantic is unchanged from
 v0.23.0; only the lookup location is now spec-defined rather than
 implementation-defined.
+
+The §8.4.4 linkage is keyed on prompt identity (`name + version + label`) and is
+**unaffected by Prompt variant** (Text-prompt vs Chat-prompt per §3.1) and by rendered
+message count. A Chat-prompt that links to a Langfuse Prompt entity via
+`observability_entities` flows through §8.4.4's lookup exactly as a Text-prompt does;
+multi-message and multimodal rendering introduces no §8.4.4 changes.
 
 ## 13. Determinism
 

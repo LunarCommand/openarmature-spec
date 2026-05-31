@@ -1,0 +1,63 @@
+# §11 (Chat-prompt) — unfilled placeholder. A chat_template containing
+# a {placeholder: "examples"} segment, rendered with placeholders
+# absent (and not containing "examples"). Render MUST raise
+# prompt_render_error. Distinct from placeholders["examples"] = [],
+# which is the valid empty-injection case (fixture 019).
+
+backends:
+  - name: local
+    prompts:
+      - name: few_shot_prompt
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You answer questions."}
+          - {placeholder: examples}
+          - {role: user, content: "{{ question }}"}
+        template_hash: "sha256:few-shot-v1"
+
+cases:
+  - name: unfilled_placeholder_raises_absent
+    description: |
+      Render with placeholders omitted entirely (None / undefined),
+      while variables supplies the question. The chat_template's
+      placeholder slot "examples" cannot be resolved. Per §11 the
+      absent-from-placeholders case MUST raise prompt_render_error.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: few_shot_prompt, label: production}
+        variables: {question: "what is OA?"}
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: few_shot_prompt
+              version: v1
+              label: production
+              description_mentions: "examples"
+
+  - name: unfilled_placeholder_raises_missing_key
+    description: |
+      Render with placeholders={"other": []} — present mapping that
+      does NOT contain "examples". Same error as the absent case;
+      missing-key and absent-mapping are equivalent per §11.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: few_shot_prompt, label: production}
+        variables: {question: "what is OA?"}
+        placeholders:
+          other: []
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: few_shot_prompt
+              version: v1
+              label: production
+              description_mentions: "examples"

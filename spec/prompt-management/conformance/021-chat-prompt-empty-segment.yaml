@@ -1,0 +1,39 @@
+# §11 (Chat-prompt) — empty content segment. A chat_template with a
+# content segment whose text-template content is literally empty (or
+# renders to the empty string after substitution). Render MUST raise
+# prompt_render_error; there is NO silent-drop behavior.
+
+backends:
+  - name: local
+    prompts:
+      - name: empty_segment_prompt
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: ""}
+          - {role: user, content: "Classify this input."}
+        template_hash: "sha256:empty-segment-v1"
+
+cases:
+  - name: empty_content_segment_raises
+    description: |
+      The system segment's content is the empty string literal. Per
+      §11's Chat-prompt empty-segment rule, render MUST raise
+      prompt_render_error. Callers needing optional or conditional
+      segments build a chat_template that excludes the segment rather
+      than relying on render-time omission.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: empty_segment_prompt, label: production}
+        variables: {}
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: empty_segment_prompt
+              version: v1
+              label: production
+              description_mentions: "empty"

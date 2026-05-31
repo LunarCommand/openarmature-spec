@@ -1,0 +1,54 @@
+# §12 cross-spec — observability §8.4.4 linkage unaffected by Prompt
+# variant. A Chat-prompt with observability_entities.langfuse_prompt
+# populated flows through the §8.4.4 lookup exactly as a Text-prompt
+# does (fixture 016). The linkage is keyed on prompt identity, not on
+# rendered message count or Prompt variant.
+
+backends:
+  - name: langfuse_aware
+    prompts:
+      - name: chat_classify
+        label: production
+        version: v3
+        chat_template:
+          - {role: system, content: "Classify {{ topic }} requests."}
+          - {role: user, content: "Input: {{ input }}"}
+        template_hash: "sha256:chat-classify-v3"
+        observability_entities:
+          langfuse_prompt: "lf-prompt-chat-sentinel-9c4f"
+
+cases:
+  - name: chat_prompt_observability_entities_propagate
+    description: |
+      Chat-prompt backend populates observability_entities.
+      langfuse_prompt with a sentinel reference. The harness verifies
+      both Prompt and PromptResult carry the sentinel unchanged after
+      render — same propagation rule as text-prompt fixture 016. The
+      Chat-prompt variant does NOT change the §12 / observability
+      §8.4.4 linkage; the lookup is keyed on prompt identity, not on
+      message count or variant.
+    manager:
+      backends: [langfuse_aware]
+    calls:
+      - target: manager
+        operation: fetch
+        name: chat_classify
+        label: production
+        capture_as: prompt
+      - target: manager
+        operation: render
+        fetched_prompt_ref: prompt
+        variables: {topic: "support", input: "where is my order"}
+        capture_as: rendered
+    expected:
+      prompt:
+        name: chat_classify
+        observability_entities:
+          langfuse_prompt: "lf-prompt-chat-sentinel-9c4f"
+      rendered:
+        name: chat_classify
+        observability_entities:
+          langfuse_prompt: "lf-prompt-chat-sentinel-9c4f"
+        messages:
+          - {role: system, content: "Classify support requests."}
+          - {role: user, content: "Input: where is my order"}

@@ -52,7 +52,7 @@ lifecycle and the proposal template.
 | [0043](proposals/0043-observability-langfuse-trace-input-output.md) | §8 Langfuse `trace.input` / `trace.output` population | observability | Accepted | Shipped (0.11.0)| —          |
 | [0044](proposals/0044-parallel-branches-dispatch-span.md) | Parallel-branches dispatch span synthesis | graph-engine  | Accepted | Pending         | —          |
 | [0045](proposals/0045-observability-nested-lineage-augmentation.md) | Nested-lineage augmentation containment scope | observability | Accepted | Pending         | —          |
-| [0046](proposals/0046-prompt-management-multi-message-rendering.md) | Multi-message / chat prompt rendering | prompt-management | Draft    | —               | —          |
+| [0046](proposals/0046-prompt-management-multi-message-rendering.md) | Multi-message / chat prompt rendering | prompt-management | Accepted | Pending         | —          |
 
 Click any column header to sort.
 

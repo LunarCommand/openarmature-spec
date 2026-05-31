@@ -1,0 +1,50 @@
+# §3.1 Chat-prompt + §6.render — placeholder list-injection (non-
+# empty). A chat_template with a placeholder segment named `history`
+# between a system segment and a final user segment. Render with a
+# non-empty placeholders mapping; the injected list expands at the
+# slot position as standalone Messages.
+
+backends:
+  - name: local
+    prompts:
+      - name: chat_with_history
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You are a helpful assistant."}
+          - {placeholder: history}
+          - {role: user, content: "{{ user_turn }}"}
+        template_hash: "sha256:chat-with-history-v1"
+
+cases:
+  - name: placeholder_injection_non_empty
+    description: |
+      Render with placeholders={"history": [user-prior, assistant-prior]}
+      and variables={"user_turn": "follow-up question"}. Asserts the
+      resulting PromptResult.messages sequence is the four-Message list
+      [system, prior-user, prior-assistant, final-user] in order, with
+      the injected pair appearing standalone at the placeholder slot
+      (no merging across slots, no merging with surrounding content
+      segments).
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: chat_with_history, label: production}
+        variables: {user_turn: "follow-up question"}
+        placeholders:
+          history:
+            - {role: user, content: "prior turn"}
+            - {role: assistant, content: "prior reply"}
+        capture_as: rendered
+    expected:
+      rendered:
+        name: chat_with_history
+        version: v1
+        label: production
+        messages:
+          - {role: system, content: "You are a helpful assistant."}
+          - {role: user, content: "prior turn"}
+          - {role: assistant, content: "prior reply"}
+          - {role: user, content: "follow-up question"}
