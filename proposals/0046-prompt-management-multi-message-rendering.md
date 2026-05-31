@@ -1,9 +1,9 @@
 # 0046: Prompt-Management — Multi-Message / Chat Prompt Rendering
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-30
-- **Accepted:**
+- **Accepted:** 2026-05-30
 - **Targets:** spec/prompt-management/spec.md (§3 *Prompt shape* — additive Chat-prompt variant alongside the existing Text-prompt variant; content segments support either a text-template `content` or a content-blocks `content` mirroring llm-provider §3.1 for multimodal user-message authoring; §6.render — render contract for chat prompts including a `placeholders` parameter for variable-length message-list injection, per-block render for content-blocks segments, and a narrowing of the Text-prompt render clause to exactly one text Message; §8 *Variable injection* — per-segment + per-block strict-undefined clarification; §11 *Errors* — empty-segment error, unfilled-placeholder error, and role-block compatibility error (image blocks user-only); §5 *PromptBackend protocol* — signature note that returned Prompts may be either variant; §12 *Cross-spec touchpoints* — observability §8.4.4 linkage unaffected); new conformance fixtures covering per-segment render, placeholder list-injection (including empty-list valid case), per-segment strict-undefined, empty-segment error, unfilled-placeholder error, content-blocks render (text + image-URL with variable substitution; inline image), role-block compatibility rejection, and observability linkage on a chat-shape prompt.
 - **Related:** 0017 (prompt-management core — established the Text-prompt `template: str` shape and the single-`UserMessage` render contract that this proposal generalizes), 0015 (llm-provider multimodal images — defined the §3.1 ContentBlock shapes that this proposal's content-blocks chat segments mirror in template form), 0033 (prompt-management surface refinements — added `Prompt.observability_entities` for backend-keyed entity references; the §8.4.4 Langfuse Prompt-entity linkage is unaffected by message count and remains unchanged here)
 - **Supersedes:**

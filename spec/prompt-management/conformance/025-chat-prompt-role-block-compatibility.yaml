@@ -1,0 +1,48 @@
+# §11 (Chat-prompt) — role-block compatibility. A chat_template with
+# a `role: "system"` content-blocks segment containing an image block.
+# Per llm-provider §3.1.2 image blocks are user-only; the role-block
+# violation MUST be raised at render time (the earliest point at which
+# both the segment's role and its block list are known).
+
+backends:
+  - name: local
+    prompts:
+      - name: bad_system_with_image
+        label: production
+        version: v1
+        chat_template:
+          - role: system
+            content:
+              - {type: text, text: "Context:"}
+              - type: image
+                source:
+                  type: url
+                  url: "https://example.com/diagram.png"
+          - {role: user, content: "Explain the diagram."}
+        template_hash: "sha256:bad-system-with-image-v1"
+
+cases:
+  - name: image_block_in_non_user_segment_raises
+    description: |
+      The system segment uses content-blocks content and contains an
+      image block. Per llm-provider §3.1.2 image blocks are user-only;
+      per §11 (Chat-prompt) the role-block-compatibility rule MUST
+      raise prompt_render_error at render time, before producing any
+      partial PromptResult. Implementations MAY also detect this at
+      prompt-construction time for faster feedback; the spec-normative
+      enforcement point is render.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: bad_system_with_image, label: production}
+        variables: {}
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: bad_system_with_image
+              version: v1
+              label: production
+              description_mentions: "image"

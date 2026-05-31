@@ -1,0 +1,41 @@
+# §3.1 Chat-prompt + §6.render — per-segment render (static). A
+# chat_template with a system segment + a user segment, each carrying
+# one variable. Render produces a 2-Message PromptResult with per-
+# segment variable substitution applied independently.
+
+backends:
+  - name: local
+    prompts:
+      - name: classify
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You classify {{ topic }} requests."}
+          - {role: user, content: "Classify: {{ input }}"}
+        template_hash: "sha256:classify-chat-v1"
+
+cases:
+  - name: chat_per_segment_render
+    description: |
+      Two-segment chat_template (system + user). Render with variables
+      {topic: "support", input: "my order is late"}. Asserts the
+      resulting PromptResult.messages has length 2; each Message carries
+      its segment's role; per-segment variable substitution applied
+      independently (system segment uses `topic`, user segment uses
+      `input`; neither leaks into the other).
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: classify, label: production}
+        variables: {topic: "support", input: "my order is late"}
+        capture_as: rendered
+    expected:
+      rendered:
+        name: classify
+        version: v1
+        label: production
+        messages:
+          - {role: system, content: "You classify support requests."}
+          - {role: user, content: "Classify: my order is late"}

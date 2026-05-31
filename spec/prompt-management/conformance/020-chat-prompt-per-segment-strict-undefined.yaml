@@ -1,0 +1,40 @@
+# §3.1 + §6.render + §8 — per-segment strict-undefined. A chat_template
+# with two content segments, each referencing a variable; render with
+# only one variable supplied. Strict-undefined applies per segment;
+# render MUST raise prompt_render_error and abort before producing a
+# partial PromptResult.
+
+backends:
+  - name: local
+    prompts:
+      - name: classify_two_var
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You classify {{ topic }} requests."}
+          - {role: user, content: "Classify: {{ missing_input }}"}
+        template_hash: "sha256:classify-two-var-v1"
+
+cases:
+  - name: per_segment_strict_undefined_raises
+    description: |
+      The user segment references `missing_input`, which is not in the
+      variables mapping. Per §8's per-segment scope, render MUST raise
+      prompt_render_error for the user segment and abort. The system
+      segment's `topic` is supplied and would render successfully — but
+      no partial PromptResult is produced; the whole render fails.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: classify_two_var, label: production}
+        variables: {topic: "support"}
+        expected:
+          raises:
+            category: prompt_render_error
+            carries:
+              name: classify_two_var
+              version: v1
+              label: production
+              description_mentions: "missing_input"
