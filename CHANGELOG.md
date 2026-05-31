@@ -4,6 +4,21 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.37.0] — 2026-05-30
+
+**Changed**
+
+- **observability §3.4 — *Mid-invocation augmentation* ancestor / sibling boundary rewritten as a lineage-aware three-rule structure.** The previous single-rule "ancestor / sibling boundary (MUST NOT)" — which conflated dispatch ancestors with shared parents — is replaced with three lineage-aware rules: ***Augmenter's call-stack ancestor chain (MUST)*** (every strict dispatch ancestor on the augmenter's specific call-stack path — outer fan-out instance, outer parallel-branches branch, outer serial-subgraph wrapper — gets the update); ***Sibling boundary (MUST NOT)*** (siblings at any dispatch depth do not); ***Shared-parent boundary (MUST NOT)*** (the fan-out node, parallel-branches node, invocation span — visible to multiple sibling instances / branches — do not). Adds a three-step boundary decision tree applied per open span at augmentation time. ([proposal 0045](proposals/0045-observability-nested-lineage-augmentation.md))
+- **observability §3.4 — *Per-async-context scoping* gains a follow-up *Per-depth lineage tracking* paragraph.** Implementations MUST preserve the dispatch-context lineage as a list (one entry per dispatch depth: outer fan-out instances, outer parallel-branches branches, outer serial-subgraph wrappers on the augmenter's path), not a single scalar identifier that gets clobbered at each nested descent. When an augmentation fires at a leaf, the observer uses the lineage to locate the open ancestor dispatch spans on the augmenter's path.
+
+**Added**
+
+- Conformance fixture `observability/conformance/039-nested-lineage-augmentation` exercising three nested-dispatch cases: inner fan-out inside outer fan-out instance, parallel-branches inside fan-out instance, and fan-out inside serial subgraph. Each case asserts the augmenter's full call-stack ancestor chain receives the augmentation, sibling instances / branches do not cross-pollinate, and shared parents (fan-out NODE, parallel-branches NODE, invocation) are not updated.
+
+**Notes**
+
+- **MINOR bump.** The single-level behavior (one fan-out instance OR one parallel branch on the augmenter's path) is unchanged: the existing fixtures 029 / 030 / 034 exercise the call-stack-ancestor-chain-of-length-one case and their assertions remain correct under the lineage-aware rule. The loosening expands the set of spans that carry augmented metadata in nested cases — backwards-compatible for observers / backends that already handle the metadata (more spans now carry it; none get less).
+
 ## [0.36.0] — 2026-05-29
 
 **Added**
