@@ -107,7 +107,7 @@ This proposal replaces the paragraph with:
 >
 > Identify a shared parent structurally:
 >
-> - **Fan-out node span** — always a shared parent. Identifying
+> - **Fan-out node span** — always a shared parent. Identified
 >   structurally by dispatch-node type; the rule applies even in
 >   degenerate cases (a fan-out over a single-element list) where
 >   no sibling instance exists at runtime — the structural
