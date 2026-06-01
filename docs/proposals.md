@@ -55,7 +55,7 @@ lifecycle and the proposal template.
 | [0046](proposals/0046-prompt-management-multi-message-rendering.md) | Multi-message / chat prompt rendering | prompt-management | Accepted | Shipped (0.11.0)| —          |
 | [0047](proposals/0047-implicit-prefix-cache-wire-stability.md) | Implicit prefix-cache wire-byte stability | llm-provider | Accepted | Pending         | —          |
 | [0048](proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md) | Read-symmetric invocation metadata + queryable observer pattern | observability | Accepted | Pending         | —          |
-| [0049](proposals/0049-typed-llm-completion-event.md) | Typed LLM completion event | observability | Draft | —               | —          |
+| [0049](proposals/0049-typed-llm-completion-event.md) | Typed LLM completion event | observability | Accepted | Pending         | —          |
 | [0050](proposals/0050-retry-and-degradation-primitives.md) | Retry & degradation primitives (failure-isolation middleware + call-level retry) | pipeline-utilities | Draft | —               | —          |
 | [0051](proposals/0051-langfuse-trace-io-deprecation-caveat.md) | Langfuse trace input/output implementation-surface caveat | observability | Draft | —               | —          |
 | [0052](proposals/0052-implementation-attribution-rows.md) | Implementation attribution attributes (§5.1 invocation span + §8.4.1 Langfuse mapping) | observability | Draft | —               | —          |

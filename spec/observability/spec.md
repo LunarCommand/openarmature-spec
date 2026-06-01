@@ -17,6 +17,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §3.4 *Mid-invocation augmentation* ancestor/sibling boundary rewritten as a lineage-aware three-rule structure — *Augmenter's call-stack ancestor chain (MUST)* (each strict dispatch ancestor on the augmenter's specific call-stack path — outer fan-out instance, outer parallel-branches branch, outer serial-subgraph wrapper — gets the update), *Sibling boundary (MUST NOT)* (siblings at any depth do not), *Shared-parent boundary (MUST NOT)* (the fan-out node, parallel-branches node, invocation span — visible to multiple sibling instances — do not), plus a three-step boundary decision tree; §3.4 *Per-async-context scoping* gained a follow-up *Per-depth lineage tracking* paragraph requiring implementations to preserve the dispatch-context lineage as a list (one entry per dispatch depth) rather than a single scalar identifier, so the observer can locate ancestor open spans at augmentation time by [proposal 0045](../../proposals/0045-observability-nested-lineage-augmentation.md)
   - §5.5.3 extended with a new §5.5.3.1 sub-subsection *OA-namespaced cache attributes (stable-only mirror)* defining two new attributes on the LLM provider span: `openarmature.llm.cache_read.input_tokens` (sourced from the §6 `Response.usage.cached_tokens` field, emitted when the field is populated) and optional `openarmature.llm.cache_creation.input_tokens` (sourced from `Response.usage.cache_creation_tokens`, populated primarily by providers with explicit cache-control surfaces); OA-namespace placement governed by the *Stable-only upstream adoption* policy because the upstream OTel attribute names `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` are at Development status as of OTel semconv v1.41.1; emission honors the existing `disable_genai_semconv` opt-out (§5.5.4) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
   - §3.4 *Caller-supplied invocation metadata* extended with a *Read access* paragraph block introducing the symmetric `openarmature.observability.get_invocation_metadata()` read primitive — returns an immutable mapping snapshot of the metadata visible in the current async context, scoped per-async-context per the existing copy-on-write rule (sibling-instance writes invisible after fan-out joins; outermost-serial reads see only the outermost view), per-attempt under retry middleware (prior failed attempt's writes do NOT carry over), silent no-op (empty mapping) outside an active invocation, no observer emission on read, immutable-mapping return type with typed wrappers deferred; new §9 *Queryable observer pattern* (renumbers existing §9 *Determinism* → §10 and §10 *Out of scope* → §11) defining a normative convention for concrete observers exposing read methods on the instance — §9.1 read-method contract (query-only, no routing side effects, no observer-side emission, non-blocking SHOULD), §9.2 async-safety contract (read-consistent floor; post-completion stability gates on the invocation's completion signal), §9.3 *Three-channel data-access guidance* table comparing State / invocation-metadata / queryable observer accumulator carve-outs (default: prefer State), §9.4 lifecycle (auto-drop on completion rejected; explicit `drop()` required for accumulating queryable observers; long-lived accumulator memory-pressure caveat) by [proposal 0048](../../proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md)
+  - §5.5 gained a new §5.5.7 *Typed LLM completion event* sub-subsection framing the typed `LlmCompletionEvent` variant (defined on the graph-engine §6 observer event union) as the structured form of the §5.5 LLM provider span attribute surface — same identity / scoping / outcome data, in a structured form rather than as separate span attributes; observers MAY filter via type discrimination rather than via the impl-current sentinel-namespace string match; a SHOULD-emit-both transition lets implementations that historically emitted a sentinel-namespaced NodeEvent for LLM completions continue emitting it alongside the typed event for an implementation-defined transition window (the spec does not pin the legacy NodeEvent shape — the sentinel `"openarmature.llm.complete"` value remains the OTel span name per §5 but is impl-current as a NodeEvent's `node_name` value); backends SHOULD subscribe to one variant per LLM completion to avoid double-counting by [proposal 0049](../../proposals/0049-typed-llm-completion-event.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -682,13 +683,14 @@ span unless the span itself is suppressed via `disable_llm_spans`:
 - `openarmature.llm.usage.prompt_tokens`, `openarmature.llm.usage.completion_tokens`,
   `openarmature.llm.usage.total_tokens` — int. From the response's usage record. Omit when null.
 
-The remainder of §5.5 (subsections §5.5.1 through §5.5.6, introduced by proposal 0024) extends the
-attribute set with input/output payload (§5.5.1, default-off), `RuntimeConfig` request parameters
-under the OpenTelemetry GenAI semantic conventions (§5.5.2), a minimum set of GenAI semconv
-response attributes (§5.5.3), the two new opt-out flags governing payload and GenAI semconv
-emission (§5.5.4), the truncation contract governing payload byte length (§5.5.5), and
-cross-implementation consistency rules (§5.5.6). No existing attribute is renamed; all additions
-sit alongside the baseline list.
+The remainder of §5.5 extends the attribute set across several sub-subsections: input/output
+payload (§5.5.1, default-off), `RuntimeConfig` request parameters under the OpenTelemetry GenAI
+semantic conventions (§5.5.2), a minimum set of GenAI semconv response attributes (§5.5.3 — with
+OA-namespaced cache attributes in §5.5.3.1 per proposal 0047), the two opt-out flags governing
+payload and GenAI semconv emission (§5.5.4), the truncation contract governing payload byte
+length (§5.5.5), cross-implementation consistency rules (§5.5.6), and the typed LLM completion
+event (§5.5.7, per proposal 0049) framing the same data surface in structured-event form. No
+existing attribute is renamed; all additions sit alongside the baseline list.
 
 #### 5.5.1 Input/output payload attributes (default-off)
 
@@ -962,6 +964,45 @@ Implementations of §5.5.1 through §5.5.5 across languages (Python, TypeScript)
 
 Per-language ergonomics (constructor argument naming, builder patterns, environment-variable
 lookup) MAY differ. The above are the cross-impl behavioral surface.
+
+#### 5.5.7 Typed LLM completion event
+
+Implementations MUST emit the `LlmCompletionEvent` typed variant (per graph-engine §6) on every
+LLM call completion that produces a structured response. The typed event carries the same
+identity / scoping / outcome data the §5.5 span attribute surface exposes — `gen_ai.system`,
+`gen_ai.request.model`, `gen_ai.response.id`, `gen_ai.usage.*`, `gen_ai.response.finish_reasons`,
+plus the OA-namespaced attributes (`openarmature.invocation_id`, `openarmature.node.name`, etc.)
+— in a structured form rather than as separate span attributes.
+
+Observers consuming the typed event for backend-specific rendering (Langfuse generation per
+§8.7, OTel span enrichment per §5.5, custom queryable observer accumulators per §9) MAY filter
+the observer event stream via type discrimination (`isinstance(event, LlmCompletionEvent)` or
+per-language idiomatic equivalent) rather than via the sentinel-namespace string match the
+existing convention uses.
+
+**Backwards compatibility with the sentinel-namespace convention.** Some implementations have
+historically emitted a sentinel-namespaced `NodeEvent` to drive LLM-call observability — a
+common convention rather than a spec-defined shape (e.g., emitting NodeEvents with
+`node_name = "openarmature.llm.complete"` so backends can filter by namespace string; the same
+value appears in §5 *Span names* as the OTel **span name** for the LLM provider span, but the
+spec does NOT pin a NodeEvent shape with that `node_name`). The convention is
+implementation-current, not spec-normative; this proposal does not define the legacy event's
+shape.
+
+Implementations that have historically emitted such a sentinel-namespaced NodeEvent for LLM
+completions SHOULD continue emitting it alongside the new typed `LlmCompletionEvent` during a
+transition period — long enough for backends filtering by the impl-current sentinel namespace
+to migrate to type-discrimination filtering. The transition period is implementation-defined;
+the spec imposes no fixed window. Implementations that have never emitted a
+sentinel-namespaced NodeEvent for LLM completions only need to emit the new typed event.
+
+**Backends SHOULD subscribe to one event variant per LLM completion.** When an implementation
+emits both the typed event and a sentinel-namespaced NodeEvent for the same LLM call, a backend
+filtering for both will receive two distinct events for the same logical completion —
+accumulators counting events will double-count, span emitters will double-emit. Backends opting
+into the typed event SHOULD stop subscribing to the sentinel NodeEvent for LLM completions; the
+two-variant emission is for impl-level transition consumption, not parallel consumption by the
+same backend.
 
 ### 5.6 Cross-cutting attributes
 

@@ -1,9 +1,9 @@
 # 0049: Typed LLM Completion Event
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-01
-- **Accepted:**
+- **Accepted:** 2026-06-01
 - **Targets:** spec/graph-engine/spec.md (§6 — introduces the first normatively-typed event variant on the observer event union, `LlmCompletionEvent`, alongside the existing `NodeEvent`); spec/observability/spec.md (§5.5 — frames the typed event as the structured form of the existing LLM provider span attribute surface, with a dual-emit transition window during which both the typed event and the existing sentinel-namespaced `NodeEvent` for LLM completions fire); plus new conformance fixtures covering the typed event's field-set + dual-emit composition.
 - **Related:** 0024 (LLM span payload + GenAI semconv — established the §5.5 attribute surface this proposal mirrors in typed-event form), 0040 (mid-invocation augmentation — RECOMMENDED a framework-emitted metadata-augmentation event as the dispatch mechanism for open-span updates; this proposal extends the event surface with the first spec-mandated typed variant for a related concern)
 - **Supersedes:**
@@ -251,7 +251,7 @@ during the dual-emit window.
 
 ### New fixtures
 
-Four new fixtures under `observability/conformance/` (numbers
+Seven new fixtures under `observability/conformance/` (numbers
 assigned at acceptance):
 
 1. **Typed event dispatches on LLM completion.** A graph with one
@@ -284,6 +284,30 @@ assigned at acceptance):
    call (the failure surfaces via the exception path; the typed
    event is completion-only per the v1 scope).
 
+5. **Fan-out instance scoping.** A fan-out over two items, each
+   instance issuing an LLM call. Asserts two `LlmCompletionEvent`s
+   are captured with distinct `fan_out_index` values covering
+   `{0, 1}`, and `branch_name` is null on both. Locks down the
+   event-source identity tuple's sibling-instance disambiguation
+   (load-bearing for downstream per-instance accumulators and
+   Langfuse per-instance observation linkage).
+
+6. **Parallel-branches scoping.** Parallel-branches over two
+   named branches (`fast`, `slow`), each issuing an LLM call.
+   Asserts two `LlmCompletionEvent`s with distinct `branch_name`
+   values covering `{fast, slow}`, `fan_out_index` is null on both.
+   Companion to the fan-out scoping case for the
+   parallel-branches dispatch surface.
+
+7. **Strict-serial ordering relative to NodeEvents.** The typed
+   event MUST arrive between the LLM-calling node's `started` and
+   `completed` `NodeEvent`s in the observer's arrival sequence, per
+   the strict-serial delivery guarantee and the dispatch timing
+   ("after the adapter receives a successful response and before
+   the call returns to the caller"). Fixture asserts the relative
+   order: `NodeEvent(started)` → `LlmCompletionEvent` →
+   `NodeEvent(completed)` for the LLM-calling node.
+
 ### Unaffected fixtures
 
 All existing fixtures continue to pass unchanged. The typed event
@@ -305,7 +329,7 @@ increments:
 - New observability §5.5 paragraph framing the typed event +
   dual-emit transition (informative-clarifying alongside additive
   emission rule).
-- New conformance fixtures (four required). Existing fixtures
+- New conformance fixtures (seven required). Existing fixtures
   unchanged.
 
 The change is purely additive at the spec level. Implementations
