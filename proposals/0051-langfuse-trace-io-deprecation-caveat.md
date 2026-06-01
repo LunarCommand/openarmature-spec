@@ -18,7 +18,7 @@ Langfuse, decoupled from *how* implementations get the values
 there via the vendor SDK.
 
 Empirical verification against the current Langfuse SDK surface
-(Langfuse Python SDK v4.7.1, verified 2026-05-30) finds that the
+(Langfuse Python SDK v4.7.1, verified 2026-05-31) finds that the
 SDK method which delivers the §8.4.1 contract's UI-visible value
 to the Langfuse Traces list view (`set_current_trace_io` /
 `Span.set_trace_io`) is marked **deprecated** by the upstream
@@ -64,7 +64,7 @@ verification-date state of the vendor SDK serves three purposes:
    deprecation as spec deprecation.
 
 3. **Verification cadence becomes self-documenting.** The "as of
-   2026-05-30" date sets a maintenance trigger — a future reader
+   2026-05-31" date sets a maintenance trigger — a future reader
    encountering this caveat at a much later date knows to
    re-verify the vendor SDK state before relying on the binding.
 
@@ -86,7 +86,7 @@ caller-hook / resume-semantics content:
 > §8.4.1 contract to whichever vendor SDK method projects trace-
 > level input / output values into the Langfuse UI's headline
 > Input / Output columns. As of Langfuse SDK v4 (empirically
-> verified 2026-05-30), this is the `set_current_trace_io` /
+> verified 2026-05-31), this is the `set_current_trace_io` /
 > `Span.set_trace_io` family, which the SDK marks as deprecated
 > with stated removal in a future major version. The non-
 > deprecated `propagate_attributes` method does not currently
