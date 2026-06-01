@@ -1,0 +1,96 @@
+# §8 Intra-impl wire-byte stability — §8.2 Anthropic Messages mapping. Two
+# complete() calls with structurally-equivalent OA inputs constructed with
+# different insertion orders MUST produce byte-identical Anthropic wire
+# request bodies. Exercises:
+#   - tool input_schema (sorted JSON object keys at every nesting level)
+#   - tool_use.input (structured-arguments mapping — sorted keys)
+#   - system field extraction (stable concatenation order)
+
+mapping: anthropic
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: msg-055-a
+        type: message
+        role: assistant
+        model: claude-test
+        content:
+          - {type: text, text: "OK"}
+        stop_reason: end_turn
+        usage: {input_tokens: 20, output_tokens: 1}
+    - status: 200
+      body:
+        id: msg-055-b
+        type: message
+        role: assistant
+        model: claude-test
+        content:
+          - {type: text, text: "OK"}
+        stop_reason: end_turn
+        usage: {input_tokens: 20, output_tokens: 1}
+
+calls:
+  # Call A: tool parameters built with keys in declaration order; tool_use
+  # input authored with (location, units); system messages in stable order.
+  - operation: complete
+    messages:
+      - {role: system, content: "You are a weather assistant."}
+      - {role: user, content: "Use the tool to get SF weather."}
+      - role: assistant
+        tool_calls:
+          - id: call_1
+            name: get_weather
+            arguments:
+              location: "SF"
+              units: "celsius"
+      - {role: tool, tool_call_id: call_1, content: "12C cloudy"}
+    tools:
+      - name: get_weather
+        description: "Weather lookup."
+        parameters:
+          type: object
+          properties:
+            location: {type: string}
+            units: {type: string, enum: [celsius, fahrenheit]}
+          required: [location]
+    config: {max_tokens: 64, temperature: 0.7}
+    expected:
+      response:
+        message: {role: assistant, content: "OK", tool_calls: null}
+        finish_reason: stop
+
+  # Call B: same OA semantics, alternate insertion orders throughout.
+  # Tool parameters keys built as (units, location); tool_use arguments as
+  # (units, location); same system message text. The mapping MUST
+  # canonicalize so the wire bytes match call A's output exactly.
+  - operation: complete
+    messages:
+      - {role: system, content: "You are a weather assistant."}
+      - {role: user, content: "Use the tool to get SF weather."}
+      - role: assistant
+        tool_calls:
+          - id: call_1
+            name: get_weather
+            arguments:
+              units: "celsius"
+              location: "SF"
+      - {role: tool, tool_call_id: call_1, content: "12C cloudy"}
+    tools:
+      - name: get_weather
+        description: "Weather lookup."
+        parameters:
+          type: object
+          required: [location]
+          properties:
+            units: {type: string, enum: [celsius, fahrenheit]}
+            location: {type: string}
+    config: {temperature: 0.7, max_tokens: 64}
+    expected:
+      response:
+        message: {role: assistant, content: "OK", tool_calls: null}
+        finish_reason: stop
+
+expected_wire_bytes_identical:
+  calls: [0, 1]

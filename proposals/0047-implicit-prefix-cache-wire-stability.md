@@ -1,10 +1,10 @@
 # 0047: Implicit Prefix-Cache Wire-Byte Stability
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-31
-- **Accepted:**
-- **Targets:** spec/llm-provider/spec.md (§8 framing — new wire-byte stability paragraph requiring intra-impl byte equality across calls with equivalent OA inputs; per-mapping clarifications under §8.1 / §8.2 / §8.3 calling out how the rule applies to that mapping's specifics); spec/prompt-management/spec.md (§13 *Determinism* — tighten with a static-substring cross-variable determinism clause covering renders that differ only in unrelated variable bindings; new §14 *APC-friendly authoring guidance* — informative subsection on placeholder placement, nondeterministic content in static segments, few-shot ordering); spec/observability/spec.md (§5.5.3 — extend GenAI semconv response attribute set with optional cache-usage attributes emitted when the provider response surfaces them); plus new conformance fixtures covering intra-impl wire-byte equality and cache-usage attribute emission.
+- **Accepted:** 2026-06-01
+- **Targets:** spec/llm-provider/spec.md (§8 framing — new *Intra-impl wire-byte stability* paragraph requiring intra-impl byte equality across calls with equivalent OA inputs; per-mapping *Wire-byte stability* sub-paragraphs under §8.1.1 / §8.2.1 / §8.3.1 calling out how the rule applies to that mapping's specifics; §6 `Response.usage` gains two new optional fields — `cached_tokens?` and `cache_creation_tokens?` — for cache-stat reporting; per-mapping `usage` rows under §8.1.2 / §8.2.2 / §8.3.2 document the source field for each cache stat); spec/prompt-management/spec.md (§13 *Determinism* — tighten with a *Cross-variable substring stability* paragraph covering renders that differ only in unrelated variable bindings; new §14 *APC-friendly authoring guidance* — informative subsection on placeholder placement, nondeterministic content in static segments, few-shot ordering; existing §14 *Out of scope* renumbered to §15); spec/observability/spec.md (§5.5.3 — extend the GenAI semconv response attribute set with two new OA-namespaced cache attributes — `openarmature.llm.cache_read.input_tokens` and optional `openarmature.llm.cache_creation.input_tokens` — emitted when the §6 `Response.usage` cache-stat fields are populated; OA-namespace per the stable-only upstream adoption policy because the upstream OTel attributes `gen_ai.usage.cache_read.input_tokens` / `cache_creation.input_tokens` are at Development status as of OTel semconv v1.41.1); plus new conformance fixtures covering intra-impl wire-byte equality, cross-variable substring stability, and cache-attribute emission.
 - **Related:** 0019 (multi-provider extension — established §8 framing this proposal extends with byte-stability requirements), 0024 (LLM span payload + GenAI semconv — established §5.5 cross-vendor LLM attribute convention this proposal extends with cache-usage attributes), 0026 (§8.X wire-format mapping subsection template — the canonical structure each mapping follows; this proposal's wire-byte rule applies uniformly across all subsections), 0046 (multi-message / chat prompt rendering — established the chat_template + placeholder shape this proposal's authoring guidance references)
 - **Supersedes:**
 
@@ -48,13 +48,23 @@ This proposal closes three gaps with one cross-capability change:
    `chat_template`, avoid timestamps / UUIDs / nondeterministic values in
    static segments, maintain stable few-shot ordering.
 
-3. **observability §5.5.3 — optional cache-usage GenAI semconv attributes.**
-   When the LLM provider's response surfaces cache statistics (vLLM reports
-   `cached_tokens` in its OpenAI-compatible usage details; OpenAI surfaces
-   `prompt_tokens_details.cached_tokens`; future providers may follow), the
-   OTel observer emits a GenAI semconv attribute carrying the value. Absent
-   the field, the attribute is not emitted (matching the existing §5.5.2 /
-   §5.5.3 conditional-emission convention).
+3. **observability §5.5.3 — optional cache-usage attributes.** When the LLM
+   provider's response populates the §6 `Response.usage` cache-stat fields,
+   the OTel observer emits two OA-namespaced attributes carrying the values:
+   `openarmature.llm.cache_read.input_tokens` (prefix-cache hit count) and
+   optional `openarmature.llm.cache_creation.input_tokens` (input tokens
+   written to the cache, when the provider reports it separately). Absent
+   either field, the corresponding attribute is not emitted (matching the
+   existing §5.5.2 / §5.5.3 conditional-emission convention). The
+   OA-namespace placement is governed by the *Stable-only upstream
+   adoption* policy in `GOVERNANCE.md` and tracked in
+   `docs/compatibility.md`: the upstream OTel GenAI semconv attribute names
+   (`gen_ai.usage.cache_read.input_tokens` and
+   `gen_ai.usage.cache_creation.input_tokens`) are at **Development**
+   status as of OTel semconv v1.41.1; OA mirrors to its own namespace until
+   the upstream attributes reach Stable, at which point a follow-on
+   proposal MAY add the `gen_ai.*` parallels (or migrate to them outright
+   per the policy's stable-cutover guidance).
 
 Scope is **implicit caching only** — the kind decided by the inference engine
 without API-level cache markers. Explicit-cache primitives (Anthropic's
@@ -278,30 +288,38 @@ Add a new §14 subsection (renumbering the existing §14 *Out of scope* to
 > (see the *§5.5.3 extension* below), making it possible to A/B test prompt
 > changes against actual hit-rate impact.
 
-### §5.5.3 — optional cache-usage GenAI semconv attributes (observability)
+### §5.5.3 — optional cache-usage attributes (observability)
 
-Extend the §5.5.3 attribute set with optional cache-usage attributes
-emitted when the LLM provider's response surfaces them:
+Extend the §5.5.3 attribute set with optional OA-namespaced cache-usage
+attributes emitted when the §6 `Response.usage` cache-stat fields are
+populated:
 
-> - `gen_ai.usage.cached_tokens` — int. The count of input tokens that hit
->   a prefix cache, as reported by the provider's response (e.g., vLLM's
->   OpenAI-compatible `prompt_tokens_details.cached_tokens`; OpenAI's
->   `prompt_tokens_details.cached_tokens`; future providers reporting under
->   the same shape or a documented equivalent). Emitted only when the
->   provider's response carries the value; absent otherwise (matching the
->   conditional-emission convention of §5.5.2 / §5.5.3 for fields the
->   provider does not return).
+> - `openarmature.llm.cache_read.input_tokens` — int. The count of input
+>   tokens that hit a prefix cache, sourced from the §6
+>   `Response.usage.cached_tokens` field. Emitted only when the field is
+>   populated (the provider reported a cache-read count, including the
+>   "reported miss" case of zero); absent when the §6 field is absent (the
+>   provider did not report cache statistics).
 >
-> **Open question:** the exact source of this value is provider-dependent —
-> vLLM's `prompt_tokens_details.cached_tokens` is the most-cited shape (it
-> matches the OpenAI Chat Completions wire convention adopted by vLLM's
-> OpenAI-compatible API), but the field name and nesting MUST be verified
-> against current vendor docs before the Accept-phase normative text lands.
-> The Accept-phase text SHOULD enumerate which providers populate the field
-> and through what response path. If multiple providers report cache stats
-> under divergent field names, the attribute name remains
-> `gen_ai.usage.cached_tokens` (matching the OTel GenAI semconv naming
-> direction) and the §8.X mappings each document their extraction path.
+> - `openarmature.llm.cache_creation.input_tokens` — int, optional. The
+>   count of input tokens written to the cache during the call, sourced
+>   from the §6 `Response.usage.cache_creation_tokens` field. Emitted only
+>   when the field is populated; absent otherwise. This attribute is
+>   populated primarily by providers with explicit cache-control surfaces
+>   that report a discrete cache-creation count alongside the cache-read
+>   count (Anthropic's `cache_creation_input_tokens` is the canonical
+>   example; the §6 field's surfacing of this from implicit-only providers
+>   is rare).
+>
+> Stable-only namespace rationale: the upstream OpenTelemetry GenAI
+> semantic-convention attributes — `gen_ai.usage.cache_read.input_tokens`
+> and `gen_ai.usage.cache_creation.input_tokens` — are at **Development**
+> status as of OTel semconv v1.41.1 (verified 2026-06-01); per the
+> *Stable-only upstream adoption* policy (`GOVERNANCE.md`,
+> `docs/compatibility.md`), OA emits the OA-namespaced parallels above
+> until the upstream attributes reach **Stable**, at which point a
+> follow-on proposal may add the `gen_ai.*` parallels or migrate to them
+> per the policy's cutover guidance.
 
 This raises a design fork: the value reaches the OTel observer either (a)
 through an extension to llm-provider §6's `Response.usage` shape (a new
@@ -324,7 +342,7 @@ documenting per-provider raw extraction. Path (b) is captured in
 
 llm-provider §6 *Response and configuration* extends:
 
-> The `usage` record extends with one optional field:
+> The `usage` record extends with two optional fields:
 >
 > - `cached_tokens` — int, optional. The count of input tokens that hit a
 >   prefix cache, as reported by the provider's response. Absent (`null` /
@@ -334,30 +352,61 @@ llm-provider §6 *Response and configuration* extends:
 >   from "not reported" and the two MUST be observable separately).
 >   Each §8.X wire-format mapping documents the provider response field
 >   this value is sourced from.
+>
+> - `cache_creation_tokens` — int, optional. The count of input tokens
+>   written to the cache during the call. Populated primarily by providers
+>   with explicit cache-control surfaces; absent or `0` for providers that
+>   only report implicit cache reads. Same absent / `0` semantics as
+>   `cached_tokens`. Each §8.X wire-format mapping documents whether and
+>   how this field is sourced.
 
 Each §8.X subsection's Response mapping (§8.1.2, §8.2.2, §8.3.2) extends
-with a row mapping the provider's cache-stat field to `Response.usage.cached_tokens`:
+with rows mapping the provider's cache-stat fields to
+`Response.usage.cached_tokens` / `Response.usage.cache_creation_tokens`:
 
-- **§8.1.2 (OpenAI-compatible)** — sourced from
-  `usage.prompt_tokens_details.cached_tokens` when the response carries the
-  field. vLLM, OpenAI's hosted API, and other OpenAI-compatible servers
-  that surface prompt-cache stats use this path. Absent on responses
-  without the nested field.
-- **§8.2.2 (Anthropic Messages)** — Anthropic's response carries
-  `usage.cache_read_input_tokens` (plus `usage.cache_creation_input_tokens`
-  for explicit-cache writes). The implicit-scope reading is
-  `cache_read_input_tokens`; `cache_creation_input_tokens` is
-  explicit-cache territory and out of scope. (**Verification needed**:
-  field names against current Anthropic docs before Accept.)
-- **§8.3.2 (Google Gemini)** — Gemini's usage shape is `usageMetadata` with
-  `cachedContentTokenCount` for explicit-cache reads; implicit caching's
-  reporting path is **verification needed**.
+- **§8.1.2 (OpenAI-compatible)** — `usage.cached_tokens` is sourced from
+  `usage.prompt_tokens_details.cached_tokens` when the response carries
+  the field (the OpenAI Chat Completions wire shape; vLLM and other
+  OpenAI-compatible servers that surface prompt-cache stats follow the
+  same nesting). The newer OpenAI Responses API surfaces the same value
+  at `usage.input_tokens_details.cached_tokens`; implementations
+  targeting that endpoint source from the `input_tokens_details` path
+  with the same semantics. **vLLM caveat**: vLLM servers require both
+  `--enable-prefix-caching` (enables the cache) and
+  `--enable-prompt-tokens-details` (surfaces the stats in the response)
+  for this value to populate; servers configured without one or both
+  report the cache field as absent or unpopulated.
+  `usage.cache_creation_tokens` is left absent — OpenAI's
+  prompt-cache surface does not report a discrete cache-creation count
+  under the OpenAI-compatible wire shape.
+- **§8.2.2 (Anthropic Messages)** — Anthropic does **NOT** support
+  implicit prefix caching: `cache_creation_input_tokens` and
+  `cache_read_input_tokens` only fire when the caller explicitly
+  annotates content with Anthropic `cache_control` blocks, which is an
+  explicit-cache surface out of scope for the §6 `usage.cached_tokens` /
+  `cache_creation_tokens` implicit-cache fields. The §8.2 mapping
+  therefore leaves both implicit-cache fields absent. The Anthropic
+  explicit-cache reporting surface remains visible to callers via
+  `Response.raw.usage.cache_read_input_tokens` /
+  `cache_creation_input_tokens`; a future proposal that adds spec-level
+  explicit-cache primitives would map those values onto a dedicated
+  explicit-cache surface, not onto the §6 implicit-cache fields.
+- **§8.3.2 (Google Gemini)** — `usage.cached_tokens` is sourced from
+  Gemini's `usageMetadata.cachedContentTokenCount` when present. Gemini
+  2.5+ surfaces this for **implicit cache hits** (the model's automatic
+  caching) and for **explicit-cache reads** (caller-created
+  `cachedContents`) under the same field; the §6 implicit-cache
+  semantics fit the implicit path, and the explicit path is benign
+  overlap rather than a contract violation. `usage.cache_creation_tokens`
+  is left absent — Gemini does not report a discrete cache-creation
+  count under its implicit-cache surface (explicit caches are created
+  out-of-band via the `cachedContents` API and reported separately).
 
 ## Conformance test impact
 
 ### New fixtures
 
-Five new fixtures across the three capabilities (numbers assigned at
+Six new fixtures across the three capabilities (numbers assigned at
 acceptance):
 
 **llm-provider:**
@@ -387,15 +436,27 @@ acceptance):
 4. **Cache-usage attribute emission (cache hit).** A `complete()` call
    whose provider response carries `usage.prompt_tokens_details.cached_tokens
    = N` (N > 0; provider-mocked with a fixture response per the existing
-   §5.5 fixture pattern). Asserts the emitted OTel LLM provider span carries
-   `gen_ai.usage.cached_tokens = N`.
+   §5.5 fixture pattern). Asserts the §6 `Response.usage.cached_tokens` is
+   `N` and the emitted OTel LLM provider span carries
+   `openarmature.llm.cache_read.input_tokens = N`. The
+   `openarmature.llm.cache_creation.input_tokens` attribute is absent
+   (OpenAI-compatible providers do not source this field).
 
 5. **Cache-usage attribute absence (no cache field).** A `complete()` call
    whose provider response does NOT carry the cache field (e.g., a vLLM
    server without prefix caching configured, or a provider that does not
-   report the field). Asserts the OTel LLM provider span does NOT carry the
-   `gen_ai.usage.cached_tokens` attribute (the conditional-emission
-   convention).
+   report the field). Asserts the §6 `Response.usage.cached_tokens` is
+   absent and the OTel LLM provider span does NOT carry the
+   `openarmature.llm.cache_read.input_tokens` attribute (the
+   conditional-emission convention).
+
+6. **Cache-usage attribute reported zero (distinct from absent).** A
+   `complete()` call whose provider response carries the cache field with
+   value `0` (the provider reported eligibility for cache reporting but
+   produced zero hits). Asserts the §6 `Response.usage.cached_tokens` is
+   `0` (not `null`) and the LLM provider span emits
+   `openarmature.llm.cache_read.input_tokens = 0`. Locks down the
+   absent-vs-zero distinction §6 mandates.
 
 ### Unaffected fixtures
 
@@ -412,22 +473,32 @@ or may not carry, and adds a row to the existing attribute table.
 
 **MINOR bump** (pre-1.0). On acceptance the whole-spec SemVer increments:
 
-- New normative wire-byte stability paragraph in llm-provider §8 framing.
-  Existing §8.X subsections gain a *Wire-byte stability* note in their
-  Request mapping subsections; the rule applies uniformly across §8.1 /
-  §8.2 / §8.3 and any future §8.X mapping.
-- New `cached_tokens: int | None` optional field on llm-provider §6
-  `Response.usage` — additive, default absent, no impact on existing
-  callers.
-- Cross-variable substring stability clause added to prompt-management §13.
-  Implementation-natural for pure-substitution template engines.
-- New informative §14 *APC-friendly authoring guidance* in prompt-management
-  (renumbers existing §14 *Out of scope* to §15).
-- New optional `gen_ai.usage.cached_tokens` attribute in observability
-  §5.5.3 — additive, conditional emission.
+- New normative *Intra-impl wire-byte stability* paragraph in llm-provider
+  §8 framing. Existing §8.X subsections gain a *Wire-byte stability* note
+  in their Request mapping subsections (§8.1.1 / §8.2.1 / §8.3.1); the
+  rule applies uniformly across §8.1 / §8.2 / §8.3 and any future §8.X
+  mapping.
+- Two new optional fields on llm-provider §6 `Response.usage`:
+  `cached_tokens?` (implicit-cache reads) and `cache_creation_tokens?`
+  (cache writes, primarily for explicit-cache surfaces). Additive, default
+  absent, no impact on existing callers.
+- Per-mapping cache-stat rows under §8.1.2 / §8.2.2 / §8.3.2 documenting
+  the source field for each cache stat (and noting Anthropic's
+  implicit-not-supported case where both fields remain absent under the
+  §6 implicit-cache contract).
+- Cross-variable substring stability paragraph added to prompt-management
+  §13. Implementation-natural for pure-substitution template engines.
+- New informative §14 *APC-friendly authoring guidance* in
+  prompt-management (renumbers existing §14 *Out of scope* to §15).
+- Two new optional OA-namespaced attributes in observability §5.5.3:
+  `openarmature.llm.cache_read.input_tokens` and
+  `openarmature.llm.cache_creation.input_tokens`. Additive, conditional
+  emission. OA-namespace per the stable-only upstream adoption policy
+  while the upstream `gen_ai.usage.cache_*` attributes remain at
+  Development status.
 - New conformance fixtures (wire-byte stability × 2; cross-variable
-  substring stability × 1; cache-usage attribute × 2). Existing fixtures
-  unchanged.
+  substring stability × 1; cache-attribute emission × 3 — hit, absent,
+  reported-zero). Existing fixtures unchanged.
 
 The change is backwards-compatible across all three capabilities. Existing
 applications see no behavioral change; applications opting into APC
