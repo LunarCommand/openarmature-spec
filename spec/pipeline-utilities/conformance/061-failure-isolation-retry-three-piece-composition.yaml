@@ -1,0 +1,75 @@
+# §6.3 Three-piece composition — outer FailureIsolation wraps inner
+# Retry wraps node body. Retry exhausts; FailureIsolation catches the
+# exhaustion-propagated exception and returns the degraded update.
+
+state:
+  fields:
+    result:
+      type: string
+      default: ""
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: target
+
+nodes:
+  target:
+    flaky:
+      failure_sequence:
+        - {transient: true, category: provider_unavailable, message: "down 1"}
+        - {transient: true, category: provider_unavailable, message: "down 2"}
+      # Both attempts fail; retry exhausts after max_attempts=2.
+
+edges:
+  - {from: target, to: END}
+
+initial_state: {}
+
+middleware:
+  # Middleware order: list order is innermost-to-outermost OR outermost-to-
+  # innermost depending on the harness convention. Per §6.3's composition
+  # rule, FailureIsolation MUST wrap Retry (outer-to-inner). The harness
+  # lists outer first, then inner:
+  per_node:
+    target:
+      - type: failure_isolation
+        degraded_update: {result: "degraded"}
+        event_name: "extraction_failed"
+      - type: retry
+        max_attempts: 2
+        backoff: {type: deterministic, seconds: 0}
+
+expected:
+  # Engine sees the degraded return; graph reaches END.
+  final_state:
+    result: "degraded"
+    trace: []
+  execution_order: [target]
+
+  # Per §6.1, retry produces 2 attempt pairs (attempt_index 0 and 1).
+  expected_attempt_events:
+    - {attempt_index: 0, phase: started, node_name: target}
+    - {attempt_index: 0, phase: completed, node_name: target, error_category: provider_unavailable}
+    - {attempt_index: 1, phase: started, node_name: target}
+    - {attempt_index: 1, phase: completed, node_name: target, error_category: provider_unavailable}
+
+  # Outer failure-isolation event fires AFTER retry exhausts. Lineage
+  # tuple reflects the final attempt (attempt_index = 1).
+  expected_failure_isolation_event:
+    event_name: "extraction_failed"
+    wrapped_node_lineage:
+      namespace: [target]
+      attempt_index: 1
+      fan_out_index: null
+      branch_name: null
+    pre_state: {result: "", trace: []}
+    post_state: {result: "degraded"}
+    caught_exception:
+      category: provider_unavailable
+      message: "down 2"
+  invariants:
+    retry_exhausts_before_isolation_catches: true
+    outer_to_inner_ordering_load_bearing: true
+    engine_does_not_see_exception: true

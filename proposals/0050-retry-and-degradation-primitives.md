@@ -1,9 +1,9 @@
 # 0050: Retry & Degradation Primitives — Failure-Isolation Middleware + Call-Level Retry
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-01
-- **Accepted:**
+- **Accepted:** 2026-06-01
 - **Targets:** spec/pipeline-utilities/spec.md (new §6.3 *Failure isolation middleware* — third bundled middleware primitive in the §6 set, alongside §6.1 retry middleware and §6.2 timing middleware; covers the catch-and-recover pattern from §2's third MAY bullet with a named shape, lifecycle, and composition pattern); spec/llm-provider/spec.md (§5 `complete()` extended with an optional retry kwarg accepting the same retry configuration record pipeline-utilities §6.1 defines; new §7 *Call-level retry* subsection defining the per-call retry contract — reuses the §6.1 retry configuration record and the §6.1 default transient classifier's category set, with a two-level lane-separation framing distinguishing per-call from per-node retry); spec/observability/spec.md (§5.5 — adds `openarmature.llm.attempt_index` per-attempt span attribute paralleling `openarmature.node.attempt_index`); plus new conformance fixtures covering the failure-isolation middleware contract, call-level retry contract, attempt-index span emission, and the body+retry+isolation three-piece composition pattern.
 - **Related:** 0004 (pipeline-utilities middleware — established the §6 middleware framework + the §2 catch-and-recover MAY bullet this proposal packages), 0006 (llm-provider core — established `LlmProvider.complete()` surface this proposal extends), 0024 (LLM span payload + GenAI semconv — established the §5.5 attribute surface this proposal extends with `openarmature.llm.attempt_index`)
 - **Supersedes:**
@@ -377,7 +377,7 @@ Add a new attribute to the §5.5 LLM provider span attribute set:
 
 ### New fixtures
 
-Six new fixtures (numbers assigned at acceptance):
+Ten new fixtures (numbers assigned at acceptance):
 
 **Failure-isolation middleware (pipeline-utilities/conformance/):**
 
@@ -435,6 +435,46 @@ Six new fixtures (numbers assigned at acceptance):
    path); two LLM spans emit with attempt indices 0 and 1, both
    carrying the error category.
 
+7. **Non-transient propagates without retry.** A graph with one
+   LLM-calling node, a mocked provider returning HTTP 400 (→
+   `provider_invalid_request` per §7), and `complete()` called with
+   a retry parameter configured for `max_attempts=3`. Asserts the
+   call raises `provider_invalid_request` on attempt 0 (the retry
+   loop does NOT iterate on non-transient categories); exactly one
+   LLM span emits with `attempt_index = 0` carrying the error
+   category. Locks down §7.1's non-transient-immediate-propagation
+   rule.
+
+8. **`on_caught` callback fires.** A node wrapped with
+   `FailureIsolationMiddleware` whose `on_caught` is a recording
+   callback. The node raises a transient exception; the middleware
+   catches. Asserts the callback fires exactly once with the
+   original exception, the framework-emitted observer event still
+   emits (the callback is additive, not replacing), and the
+   degraded return reaches the engine. Locks down §6.3's
+   `on_caught` optional-hook contract.
+
+9. **Default predicate catches bare exception.** A node wrapped
+   with `FailureIsolationMiddleware` (no `predicate` supplied —
+   default always-true) raises a bare `ValueError` carrying no
+   category. Asserts the middleware catches; the framework-emitted
+   event's `caught_exception.category` is `null` and `message`
+   captures `str(exc)`. Locks down §6.3's
+   default-predicate-catches-all + null-category-on-non-categorized
+   rules.
+
+**Observability single-attempt default (observability/conformance/):**
+
+10. **`openarmature.llm.attempt_index` single-attempt default.** A
+    graph with one LLM-calling node, no `retry` kwarg on
+    `complete()`. Asserts exactly one LLM provider span emits
+    carrying `openarmature.llm.attempt_index = 0` alongside the
+    baseline §5.5 attributes (`model`, `finish_reason`, `usage.*`).
+    Locks down the §5.5 single-span backwards-compat contract (the
+    existing single-span framing preserved verbatim when retry is
+    absent) AND the new attribute's default-value contract
+    (`attempt_index = 0` when call-level retry is not configured).
+
 ### Unaffected fixtures
 
 All existing fixtures continue to pass unchanged. The middleware
@@ -456,7 +496,7 @@ increments:
   provider span surface (additive — existing attributes unchanged;
   emitted with default value `0` for non-retried calls per the
   attribute definition).
-- New conformance fixtures (six required). Existing fixtures
+- New conformance fixtures (ten required). Existing fixtures
   unchanged.
 
 The change is backwards-compatible across all three capabilities.

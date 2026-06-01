@@ -1,0 +1,64 @@
+# §6.3 Failure isolation — static degraded_update path. Node raises;
+# middleware catches and returns the configured static partial update.
+# Framework-emitted failure-isolation event carries event_name +
+# lineage + caught_exception + pre/post state.
+
+state:
+  fields:
+    result:
+      type: list<string>
+      reducer: last_write_wins
+      default: []
+    trace:
+      type: list<string>
+      reducer: append
+      default: []
+
+entry: failing
+
+nodes:
+  failing:
+    flaky:
+      failure_sequence:
+        - {transient: true, category: provider_unavailable, message: "service down"}
+      # First attempt fails; no retries configured at this layer, so
+      # FailureIsolation catches the first exception.
+
+edges:
+  - {from: failing, to: END}
+
+initial_state:
+  result: []
+  trace: []
+
+middleware:
+  per_node:
+    failing:
+      - type: failure_isolation
+        degraded_update: {result: []}
+        event_name: "extraction_failed"
+
+expected:
+  # Engine sees the degraded return; final state reflects it.
+  final_state:
+    result: []
+    trace: []
+  execution_order: [failing]
+
+  # Framework-emitted failure-isolation event carries the spec field set.
+  expected_failure_isolation_event:
+    event_name: "extraction_failed"
+    wrapped_node_lineage:
+      namespace: [failing]
+      attempt_index: 0
+      fan_out_index: null
+      branch_name: null
+    pre_state: {result: [], trace: []}
+    post_state: {result: []}
+    caught_exception:
+      category: provider_unavailable
+      message: "service down"
+  invariants:
+    engine_does_not_see_exception: true
+    event_is_distinct_from_node_event: true
+    event_name_is_caller_supplied: true

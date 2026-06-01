@@ -1,0 +1,57 @@
+# §6.3 Failure isolation — default predicate (always-true) catches a
+# bare ValueError that does NOT carry a category. The framework-
+# emitted event's caught_exception.category is null;
+# caught_exception.message captures str(exc).
+
+state:
+  fields:
+    result:
+      type: string
+      default: ""
+
+entry: failing
+
+nodes:
+  failing:
+    raises:
+      # Bare ValueError — no category attribute. The harness's
+      # `raises:` form (existing convention from fixture 006) raises
+      # a non-categorized exception.
+      message: "bad input"
+      exception_kind: ValueError
+
+edges:
+  - {from: failing, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    failing:
+      - type: failure_isolation
+        degraded_update: {result: "degraded"}
+        event_name: "parse_failed"
+        # No predicate field supplied — default always-true applies.
+
+expected:
+  final_state:
+    result: "degraded"
+  execution_order: [failing]
+
+  expected_failure_isolation_event:
+    event_name: "parse_failed"
+    wrapped_node_lineage:
+      namespace: [failing]
+      attempt_index: 0
+      fan_out_index: null
+      branch_name: null
+    pre_state: {result: ""}
+    post_state: {result: "degraded"}
+    caught_exception:
+      category: null
+      message: "bad input"
+  invariants:
+    default_predicate_catches_bare_exception: true
+    caught_exception_category_null_for_non_categorized: true
+    caught_exception_message_captures_str_exc: true
+    engine_sees_degraded_return: true

@@ -1,0 +1,64 @@
+# §6.3 Failure isolation — on_caught callback fires when middleware
+# catches. The callback is an OPTIONAL augmentation; the framework-
+# emitted event still emits and the degraded return still reaches
+# the engine.
+
+state:
+  fields:
+    on_caught_invocation_count:
+      type: int
+      default: 0
+    on_caught_captured_message:
+      type: string
+      default: ""
+    result:
+      type: string
+      default: ""
+
+entry: failing
+
+nodes:
+  failing:
+    flaky:
+      failure_sequence:
+        - {transient: true, category: provider_unavailable, message: "service down"}
+
+edges:
+  - {from: failing, to: END}
+
+initial_state: {}
+
+middleware:
+  per_node:
+    failing:
+      - type: failure_isolation
+        degraded_update: {result: "degraded"}
+        event_name: "summarize_failed"
+        on_caught:
+          # Harness-defined callback shape: increments
+          # on_caught_invocation_count and captures the exception
+          # message into on_caught_captured_message via a side channel
+          # the harness recognizes.
+          kind: record_to_state_side_channel
+          increment_field: on_caught_invocation_count
+          capture_message_field: on_caught_captured_message
+
+expected:
+  final_state:
+    on_caught_invocation_count: 1
+    on_caught_captured_message: "service down"
+    result: "degraded"
+  execution_order: [failing]
+
+  # Framework-emitted event still emits per §6.3 (on_caught is
+  # additive, not replacing).
+  expected_failure_isolation_event:
+    event_name: "summarize_failed"
+    caught_exception:
+      category: provider_unavailable
+      message: "service down"
+  invariants:
+    on_caught_fires_exactly_once: true
+    on_caught_receives_original_exception: true
+    framework_event_still_emits_with_on_caught: true
+    degraded_return_reaches_engine_with_on_caught: true

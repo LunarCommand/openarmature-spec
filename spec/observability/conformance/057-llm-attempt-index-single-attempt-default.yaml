@@ -1,0 +1,57 @@
+# §5.5 baseline attribute — openarmature.llm.attempt_index. Single-
+# attempt default case: complete() called WITHOUT a retry parameter
+# emits exactly one LLM provider span with attempt_index = 0.
+
+cases:
+  - name: llm_attempt_index_zero_on_single_attempt_call
+    description: |
+      Default complete() call (no retry kwarg). The §5.5 LLM provider
+      span carries openarmature.llm.attempt_index = 0; the
+      single-span framing is preserved (no extra spans).
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+          # No retry kwarg — single-attempt default.
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-057
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.llm.model: "test-model"
+                    openarmature.llm.finish_reason: "stop"
+                    openarmature.llm.usage.prompt_tokens: 5
+                    openarmature.llm.usage.completion_tokens: 1
+                    openarmature.llm.usage.total_tokens: 6
+                    openarmature.llm.attempt_index: 0
+                  children: []
+      invariants:
+        exactly_one_llm_span_when_retry_absent: true
+        attempt_index_defaults_to_zero: true
+        baseline_attributes_still_emit_alongside_attempt_index: true

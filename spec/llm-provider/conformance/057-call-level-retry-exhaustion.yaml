@@ -1,0 +1,41 @@
+# §7.1 Call-level retry — exhaustion path. Both attempts fail with
+# provider_unavailable; max_attempts=2 exhausts; the final error
+# propagates. Two LLM spans emit with attempt_index 0 and 1.
+
+mock_provider:
+  responses:
+    - status: 503
+      body:
+        error:
+          type: "service_unavailable"
+          message: "down 1"
+    - status: 503
+      body:
+        error:
+          type: "service_unavailable"
+          message: "down 2"
+
+call:
+  operation: complete
+  messages: [{role: user, content: "go"}]
+  retry:
+    max_attempts: 2
+    backoff: {type: deterministic, seconds: 0}
+
+expected:
+  raises:
+    category: provider_unavailable
+    message: "down 2"
+  llm_spans:
+    - attempt_index: 0
+      attributes:
+        "openarmature.llm.attempt_index": 0
+      error_category: provider_unavailable
+    - attempt_index: 1
+      attributes:
+        "openarmature.llm.attempt_index": 1
+      error_category: provider_unavailable
+  invariants:
+    exhaustion_propagates_final_error: true
+    n_attempts_emit_n_llm_spans: true
+    every_attempt_span_carries_error_category: true

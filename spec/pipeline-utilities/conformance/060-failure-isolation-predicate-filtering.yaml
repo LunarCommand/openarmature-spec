@@ -1,0 +1,78 @@
+# §6.3 Failure isolation — predicate filtering. Two sub-runs:
+# (a) predicate matches → middleware catches and returns degraded;
+# (b) predicate does not match → exception propagates as node_exception.
+
+cases:
+  - name: predicate_matches_catches_and_returns_degraded
+    description: |
+      Node raises provider_invalid_response (predicate match). The
+      middleware catches and returns the degraded update.
+    state:
+      fields:
+        result:
+          type: string
+          default: ""
+    entry: failing
+    nodes:
+      failing:
+        flaky:
+          failure_sequence:
+            - {transient: false, category: provider_invalid_response, message: "bad shape"}
+    edges:
+      - {from: failing, to: END}
+    initial_state: {}
+    middleware:
+      per_node:
+        failing:
+          - type: failure_isolation
+            degraded_update: {result: "degraded"}
+            event_name: "shape_failed"
+            predicate:
+              matches_category: provider_invalid_response
+    expected:
+      final_state: {result: "degraded"}
+      execution_order: [failing]
+      expected_failure_isolation_event:
+        event_name: "shape_failed"
+        caught_exception:
+          category: provider_invalid_response
+          message: "bad shape"
+      invariants:
+        matching_exception_caught: true
+
+  - name: predicate_does_not_match_propagates_node_exception
+    description: |
+      Node raises provider_invalid_request (predicate does NOT match —
+      predicate accepts only provider_invalid_response). The exception
+      propagates as node_exception per graph-engine §4.
+    state:
+      fields:
+        result:
+          type: string
+          default: ""
+    entry: failing
+    nodes:
+      failing:
+        flaky:
+          failure_sequence:
+            - {transient: false, category: provider_invalid_request, message: "missing field"}
+    edges:
+      - {from: failing, to: END}
+    initial_state: {}
+    middleware:
+      per_node:
+        failing:
+          - type: failure_isolation
+            degraded_update: {result: "degraded"}
+            event_name: "shape_failed"
+            predicate:
+              matches_category: provider_invalid_response
+    expected_error:
+      category: node_exception
+      raised_from: failing
+      message: "missing field"
+    expected:
+      no_failure_isolation_event: true
+      invariants:
+        non_matching_exception_propagates: true
+        no_event_when_predicate_does_not_match: true
