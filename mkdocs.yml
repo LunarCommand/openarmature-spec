@@ -107,6 +107,7 @@ nav:
     - Sessions: capabilities/sessions.md
   - Proposals: proposals.md
   - Open questions: open-questions.md
+  - Compatibility: compatibility.md
   - Changelog: changelog.md
 
 # Per-proposal pages live under ``docs/proposals/`` (symlinked from

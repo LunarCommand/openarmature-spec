@@ -178,6 +178,36 @@ Inspired by OpenTelemetry's library guidelines, with a smaller scope (two langua
 
 ---
 
+## External-dependency adoption
+
+OpenArmature normatively references several external specifications and APIs (OpenTelemetry semantic conventions, LLM
+provider wire formats, IETF RFCs, vendor SDKs). The following rules govern how OA adopts upstream changes.
+
+**Stable-only adoption.** OA spec normatively adopts upstream attribute names, wire shapes, and protocol details
+ONLY when the upstream marks them Stable (or the equivalent maturity marker per the upstream's own governance —
+Released for IETF RFCs, Stable for OpenTelemetry semantic conventions, non-pre-release semver tags for SDKs, etc.).
+
+Upstream attributes or shapes in Development, Experimental, Beta, or other pre-stable status MUST be mirrored to the
+`openarmature.*` namespace until they reach upstream Stable. A follow-up OA proposal then migrates the normative
+shape to the upstream name once it stabilizes.
+
+**Rationale.** Spec text is durable; conformance fixtures track the wire shapes the spec mandates. Pre-stable
+upstream attributes can be renamed or removed by the upstream; pinning OA to them creates an implicit dependency on
+volatile state and forces every OA implementation to chase the upstream's churn.
+
+**Implementation constraint.** OA implementations (e.g., `openarmature-python`, `openarmature-typescript`) MUST emit
+the OA-namespace attribute names (not the upstream pre-stable names) when this spec mandates OA-namespace mirroring.
+Jumping ahead to upstream attribute names before OA's normative shape stabilizes breaks cross-impl behavioral
+consistency, which is the primary value of the multi-language consistency rules above.
+
+**Tracking.** The compatibility tracking page (`docs/compatibility.md`) is the operational artifact recording pinned
+versions, last-verified dates, and per-dependency notes for every external dependency OA references. The page is
+freely editable per the carve-out below (small re-verification updates do not require a proposal). Normative spec
+changes that flow from a re-verification (e.g., adopting a newly-Stable upstream attribute) DO require a proposal
+per the standard discipline.
+
+---
+
 ## Conformance tests
 
 Conformance tests live alongside their specs at `spec/<capability>/conformance/` and are language-agnostic.
