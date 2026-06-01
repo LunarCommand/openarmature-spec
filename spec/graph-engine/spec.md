@@ -15,6 +15,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 Drain gained two clarifications of implicit rules: the snapshot semantic for "prior invocations" (drain covers workers active at call time; invocations started during the drain are NOT covered), and the MUST-reject rule for negative / NaN timeout inputs (with the error surface per-language idiomatic) by [proposal 0030](../../proposals/0030-drain-snapshot-and-timeout-validation.md)
   - §3 *Execution model* gained a clarifying paragraph noting that `invoke()` accepts an optional caller-supplied metadata mapping (per observability §3.4) alongside the existing `correlation_id` argument and per-language invocation surface by [proposal 0034](../../proposals/0034-caller-supplied-invocation-metadata.md)
   - §6 NodeEvent gained an optional `parallel_branches_config` field (mirroring the existing `fan_out_config` field from proposal 0013), populated on every `started` / `completed` event for a parallel-branches node and carrying the resolved `branch_names`, `branch_count`, `error_policy`, and `parent_node_name` for the observability §5.7 attribute surface by [proposal 0044](../../proposals/0044-parallel-branches-dispatch-span.md)
+  - §6 observer event union extended with `LlmCompletionEvent` — the first spec-normatively-typed event variant on the union (alongside `NodeEvent` and the framework-emitted metadata-augmentation event mechanism from proposal 0040). The typed event is dispatched on every LLM call completion that produces a structured response per llm-provider §6, carries 13 typed fields (identity / scoping per the existing event-source identity tuple, outcome data mirroring observability §5.5's attribute surface, plus an OPTIONAL `caller_invocation_metadata` opt-in snapshot field), and is NOT subject to the `phases` subscription filter (matches the metadata-augmentation event's no-phase treatment). Observers filter via type discrimination rather than via sentinel-namespace string match. Failure / streaming events are out of scope for v1; the rendering / mapping concern lives in observability §5.5 by [proposal 0049](../../proposals/0049-typed-llm-completion-event.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -555,6 +556,54 @@ occurs. Because the `phases` subscription filter governs node-boundary phases, a
 not subject to it: they are delivered to every registered observer, which ignores them if it does not
 handle augmentation events. graph-engine does not define the augmentation event's full semantics beyond
 this representation and its delivery ordering; the semantics live in observability §3.4 / §6.
+
+**Typed LLM completion event.** The observer delivery queue also carries a typed `LlmCompletionEvent`
+on every LLM call completion that produces a structured response (per llm-provider §6's `Response`
+shape). This is the first spec-normatively-typed event variant on the observer event union — observers
+filter via type discrimination (`isinstance(event, LlmCompletionEvent)` or per-language idiomatic
+equivalent) rather than via a sentinel-namespace string match on `NodeEvent.node_name`. The class name
+`LlmCompletionEvent` is normative as an identifier shape; implementations MAY use a per-language
+idiomatic name (e.g., adjusted casing or symbol conventions per the language's naming idioms) provided
+the field set + dispatch contract are preserved.
+
+The event carries the following typed fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `invocation_id` | string | The outer invocation's identifier, per observability §5.1. |
+| `correlation_id` | string \| null | Cross-backend correlation ID, per observability §3.1. |
+| `node_name` | string | The user-defined node that issued the call. |
+| `namespace` | sequence of strings | The calling node's namespace, per the *Node event shape* above. |
+| `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
+| `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling fan-out instances. |
+| `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11, with the resolved `branch_names` per proposal 0044 governing the value space). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling parallel branches. |
+| `provider` | string | The LLM provider identifier (matches `gen_ai.system` per observability §5.5.3). |
+| `model` | string | The model identifier (matches `gen_ai.request.model` / `openarmature.llm.model` per observability §5.5 / §5.5.3). |
+| `request_id` | string \| null | The provider-returned response identifier, when present (matches `gen_ai.response.id` per observability §5.5.3). |
+| `usage` | record \| null | Token usage record per llm-provider §6 `Response.usage` shape. May be null when the provider does not report usage. |
+| `latency_ms` | float \| null | Wall-clock latency of the LLM call measured at the adapter boundary, in milliseconds. May be null when latency is not measured. Implementations MAY use a provider-reported latency value when the provider surfaces one, documenting which source is in use. |
+| `finish_reason` | string \| null | The LLM call's finish reason per llm-provider §6 `Response.finish_reason`. May be null when the call did not complete normally. |
+| `caller_invocation_metadata` | mapping \| null | OPTIONAL field — a snapshot of the caller-supplied invocation metadata (per observability §3.4) at the time of the LLM call, populated only when the observer is configured to include it (per-language opt-in mechanism). Default absent / null; off by default to avoid bloating every event with potentially-large metadata. Consumers wanting a fresh metadata view rather than a snapshot use the `get_invocation_metadata()` read API per observability §3.4. |
+
+The event MUST be dispatched on the observer delivery queue at the point of LLM call completion (after
+the adapter receives a successful response and before the call returns to the caller). Delivery
+semantics follow the *Event delivery* rules above — strict-serial across the invocation,
+async-delivered concurrently with graph execution, not blocking the engine's execution loop.
+
+The event is dispatched ONLY for LLM call completions that produce a structured response per
+llm-provider §6. Failure cases (provider exceptions, malformed responses) do NOT emit this event
+variant; a future `LlmCallFailedEvent` typed variant MAY be added if downstream demand surfaces. The
+llm-provider §7 error categories — `provider_invalid_response`, `provider_unavailable`,
+`provider_authentication`, etc. — cover failure surfaces through the exception path, not the observer
+event surface.
+
+Like the metadata-augmentation event above, `LlmCompletionEvent` carries no `phase` discriminator and
+is NOT subject to the `phases` subscription filter. Observers with a `phases={"started"}` or
+`phases={"completed"}` subscription still receive `LlmCompletionEvent`; the phases filter applies only
+to phase-bearing `NodeEvent` variants. Observers that want to selectively consume the typed event
+filter via type discrimination rather than via phase subscription. graph-engine does not define the
+event's emission timing semantics beyond this representation and delivery ordering; the rendering /
+mapping concern lives in observability §5.5.
 
 ## 7. Out of scope
 

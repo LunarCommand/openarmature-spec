@@ -1,0 +1,101 @@
+# graph-engine §6 — caller_invocation_metadata OPTIONAL field on
+# LlmCompletionEvent. Default: null. Opt-in (per-observer flag):
+# populated with a snapshot of the caller-supplied metadata at the
+# time of the LLM call.
+#
+# Observers MUST NOT mutate state; events live in observer-internal
+# storage and assertions use observer-introspection expectations.
+
+cases:
+  - name: caller_invocation_metadata_absent_when_opt_in_disabled
+    description: |
+      invoke() supplies {user_id: u123}. Observer's
+      include_caller_metadata is false (default). Captured
+      LlmCompletionEvent has caller_invocation_metadata = null.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "go"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_metadata:
+      user_id: "u123"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-052a
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 8, completion_tokens: 1, total_tokens: 9}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+        filter_event_type: LlmCompletionEvent
+        include_caller_metadata: false
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              caller_invocation_metadata: null
+      invariants:
+        opt_in_disabled_yields_null_caller_metadata: true
+
+  - name: caller_invocation_metadata_populated_when_opt_in_enabled
+    description: |
+      Same shape as case 1 but with include_caller_metadata: true.
+      Captured LlmCompletionEvent has caller_invocation_metadata =
+      {user_id: u123} — a snapshot of the in-scope metadata at the
+      time of the LLM call.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "go"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_metadata:
+      user_id: "u123"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-052b
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 8, completion_tokens: 1, total_tokens: 9}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+        filter_event_type: LlmCompletionEvent
+        include_caller_metadata: true
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              caller_invocation_metadata:
+                user_id: "u123"
+      invariants:
+        opt_in_enabled_yields_snapshot_caller_metadata: true
+        snapshot_is_immutable_mapping: true

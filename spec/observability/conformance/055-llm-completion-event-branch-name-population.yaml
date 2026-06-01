@@ -1,0 +1,86 @@
+# graph-engine §6 — LlmCompletionEvent.branch_name is populated per
+# parallel-branches branch. Two branches each issue an LLM call;
+# captured typed events carry distinct branch_name values covering
+# {fast, slow}. fan_out_index is null on both (no fan-out scope).
+
+cases:
+  - name: llm_completion_event_branch_name_populated_per_branch
+    description: |
+      Parallel-branches node with two named branches (fast, slow).
+      Each branch's subgraph runs one LLM-calling node. Observer
+      collects typed events; harness asserts two LlmCompletionEvents
+      are captured with distinct branch_name values covering
+      {fast, slow}.
+    state:
+      fields:
+        results:
+          type: list<dict>
+          reducer: append
+          default: []
+    entry: branches_node
+    nodes:
+      branches_node:
+        parallel_branches:
+          branches:
+            - fast
+            - slow
+          error_policy: fail_fast
+    inner_subgraphs:
+      fast:
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "fast lane"}]
+              stores_response_in: score
+        edges:
+          - {from: ask, to: END}
+      slow:
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "slow lane"}]
+              stores_response_in: score
+        edges:
+          - {from: ask, to: END}
+    edges:
+      - {from: branches_node, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-055-fast
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok-fast"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-055-slow
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok-slow"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+        filter_event_type: LlmCompletionEvent
+    expected:
+      observers:
+        collector:
+          contains_exactly_n_events_of_type:
+            event_type: LlmCompletionEvent
+            count: 2
+          captured_event_field_values_cover:
+            field: branch_name
+            values: [fast, slow]
+          every_captured_event_has:
+            fan_out_index: null
+            node_name: ask
+      invariants:
+        per_branch_branch_name_populated: true
+        sibling_branches_have_distinct_branch_name: true
+        fan_out_index_null_outside_fan_out: true

@@ -1,0 +1,70 @@
+# graph-engine §6 + observability §5.5.7 — Typed LlmCompletionEvent
+# MUST dispatch on every LLM call producing a structured response.
+# The event's typed fields are populated from the provider response.
+#
+# Observers MUST NOT mutate state (graph-engine §6); the
+# typed_event_collector observer keeps events in its own internal
+# storage and the harness reads them via observer-introspection
+# expectations (no state-field round-trip).
+
+cases:
+  - name: llm_completion_event_dispatched_with_populated_fields
+    description: |
+      Graph with one LLM-calling node. The mocked provider returns a
+      response with known usage / finish_reason / id. A custom
+      observer collects events; the harness asserts the event of
+      type LlmCompletionEvent is present in the observer's storage
+      with fields matching the response.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "summarize"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-050-id
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Done."}, finish_reason: stop}
+          usage:
+            prompt_tokens: 14
+            completion_tokens: 4
+            total_tokens: 18
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              request_id: cc-050-id
+              finish_reason: stop
+              usage:
+                prompt_tokens: 14
+                completion_tokens: 4
+                total_tokens: 18
+              node_name: ask
+              namespace: [ask]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+              caller_invocation_metadata: null
+      invariants:
+        exactly_one_llm_completion_event_observed: true
+        event_typed_fields_match_provider_response: true
+        identity_scoping_fields_populated: true

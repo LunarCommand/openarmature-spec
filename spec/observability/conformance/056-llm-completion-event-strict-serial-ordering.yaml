@@ -1,0 +1,59 @@
+# graph-engine §6 — Event delivery strict-serial + LlmCompletionEvent
+# dispatch timing ("after the adapter receives a successful response
+# and before the call returns to the caller"). The typed event MUST
+# arrive between the LLM-calling node's started and completed
+# NodeEvents in the observer's arrival sequence.
+
+cases:
+  - name: llm_completion_event_arrives_between_node_started_and_completed
+    description: |
+      Graph with one LLM-calling node. Observer captures all events
+      in arrival order. Filtering by node_name=ask, the relative
+      order MUST be: NodeEvent(started) → LlmCompletionEvent →
+      NodeEvent(completed). Other events MAY appear before, between,
+      or after; only the relative order of these three is asserted.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "order test"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-056
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+        # Preserve arrival order in observer-internal storage.
+        retains_arrival_order: true
+    expected:
+      observers:
+        collector:
+          # Filter captured events to those matching node_name=ask,
+          # then assert the relative order is started, LlmCompletionEvent,
+          # completed.
+          relative_order_of_events_matching:
+            filter:
+              node_name: ask
+            expected_order:
+              - {event_type: NodeEvent, phase: started}
+              - {event_type: LlmCompletionEvent}
+              - {event_type: NodeEvent, phase: completed}
+      invariants:
+        typed_event_arrives_within_calling_node_span: true
+        typed_event_arrives_after_node_started: true
+        typed_event_arrives_before_node_completed: true

@@ -1,0 +1,81 @@
+# graph-engine §6 — LlmCompletionEvent.fan_out_index is populated
+# per fan-out instance. Two fan-out instances each issue an LLM
+# call; the captured typed events carry distinct fan_out_index
+# values (0 and 1). branch_name is null on both (no
+# parallel-branches scope).
+
+cases:
+  - name: llm_completion_event_fan_out_index_populated_per_instance
+    description: |
+      Fan-out over two products. Each instance's subgraph runs an
+      LLM-calling node. The observer collects typed events; the
+      harness asserts two LlmCompletionEvents are captured with
+      distinct fan_out_index values (set covers {0, 1}).
+    state:
+      fields:
+        results:
+          type: list<dict>
+          reducer: append
+          default: []
+    entry: fan_out_node
+    nodes:
+      fan_out_node:
+        fan_out:
+          items_field: products
+          inner_subgraph: per_product
+    inner_subgraphs:
+      per_product:
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "score this product"}]
+              stores_response_in: score
+        edges:
+          - {from: ask, to: END}
+    edges:
+      - {from: fan_out_node, to: END}
+    initial_state:
+      products:
+        - {id: "A"}
+        - {id: "B"}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-054-a
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok-A"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-054-b
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok-B"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+        filter_event_type: LlmCompletionEvent
+    expected:
+      observers:
+        collector:
+          # Exactly two events captured, one per fan-out instance.
+          contains_exactly_n_events_of_type:
+            event_type: LlmCompletionEvent
+            count: 2
+          # Across captured events, fan_out_index values cover {0, 1}.
+          captured_event_field_values_cover:
+            field: fan_out_index
+            values: [0, 1]
+          # Every event carries branch_name=null (no parallel-branches scope).
+          every_captured_event_has:
+            branch_name: null
+            node_name: ask
+      invariants:
+        per_instance_fan_out_index_populated: true
+        sibling_instances_have_distinct_fan_out_index: true
+        branch_name_null_outside_parallel_branches: true

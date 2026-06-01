@@ -1,0 +1,50 @@
+# graph-engine §6 + observability §5.5.7 — completion-only scope.
+# LlmCompletionEvent is NOT emitted for failed LLM calls. Failures
+# surface via the llm-provider §7 exception path; the typed event is
+# v1-scoped to completions producing a structured response.
+#
+# The mocked provider returns HTTP 503; the harness derives the
+# provider_unavailable error category from the status code per
+# llm-provider §7 mapping conventions.
+
+cases:
+  - name: no_llm_completion_event_when_provider_unavailable
+    description: |
+      Mocked provider returns HTTP 503 (transient unreachability →
+      provider_unavailable per llm-provider §7). Observer collects
+      all events. Asserts no LlmCompletionEvent is observed; the
+      failure surfaces through the exception path (the node's
+      completed NodeEvent carries error populated).
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "go"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 503
+        body:
+          error:
+            message: "service unavailable"
+            type: "service_unavailable"
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          does_not_contain_event_of_type: LlmCompletionEvent
+      node_completed_event_carries_error:
+        node_name: ask
+        error_category: provider_unavailable
+      invariants:
+        no_typed_event_on_failure: true
+        failure_surfaces_via_exception_path: true

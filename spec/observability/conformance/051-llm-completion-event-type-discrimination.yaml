@@ -1,0 +1,60 @@
+# graph-engine §6 + observability §5.5.7 — Type-discrimination
+# filtering on LlmCompletionEvent. An observer filtering by event
+# type receives the typed event regardless of whether the
+# implementation also emits the sentinel-namespaced NodeEvent.
+#
+# Observers MUST NOT mutate state; events live in observer-internal
+# storage and assertions use observer-introspection expectations.
+
+cases:
+  - name: type_discriminating_observer_receives_typed_event_only
+    description: |
+      Two observers attached. type_filtered subscribes via
+      filter_event_type=LlmCompletionEvent; all_events captures
+      every event. After one LLM call, type_filtered MUST hold
+      exactly one LlmCompletionEvent. all_events MAY additionally
+      hold a sentinel-namespaced NodeEvent (impl-defined per the
+      §5.5.7 SHOULD-emit-both transition).
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "go"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-051
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 8, completion_tokens: 1, total_tokens: 9}
+    typed_observers:
+      - name: type_filtered
+        kind: typed_event_collector
+        filter_event_type: LlmCompletionEvent
+      - name: all_events
+        kind: typed_event_collector
+    expected:
+      observers:
+        type_filtered:
+          contains_exactly_one_event_of_type: LlmCompletionEvent
+        all_events:
+          contains_event_of_type: LlmCompletionEvent
+          # The all_events observer MAY additionally hold a sentinel-
+          # namespaced NodeEvent for the same LLM call. The spec does
+          # not pin which impls emit it; this fixture is impl-agnostic
+          # on the sentinel emission.
+          sentinel_node_event_emission_is_impl_defined: true
+      invariants:
+        type_discrimination_filter_works: true
+        type_filtered_count_independent_of_sentinel_emission: true
