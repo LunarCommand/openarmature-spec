@@ -157,25 +157,42 @@ subsequent §6 content, following the §6.1 / §6.2 template.
 >   exception; from its perspective, the node returned normally.
 >
 > **Observability.** When the middleware catches an exception, it
-> dispatches an observer event onto the same delivery queue as
-> `NodeEvent` per graph-engine §6. The v1 dispatch shape is a
-> sentinel-namespaced `NodeEvent` carrying:
+> dispatches a **framework-emitted failure-isolation event** onto
+> the same observer delivery queue as `NodeEvent` per graph-engine
+> §6. The event is a distinct kind from `NodeEvent` — it does NOT
+> reuse `NodeEvent.node_name` / `namespace` (which graph-engine §6
+> reserves for registered-node identity) and does NOT reuse
+> `NodeEvent.error` (a graph-engine §4 category). It is a separate
+> framework-emitted observer event variant carrying its own field
+> set:
 >
-> - `node_name = "openarmature.middleware.failure_isolated"`
-> - `namespace = (event_name,)` — the caller-supplied event name
->   becomes the namespace tuple's sole element.
-> - `phase = "completed"`
+> - `event_name` — the caller-supplied event name from the
+>   middleware's configuration (a stable identifier for this
+>   catch site).
+> - The wrapped node's identity per graph-engine §6 (`namespace`,
+>   `attempt_index`, `fan_out_index`, `branch_name` — the same
+>   lineage tuple `NodeEvent` carries, surfaced here for
+>   correlation with the wrapped node's other events).
 > - `pre_state` / `post_state` reflecting the wrapped node's
 >   input and degraded return.
-> - An error attachment carrying the caught exception's category
->   and message.
+> - `caught_exception` — a structured record carrying the caught
+>   exception's category (per its carrying spec, e.g.,
+>   llm-provider §7 / graph-engine §4) and the exception message.
 >
-> The sentinel-namespace shape is consistent with current
-> observer-event conventions for middleware-emitted notifications.
-> A future proposal MAY promote middleware events to a typed
-> variant family (e.g., `MiddlewareEvent` paralleling
-> `LlmCompletionEvent` per proposal 0049) if multiple middleware
-> primitives accumulate event surfaces worth typing.
+> This pattern parallels graph-engine §6's RECOMMENDED metadata-
+> augmentation event mechanism from proposal 0040 — a distinct
+> framework-emitted event kind on the observer delivery queue,
+> with the typed shape per-language idiom. Spec mandates the event
+> mechanism + field set; per-language implementations choose the
+> concrete typed shape (e.g., a Python dataclass, a TypeScript
+> interface) following the language's naming idioms.
+>
+> A future proposal MAY promote the failure-isolation event to a
+> spec-mandated typed variant on the observer event union
+> (paralleling proposal 0049's `LlmCompletionEvent` carve-out) if
+> the pattern accumulates across multiple middleware primitives.
+> For v1, the event-mechanism framing (per 0040's pattern) is
+> sufficient.
 >
 > **Default emission is observer-event-only.** The middleware MUST
 > NOT pin a logging library (stdlib `logging`, structlog, etc.) —
@@ -322,7 +339,19 @@ text:
 >   default only for categories that are genuinely transient
 >   but not yet enumerated by §6.1.
 
-### observability §5.5 — `openarmature.llm.attempt_index` attribute
+### observability §5.5 — `openarmature.llm.attempt_index` attribute + per-attempt span amendment
+
+§5.5 today frames LLM provider span emission as "a span around each
+`complete()` call" (one span per call). This proposal amends that
+framing to **"one span per attempt under call-level retry; one
+span per `complete()` call when retry is absent (the default —
+§5.5's existing one-span-per-call framing preserved verbatim)"**.
+The amendment is required because call-level retry per
+llm-provider §7 produces N attempts inside a single `complete()`
+call; emitting one span per attempt is the observability shape
+backends expect for retry attribution. The new
+`openarmature.llm.attempt_index` attribute discriminates the N
+spans.
 
 Add a new attribute to the §5.5 LLM provider span attribute set:
 
@@ -357,10 +386,12 @@ Six new fixtures (numbers assigned at acceptance):
    event_name="extraction_failed")` that raises an exception.
    Asserts the wrapped node returns `{"result": []}` to the
    engine; the engine continues edge resolution from the
-   degraded return; the observer receives the sentinel-namespaced
-   middleware event with `node_name =
-   "openarmature.middleware.failure_isolated"` and `namespace =
-   ("extraction_failed",)`.
+   degraded return; the observer receives a framework-emitted
+   failure-isolation event with `event_name = "extraction_failed"`,
+   the wrapped node's lineage identity (`namespace`,
+   `attempt_index`, etc.) matching the wrapped node, and a
+   `caught_exception` record carrying the raised exception's
+   category and message.
 
 2. **Callable degraded update.** Same shape as fixture 1 but
    `degraded_update = lambda state: {"result": []}` for input-
@@ -453,17 +484,22 @@ The change is backwards-compatible across all three capabilities.
    forces the naming decision once, at the middleware
    construction site, where the right context is available.
 
-3. **Typed `MiddlewareEvent` variant for failure-isolation
-   observability (instead of sentinel-namespaced NodeEvent).**
-   Promote the middleware event to a typed variant family
-   paralleling `LlmCompletionEvent` per proposal 0049. Rejected
-   for v1: middleware events are low-frequency (only fire when a
-   middleware catches; not on every node execution) and have a
-   narrower consumer audience than LLM completions. The Observer
-   protocol surface shouldn't grow a 4th typed variant for a one-
-   off middleware emission. If/when other middleware events
-   accumulate (rate-limit, circuit-breaker, etc.), a follow-on
-   proposal can promote them as a family.
+3. **Typed `MiddlewareEvent` variant on the observer event union
+   (instead of the framework-emitted event mechanism).** Promote
+   the failure-isolation event to a spec-mandated typed variant
+   on the observer event union, paralleling proposal 0049's
+   `LlmCompletionEvent` carve-out. Rejected for v1: middleware
+   events are low-frequency (only fire when a middleware catches;
+   not on every node execution) and have a narrower consumer
+   audience than LLM completions. The Observer event union
+   shouldn't grow a typed variant for a one-off middleware
+   emission. The framework-emitted event mechanism (paralleling
+   proposal 0040's metadata-augmentation event pattern) is the
+   right ceremony level for v1 — spec mandates the event
+   mechanism + field set; the typed shape is per-language idiom.
+   If/when other middleware events accumulate (rate-limit,
+   circuit-breaker, etc.), a follow-on proposal can promote them
+   as a family.
 
 4. **Sibling `complete_with_retry()` method instead of `retry`
    kwarg.** Have llm-provider expose a separate method for
@@ -520,8 +556,11 @@ proposal text above:
   framing is the connective tissue.
 - **`event_name` required vs default** (alternative 2) — required
   with no default; the naming decision is per-catch-site.
-- **Typed middleware event vs sentinel-namespaced NodeEvent**
-  (alternative 3) — sentinel for v1; future promotion to typed
+- **Typed middleware event vs framework-emitted event mechanism**
+  (alternative 3) — framework-emitted event mechanism for v1
+  (parallels proposal 0040's metadata-augmentation event pattern);
+  spec mandates the event mechanism + field set, typed shape is
+  per-language idiom; future proposal MAY promote to a typed
   variant family if accumulation warrants.
 - **`retry` kwarg vs sibling `complete_with_retry()`**
   (alternative 4) — kwarg per the precedent of
@@ -557,8 +596,9 @@ defer.
   Documented as a pitfall in §7's "common mistakes" list; spec
   does not impose a cap.
 - **Typed middleware event variant family** (alternative 3).
-  Sentinel-namespaced NodeEvent for v1; future promotion via
-  follow-on if accumulation warrants.
+  Framework-emitted event mechanism for v1 (per 0040's pattern);
+  future promotion to spec-mandated typed variant via follow-on
+  if accumulation warrants.
 - **Streaming-retry semantics.** Per-call retry on a streaming
   `complete()` call (where the LLM returns chunks rather than a
   single response) raises questions the spec doesn't address
