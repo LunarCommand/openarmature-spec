@@ -56,6 +56,7 @@ lifecycle and the proposal template.
 | [0047](proposals/0047-implicit-prefix-cache-wire-stability.md) | Implicit prefix-cache wire-byte stability | llm-provider | Draft | —               | —          |
 | [0048](proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md) | Read-symmetric invocation metadata + queryable observer pattern | observability | Draft | —               | —          |
 | [0049](proposals/0049-typed-llm-completion-event.md) | Typed LLM completion event | observability | Draft | —               | —          |
+| [0050](proposals/0050-retry-and-degradation-primitives.md) | Retry & degradation primitives (failure-isolation middleware + call-level retry) | pipeline-utilities | Draft | —               | —          |
 
 Click any column header to sort.
 
