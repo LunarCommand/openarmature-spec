@@ -14,7 +14,7 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 **Notes**
 
-- **MINOR bump (pre-1.0).** Additive across graph-engine + observability: a new typed event variant on the observer event union (alongside the existing `NodeEvent` shape and the framework-emitted metadata-augmentation event from proposal 0040), a new observability §5.5.7 sub-subsection framing the typed event as the structured form of the §5.5 attribute surface, plus four new conformance fixtures. Existing fixtures unchanged. The change is backwards-compatible at the spec level — the typed event is purely additive; implementations that historically emit a sentinel-namespaced NodeEvent for LLM completions handle backwards compatibility internally per the §5.5.7 SHOULD-emit-both transition.
+- **MINOR bump (pre-1.0).** Additive across graph-engine + observability: a new typed event variant on the observer event union (alongside the existing `NodeEvent` shape and the framework-emitted metadata-augmentation event from proposal 0040), a new observability §5.5.7 sub-subsection framing the typed event as the structured form of the §5.5 attribute surface, plus seven new conformance fixtures. Existing fixtures unchanged. The change is backwards-compatible at the spec level — the typed event is purely additive; implementations that historically emit a sentinel-namespaced NodeEvent for LLM completions handle backwards compatibility internally per the §5.5.7 SHOULD-emit-both transition.
 
 ## [0.40.0] — 2026-06-01
 
