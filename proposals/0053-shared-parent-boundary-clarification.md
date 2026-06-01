@@ -84,18 +84,19 @@ wording.
 The §3.4 *Shared-parent boundary (MUST NOT)* paragraph currently
 reads (per spec v0.37.0 from proposal 0045):
 
-> Spans for a SHARED parent (the fan-out node itself, the parallel-
-> branches node itself, the invocation span) MUST NOT be updated.
-> A shared parent is by definition visible to multiple sibling
-> instances / branches; updating it would propagate the
-> augmentation to siblings indirectly. Identify a shared parent
-> structurally by dispatch-node type — any span representing a
-> fan-out node, any span representing a parallel-branches node,
-> and the invocation span — regardless of runtime cardinality. The
-> rule applies even in degenerate cases (a fan-out over a single-
-> element list, a parallel-branches dispatcher with one branch)
-> where no sibling exists at runtime: the structural
-> classification governs, not the live sibling count.
+> **Shared-parent boundary (MUST NOT).** Spans for a SHARED parent
+> (the fan-out node itself, the parallel-branches node itself, the
+> invocation span) MUST NOT be updated. A shared parent is by
+> definition visible to multiple sibling instances / branches;
+> updating it would propagate the augmentation to siblings
+> indirectly. Identify a shared parent structurally by dispatch-
+> node type — any span representing a fan-out node, any span
+> representing a parallel-branches node, and the invocation span —
+> regardless of runtime cardinality. The rule applies even in
+> degenerate cases (a fan-out over a single-element list, a
+> parallel-branches dispatcher with one branch) where no sibling
+> exists at runtime: the structural classification governs, not
+> the live sibling count.
 
 This proposal replaces the paragraph with:
 
