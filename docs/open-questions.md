@@ -217,7 +217,10 @@ response-side clause.
   idiom); detached trace propagation (invocation-scoped, flows through
   detached children unchanged); frozen at invoke time as the original
   baseline (mid-invocation augmentation added by follow-on proposal
-  0040).
+  0040; read symmetry added by follow-on proposal 0048 — the
+  `get_invocation_metadata()` primitive returns an immutable mapping
+  snapshot scoped to the current async context, mirroring the
+  write-side copy-on-write isolation).
 
 ### 0040 — mid-invocation metadata open-span update
 
@@ -236,7 +239,10 @@ response-side clause.
   boundary into a lineage-aware three-rule structure (call-stack
   ancestor chain MUST, sibling MUST NOT, shared-parent MUST NOT) to
   cover nested fan-out / parallel-branches cases the original 0040
-  scope didn't address.
+  scope didn't address. Proposal 0048 added the read-side symmetric
+  primitive (`get_invocation_metadata()`) that consumes the same
+  copy-on-write state 0040's augmentation event signals to backends —
+  reads do NOT emit augmentation events.
 
 ### 0041 — reserve OA-emitted Langfuse metadata keys
 

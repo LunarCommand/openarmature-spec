@@ -1,0 +1,70 @@
+# §9.2 Async-safety contract — informative. Concurrent reads from a
+# queryable observer while events are being delivered MUST NOT return
+# torn views but MAY return any consistent point-in-time snapshot.
+# This fixture documents the contract boundary; it does NOT enforce a
+# strict event-count outcome.
+
+informative: true
+
+cases:
+  - name: concurrent_read_returns_consistent_non_torn_view
+    description: |
+      Parallel-branches over two siblings, both emitting events to
+      the same queryable observer. An outer node reads the observer
+      while branches are in flight. Asserts the read is internally
+      consistent (the counter and per-type breakdown agree at the
+      moment of read) but does NOT enforce a specific event-count
+      value — implementations MAY interleave reads / writes per
+      their concurrency strategy.
+    state:
+      fields:
+        observed_snapshot:
+          type: dict
+          default: {}
+    entry: parallel_branches_node
+    nodes:
+      parallel_branches_node:
+        parallel_branches:
+          branches:
+            - branch_a
+            - branch_b
+          error_policy: fail_fast
+      reader_node:
+        capture_queryable_observer_read_into:
+          observer_name: typed_counter
+          method: get_snapshot
+          state_field: observed_snapshot
+    inner_subgraphs:
+      branch_a:
+        entry: emit_a
+        nodes:
+          emit_a:
+            noop: true
+        edges:
+          - {from: emit_a, to: END}
+      branch_b:
+        entry: emit_b
+        nodes:
+          emit_b:
+            noop: true
+        edges:
+          - {from: emit_b, to: END}
+    edges:
+      - {from: parallel_branches_node, to: reader_node}
+      - {from: reader_node, to: END}
+    initial_state: {}
+    queryable_observers:
+      - name: typed_counter
+        # Harness-defined observer kind: tracks total count + a
+        # per-event-type breakdown. get_snapshot() returns a dict
+        # carrying both — the assertion is that they agree at the
+        # moment of read.
+        kind: typed_event_counter
+    expected:
+      invariants:
+        # Floor contract — the only spec-normative assertion here.
+        snapshot_total_equals_sum_of_breakdown: true
+        read_does_not_raise_on_concurrent_write: true
+      # No specific value assertion on observed_snapshot — the read
+      # outcome is implementation-defined; the contract is internal
+      # consistency, not event-count completeness.

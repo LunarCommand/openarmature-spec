@@ -1,0 +1,26 @@
+# §3.4 Read access — outside-invocation behavior. Calling
+# get_invocation_metadata() with no active invocation returns an
+# empty immutable mapping; no exception raised.
+
+cases:
+  - name: get_invocation_metadata_outside_active_invocation_returns_empty
+    description: |
+      Top-level direct call to
+      openarmature.observability.get_invocation_metadata() with no
+      active invocation context. The harness invokes the read primitive
+      outside any invocation and asserts the return is an empty
+      immutable mapping.
+    # No `entry` / `nodes` — this fixture exercises a direct read call
+    # without running a graph. The harness's "top-level call" mode is
+    # opt-in via the no-graph case shape.
+    direct_call:
+      operation: get_invocation_metadata
+    expected:
+      direct_call_result:
+        value: {}
+        type: immutable_mapping
+        exception: null
+      invariants:
+        outside_invocation_returns_empty_mapping: true
+        outside_invocation_does_not_raise: true
+        outside_invocation_return_is_immutable: true

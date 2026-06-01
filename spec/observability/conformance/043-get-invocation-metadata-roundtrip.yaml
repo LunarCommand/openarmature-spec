@@ -1,0 +1,38 @@
+# §3.4 Read access — get_invocation_metadata() returns the in-context
+# view including caller baseline + in-node writes. Basic roundtrip case.
+
+cases:
+  - name: get_invocation_metadata_reads_caller_baseline_plus_node_writes
+    description: |
+      invoke() supplies a baseline {tenantId: T1}. The body node calls
+      set_invocation_metadata(audit_kind="fraud") and then reads via
+      get_invocation_metadata(); the read returns an immutable mapping
+      containing both keys.
+    state:
+      fields:
+        captured_metadata:
+          type: dict
+          default: {}
+    entry: read_after_write
+    nodes:
+      read_after_write:
+        # Harness primitive: write a key inside the node body, then
+        # capture the get_invocation_metadata() read into a state field
+        # for downstream assertion.
+        augment_metadata:
+          audit_kind: "fraud"
+        capture_invocation_metadata_into: captured_metadata
+    edges:
+      - {from: read_after_write, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "T1"
+    expected:
+      final_state:
+        captured_metadata:
+          tenantId: "T1"
+          audit_kind: "fraud"
+      invariants:
+        read_returns_caller_baseline: true
+        read_returns_in_node_write: true
+        read_returns_immutable_mapping: true
