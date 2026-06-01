@@ -45,12 +45,15 @@ shape and into the first normatively-typed event variant —
    new data, just a structured carrier for data the spec already
    surfaces.
 
-2. **Dual-emit transition.** During the transition window, the
-   existing sentinel-namespaced `NodeEvent` for LLM completions
-   continues to fire alongside the new typed event. Backends MAY
-   consume either; backends already filtering by the sentinel
-   namespace continue to work unchanged. A follow-on proposal MAY
-   deprecate the sentinel emission in a future spec cycle.
+2. **Implementation-current sentinel-namespace convention is not
+   disturbed.** The spec mandates the typed event; implementations
+   that have historically emitted a sentinel-namespaced `NodeEvent`
+   for LLM completions (a common impl convention, not a
+   spec-defined shape) SHOULD continue emitting it alongside the
+   new typed event for a transition period so backends filtering
+   by the impl-current namespace can migrate. The transition
+   period is implementation-defined; this proposal does not pin
+   the legacy shape or mandate dual-emit at the spec level.
 
 3. **Scope: completion only.** The typed event fires on LLM call
    completion (successful or returning a structured response). Start
@@ -60,10 +63,11 @@ shape and into the first normatively-typed event variant —
    concerns. Failure events MAY warrant a follow-on `LlmCallFailedEvent`
    typed variant if demand emerges.
 
-The change is backwards-compatible during the dual-emit window:
-applications relying on the sentinel-namespaced `NodeEvent` see no
-behavioral change; applications opting into the typed event get
-cleaner filtering and typed access without payload unpacking.
+The change is backwards-compatible at the spec level (the typed
+event is purely additive). Backwards compatibility for backends
+filtering by the impl-current sentinel namespace is preserved at
+the implementation layer via the SHOULD-emit-both transition
+described above.
 
 ## Motivation
 
@@ -96,9 +100,11 @@ cutting events) MAY follow the same pattern. The pattern's value
 shows clearly in the LLM-completion case where the field set is
 stable and broadly consumed.
 
-The dual-emit transition keeps existing backends working through
-the window; the typed-event surface is added without breaking any
-sentinel-matching consumer.
+The typed-event surface is added additively at the spec level;
+implementations preserve backwards compatibility for their own
+impl-current sentinel-namespace consumers via the SHOULD-emit-
+both transition described in §5.5 (implementation-defined
+duration).
 
 ## Proposed change
 
@@ -129,6 +135,8 @@ distinct-from-`NodeEvent` typed shape.
 > | `node_name` | string | The user-defined node that issued the call. |
 > | `namespace` | tuple of strings | The calling node's namespace (NOT the sentinel namespace). |
 > | `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
+> | `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance, per graph-engine §6 / pipeline-utilities §9. Null otherwise. Part of the §6 event-source identity tuple; required for disambiguating sibling fan-out instances. |
+> | `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch, per graph-engine §6 / pipeline-utilities §11 (with the resolved `branch_names` per proposal 0044 governing the value space). Null otherwise. Part of the §6 event-source identity tuple; required for disambiguating sibling parallel branches. |
 > | `provider` | string | The LLM provider identifier (matches `gen_ai.system` per observability §5.5.3). |
 > | `model` | string | The model identifier (matches `gen_ai.request.model` / `openarmature.llm.model` per observability §5.5 / §5.5.3). |
 > | `request_id` | string \| null | The provider-returned response identifier, when present (matches `gen_ai.response.id` per observability §5.5.3). |
@@ -153,6 +161,17 @@ distinct-from-`NodeEvent` typed shape.
 > wire shape), `provider_unavailable` (transient unreachability),
 > `provider_authentication`, etc. — cover failure surfaces today
 > through the exception path, not the observer event surface.
+>
+> **Phase subscription filter.** Like the metadata-augmentation
+> event mechanism from proposal 0040, `LlmCompletionEvent` is a
+> typed event variant without a `phase` discriminator and is NOT
+> subject to the §6 `phases` subscription filter. Observers with
+> a `phases={"started"}` or `phases={"completed"}` subscription
+> still receive `LlmCompletionEvent`; the phases filter applies
+> only to phase-bearing `NodeEvent` variants. Observers that want
+> to selectively consume the typed event filter via type
+> discrimination (`isinstance` or per-language equivalent) rather
+> than via phase subscription.
 
 ### observability §5.5 — frame the typed event + dual-emit
 
@@ -180,30 +199,35 @@ surface, and specify the dual-emit transition.
 > equivalent) rather than via the sentinel-namespace string match
 > the existing pattern uses.
 >
-> **Dual-emit transition.** During the dual-emit window (defined as
-> the spec versions between this proposal's acceptance and a
-> potential follow-on proposal that deprecates the sentinel-
-> namespaced `NodeEvent` for LLM completions), implementations MUST
-> emit BOTH the typed `LlmCompletionEvent` AND the existing
-> sentinel-namespaced `NodeEvent` carrying the LLM-call payload.
-> Both fire on the same observer queue; both carry the same
-> logical data.
+> **Backwards compatibility with the sentinel-namespace convention.**
+> Some implementations have historically emitted a sentinel-namespaced
+> `NodeEvent` to drive LLM-call observability (a common convention
+> rather than a spec-defined shape — e.g., emitting NodeEvents with
+> `node_name = "openarmature.llm.complete"` so backends can filter
+> by namespace string). The convention is implementation-current,
+> not spec-normative; this proposal does not define the legacy
+> event's shape.
 >
-> **Backends MUST subscribe to one event variant, not both, per LLM
-> completion.** A backend that filters for both the typed event AND
-> the sentinel-namespaced `NodeEvent` will receive two distinct
-> events for the same logical LLM completion — accumulators counting
-> events will double-count, span emitters will double-emit. Backends
-> opting into the typed event MUST filter out (or stop subscribing
-> to) the sentinel-namespaced `NodeEvent` for LLM completions; the
-> two-variant emission is for transition consumption, not parallel
-> consumption.
+> Implementations that have historically emitted such a sentinel-
+> namespaced NodeEvent for LLM completions SHOULD continue emitting
+> it alongside the new typed `LlmCompletionEvent` during a
+> transition period — long enough for backends filtering by the
+> impl-current sentinel namespace to migrate to type-discrimination
+> filtering. The transition period is implementation-defined; spec
+> imposes no fixed window. Implementations that have never emitted
+> a sentinel-namespaced NodeEvent for LLM completions only need to
+> emit the new typed event.
 >
-> Backends filtering only by the sentinel namespace continue to
-> work unchanged through the dual-emit window. Backends filtering
-> only by the typed event get the cleaner surface. A follow-on
-> proposal MAY deprecate the sentinel emission in a future cycle;
-> no specific timeline is set by this proposal.
+> **Backends SHOULD subscribe to one event variant per LLM
+> completion.** When an implementation emits both the typed event
+> and a sentinel-namespaced NodeEvent for the same LLM call, a
+> backend filtering for both will receive two distinct events for
+> the same logical completion — accumulators counting events will
+> double-count, span emitters will double-emit. Backends opting
+> into the typed event SHOULD stop subscribing to the sentinel
+> NodeEvent for LLM completions; the two-variant emission is for
+> impl-level transition consumption, not parallel consumption by
+> the same backend.
 
 ### graph-engine §6 *Driving span lifecycle* — implications
 
@@ -237,14 +261,15 @@ assigned at acceptance):
    populated from the mocked response (provider, model, usage,
    finish_reason all present and matching).
 
-2. **Dual-emit during transition window.** Same shape as fixture 1,
-   plus assertion that the observer ALSO receives the existing
-   sentinel-namespaced `NodeEvent` for the LLM completion. Both
-   fire on the same observer queue; the typed event carries
-   structured data; the `NodeEvent` carries the same data via the
-   sentinel-namespace pattern. The fixture asserts both arrive
-   without ordering coupling between them (either may fire first
-   on the queue).
+2. **Typed event emits independent of impl-current sentinel
+   pattern.** A graph with an LLM-calling node + a custom observer
+   that subscribes via type discrimination
+   (`isinstance(event, LlmCompletionEvent)`) only. Asserts the
+   observer receives the typed event regardless of whether the
+   implementation under test also emits a sentinel-namespaced
+   NodeEvent for LLM completions. Verifies the spec contract is
+   the typed event; the sentinel emission is impl-level and the
+   fixture doesn't depend on it.
 
 3. **`caller_invocation_metadata` opt-in.** A graph that uses
    `set_invocation_metadata({"user_id": "u123"})` before an LLM
@@ -261,11 +286,12 @@ assigned at acceptance):
 
 ### Unaffected fixtures
 
-All existing fixtures continue to pass unchanged. The dual-emit
-transition means the sentinel-namespaced `NodeEvent` continues to
-fire as before; backends and fixtures depending on the existing
-shape are not broken. The typed event is purely additive during
-the dual-emit window.
+All existing fixtures continue to pass unchanged. The typed event
+is purely additive at the spec level; implementations preserve
+backwards compatibility for their own sentinel-pattern consumers
+via the SHOULD-emit-both transition. Existing fixtures that
+exercise sentinel-pattern behavior remain valid for the
+implementations that emit it.
 
 ## Versioning
 
@@ -282,13 +308,12 @@ increments:
 - New conformance fixtures (four required). Existing fixtures
   unchanged.
 
-The change is backwards-compatible during the dual-emit window.
-Existing applications subscribed to the sentinel-namespaced
-`NodeEvent` continue to receive it; applications opting into the
-typed event get cleaner filtering. A potential follow-on cycle
-that deprecates the sentinel emission would be backwards-
-incompatible only against backends that haven't migrated; that
-deprecation lands per its own proposal cycle.
+The change is purely additive at the spec level. Implementations
+that historically emit a sentinel-namespaced NodeEvent for LLM
+completions handle backwards compatibility internally per the
+§5.5 SHOULD-emit-both transition; the spec does not mandate the
+legacy emission, so spec-conformant impls that never emitted it
+need only emit the new typed event.
 
 ## Alternatives considered
 
@@ -302,15 +327,17 @@ deprecation lands per its own proposal cycle.
    need it). Opt-in via observer configuration is the right scope —
    default absent, populated only when the consumer explicitly asks.
 
-2. **Replace the sentinel emission immediately (no dual-emit).**
-   Stop emitting the sentinel-namespaced `NodeEvent` for LLM
-   completions at this proposal's acceptance; only the typed event
-   fires. Rejected: breaking for any backend currently reading the
-   sentinel-namespaced event (the OTel observer's §5.5 hook, the
-   Langfuse observer's §8.7 hook, custom user backends). The
-   dual-emit window keeps the existing surface available while the
-   typed surface lands additively; a separate follow-on proposal
-   handles deprecation when the time is right.
+2. **Mandate dual-emit at the spec level (MUST emit both).**
+   Have the spec mandate that implementations emit BOTH the typed
+   event AND a sentinel-namespaced NodeEvent for every LLM
+   completion. Rejected: the sentinel-namespaced NodeEvent shape
+   isn't actually defined in the current spec — it's an
+   implementation-current convention adapters use. Mandating its
+   emission would require this proposal to also define the legacy
+   shape, expanding scope significantly. The SHOULD-emit-both
+   framing places the backwards-compat concern at the impl layer
+   where the sentinel convention actually lives, without
+   retroactively pinning it as a spec contract.
 
 3. **Bundle failure event + streaming event into v1.** Add
    `LlmCallFailedEvent` and `LlmStreamChunkEvent` typed variants
@@ -362,9 +389,11 @@ text above:
   §6 event field definition above.
 - **`caller_invocation_metadata` always-on vs opt-in** (alternative
   1) — opt-in via observer configuration; default absent.
-- **Replace vs dual-emit** (alternative 2) — dual-emit additively
-  lands the typed surface; a follow-on proposal MAY deprecate the
-  sentinel emission in a future cycle (no timeline pinned).
+- **Spec-mandated dual-emit vs impl-level dual-emit**
+  (alternative 2) — the typed event is the spec-normative MUST;
+  the impl-current sentinel-namespaced NodeEvent emission is
+  preserved via a §5.5 SHOULD-emit-both transition at the impl
+  layer (the spec does not pin the legacy shape).
 - **Event variant home (graph-engine vs observability)**
   (alternative 4) — graph-engine §6 hosts the event union shape;
   observability §5.5 frames the typed variant as the structured
@@ -399,10 +428,12 @@ defer.
   parameters (`temperature`, `max_tokens`, etc.) are caller-known;
   observers needing them reach via `Response.raw` or the existing
   `NodeEvent`'s payload.
-- **Deprecating the sentinel-namespaced emission.** A separate
-  follow-on proposal handles deprecation; this proposal lands the
-  typed-event surface additively, leaving the sentinel emission in
-  place for the dual-emit window.
+- **Pinning the sentinel-namespaced NodeEvent shape as a spec
+  contract.** The legacy sentinel convention is implementation-
+  current; this proposal does not retroactively define its shape
+  in the spec. The §5.5 SHOULD-emit-both transition addresses
+  backwards compatibility at the impl layer without binding the
+  spec to a convention it didn't previously normatively own.
 - **Cross-impl byte-identical event serialization.** Event objects
   are language-native; cross-language byte equality is out of scope
   (matches the observability §5.5.1 cross-impl byte-stability
