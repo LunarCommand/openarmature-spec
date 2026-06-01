@@ -1,0 +1,1 @@
+../../proposals/0051-langfuse-trace-io-deprecation-caveat.md
