@@ -1,0 +1,64 @@
+# §3.4 Read access — per-attempt scoping under retry. Writes from a
+# prior failed attempt do NOT carry over to the next attempt.
+
+cases:
+  - name: retry_attempt_does_not_see_prior_failed_attempt_writes
+    description: |
+      Node with retry middleware (max 2 attempts). Attempt 0 writes
+      attempt_marker=first then raises a transient error; attempt 1
+      first reads (assert attempt_marker absent), then writes
+      attempt_marker=second and succeeds. Downstream node reads and
+      asserts attempt_marker=second. The caller baseline (tenantId)
+      is visible across all attempts.
+    state:
+      fields:
+        attempt_1_read:
+          type: dict
+          default: {}
+        downstream_read:
+          type: dict
+          default: {}
+    entry: retried_node
+    nodes:
+      retried_node:
+        # Harness primitive describing attempt-keyed behavior. On
+        # attempt 0 the node writes attempt_marker=first then raises
+        # the test's transient error; on attempt 1 it captures the
+        # read into attempt_1_read, writes attempt_marker=second,
+        # and succeeds.
+        retry_middleware:
+          max_attempts: 2
+          classifier: transient_marker
+        per_attempt_behavior:
+          - attempt: 0
+            augment_metadata:
+              attempt_marker: "first"
+            raises: transient_marker_error
+          - attempt: 1
+            capture_invocation_metadata_into: attempt_1_read
+            augment_metadata:
+              attempt_marker: "second"
+            succeeds: true
+      downstream_node:
+        capture_invocation_metadata_into: downstream_read
+    edges:
+      - {from: retried_node, to: downstream_node}
+      - {from: downstream_node, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "T1"
+    expected:
+      final_state:
+        attempt_1_read:
+          # Attempt 1's read sees the baseline but NOT attempt 0's
+          # discarded write.
+          tenantId: "T1"
+        downstream_read:
+          # Downstream sees the successful attempt-1 write +
+          # the baseline.
+          tenantId: "T1"
+          attempt_marker: "second"
+      invariants:
+        prior_failed_attempt_writes_discarded: true
+        successful_attempt_writes_visible_downstream: true
+        caller_baseline_stable_across_attempts: true

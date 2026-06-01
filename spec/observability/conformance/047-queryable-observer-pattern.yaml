@@ -1,0 +1,63 @@
+# §9 Queryable observer pattern — end-to-end attach / emit / consume.
+# A custom observer with an in-memory counter incremented on every
+# node event, plus a get_count() read method, is attached at invoke
+# time. A downstream node reads the count mid-invocation.
+#
+# Per graph-engine §6, observer delivery is concurrent with graph
+# execution (the engine MUST NOT await observer processing). Per §9.2,
+# implementations MUST NOT guarantee a read sees all events emitted up
+# to a particular wall-clock instant. So the count is bounded above by
+# the events emitted before the read but the lower bound is 0 —
+# strict equality would be a stronger guarantee than the spec offers.
+
+cases:
+  - name: queryable_observer_count_consumed_by_downstream_node
+    description: |
+      Graph: A → B → C. Custom observer attached at invoke time
+      counts every node event it receives. Node C captures the
+      count via the observer's get_count() read method into
+      observed_count. By the time C runs its body, 5 events have
+      been EMITTED (A.started, A.completed, B.started, B.completed,
+      C.started); C.completed has not yet fired. Observer delivery
+      runs concurrently, so the count is in [0, 5] — the spec does
+      not pin the exact value, only the bound + internal consistency.
+    state:
+      fields:
+        observed_count:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        noop: true
+      b:
+        noop: true
+      c:
+        # Harness primitive: reach a named observer attached at
+        # invoke and call its read method, capturing the value.
+        capture_queryable_observer_read_into:
+          observer_name: counter
+          method: get_count
+          state_field: observed_count
+    edges:
+      - {from: a, to: b}
+      - {from: b, to: c}
+      - {from: c, to: END}
+    initial_state: {}
+    queryable_observers:
+      - name: counter
+        # Harness-defined observer kind: counts all node events
+        # received, exposes get_count() returning the current value.
+        kind: event_counter
+    expected:
+      final_state_bounds:
+        # The read value MUST be a non-negative integer bounded
+        # above by the events emitted before C's body ran.
+        observed_count:
+          min: 0
+          max: 5
+      invariants:
+        observer_attach_emit_consume_cycle_works: true
+        read_returns_non_negative_integer: true
+        read_is_consistent_no_torn_view: true
+        observer_does_not_mutate_state_or_influence_routing: true

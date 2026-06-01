@@ -1,0 +1,85 @@
+# §9.4 Lifecycle — accumulating queryable observer MUST NOT auto-drop
+# on the invocation's completion signal; consuming code calls
+# drop(invocation_id) explicitly. A long-lived accumulator across two
+# sequential invocations exercises the no-auto-drop rule + the
+# explicit-drop discipline + per-invocation bucket isolation.
+
+# Two sequential invocations share the same accumulator instance.
+# The harness's `sequential_invocations` mode runs the graph twice
+# with the same observer attached, capturing per-invocation state.
+
+sequential_invocations:
+  observer_persists_across: true
+  invocations:
+    - name: invocation_1
+      caller_invocation_id: "inv-001"
+    - name: invocation_2
+      caller_invocation_id: "inv-002"
+
+queryable_observers:
+  - name: accumulator
+    # Harness-defined accumulating observer: per-invocation_id buckets
+    # accumulated from NodeEvent emissions; exposes get_bucket(inv_id)
+    # and drop(inv_id) per the §9.4 lifecycle contract.
+    kind: per_invocation_accumulator
+    persists_across_invocations: true
+
+cases:
+  - name: accumulator_survives_completion_then_drops_explicitly
+    description: |
+      Same observer instance attached to two sequential invocations.
+      Each invocation's final node reads the per-invocation_id bucket
+      (asserting it is non-empty), then explicitly drops it. After
+      drop, the bucket is absent; invocation 2 starts fresh.
+    state:
+      fields:
+        captured_bucket:
+          type: dict
+          default: {}
+        bucket_after_drop_is_absent:
+          type: bool
+          default: false
+    entry: emit_event
+    nodes:
+      emit_event:
+        # Emits a NodeEvent the accumulator buckets under the
+        # current invocation_id.
+        noop: true
+      read_then_drop:
+        # Harness primitive: read the bucket for the current
+        # invocation_id, capture it into captured_bucket, then call
+        # drop(invocation_id), then re-read and assert the bucket is
+        # absent (capture into bucket_after_drop_is_absent).
+        capture_queryable_observer_read_into:
+          observer_name: accumulator
+          method: get_bucket_for_current_invocation
+          state_field: captured_bucket
+        then_drop_for_current_invocation:
+          observer_name: accumulator
+        then_assert_bucket_absent_into: bucket_after_drop_is_absent
+    edges:
+      - {from: emit_event, to: read_then_drop}
+      - {from: read_then_drop, to: END}
+    initial_state: {}
+    expected:
+      per_invocation:
+        invocation_1:
+          # Read captures a non-empty bucket (the emit_event node's
+          # event was bucketed under inv-001).
+          captured_bucket_is_non_empty: true
+          # Post-drop re-read returns absent.
+          bucket_after_drop_is_absent: true
+        invocation_2:
+          # Independent fresh bucket; no carry-over from invocation 1.
+          captured_bucket_is_non_empty: true
+          # Per-invocation_id isolation: invocation 2's read does not
+          # include invocation 1's data (the drop in invocation 1 also
+          # serves as a defense against leakage, but the bucketing
+          # by invocation_id is the load-bearing isolation rule).
+          captured_bucket_disjoint_from_invocation_1: true
+          bucket_after_drop_is_absent: true
+      invariants:
+        no_auto_drop_on_completion_signal: true
+        explicit_drop_removes_bucket: true
+        per_invocation_id_bucket_isolation: true
+        accumulator_exposes_drop_method: true

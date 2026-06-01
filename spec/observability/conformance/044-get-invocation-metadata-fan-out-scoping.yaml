@@ -1,0 +1,72 @@
+# §3.4 Read access — per-async-context scoping under fan-out. Each
+# instance's writes are isolated; sibling reads do not see them; the
+# outermost-serial context after the join sees neither instance's
+# write. The caller baseline is visible everywhere.
+
+cases:
+  - name: fan_out_per_instance_read_isolation_and_outermost_serial_view
+    description: |
+      Two fan-out instances each write item_id and read back via
+      get_invocation_metadata(). After the fan-out joins, an
+      outermost-serial node also reads. Asserts: each instance reads
+      only its own item_id; the outermost-serial node sees neither
+      (per-instance contexts don't flow back); the caller baseline
+      (tenantId) is visible everywhere.
+    state:
+      fields:
+        per_instance_metadata:
+          type: list<dict>
+          reducer: append
+          default: []
+        outermost_metadata:
+          type: dict
+          default: {}
+    entry: fan_out_node
+    nodes:
+      fan_out_node:
+        fan_out:
+          items_field: products
+          inner_subgraph: per_item
+          # Each instance augments metadata with its own item_id, then
+          # captures the get_invocation_metadata() read for assertion.
+          augment_metadata_from_field:
+            item_id: id
+      after_fan_out_node:
+        # Outermost-serial context after the fan-out joins. Captures
+        # the read into outermost_metadata.
+        capture_invocation_metadata_into: outermost_metadata
+    inner_subgraphs:
+      per_item:
+        entry: read_in_instance
+        nodes:
+          read_in_instance:
+            # After the per-instance augment_metadata_from_field has
+            # set item_id, capture the read into per_instance_metadata
+            # (via the list-append reducer at the outer level).
+            capture_invocation_metadata_into: per_instance_metadata
+        edges:
+          - {from: read_in_instance, to: END}
+    edges:
+      - {from: fan_out_node, to: after_fan_out_node}
+      - {from: after_fan_out_node, to: END}
+    initial_state:
+      products:
+        - {id: "A"}
+        - {id: "B"}
+    caller_metadata:
+      tenantId: "T1"
+    expected:
+      final_state:
+        per_instance_metadata:
+          # Order matches fan-out instance iteration order. Each entry
+          # carries the baseline (tenantId) + its own item_id only.
+          - {tenantId: "T1", item_id: "A"}
+          - {tenantId: "T1", item_id: "B"}
+        outermost_metadata:
+          # No item_id from either instance — per-instance writes do
+          # not flow back across the join.
+          tenantId: "T1"
+      invariants:
+        per_instance_reads_isolated_from_siblings: true
+        outermost_read_sees_pre_fan_out_baseline_only: true
+        no_global_aggregator_layered_across_join: true

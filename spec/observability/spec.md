@@ -16,6 +16,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §4.3 *Parent-child rules* gained a parallel-branches dispatch span rule (inner-branch spans parent under a synthesized per-branch dispatch span); §6 *Driving span lifecycle* span-stack key widens to include `branch_name` and gains a *Parallel-branches dispatch span synthesis* sub-paragraph (cache + key by the parallel-branches NODE's full event-source identity + lazy per-branch dispatch span creation on first inner event); new §5.7 *Parallel-branches span attributes* added — `openarmature.node.branch_name` (new OTel attribute paralleling `openarmature.node.fan_out_index`), `openarmature.parallel_branches.parent_node_name` on dispatch spans, plus `openarmature.parallel_branches.branch_count` and `openarmature.parallel_branches.error_policy` on the parallel-branches node span by [proposal 0044](../../proposals/0044-parallel-branches-dispatch-span.md)
   - §3.4 *Mid-invocation augmentation* ancestor/sibling boundary rewritten as a lineage-aware three-rule structure — *Augmenter's call-stack ancestor chain (MUST)* (each strict dispatch ancestor on the augmenter's specific call-stack path — outer fan-out instance, outer parallel-branches branch, outer serial-subgraph wrapper — gets the update), *Sibling boundary (MUST NOT)* (siblings at any depth do not), *Shared-parent boundary (MUST NOT)* (the fan-out node, parallel-branches node, invocation span — visible to multiple sibling instances — do not), plus a three-step boundary decision tree; §3.4 *Per-async-context scoping* gained a follow-up *Per-depth lineage tracking* paragraph requiring implementations to preserve the dispatch-context lineage as a list (one entry per dispatch depth) rather than a single scalar identifier, so the observer can locate ancestor open spans at augmentation time by [proposal 0045](../../proposals/0045-observability-nested-lineage-augmentation.md)
   - §5.5.3 extended with a new §5.5.3.1 sub-subsection *OA-namespaced cache attributes (stable-only mirror)* defining two new attributes on the LLM provider span: `openarmature.llm.cache_read.input_tokens` (sourced from the §6 `Response.usage.cached_tokens` field, emitted when the field is populated) and optional `openarmature.llm.cache_creation.input_tokens` (sourced from `Response.usage.cache_creation_tokens`, populated primarily by providers with explicit cache-control surfaces); OA-namespace placement governed by the *Stable-only upstream adoption* policy because the upstream OTel attribute names `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` are at Development status as of OTel semconv v1.41.1; emission honors the existing `disable_genai_semconv` opt-out (§5.5.4) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
+  - §3.4 *Caller-supplied invocation metadata* extended with a *Read access* paragraph block introducing the symmetric `openarmature.observability.get_invocation_metadata()` read primitive — returns an immutable mapping snapshot of the metadata visible in the current async context, scoped per-async-context per the existing copy-on-write rule (sibling-instance writes invisible after fan-out joins; outermost-serial reads see only the outermost view), per-attempt under retry middleware (prior failed attempt's writes do NOT carry over), silent no-op (empty mapping) outside an active invocation, no observer emission on read, immutable-mapping return type with typed wrappers deferred; new §9 *Queryable observer pattern* (renumbers existing §9 *Determinism* → §10 and §10 *Out of scope* → §11) defining a normative convention for concrete observers exposing read methods on the instance — §9.1 read-method contract (query-only, no routing side effects, no observer-side emission, non-blocking SHOULD), §9.2 async-safety contract (read-consistent floor; post-completion stability gates on the invocation's completion signal), §9.3 *Three-channel data-access guidance* table comparing State / invocation-metadata / queryable observer accumulator carve-outs (default: prefer State), §9.4 lifecycle (auto-drop on completion rejected; explicit `drop()` required for accumulating queryable observers; long-lived accumulator memory-pressure caveat) by [proposal 0048](../../proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -297,6 +298,49 @@ gets clobbered on each nested descent) is insufficient. When an augmentation fir
 the observer uses the lineage to locate the open spans for each ancestor dispatch context on
 the augmenter's path (and only those — sibling and shared-parent contexts are not on the
 list and therefore not updated).
+
+**Read access.** The framework MUST expose a symmetric read primitive —
+`openarmature.observability.get_invocation_metadata()` (per-language idiomatic equivalents follow
+the same naming convention as `set_invocation_metadata`). The read returns an **immutable
+mapping snapshot** of the metadata visible in the current async context at the time of the call,
+carrying string keys and `AttributeValue`-typed values per the existing §3.4 value-type contract.
+
+The read is scoped to the current async context's view of the metadata mapping — i.e., the
+context primitive's current value. This includes:
+
+- All entries set via `set_invocation_metadata` in the current async context.
+- All entries set via `set_invocation_metadata` in any ancestor context that propagated to the
+  current context through dispatch.
+- The original caller-supplied metadata mapping from `invoke()`.
+
+Reads do NOT see entries set in sibling async contexts. Per the *Per-async-context scoping*
+paragraph above, fan-out instance #0's writes are isolated to instance #0's copy of the mapping
+— instance #1's reads do not see them. A node reading at the outermost serial context (e.g.,
+after a fan-out joins) sees only the outermost context's view; fan-out instance writes are not
+visible after the join. This scoping is the natural consequence of the contextvar's
+copy-on-write semantics; implementations MUST NOT layer a separate global aggregator structure
+to make sibling-instance writes visible across the join — the read surface mirrors the write
+surface's scoping exactly.
+
+**Per-attempt scoping.** Under retry middleware (pipeline-utilities §6.1), each attempt sees
+only the metadata set during that attempt plus the ancestor / pre-attempt baseline. Writes from
+a prior attempt that subsequently failed do NOT carry over — consistent with
+`set_invocation_metadata`'s per-attempt scoping (a per-attempt copy is taken from the
+pre-attempt baseline at each retry, and the prior attempt's writes are discarded along with the
+attempt itself).
+
+**Outside invocation.** Calling `get_invocation_metadata()` outside an active invocation returns
+an empty immutable mapping (silent no-op, mirroring `set_invocation_metadata`'s
+silent-no-op-outside-scope behavior). Implementations MUST NOT raise.
+
+**No observer emission.** Reads do NOT emit a metadata-augmentation event (per §6) or any other
+observer notification — the augmentation event signals mutations to backends, not consumer
+reads.
+
+**Return type.** The read returns an immutable mapping shape (Python `MappingProxyType` or
+equivalent; TypeScript `Readonly<Record<string, AttributeValue>>` or equivalent). Typed wrappers
+(e.g., a caller-supplied accessor class with strongly-typed field access) are out of scope for
+v1; the immutable-snapshot mapping is the spec-normative shape.
 
 **Backend-mapping contract.** The OTel mapping is the primary cross-vendor propagation: §5.6
 specifies the `openarmature.user.*` cross-cutting attribute family, which appears on every
@@ -1675,7 +1719,115 @@ Not covered by this section; deferred to follow-on proposals:
 - **LangfusePromptBackend caching policy.** Backend-side caching is permitted by
   prompt-management §5 and is implementation-defined; this mapping does not constrain it.
 
-## 9. Determinism
+## 9. Queryable observer pattern
+
+The `Observer` protocol (per graph-engine §6) is intentionally minimal — a single async callable
+receiving node events from the strictly-serial delivery queue. **Concrete observer types MAY
+expose additional read methods** on the instance attached to the graph; pipeline nodes MAY hold
+a reference to the observer they attached and consume those methods at runtime.
+
+This section describes the pattern's normative constraints. It does NOT add new abstract surface
+to the `Observer` protocol itself — the protocol's single async-callable shape is unchanged. The
+pattern is a convention for how concrete observer implementations expose read-augmenting state
+to the pipeline.
+
+### 9.1 Read-method contract
+
+Read methods on a queryable observer MUST be:
+
+- **Query-only.** No graph state mutation (the pipeline state is managed exclusively by the
+  graph engine; observers MUST NOT modify it).
+- **No routing side effects.** The observer's read MUST NOT influence edge resolution,
+  conditional branching, or node dispatch.
+- **No observer-side emission.** Read methods MUST NOT emit events to other observers, directly
+  or indirectly. The observer's role in the event stream is event consumption (via the
+  `Observer.__call__` surface); cross-observer notification would create ordering dependencies
+  the spec does not establish.
+- **Non-blocking from the event-loop perspective.** Read methods SHOULD be local-state accesses
+  (synchronous reads against in-memory data the observer accumulated). If a method must perform
+  I/O (e.g., a cached remote lookup), it SHOULD use the event loop's non-blocking primitives and
+  document the latency expectations so callers can decide whether to call from within a node
+  handler. The spec does not forbid I/O outright — implementations that expose I/O-backed reads
+  accept responsibility for the latency envelope.
+
+Queryable observers are a **read-augmenting** convenience for patterns where pipeline
+computation depends on cross-cutting data derived from event emissions (per-node usage
+summaries, per-node latency rollups, per-node error counts). They are NOT a replacement for
+State — see *Three-channel data-access guidance* (§9.3 below).
+
+### 9.2 Async-safety contract
+
+Read methods on a queryable observer MAY race with concurrent event emission to the same
+observer. Implementations MUST ensure the observer's internal state is **read-consistent** — a
+read MUST NOT return a torn or partially-mutated view (no half-updated dictionaries, no
+inconsistent counter pairs) — but they MUST NOT guarantee that a read sees all events emitted up
+to a particular point in wall-clock time.
+
+A consumer that needs **post-completion stability** (e.g., a final-summary node that wants to
+read after every event for the invocation has been delivered) MUST gate the read on observing
+the invocation's completion signal (the strictly-serial observer delivery queue per graph-engine
+§6 guarantees prior events are delivered before the invocation's terminal event reaches the
+observer). Implementations MAY offer stricter guarantees as concrete-observer features (e.g., a
+`get_stable_total()` accessor that blocks until completion); the spec defines the floor.
+
+### 9.3 Three-channel data-access guidance
+
+Pipelines have three distinct read surfaces for data accumulated across an invocation. Use the
+right one for the use case:
+
+| Channel | Shape | Use when |
+|---|---|---|
+| **State** (graph-engine §2) | Typed schema with declared reducers; participates in graph routing; survives checkpoint / resume; canonical mutable data plane | Pipeline computation data; data the next node's behavior depends on; data that needs to round-trip through reducers; data that needs to survive a crash |
+| **Invocation metadata** (§3.4) | Untyped per-invocation key/value channel; cross-cutting attribution; per-async-context scoped (read via `get_invocation_metadata()`) | Span / trace attributes; user / request IDs; audit context; values that don't belong in the typed schema; cross-cutting attribution consumed by one end-of-invocation node |
+| **Queryable observer accumulator** (this section) | Derived summary state on a concrete observer instance; queried via read methods at runtime | Per-node summaries derived from event emissions (usage tokens per node, latency per node, retry count per node); when adding the summary as a State field would force reducer-shape pollution |
+
+**Default: prefer State.** State is the canonical mutable data channel for pipeline computation.
+Invocation metadata and queryable observer accumulators are narrow carve-outs.
+
+**Invocation metadata** is the right answer when:
+
+- The data is cross-cutting attribution (user, request, audit context), AND
+- Adding the data as a State field would be schema pollution, AND
+- The data doesn't need reducer semantics, AND
+- The data doesn't survive across invocations.
+
+**Queryable observer accumulator** is the right answer when:
+
+- The data is a derived summary (counts, sums, ratios) over event emissions, not raw input, AND
+- Adding the summary as a State field would force schema pollution (incompatible reducer
+  shapes, fan-out vs non-fan-out asymmetry, etc.), AND
+- The consuming node is downstream of the event emissions it needs to read.
+
+The three channels are independent — a real pipeline may use all three. A "persist" node at the
+end of an invocation might read its canonical computation results from State, its user
+attribution from invocation metadata, and its per-LLM-call token rollup from a queryable
+accumulator. The shapes are different; the data lifetimes are different; the spec carves out
+each lane explicitly to keep them from blurring.
+
+### 9.4 Lifecycle
+
+This subsection's rules apply only to queryable observers that accumulate per-invocation state
+(e.g., per-node-summary accumulators). Observers that expose query methods over non-accumulated
+data (e.g., a pass-through inspector that returns the latest event seen) are not subject to the
+lifecycle rules below.
+
+Accumulating queryable observers MUST NOT auto-drop accumulated state on the invocation's
+completion signal — an end-of-invocation reader (typically a "persist" or "summary" node running
+as the final invocation step) legitimately needs to read the bucket BEFORE the invocation
+completes; auto-drop on the completion signal would race against the read.
+
+Concrete accumulating observers MUST provide an **explicit drop / cleanup mechanism** — a method
+that releases the accumulated state for a given invocation (e.g., `drop(invocation_id)` in
+Python; per-language idiomatic equivalents). The consuming node calls drop after reading.
+Implementations SHOULD document the cleanup discipline in the observer's API documentation.
+
+Long-lived accumulators (an observer that survives across many invocations) accumulate buckets
+per `invocation_id` until explicitly dropped — this is a feature (session-scoped accumulators
+surviving across resumes) and a cost (memory pressure if drops are missed). The spec does NOT
+mandate a maximum retention policy; concrete accumulating observers MAY offer ergonomic safety
+features (e.g., LRU eviction, TTL-based cleanup) on top of the spec contract.
+
+## 10. Determinism
 
 OTel span content is a function of (a) the §6 observer event stream and (b) implementation-specific
 data (timestamps, span IDs, trace IDs). The graph-engine §5 determinism guarantee covers the §6
@@ -1692,7 +1844,7 @@ The conformance suite asserts determinism over the *deterministic* portion of sp
 content: hierarchy, names, attributes / metadata (excluding timing-derived ones), and status. It
 does NOT assert exact timestamps or IDs.
 
-## 10. Out of scope
+## 11. Out of scope
 
 Not covered by this specification; deferred to follow-on proposals or sibling sections of this
 spec:

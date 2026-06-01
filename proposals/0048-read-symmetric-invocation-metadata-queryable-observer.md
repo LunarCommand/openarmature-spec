@@ -1,9 +1,9 @@
 # 0048: Read-Symmetric Invocation Metadata + Queryable Observer Pattern
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-01
-- **Accepted:**
+- **Accepted:** 2026-06-01
 - **Targets:** spec/observability/spec.md (§3.4 — extends *Caller-supplied invocation metadata* with a `get_invocation_metadata()` read API symmetric to the existing `set_invocation_metadata()` write API, scoped per-async-context per §3.4's copy-on-write semantics; new §9 *Queryable observer pattern* blessing the convention of observers exposing read methods on the concrete type with explicit lifecycle / async-safety contracts; *Three-channel data-access guidance* sub-section in §9 distinguishing State / invocation-metadata / queryable observer as three distinct read surfaces with different use cases); plus new conformance fixtures covering the read API + per-async-context scoping + queryable observer pattern.
 - **Related:** 0034 (caller-supplied invocation metadata — established `set_invocation_metadata()` write API this proposal makes read-symmetric), 0040 (mid-invocation augmentation open-span update — established the §3.4 augmentation mechanism this proposal's reads access), 0045 (nested-lineage augmentation — established the per-depth lineage scoping the read API inherits)
 - **Supersedes:**
@@ -166,9 +166,9 @@ augmentation* section:
 > mirroring `set_invocation_metadata()`'s silent-no-op-outside-scope
 > behavior). Implementations MUST NOT raise.
 >
-> **No observer emission.** Reads do NOT emit a
-> `MetadataAugmentationEvent` or any other observer notification — that
-> event variant signals mutations to backends, not consumer reads.
+> **No observer emission.** Reads do NOT emit a metadata-augmentation
+> event (per §6) or any other observer notification — the augmentation
+> event signals mutations to backends, not consumer reads.
 >
 > **Return type.** The read returns an immutable mapping shape (Python
 > `MappingProxyType` or equivalent; TypeScript `Readonly<Record<...>>`
@@ -241,10 +241,12 @@ time.
 A consumer that needs **post-completion stability** (e.g., a
 final-summary node that wants to read after every event for the
 invocation has been delivered) MUST gate the read on observing the
-invocation's `InvocationCompletedEvent` (per the graph-engine event
-contract). Implementations MAY offer stricter guarantees as
-concrete-observer features (e.g., a `get_stable_total()` accessor
-that blocks until completion); the spec defines the floor.
+invocation's completion signal (the strictly-serial observer delivery
+queue per graph-engine §6 guarantees prior events are delivered before
+the invocation's terminal event reaches the observer). Implementations
+MAY offer stricter guarantees as concrete-observer features (e.g., a
+`get_stable_total()` accessor that blocks until completion); the spec
+defines the floor.
 
 ### 9.3 Three-channel data-access guidance
 
@@ -295,11 +297,11 @@ Observers that expose query methods over non-accumulated data
 are not subject to the lifecycle rules below.
 
 Accumulating queryable observers MUST NOT auto-drop accumulated state
-on `InvocationCompletedEvent` — an end-of-invocation reader (typically
-a "persist" or "summary" node running as the final invocation step)
-legitimately needs to read the bucket BEFORE the invocation completes,
-and `InvocationCompletedEvent` fires at invocation exit. Auto-drop
-would race against the read.
+on the invocation's completion signal — an end-of-invocation reader
+(typically a "persist" or "summary" node running as the final
+invocation step) legitimately needs to read the bucket BEFORE the
+invocation completes; auto-drop on the completion signal would race
+against the read.
 
 Concrete accumulating observers MUST provide an **explicit drop /
 cleanup mechanism** — a method that releases the accumulated state
@@ -329,7 +331,7 @@ pattern; impls ship the primitives.
 
 ### New fixtures
 
-Five new fixtures under `observability/conformance/` (numbers assigned
+Seven new fixtures under `observability/conformance/` (numbers assigned
 at acceptance):
 
 1. **`get_invocation_metadata()` reads writes from the same context.**
@@ -365,19 +367,34 @@ at acceptance):
 
 5. **Queryable observer pattern.** A custom observer subclass with
    a `get_count()` read method maintains a counter incremented on
-   every `NodeEvent` it receives. A downstream node calls
-   `get_count()` mid-invocation and reads the value; asserts the
-   count matches the expected number of events emitted by that point.
-   Verifies the queryable-observer pattern is exercised end-to-end
-   (attach → emit → consume) under the §9 contract.
+   every node event it receives. A downstream node calls
+   `get_count()` mid-invocation and reads the value. Per §9.2 (and
+   graph-engine §6's concurrent-delivery rule), the count is bounded
+   above by the events emitted before the read fires but is NOT
+   strictly equal to that bound — implementations MAY have delivered
+   any subset to the observer at the moment of read. The fixture
+   asserts the count is a non-negative integer within `[0, N]` where
+   `N` is the count of events emitted up to the read. Verifies the
+   attach → emit → consume cycle under the §9 contract.
 
-A sixth informative fixture exercises the §9.2 async-safety contract
-by triggering a concurrent read + write (a node reads while a
-parallel-branch sibling is emitting events to the same observer);
-asserts the read returns a consistent (non-torn) view without
-guaranteeing event-count completeness. This is an
-implementation-defined boundary; the fixture documents the contract
-behavior rather than enforcing a strict ordering.
+6. **(informative) Async-safety race.** The §9.2 contract is
+   exercised by triggering a concurrent read + write (a node reads
+   while a parallel-branch sibling is emitting events to the same
+   observer); asserts the read returns an internally-consistent
+   (non-torn) snapshot without guaranteeing event-count completeness.
+   Marked informative because the read outcome is implementation-
+   defined; the fixture documents the contract behavior rather than
+   enforcing a strict ordering.
+
+7. **Lifecycle (explicit drop).** A long-lived accumulating observer
+   is attached to two sequential invocations sharing the same
+   instance. Each invocation's final node reads its per-
+   `invocation_id` bucket (asserting non-empty), then explicitly
+   calls `drop(invocation_id)`. Asserts: invocation 1's bucket
+   SURVIVES the invocation's completion signal up to the explicit
+   drop (verifying §9.4's no-auto-drop rule); invocation 2's bucket
+   is independent of invocation 1's (per-`invocation_id` isolation);
+   the accumulator exposes the `drop` method (MUST per §9.4).
 
 ### Unaffected fixtures
 
@@ -401,7 +418,7 @@ increments:
 - New three-channel data-access guidance (§9.3) — informative;
   documents the State / invocation-metadata / queryable observer
   carve-outs.
-- New conformance fixtures (five required, one informative). Existing
+- New conformance fixtures (six required, one informative). Existing
   fixtures unchanged.
 
 The change is backwards-compatible. Existing applications see no
@@ -433,9 +450,9 @@ and the queryable observer pattern with documented constraints.
    offer typed conveniences on top (e.g., a `pydantic`-based
    accessor in Python) without binding the spec.
 
-3. **Auto-drop on `InvocationCompletedEvent` for queryable observers.**
-   Have the framework automatically clear an accumulator's bucket
-   when the invocation completes. Rejected: the race against
+3. **Auto-drop on the invocation completion signal for queryable
+   observers.** Have the framework automatically clear an accumulator's
+   bucket when the invocation completes. Rejected: the race against
    end-of-invocation reads is real — a "persist" node running as the
    last invocation step would lose access to the bucket when the
    invocation completes. Explicit `drop()` puts cleanup responsibility
