@@ -141,10 +141,10 @@ and `openarmature.graph.spec_version`) with two new attributes:
 > - `openarmature.implementation.version` — string. The OA
 >   implementation's release identifier, sourced from the
 >   implementation library's package metadata in the
->   language-idiomatic way (Python: `openarmature.__version__`
->   or `importlib.metadata.version("openarmature")`; TypeScript:
->   `package.json` `version` field; per-language idiomatic
->   equivalents otherwise). Implementation-emitted; never
+>   language-idiomatic way (Python: `openarmature.__version__`;
+>   TypeScript: `package.json` `version` field; per-language
+>   idiomatic equivalents otherwise). Implementation-emitted;
+>   never
 >   caller-supplied (reserved per §3.4). Never null. Pre-release
 >   tags (e.g., `"0.12.0-rc.1"`) MAY appear; the spec does NOT
 >   mandate semver vs CalVer vs any specific versioning
@@ -194,9 +194,9 @@ existing `openarmature.graph.spec_version` attribute description:
 The `openarmature.implementation.name` values follow the
 package-registry naming for each language:
 
-| Implementation | `implementation_name` value | `implementation_version` source |
+| Implementation | `openarmature.implementation.name` value | `openarmature.implementation.version` source |
 |---|---|---|
-| openarmature-python | `"openarmature-python"` | `openarmature.__version__` or `importlib.metadata.version("openarmature")` |
+| openarmature-python | `"openarmature-python"` | `openarmature.__version__` |
 | openarmature-typescript | `"openarmature-typescript"` | `package.json` `version` field |
 | Future language ports | `"openarmature-<language>"` (matches PyPI / npm / cargo / etc. naming for that ecosystem) | language-idiomatic package-metadata source |
 
@@ -221,8 +221,9 @@ assigned at acceptance):
    test exporter. Asserts the invocation span carries
    `openarmature.implementation.name` and
    `openarmature.implementation.version` as non-empty string
-   attributes, and `implementation.name` matches the implementation
-   under test (`"openarmature-python"` for python conformance runs).
+   attributes, and `openarmature.implementation.name` matches the
+   implementation under test (`"openarmature-python"` for python
+   conformance runs).
    The attributes appear once per invocation (on the invocation
    span only — they are NOT cross-cutting attributes per §5.6;
    they live in §5.1 alongside other invocation-level constants).
