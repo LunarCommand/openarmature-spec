@@ -8,6 +8,7 @@ Canonical behavioral specification for the OpenArmature prompt-management capabi
   - created by [proposal 0017](../../proposals/0017-prompt-management-core.md)
   - §3 *Prompt shape* extended with two new optional typed fields (`sampling` — sub-record mirroring llm-provider §6 `RuntimeConfig`'s declared-fields-plus-extras shape for per-prompt sampling configuration; `observability_entities` — backend-keyed mapping for first-class entity references, with spec-normative key `langfuse_prompt` for the Langfuse Prompt entity). §4 *PromptResult shape* propagates both new fields. §5 *PromptBackend protocol* gains an informative filesystem sidecar convention (per-prompt `<root>/<name>.config.json` and unified `<root>/prompt_configs.json` shapes) for sourcing `sampling`. §6 *PromptManager interface* gains optional `LabelResolver` integration on `fetch()`; the default label parameter shifts from `"production"` to `None`/sentinel with a fallback chain (explicit > resolver > spec-fallback `"production"`). New §7 *LabelResolver* primitive added (renumbers existing §7-§13 → §8-§14). §12 (was §11) *Cross-spec touchpoints* gains two new touchpoints: `Prompt.sampling` → llm-provider §6 `RuntimeConfig` wiring at the LLM call site, and `Prompt.observability_entities['langfuse_prompt']` → observability §8.4.4 Langfuse Generation linkage lookup by [proposal 0033](../../proposals/0033-prompt-management-surface-refinements.md)
   - §3 *Prompt shape* gains a new §3.1 *Chat-prompt variant* subsection introducing a Chat-prompt variant alongside the existing Text-prompt variant (Chat-prompt carries `chat_template: list[ChatSegment]` in place of `template`; ChatSegments are either content segments — text-template or content-blocks-template `content`, with content-blocks mirroring llm-provider §3.1 text + image-URL + image-inline block shapes for multimodal user-message authoring, image blocks user-only per §3.1.2 — or placeholder segments naming a slot filled at render time with a `list[Message]`; Chat-prompt `template_hash` covers the canonical chat_template serialization). §6.render gains a `placeholders` parameter, a per-segment / per-block render rule for Chat prompts (text-template segments render to a text Message; content-blocks segments render to a Message with a rendered block sequence; placeholder segments inject the caller-supplied message list, empty injected lists valid), and a narrowing of the Text-prompt render clause to "exactly one Message with text content; multi-message and multimodal MUST use chat_template" (replaces the prior vague "MAY produce multiple messages" line). §8 *Variable injection* gains a per-segment / per-block strict-undefined paragraph. §11 *Errors* extends `prompt_render_error` with five new Chat-prompt triggers (empty content segment, empty content-blocks list, unfilled placeholder, duplicate placeholder name, role-block compatibility violation). §5 *PromptBackend protocol* gains a paragraph noting returned Prompts MAY be either variant. §12 cross-spec touchpoints confirms the §8.4.4 Langfuse Prompt-entity linkage is unaffected by Prompt variant or message count by [proposal 0046](../../proposals/0046-prompt-management-multi-message-rendering.md)
+  - §13 *Determinism* tightened with a *Cross-variable substring stability* paragraph (variable substitution MUST be in-place and MUST NOT introduce position-dependent transformations — variable-index numbering, per-variable salts, whole-template-state-dependent normalization — that would shift bytes earlier in the rendered output based on later content; substring-replacing-substring semantics MUST NOT be defeated by template-engine post-processing that reflows the text). New §14 *APC-friendly authoring guidance* added (non-normative): pin high-cardinality stable region at the prompt start; avoid front-loading per-call variables in shared regions; keep substitution in-place (mirroring §13); stabilize multi-value formatting (sorted-key JSON, source-order iteration); prefer the `messages` shape's natural turn boundaries. Existing §14 *Out of scope* renumbered to §15 by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -686,6 +687,19 @@ across calls. Implementations MUST NOT introduce wall-clock-derived, random, or
 process-state-derived content into render output (e.g., no implicit timestamps, no
 process IDs, no random nonces).
 
+**Cross-variable substring stability.** The byte-equality contract above implies that
+two renders sharing a common prefix of variable values MUST produce rendered output
+whose corresponding region is byte-identical, even when later variables differ.
+Concretely: variable substitution MUST be in-place and MUST NOT introduce position-
+dependent transformations (variable-index numbering, per-variable salts, normalization
+that depends on whole-template state) that would shift bytes earlier in the rendered
+output based on later content. Variable substitution semantics — substrings replacing
+substrings — are what enables this; implementations MUST NOT defeat it via template-
+engine post-processing that reflows the rendered text. This rule supports downstream
+prefix-cache strategies (per llm-provider §6 / §8 *Wire-byte stability*) where two
+otherwise-identical renders with one differing tail variable should hit the cache on
+the shared prefix.
+
 User templates MAY include variables that capture nondeterministic values (e.g., the
 caller passes `now=datetime.utcnow()` as a variable); the determinism contract applies
 to the rendering operation given fixed inputs, not to user-supplied variable values.
@@ -695,7 +709,50 @@ Fetch is NOT required to be deterministic across time — a backend MAY return d
 operator updates the prompt in the source backend). The `version` and `template_hash`
 fields on `Prompt` exist precisely to make this observable.
 
-## 14. Out of scope
+## 14. APC-friendly authoring guidance
+
+The render contract (§13) guarantees byte-stability of rendered output given fixed
+inputs, which is the substrate downstream **automatic prefix caching** (APC) relies on
+to recognize cache-eligible prefixes across requests. The spec MUST NOT prescribe a
+specific prefix-cache shape — provider-side APC behavior varies (vLLM blockwise hash
+matching, OpenAI exact-prefix matching, Gemini token-prefix matching) — but prompt
+authors can structure templates to maximize hit rates. The following non-normative
+guidance distills the authoring patterns:
+
+- **Pin the high-cardinality stable region at the start.** System messages, immutable
+  policy text, and other content shared across many calls SHOULD appear at the start of
+  the prompt (or the start of the message sequence, per §3's multi-message layout); the
+  per-call-varying user input SHOULD appear at the end. This maximizes the length of
+  the shared prefix across calls.
+
+- **Avoid front-loading per-call variables in shared regions.** Inserting a per-call
+  variable (request ID, user ID, timestamp) into the system message or other
+  intended-to-be-shared text breaks the prefix for all subsequent variables. Push such
+  variables into the user-message turn at the end where they affect only the last
+  block.
+
+- **Keep variable substitution in-place and substring-only.** Per §13's cross-variable
+  substring stability rule, implementations MUST already keep substitution in-place;
+  authors mirror that discipline by avoiding template constructs that conditionally
+  reflow upstream regions based on downstream variable values.
+
+- **Stabilize multi-value formatting.** When a variable contains a structured value
+  (a list, a dict, a JSON document), the formatting strategy SHOULD be byte-stable
+  given the same value — typically sorted-key JSON serialization for dicts, source-
+  order iteration for lists. Per-render permutation of these structures (random
+  shuffling, hash-set iteration) defeats prefix caching even when the value is
+  semantically identical across calls.
+
+- **Prefer the `messages` shape's natural boundaries.** Per §3, prompts MAY be rendered
+  as multi-message sequences; placing the per-call variable in its own user-message
+  turn (rather than splicing it into a single concatenated text block) gives wire-
+  format mappings clean turn boundaries that align well with the way providers chunk
+  their cache lookups.
+
+The guidance is non-normative — implementations MUST follow §13 regardless, and APC
+benefits flow naturally from author discipline rather than spec enforcement.
+
+## 15. Out of scope
 
 - **Templating language** — Jinja2, handlebars, simple format strings, etc. Per
   implementation. The spec mandates the render contract (strict undefined, deterministic

@@ -1,0 +1,89 @@
+# §13 Cross-variable substring stability. Two renders of the same Prompt
+# differing only in unrelated variable bindings MUST produce non-variable
+# substrings that are byte-identical. The shared-prefix portion of the
+# rendered output is the basis for downstream automatic prefix caching.
+
+backends:
+  - name: local
+    prompts:
+      - name: persona_qa
+        label: production
+        version: v1
+        template: "You are {{ persona }}.\n\nAnswer: {{ user_question }}"
+        template_hash: "sha256:persona-qa-v1"
+      - name: chat_qa
+        label: production
+        version: v1
+        chat_template:
+          - {role: system, content: "You are a helpful assistant. Follow the rules strictly."}
+          - {role: user, content: "Question: {{ query }}"}
+        template_hash: "sha256:chat-qa-v1"
+
+cases:
+  - name: text_prompt_substring_stability
+    description: |
+      Render the persona_qa Text-prompt twice with the same persona but
+      different user_question values. The leading portion of the
+      rendered text (through the persona substitution and the
+      "\n\nAnswer: " separator) MUST be byte-identical across both
+      renders.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: persona_qa, label: production}
+        variables: {persona: "a precise technical writer", user_question: "What is JSON?"}
+        capture_as: render_a
+      - target: manager
+        operation: render
+        fetched_prompt: {name: persona_qa, label: production}
+        variables: {persona: "a precise technical writer", user_question: "What is YAML?"}
+        capture_as: render_b
+    expected:
+      render_a:
+        messages:
+          - {role: user, content: "You are a precise technical writer.\n\nAnswer: What is JSON?"}
+      render_b:
+        messages:
+          - {role: user, content: "You are a precise technical writer.\n\nAnswer: What is YAML?"}
+    # Assertion: render_a.messages[0].content and render_b.messages[0].content
+    # share the byte-identical prefix
+    # "You are a precise technical writer.\n\nAnswer: ".
+    expected_shared_prefix:
+      between: [render_a, render_b]
+      message_index: 0
+      prefix: "You are a precise technical writer.\n\nAnswer: "
+
+  - name: chat_prompt_substring_stability
+    description: |
+      Render the chat_qa Chat-prompt twice with different query values.
+      The system Message's rendered content MUST be byte-identical
+      across both renders.
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: render
+        fetched_prompt: {name: chat_qa, label: production}
+        variables: {query: "What is JSON?"}
+        capture_as: chat_a
+      - target: manager
+        operation: render
+        fetched_prompt: {name: chat_qa, label: production}
+        variables: {query: "What is YAML?"}
+        capture_as: chat_b
+    expected:
+      chat_a:
+        messages:
+          - {role: system, content: "You are a helpful assistant. Follow the rules strictly."}
+          - {role: user, content: "Question: What is JSON?"}
+      chat_b:
+        messages:
+          - {role: system, content: "You are a helpful assistant. Follow the rules strictly."}
+          - {role: user, content: "Question: What is YAML?"}
+    # Assertion: chat_a.messages[0] and chat_b.messages[0] are byte-identical
+    # (the system Message is unaffected by the user-segment variable change).
+    expected_message_equal:
+      between: [chat_a, chat_b]
+      message_indices: [0]

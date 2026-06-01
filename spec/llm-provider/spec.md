@@ -12,6 +12,9 @@ Canonical behavioral specification for the OpenArmature LLM provider abstraction
   - §5 `complete()` extended with optional `tool_choice` parameter (four modes: `"auto"` / `"required"` / `"none"` / `{type: "tool", name: X}`) with pre-send validation routing through `provider_invalid_request`; §7 clarified to enumerate the three new validation failure modes; §8.1.1 gained a `tool_choice` mapping row by [proposal 0025](../../proposals/0025-llm-provider-tool-choice.md)
   - §8 framing gained a *Per-mapping subsection structure* paragraph recommending the canonical §8.X template (Request mapping / Response mapping / Error mapping / Concurrency / Structured output) with allowance for sub-subsections, provider-specific top-level additions, and SHOULD-level divergence-explanation requirement; resolves 0019's open-question #2 by [proposal 0026](../../proposals/0026-llm-provider-wire-format-mapping-template.md)
   - §6 `RuntimeConfig` extended with three new declared fields (`frequency_penalty`, `presence_penalty`, `stop_sequences`) matching the cross-vendor OpenTelemetry GenAI semconv naming; existing "MAY accept additional provider-specific fields" line replaced with an explicit extras-pass-through contract (undeclared fields MUST reach the wire untouched) and a null-skip contract (declared fields with `None` MUST be omitted from the wire body); §8.1 OpenAI-compatible mapping extended to cover the three new declared-field mappings (with `stop_sequences` → OpenAI body `stop` rename) and formally specify undeclared-field placement at the OpenAI request-body root by [proposal 0032](../../proposals/0032-llm-provider-runtime-config-refinements.md)
+  - §8.2 Anthropic Messages wire-format mapping added (sibling to §8.1) with §8.2.1 request mapping / §8.2.1.1 content-block mapping (including spec `ThinkingBlock` round-trip and §3 opaque `signature` field) / §8.2.1.2 tool-result content blocks / §8.2.2 response mapping / §8.2.3 error mapping; §3 Message gained opaque `signature` fields on `TextBlock` / `ThinkingBlock` / `ToolCall` for round-trip preservation of provider-side reasoning signatures by [proposal 0037](../../proposals/0037-llm-provider-anthropic-messages-mapping.md)
+  - §8.3 Google Gemini wire-format mapping added (sibling to §8.1 / §8.2) with §8.3.1 request mapping / §8.3.1.1 parts wire mapping (including thought-summary capture into `ThinkingBlock.text` and `thoughtSignature` round-trip into the §3 opaque `signature` field) / §8.3.1.2 `tool` role bidirectional translation / §8.3.2 response mapping / §8.3.3 error mapping; undeclared `RuntimeConfig` fields nest under Gemini's `generationConfig` (not the request root) to match Gemini's parameter location by [proposal 0038](../../proposals/0038-llm-provider-google-gemini-mapping.md)
+  - §6 `Response.usage` extended with two optional fields (`cached_tokens?` for prefix-cache hit input tokens, `cache_creation_tokens?` for input tokens written to the cache during the call); §8 framing gained an *Intra-impl wire-byte stability* paragraph (canonical sorted-key serialization of JSON-schema, content-block, and RuntimeConfig-extras payloads — within a single implementation; cross-impl byte equality is non-normative); per-mapping *Wire-byte stability* sub-paragraphs added to §8.1.1 / §8.2.1 / §8.3.1 anchoring the rule to that mapping's payloads; §8.1.2 gained cache-stat source rows (`usage.cached_tokens` ← `usage.prompt_tokens_details.cached_tokens` with the OpenAI Responses API alternate path and a vLLM dual-flag caveat; `cache_creation_tokens` left absent for OpenAI); §8.2.2 gained the Anthropic-implicit-not-supported caveat (Anthropic implicit-cache fields left absent because Anthropic only supports explicit `cache_control`-driven caching, out of scope for §6's implicit-cache surface); §8.3.2 maps `usage.cached_tokens` ← Gemini's `usageMetadata.cachedContentTokenCount` (Gemini 2.5+ implicit caching) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -418,7 +421,7 @@ A `Response` record:
 |---|---|
 | `message` | The assistant message returned by the model. Always `role: "assistant"`. May carry `tool_calls`. When the bound provider's §8.X mapping surfaces provider-emitted reasoning content, `message.content` is a content-block sequence that MAY include `ThinkingBlock` / `RedactedThinkingBlock` entries (per §3.1.4 / §3.1.5); mappings that do not surface reasoning content return text-only content. |
 | `finish_reason` | One of `"stop"`, `"length"`, `"tool_calls"`, `"content_filter"`, `"error"`. See below. |
-| `usage` | A record `{prompt_tokens, completion_tokens, total_tokens}`. Each field is a non-negative integer or `null`. If the provider does not report usage, all three MUST be `null`. |
+| `usage` | A record `{prompt_tokens, completion_tokens, total_tokens, cached_tokens?, cache_creation_tokens?}`. Each declared field is a non-negative integer or `null`. The first three (`prompt_tokens`, `completion_tokens`, `total_tokens`) MUST be `null` together when the provider does not report usage. The two optional fields surface prefix-cache statistics when the provider returns them: `cached_tokens` is the count of input tokens that hit a prefix cache ("reported miss" is `0`, distinct from absent — see below); `cache_creation_tokens` is the count of input tokens written to the cache during the call (typically populated by providers with explicit cache-control surfaces; absent or `0` otherwise). Each §8.X wire-format mapping documents the provider response field these values are sourced from. Absent (`null` / `None` / `undefined`, per the language's idiom) when the provider does not report the corresponding cache statistic. |
 | `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Carries everything the provider returned — including fields the spec does not normalize (logprobs, content-filter details, provider-specific extensions). The normalized fields above are derived from `raw`; the two views MUST be consistent (modifying one does not affect the other, since both are immutable from the caller's perspective). |
 | `parsed` | The parsed and validated structured value when the call supplied a `response_schema` and the model returned structured content. The value conforms to the supplied `response_schema`. Absent (`null` / `None` / `undefined`, per the language's idiom) on calls that did not supply a `response_schema`, and on responses whose `finish_reason` is `"tool_calls"` (regardless of whether `message.content` is also populated, per the §3 assistant-message contract). |
 
@@ -605,6 +608,46 @@ alone. When a §8.X proposal diverges from this template, the proposal text SHOU
 divergence in its *Detailed design* section so reviewers can confirm the divergence is
 structural rather than ergonomic.
 
+**Intra-impl wire-byte stability.** Any §8.X mapping implementation MUST produce byte-identical
+wire output for OA-input pairs that are structurally equivalent. Two `complete()` calls passing
+the same `messages` sequence, the same `tools` list, the same `config`, the same `tool_choice`,
+and (when present) the same `response_schema` MUST emit identical wire-format request bytes from
+the same implementation. Sources of nondeterminism implementations MUST control for:
+
+- **JSON object key ordering** within wire-format objects implementations construct (tool
+  definitions, message records, content blocks, request-body roots) MUST be sorted
+  lexicographically OR follow a stable implementation-defined key order. Construction-time
+  dict-insertion order that varies across calls (e.g., a tool schema built from a mapping whose
+  key order reflects build-time iteration) MUST be canonicalized before serialization.
+- **Array ordering** for spec-canonical lists (the messages list, the tools list, the
+  content-block sequence, the `stop_sequences` list) MUST preserve caller-supplied order. This
+  is already implicit in the §3 / §4 shapes; the stability rule makes it explicit at the wire
+  boundary.
+- **JSON Schema in `Tool.parameters`** is user-supplied content with no spec-imposed key
+  ordering. The wire-format mapping MUST canonicalize the schema's key order (sorted
+  recursively) before emission — without this step, two semantically-equivalent schemas built
+  differently produce different wire bytes. The same rule applies to JSON Schema in
+  `response_schema` (§5).
+- **`RuntimeConfig` extras** (the pass-through fields permitted by §6's extras-pass-through
+  contract) MUST be emitted at their wire placement per the mapping's existing rule (§8.1 places
+  them at the request-body root) with sorted key order, regardless of insertion order in the
+  construction-time mapping.
+- **Content-block source dicts** (an image block's `source: {type: "url", url: ...}` or
+  `source: {type: "inline", base64_data: ...}`) are spec-structured records; key ordering within
+  them follows the sorted-keys rule above.
+
+The rule applies **intra-implementation only** — the existing observability §5.5.1 caveat
+("cross-implementation bytewise stability NOT required — JSON encoding rules vary across
+language standard libraries") applies identically here. Cross-language byte equality (Python and
+TypeScript producing identical wire bytes for the same OA input) is NOT required and is out of
+scope; Automatic Prefix Caching's hit rate is computed on a per-deployment basis (one language
+port at a time), so intra-impl stability is sufficient for the use case.
+
+Implementations SHOULD document the canonicalization mechanism (e.g., "object keys serialized
+via `json.dumps(..., sort_keys=True)`") so users can reason about which inputs collide on the
+cache. The §8.X.4 *Concurrency* subsection MAY note any concurrency interaction (none expected
+— the rule is pure transformation, not state).
+
 ### 8.1 OpenAI-compatible mapping
 
 The OpenAI Chat Completions API (`POST /v1/chat/completions`) is the de facto standard for local
@@ -700,6 +743,14 @@ inbound responses (OpenAI does not produce them). This strip-on-send rule genera
 provider mapping that does not surface reasoning content; reasoning-block signatures are
 provider-bound (per §3.1.4) and are never forwarded to a provider that did not issue them.
 
+**Wire-byte stability** (per §8 framing). The §8.1 mapping implementation applies the intra-impl
+wire-byte stability rule to its outputs. Specifically: tool definitions, `tool_choice` records,
+the messages list, and the `response_format.json_schema.schema` (per §8.1.5) all canonicalize
+with sorted JSON object keys; the undeclared-field pass-through at the request-body root (per
+§6's extras-pass-through contract) emits with sorted keys; inline-image data URIs (§8.1.1.1)
+produce byte-stable encodings — the `data:<media_type>;base64,<base64_data>` format has only one
+canonical form given the source block's fields.
+
 ##### 8.1.1.1 Content-block wire mapping
 
 Each spec content block maps to one OpenAI content-array entry:
@@ -728,8 +779,21 @@ A successful OpenAI response maps onto a §6 `Response` as follows:
 - `finish_reason` — `choices[0].finish_reason`. OpenAI's values are `stop`, `length`, `tool_calls`,
   `content_filter`, and `function_call` (legacy). Map `function_call` to `tool_calls`. Map any
   unknown `finish_reason` to `error`.
-- `usage` — built from the response's `usage` field. If `usage` is absent, all three usage subfields
-  MUST be `null`.
+- `usage` — built from the response's `usage` field. If `usage` is absent, the three baseline
+  subfields (`prompt_tokens`, `completion_tokens`, `total_tokens`) MUST be `null`.
+- `usage.cached_tokens` — sourced from the response's `usage.prompt_tokens_details.cached_tokens`
+  field when present (the OpenAI Chat Completions wire shape; vLLM and other OpenAI-compatible
+  servers that surface prompt-cache stats follow the same nesting). Set to `0` when the provider
+  reports zero cache-hit tokens; absent when the provider does not report cache statistics. The
+  newer OpenAI Responses API surfaces the same value at `usage.input_tokens_details.cached_tokens`;
+  implementations targeting that endpoint source from the `input_tokens_details` path with the
+  same semantics. **vLLM caveat**: vLLM servers require both `--enable-prefix-caching` (enables
+  the cache) and `--enable-prompt-tokens-details` (surfaces the stats in the response) for this
+  value to populate; servers configured without one or both report the cache field as absent or
+  unpopulated.
+- `usage.cache_creation_tokens` — OpenAI's prompt-cache surface does not report a discrete
+  cache-creation count under the OpenAI-compatible wire shape; the field is left absent. (Mappings
+  that target providers exposing a cache-creation metric set the field per their §8.X mapping.)
 - `raw` — the parsed JSON body of the OpenAI response, verbatim. Implementations MUST NOT redact,
   rewrite, or omit fields. Provider-specific extensions surface here unchanged (e.g.,
   `choices[0].logprobs`, vLLM's `prompt_logprobs`, LM Studio's runtime stats).
@@ -880,6 +944,13 @@ The bound model identifier becomes Anthropic's `model` field. Undeclared `Runtim
 appear at the request-body root per §6's extras-pass-through contract; the mapping does NOT
 validate, rename, or transform them.
 
+**Wire-byte stability** (per §8 framing). The §8.2 mapping implementation applies the intra-impl
+wire-byte stability rule to its outputs. Specifically: `system` extraction concatenates with a
+stable separator (`\n\n` per §8.2.1) and preserves source order, so the result is byte-stable;
+`tools[].input_schema` canonicalizes with sorted JSON object keys; `tool_use` and `tool_result`
+content blocks (per §8.2.1.1 / §8.2.1.2) serialize with sorted keys; the `tool_use.input` field
+(deserialized mapping per the §8.2.1.1 row) canonicalizes recursively.
+
 ##### 8.2.1.1 Content-block wire mapping
 
 This sub-subsection covers two wire-encoding paths. Spec content blocks (per §3.1) in message
@@ -957,11 +1028,17 @@ A successful Anthropic response maps onto a §6 `Response`:
 
 - `usage` — `usage.prompt_tokens` ← `input_tokens`, `usage.completion_tokens` ← `output_tokens`,
   `usage.total_tokens` ← the sum of those two (or `null` per §6's rules). **Cache-token note:**
-  Anthropic's `input_tokens` counts only non-cached input; `cache_creation_input_tokens` and
-  `cache_read_input_tokens` report cached input separately, and Anthropic's own total-input
-  accounting is `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`. The spec
-  `usage.prompt_tokens` maps from `input_tokens` alone; the cache subfields surface in
-  `Response.raw.usage` and are NOT promoted to the spec `usage` record.
+  Anthropic does NOT support implicit prefix caching — `cache_creation_input_tokens` and
+  `cache_read_input_tokens` only fire when the caller explicitly annotates content with
+  Anthropic `cache_control` blocks, which is an explicit-cache surface out of scope for the §6
+  `usage.cached_tokens` / `usage.cache_creation_tokens` implicit-cache fields. The §8.2 mapping
+  leaves both implicit-cache fields absent. (The Anthropic explicit-cache reporting surface
+  remains visible to callers via `Response.raw.usage.cache_creation_input_tokens` /
+  `cache_read_input_tokens`; a future proposal that adds spec-level explicit-cache primitives
+  would map those values onto a dedicated explicit-cache surface, not onto the §6
+  implicit-cache fields.) Anthropic's own total-input accounting is
+  `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`; the spec
+  `usage.prompt_tokens` maps from `input_tokens` alone, matching the implicit-only semantics.
 - `raw` — the parsed JSON response body, verbatim. Anthropic-specific fields (response `id`,
   the `model` used, cache token counts, `stop_details`) surface here unchanged.
 
@@ -1157,6 +1234,14 @@ undeclared keys under `generationConfig` (not the request root),
 matching where Gemini expects generation parameters. The mapping
 does NOT validate, rename, or transform undeclared keys.
 
+**Wire-byte stability** (per §8 framing). The §8.3 mapping implementation applies the intra-impl
+wire-byte stability rule to its outputs. Specifically: Gemini's `system_instruction.parts` is built
+from the spec system message and preserves source-order parts; `function_declarations[].parameters`
+canonicalizes with sorted JSON object keys; `functionCall.args` (a structured-arguments mapping per
+§8.3.1.2) serializes with sorted keys; `functionResponse.response` and inline data parts (per
+§8.3.1.1) serialize with sorted keys. Undeclared `RuntimeConfig` extras nested under
+`generationConfig` (per the preceding paragraph) emit with sorted keys at every nesting level.
+
 ##### 8.3.1.1 Parts wire mapping
 
 This sub-subsection covers two wire-encoding paths, mirroring
@@ -1265,8 +1350,16 @@ A successful Gemini response maps onto a §6 `Response`:
 - `usage` — built from `usageMetadata`:
   `usage.prompt_tokens` ← `promptTokenCount`,
   `usage.completion_tokens` ← `candidatesTokenCount`,
-  `usage.total_tokens` ← `totalTokenCount`. Gemini-specific
-  subfields (`cachedContentTokenCount`, `toolUsePromptTokenCount`,
+  `usage.total_tokens` ← `totalTokenCount`. The §6 implicit-cache
+  fields map from Gemini's `usageMetadata`:
+  `usage.cached_tokens` ← `cachedContentTokenCount` when present
+  (Gemini 2.5+ surfaces this for implicit cache hits and for
+  explicit-cache reads alike); `usage.cache_creation_tokens` is
+  left absent because Gemini does not report a discrete
+  cache-creation count under its implicit-cache surface (explicit
+  caches are created out-of-band via the `cachedContents` API,
+  out of scope for the §6 implicit-cache fields). Other
+  Gemini-specific subfields (`toolUsePromptTokenCount`,
   `thoughtsTokenCount`, the `*TokensDetails` modality breakdowns)
   surface in `Response.raw.usageMetadata` unchanged and are NOT
   promoted to the spec `usage` record.

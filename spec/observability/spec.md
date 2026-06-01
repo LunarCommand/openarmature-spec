@@ -15,6 +15,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §8.2 Trace entity definition extends with `input` / `output` payload fields (documenting existing Langfuse Trace fields surfaced as headline columns); §8.4.1 gains `trace.input` and `trace.output` mapping rows + a *Trace input/output sourcing* paragraph defining the `disable_state_payload` Langfuse-observer privacy knob (symmetric to §5.5.4's `disable_llm_payload`, default ON), the three-lever source decision tree (caller hook → raw state when knob is off → privacy-safe minimal stub), a closed `{completed, failed}` status enum on the stub's `trace.output`, the caller-hook contract for optional domain-shaped summaries, and resume semantics (fresh Langfuse trace per resumed `invocation_id`, hooks re-fire on the resumed trace) by [proposal 0043](../../proposals/0043-observability-langfuse-trace-input-output.md)
   - §4.3 *Parent-child rules* gained a parallel-branches dispatch span rule (inner-branch spans parent under a synthesized per-branch dispatch span); §6 *Driving span lifecycle* span-stack key widens to include `branch_name` and gains a *Parallel-branches dispatch span synthesis* sub-paragraph (cache + key by the parallel-branches NODE's full event-source identity + lazy per-branch dispatch span creation on first inner event); new §5.7 *Parallel-branches span attributes* added — `openarmature.node.branch_name` (new OTel attribute paralleling `openarmature.node.fan_out_index`), `openarmature.parallel_branches.parent_node_name` on dispatch spans, plus `openarmature.parallel_branches.branch_count` and `openarmature.parallel_branches.error_policy` on the parallel-branches node span by [proposal 0044](../../proposals/0044-parallel-branches-dispatch-span.md)
   - §3.4 *Mid-invocation augmentation* ancestor/sibling boundary rewritten as a lineage-aware three-rule structure — *Augmenter's call-stack ancestor chain (MUST)* (each strict dispatch ancestor on the augmenter's specific call-stack path — outer fan-out instance, outer parallel-branches branch, outer serial-subgraph wrapper — gets the update), *Sibling boundary (MUST NOT)* (siblings at any depth do not), *Shared-parent boundary (MUST NOT)* (the fan-out node, parallel-branches node, invocation span — visible to multiple sibling instances — do not), plus a three-step boundary decision tree; §3.4 *Per-async-context scoping* gained a follow-up *Per-depth lineage tracking* paragraph requiring implementations to preserve the dispatch-context lineage as a list (one entry per dispatch depth) rather than a single scalar identifier, so the observer can locate ancestor open spans at augmentation time by [proposal 0045](../../proposals/0045-observability-nested-lineage-augmentation.md)
+  - §5.5.3 extended with a new §5.5.3.1 sub-subsection *OA-namespaced cache attributes (stable-only mirror)* defining two new attributes on the LLM provider span: `openarmature.llm.cache_read.input_tokens` (sourced from the §6 `Response.usage.cached_tokens` field, emitted when the field is populated) and optional `openarmature.llm.cache_creation.input_tokens` (sourced from `Response.usage.cache_creation_tokens`, populated primarily by providers with explicit cache-control surfaces); OA-namespace placement governed by the *Stable-only upstream adoption* policy because the upstream OTel attribute names `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` are at Development status as of OTel semconv v1.41.1; emission honors the existing `disable_genai_semconv` opt-out (§5.5.4) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -756,6 +757,39 @@ semconv opt-out is enabled (per §5.5.4):
 - `gen_ai.response.id` — string. The response identifier the provider returned (the `id` field
   on the response body), when present. Useful for cross-referencing OA spans with provider-side
   billing or audit logs. Emitted only when the provider returns a non-null id.
+
+##### 5.5.3.1 OA-namespaced cache attributes (stable-only mirror)
+
+When the llm-provider §6 `Response.usage` cache-stat fields are populated, implementations MUST
+emit the following two attributes on the LLM provider span:
+
+- `openarmature.llm.cache_read.input_tokens` — int. Sourced from
+  `Response.usage.cached_tokens`. The count of input tokens that hit a prefix cache for this
+  call. Emitted only when the `Response.usage.cached_tokens` field is populated (the provider
+  reported a cache-read count, including the "reported miss" case of `0`); absent when the §6
+  field is absent (the provider did not report cache statistics, e.g., vLLM without
+  `--enable-prompt-tokens-details`, or any provider with no implicit-cache reporting).
+
+- `openarmature.llm.cache_creation.input_tokens` — int, optional. Sourced from
+  `Response.usage.cache_creation_tokens`. The count of input tokens written to the cache during
+  this call. Emitted only when the §6 field is populated; absent otherwise. Populated primarily
+  by providers with explicit cache-control surfaces that report a discrete cache-creation count
+  alongside the cache-read count; absent for providers that only report implicit cache reads.
+
+Both attributes follow the existing `disable_genai_semconv` opt-out (§5.5.4) — emission is
+suppressed when GenAI semconv attributes are suppressed, because the cache attributes are part
+of the response-attribute set §5.5.3 governs.
+
+**Stable-only namespace rationale.** The upstream OpenTelemetry GenAI semantic-convention
+attributes for these values — `gen_ai.usage.cache_read.input_tokens` and
+`gen_ai.usage.cache_creation.input_tokens` — are at **Development** status as of OTel semconv
+v1.41.1 (verified 2026-06-01); per the *Stable-only upstream adoption* policy in
+`GOVERNANCE.md` (and tracked in `docs/compatibility.md`), OA emits the OA-namespaced parallels
+above until the upstream attributes reach **Stable**, at which point a follow-on proposal MAY
+add the `gen_ai.*` parallels (or migrate to them outright per the policy's cutover guidance).
+Until that happens, OA-aware backends read the `openarmature.llm.cache_*.input_tokens`
+attributes; cross-vendor OTel backends will gain `gen_ai.*` attribute support only once the
+upstream attributes stabilize.
 
 #### 5.5.4 Opt-out flags
 

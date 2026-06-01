@@ -139,8 +139,9 @@ is just "keep it not-too-stale."
   — what's missing is the fixture shape that exercises cross-impl byte
   equality. Defer until a real cross-impl scenario surfaces; today this is
   single-impl territory (only the Python impl ships an §8.X mapping).
-  Note: proposal 0047 (Draft) addresses intra-impl byte stability, which is
-  a distinct concern from this OQ's cross-impl framing.
+  Note: proposal 0047 (Accepted 2026-06-01) landed intra-impl byte
+  stability, which is a distinct concern from this OQ's cross-impl framing
+  — cross-impl byte equality remains deferred per the §5.5.1 caveat.
 
 ### 0024 — LLM span payload + GenAI semconv
 

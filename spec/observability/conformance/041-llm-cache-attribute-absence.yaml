@@ -1,0 +1,56 @@
+# §5.5.3.1 OA-namespaced cache attributes — absence case. The provider
+# response carries no prompt_tokens_details / cache field; the §6
+# Response.usage.cached_tokens MUST remain null and the OTel observer
+# MUST NOT emit openarmature.llm.cache_read.input_tokens (the
+# conditional-emission convention). Absence is the spec signal for
+# "provider did not report"; distinct from value 0 (reported miss).
+
+cases:
+  - name: llm_cache_attribute_absent_when_provider_silent
+    description: |
+      A complete() call whose provider response omits
+      prompt_tokens_details entirely (e.g., vLLM without
+      --enable-prompt-tokens-details, OpenAI under conditions where
+      cache stats are not surfaced, or a provider that does not
+      implement the field). Per §6, Response.usage.cached_tokens
+      stays null; per §5.5.3.1 the conditional-emission convention,
+      the cache attributes are NOT emitted on the LLM provider span.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Summarize."}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-041
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Done."}, finish_reason: stop}
+          usage:
+            prompt_tokens: 100
+            completion_tokens: 5
+            total_tokens: 105
+    expected:
+      response_usage:
+        prompt_tokens: 100
+        completion_tokens: 5
+        total_tokens: 105
+        cached_tokens: null
+        cache_creation_tokens: null
+      llm_span_attributes_absent:
+        - "openarmature.llm.cache_read.input_tokens"
+        - "openarmature.llm.cache_creation.input_tokens"
+      invariants:
+        cache_attribute_absent_when_field_unpopulated: true
+        absent_distinct_from_zero: true
