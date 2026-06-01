@@ -1,0 +1,1 @@
+../../proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md
