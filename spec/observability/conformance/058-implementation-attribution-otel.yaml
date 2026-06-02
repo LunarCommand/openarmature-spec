@@ -1,0 +1,132 @@
+# §5.1 implementation attribution attributes on the invocation span.
+# openarmature.implementation.name and openarmature.implementation.version
+# emit on every invocation span as non-empty strings. Inner spans do
+# NOT carry them (invocation-span-only per §5.1; not cross-cutting per
+# §5.6).
+
+cases:
+  - name: implementation_attribution_attributes_present_on_invocation_span
+    description: |
+      A simple graph invocation. The invocation span carries both
+      implementation.name and implementation.version as non-empty
+      strings; implementation.name matches the per-language canonical
+      value (the harness parameterizes this — "openarmature-python"
+      for python conformance runs, "openarmature-typescript" for
+      typescript, etc.). Inner spans do NOT carry the attributes.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: a
+    nodes:
+      a:
+        update: {msg: "done"}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          attributes:
+            # implementation.name matches the implementation under
+            # test — harness parameterizes the expected value
+            # against its own canonical name.
+            "openarmature.implementation.name":
+              harness_parameterized: implementation_name
+              non_empty_string: true
+            "openarmature.implementation.version":
+              non_empty_string: true
+          children:
+            - name: "a"
+              status: OK
+              # Inner-node span MUST NOT carry the attribution
+              # attributes — they live in §5.1, not §5.6.
+              attributes_absent:
+                - "openarmature.implementation.name"
+                - "openarmature.implementation.version"
+              children: []
+      invariants:
+        implementation_name_non_empty: true
+        implementation_version_non_empty: true
+        implementation_name_matches_canonical_value: true
+        attributes_on_invocation_span_only: true
+        attributes_absent_on_inner_spans: true
+
+  - name: detached_subgraph_attribution_propagates_to_child_trace_invocation_span
+    description: |
+      Graph dispatches a subgraph in detached mode (per §4.4). Two
+      distinct traces produce two distinct invocation spans; BOTH
+      MUST carry the implementation attribution attributes per §5.1's
+      always-emit invariant (the rule applies to every invocation
+      span, not only the outermost graph's). Mirrors fixture 008's
+      detached-mode structure for the OTel span-tree assertion shape.
+    subgraphs:
+      detached_workflow:
+        state:
+          fields:
+            x:
+              type: int
+              default: 0
+        entry: step
+        nodes:
+          step:
+            update_pure: {x: 1}
+        edges:
+          - {from: step, to: END}
+    state:
+      fields:
+        ran:
+          type: bool
+          default: false
+    entry: dispatch
+    nodes:
+      dispatch:
+        subgraph: detached_workflow
+      after:
+        update: {ran: true}
+    edges:
+      - {from: dispatch, to: after}
+      - {from: after, to: END}
+    initial_state: {}
+    detached_subgraphs: ["detached_workflow"]
+    expected:
+      traces:
+        - trace_id: "<trace_id_parent>"
+          span_tree:
+            - name: "openarmature.invocation"
+              status: OK
+              attributes:
+                "openarmature.implementation.name":
+                  harness_parameterized: implementation_name
+                  non_empty_string: true
+                "openarmature.implementation.version":
+                  non_empty_string: true
+              children:
+                - name: "dispatch"
+                  status: OK
+                  attributes_absent:
+                    - "openarmature.implementation.name"
+                    - "openarmature.implementation.version"
+        - trace_id: "<trace_id_detached_child>"
+          span_tree:
+            - name: "openarmature.invocation"
+              status: OK
+              attributes:
+                "openarmature.implementation.name":
+                  harness_parameterized: implementation_name
+                  non_empty_string: true
+                "openarmature.implementation.version":
+                  non_empty_string: true
+              children:
+                - name: "step"
+                  status: OK
+                  attributes_absent:
+                    - "openarmature.implementation.name"
+                    - "openarmature.implementation.version"
+      invariants:
+        attribution_attrs_on_parent_invocation_span: true
+        attribution_attrs_on_detached_child_invocation_span: true
+        attribution_attrs_absent_on_inner_spans_both_traces: true
+        always_emit_invariant_applies_to_every_invocation_span: true

@@ -1,0 +1,67 @@
+# §8.4.1 implementation attribution rows on Langfuse Trace metadata.
+# The two new rows source from §5.1 attributes and emit regardless of
+# disable_state_payload (always-emit invariant inherited from §5.1).
+
+cases:
+  - name: implementation_attribution_rows_present_on_trace_default_config
+    description: |
+      Graph invocation with default Langfuse-observer config
+      (disable_state_payload defaults ON per §8.4.1). Trace metadata
+      carries implementation_name + implementation_version regardless.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: a
+    nodes:
+      a:
+        update: {msg: "done"}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    langfuse_observer_config:
+      disable_state_payload: true
+    expected:
+      langfuse_trace:
+        metadata:
+          implementation_name:
+            harness_parameterized: implementation_name
+            non_empty_string: true
+          implementation_version:
+            non_empty_string: true
+      invariants:
+        implementation_name_present_on_trace: true
+        implementation_version_present_on_trace: true
+        rows_emit_with_default_privacy_config: true
+
+  - name: implementation_attribution_rows_present_when_state_payload_enabled
+    description: |
+      Same graph, but disable_state_payload=False. The two attribution
+      rows still emit — they describe runtime identity, not runtime
+      data, so the privacy knob does not gate them.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: a
+    nodes:
+      a:
+        update: {msg: "done"}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    langfuse_observer_config:
+      disable_state_payload: false
+    expected:
+      langfuse_trace:
+        metadata:
+          implementation_name:
+            harness_parameterized: implementation_name
+            non_empty_string: true
+          implementation_version:
+            non_empty_string: true
+      invariants:
+        rows_emit_with_state_payload_enabled: true
+        always_emit_invariant_inherited_from_spec_5_1: true
