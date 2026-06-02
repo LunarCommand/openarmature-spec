@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.43.0] — 2026-06-01
+
+**Added**
+
+- **observability §8.4.1 — *Implementation surface caveat* (new paragraph).** Records that the vendor SDK method delivering the §8.4.1 *Trace input/output sourcing* contract's UI-visible projection is marked deprecated by the upstream vendor. As of Langfuse SDK v4 (empirically verified 2026-05-31), this is the `set_current_trace_io` / `Span.set_trace_io` family, with stated removal in a future major version; the non-deprecated `propagate_attributes` method does not currently project trace-level input / output values to the Langfuse UI's headline columns. The §8.4.1 normative contract (three-lever decision tree, hook contract, status enum, resume semantics) is independent of which SDK method populates the values and remains stable across SDK migrations. Cross-references `docs/compatibility.md` per the *External-dependency adoption* policy as the operational tracking record. ([proposal 0051](proposals/0051-langfuse-trace-io-deprecation-caveat.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Pure documentary addition; no behavior change, no public-type / interface changes, no conformance fixture impact. The §8.4.1 contract is unchanged; this caveat records the SDK-surface state at a verified date so future readers see the deprecation context discoverable from spec text rather than buried in implementation-side release notes. Backwards-compatible at the spec level; implementations adopt by bumping their spec-version pin without code changes (matches the *Textual* impl-tracking status precedent from proposals 0019 / 0026 / 0030). When the vendor publishes a concrete v5 migration guide, a follow-on proposal MAY expand the caveat into a full §8.4.1 reframe specifying the new binding.
+
 ## [0.42.0] — 2026-06-01
 
 **Added**
