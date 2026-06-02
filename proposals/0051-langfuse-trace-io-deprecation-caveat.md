@@ -1,9 +1,9 @@
 # 0051: Langfuse Trace Input/Output Implementation-Surface Caveat
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-01
-- **Accepted:**
+- **Accepted:** 2026-06-01
 - **Targets:** spec/observability/spec.md (§8.4.1 *Trace input/output sourcing* — adds a single *Implementation surface caveat* paragraph noting that the vendor SDK method which currently delivers the §8.4.1 contract's UI-visible projection is marked deprecated by the upstream vendor, with the §8.4.1 normative contract (three-lever decision tree, hook contract, status enum, resume semantics) decoupled from any specific SDK-method binding). No conformance fixture impact.
 - **Related:** 0043 (observability §8.4.1 Langfuse trace.input/trace.output sourcing — established the §8.4.1 contract this proposal documents an implementation-surface caveat for)
 - **Supersedes:**
