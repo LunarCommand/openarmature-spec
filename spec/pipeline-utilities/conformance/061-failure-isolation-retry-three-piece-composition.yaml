@@ -28,10 +28,10 @@ edges:
 initial_state: {}
 
 middleware:
-  # Middleware order: list order is innermost-to-outermost OR outermost-to-
-  # innermost depending on the harness convention. Per §6.3's composition
-  # rule, FailureIsolation MUST wrap Retry (outer-to-inner). The harness
-  # lists outer first, then inner:
+  # Middleware list order is outermost-to-innermost (matches fixture
+  # 014-timing-and-retry-composition). Per §6.3's composition rule,
+  # FailureIsolation MUST wrap Retry — so FailureIsolation appears first,
+  # Retry second.
   per_node:
     target:
       - type: failure_isolation
