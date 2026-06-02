@@ -611,8 +611,8 @@ the `disable_state_payload`, `disable_llm_payload`, or any other observer-level 
 These attributes describe the OA runtime itself — they are runtime-identity constants, not
 runtime data. The privacy-knob framing applies to runtime data (caller state, LLM messages,
 etc.), not to runtime identity. The pattern is parallel to `openarmature.graph.spec_version`
-(above) and `openarmature.correlation_id` (§3.1 / §5.6) — all three mandated, all three
-always-emit, all three implementation-emitted (not caller-supplied). The §8.4.1 Langfuse-mapping
+(above) and `openarmature.correlation_id` (§3.1 / §5.6) — all four mandated, all four
+always-emit, all four implementation-emitted (not caller-supplied). The §8.4.1 Langfuse-mapping
 rows derived from these attributes inherit the same always-emit invariant.
 
 Canonical implementation-name values per language follow the package-registry shape so

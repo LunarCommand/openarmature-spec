@@ -13,13 +13,21 @@ attributes per the mapping table. Companion to fixture 058 (OTel-side).
 
 **Cases:**
 
-1. `implementation_attribution_rows_present_on_every_trace` — Any graph invocation against a
-   fixture-mock Langfuse client. Asserts:
+1. `implementation_attribution_rows_present_on_trace_default_config` — A graph invocation
+   against a fixture-mock Langfuse client with the default Langfuse-observer config
+   (`disable_state_payload = True` per §8.4.1's default). Asserts:
    - `trace.metadata.implementation_name` is present, non-empty, and matches the
      implementation under test.
    - `trace.metadata.implementation_version` is present and non-empty.
-   - Both rows emit regardless of `disable_state_payload` setting (the always-emit invariant
-     applies to runtime-identity constants).
+   - Both rows emit despite `disable_state_payload = True` — the always-emit invariant from
+     §5.1 applies to runtime-identity constants, not runtime data.
+
+2. `implementation_attribution_rows_present_when_state_payload_enabled` — Same graph, but the
+   Langfuse-observer config sets `disable_state_payload = False` (state payload would
+   otherwise be emitted to `trace.input` / `trace.output`). Asserts both rows are still
+   present — the always-emit invariant is independent of the privacy-knob setting in BOTH
+   directions (the privacy knob does not gate runtime identity regardless of whether it's
+   enabled or disabled for runtime data).
 
 **What passes:**
 
