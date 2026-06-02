@@ -16,6 +16,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §10.2 `schema_version` paragraph clarified: the outermost declared graph state class is the canonical source for the value written onto saved records; implementations MUST NOT source `schema_version` from the runtime instance's class when a State subclass shadows the declared value by [proposal 0028](../../proposals/0028-schema-version-canonical-source.md)
   - §10.11 gained a "Count drift on resume" rule: when a saved `fan_out_progress` entry's `instance_count` differs from the resumed run's resolved count, the engine MUST raise `checkpoint_record_invalid` (per §10.10); silent pad/truncate of the saved `instances` list is not permitted. §10.10 `checkpoint_record_invalid` description extended to enumerate count drift as a failure mode by [proposal 0029](../../proposals/0029-count-drift-strict.md)
   - §10.14 *Composition with sessions* added — notes that the new sessions capability is an orthogonal cross-invoke persistence layer; checkpointing and sessions register independently, MAY share a backend, but resume / session-load and the respective error categories surface independently by [proposal 0020](../../proposals/0020-sessions-capability.md)
+  - §6.3 *Failure isolation* middleware added as the third canonical primitive in the §6 bundled set (alongside §6.1 Retry and §6.2 Timing) — packages the §2 third-MAY-bullet catch-and-recover pattern with a four-field configuration record (`degraded_update` [static or callable], `event_name` [required, no default — naming decision at construction site], `predicate` [single-arg `(exception) -> bool`, defaults to always-true], `on_caught` [optional async callback]); catches `Exception` (not `BaseException`); on catch dispatches a framework-emitted failure-isolation event onto the observer delivery queue (parallels proposal 0040's metadata-augmentation event mechanism — distinct from `NodeEvent`, carries `event_name` + wrapped-node lineage tuple + `pre_state` / `post_state` + `caught_exception` record; not promoted to a typed variant on the observer event union for v1) and returns the configured degraded update so the engine continues edge resolution normally; documents the three-piece composition pattern with §6.1 retry (outer-to-inner: transient-aware node body + inner Retry + outer FailureIsolation) with outer-to-inner ordering load-bearing by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -366,6 +367,107 @@ behavior). Users who want isolation MUST wrap their callback bodies in their own
 caller waited. When retry wraps timing (`[retry, timing, node]`), `on_complete` fires once per
 attempt. Both compositions are valid; the user picks based on whether they want per-attempt
 visibility (retry-wraps-timing) or end-to-end latency (timing-wraps-retry).
+
+### 6.3 Failure isolation
+
+The failure-isolation middleware catches exceptions escaping the inner chain and returns a
+configured degraded partial update. The named primitive packages the §2 third-MAY-bullet pattern
+("middleware MAY catch ... and either re-raise, transform, or recover") with a stable contract
+and observer-event surface, avoiding per-downstream re-derivation of the catch-and-recover
+shape.
+
+The failure-isolation middleware configuration record:
+
+| Field | Description |
+|---|---|
+| `degraded_update` | Required. The partial state update returned on caught exceptions. MAY be a static mapping OR a callable `(state) -> partial_update` for cases where the degraded shape depends on input state. Resolved at catch time; the callable form receives the same `state` argument the middleware received (pre-merge state on the failed inner chain). |
+| `event_name` | Required, no default. A stable identifier for this catch site. Surfaces on the framework-emitted failure-isolation event (see below). Required with no default because useful values are node-specific (e.g., `"segment_extraction_failure_isolated"`) — a generic `"failure_isolated"` default would make downstream telemetry strictly worse by hiding which specific path degraded. Forcing the name at the construction site puts the decision where the right context is available. |
+| `predicate` | Optional. A callable `(exception) -> bool`. When supplied, only exceptions where `predicate(exc) is True` are caught; others propagate. Defaults to "always True" (catch all `Exception`). Single-argument signature (compare §6.1's two-argument retry classifier) — state-dependent failure-isolation predicates are not a documented use case; the simpler signature is sufficient for v1. |
+| `on_caught` | Optional. An async callable `(exception) -> Awaitable[None]`. Fires when the middleware catches an exception. Lets consumers pump caught exceptions to caller-specific telemetry (custom logger, metric counter, etc.) beyond the default observer event. |
+
+Behavior:
+
+```
+try:
+    return await next(state)
+except Exception as exc:
+    if not predicate(exc):
+        raise
+    resolved_update = degraded_update(state) if callable(degraded_update) else degraded_update
+    await emit_failure_isolation_event(           # see *Observability* below
+        event_name=event_name,
+        wrapped_node_lineage=<from graph-engine §6 event-source identity tuple>,
+        pre_state=state,
+        post_state=resolved_update,
+        caught_exception=<category + message>,
+    )
+    if on_caught is not None:
+        await on_caught(exc)
+    return resolved_update
+```
+
+The resolution of `resolved_update` happens BEFORE event emission so the event's `post_state`
+field carries the resolved degraded payload (observers correlate the wrapped node's input state
+on `pre_state` with the actual partial update the engine will merge on `post_state`).
+`emit_failure_isolation_event` is the framework's observer-queue dispatch path described below.
+
+**Catch semantics.** Catches `Exception` by default; `BaseException` (cancellation,
+`KeyboardInterrupt`, equivalents) propagates uncaught — the same rule §6.1 retry middleware
+applies. Cancellation signals MUST propagate per the §6.1 cancellation-propagation paragraph.
+
+**Engine continuation.** On a caught exception, the graph engine continues edge resolution from
+the `FailureIsolationMiddleware`-wrapped node's degraded return per the normal §3 / §4 contract.
+The engine does NOT see the exception; from its perspective, the node returned normally.
+
+**Observability.** When the middleware catches an exception, it dispatches a **framework-emitted
+failure-isolation event** onto the same observer delivery queue as `NodeEvent` per graph-engine
+§6. The event is a distinct kind from `NodeEvent` — it does NOT reuse `NodeEvent.node_name` /
+`namespace` (which graph-engine §6 reserves for registered-node identity) and does NOT reuse
+`NodeEvent.error` (a graph-engine §4 category). It is a separate framework-emitted observer
+event variant carrying its own field set:
+
+- `event_name` — the caller-supplied event name from the middleware's configuration.
+- The wrapped node's lineage identity per graph-engine §6: `namespace`, `attempt_index`,
+  `fan_out_index`, `branch_name` — the same lineage tuple `NodeEvent` carries, surfaced here for
+  correlation with the wrapped node's other events.
+- `pre_state` — the state the wrapped node's inner chain received (the middleware's `state`
+  argument).
+- `post_state` — the resolved degraded partial update being returned to the engine.
+- `caught_exception` — a structured record carrying the caught exception's category (per its
+  carrying spec, e.g., llm-provider §7 / graph-engine §4) and the exception message. When the
+  caught exception does not carry a category (e.g., a bare `ValueError`), the category field is
+  `null` and the message captures the exception's `str(exc)` form.
+
+This pattern parallels graph-engine §6's RECOMMENDED metadata-augmentation event mechanism (from
+proposal 0040) — a distinct framework-emitted event kind on the observer delivery queue, with
+the typed shape per-language idiom. The spec mandates the event mechanism + field set;
+per-language implementations choose the concrete typed shape (e.g., a Python dataclass, a
+TypeScript interface) following the language's naming idioms. A future proposal MAY promote the
+failure-isolation event to a spec-mandated typed variant on the observer event union
+(paralleling proposal 0049's `LlmCompletionEvent` carve-out) if the middleware-event pattern
+accumulates across multiple primitives; for v1, the event-mechanism framing is sufficient.
+
+**Default emission is observer-event-only.** The middleware MUST NOT pin a logging library
+(stdlib `logging`, structlog, etc.) — the default emission path is the observer event.
+Consumers wanting additional logging attach their own observer or use `on_caught`.
+
+**Composition with §6.1 — the three-piece pattern.** Pipelines that want "retry transients,
+give up gracefully on exhaustion or non-transient errors" compose three pieces:
+
+1. **Node body** keeps a transient-aware `except` block — re-raise on exceptions whose
+   category §6.1's default classifier treats as transient (`provider_unavailable`,
+   `provider_rate_limit`, etc.), degrade in-place on non-transient categories the application
+   already knows how to recover from.
+2. **Inner middleware**: `RetryMiddleware` (§6.1) — sees raw transients and retries them per
+   its policy; on exhaustion, propagates the exception.
+3. **Outer middleware**: `FailureIsolationMiddleware` (this section) — catches the
+   exhaustion-propagated exception (or any non-transient that re-raised through the node
+   body's `except`) and returns the configured degraded update.
+
+Outer-to-inner ordering is load-bearing: retry MUST be inner (it sees raw transients first);
+failure isolation MUST be outer (it only sees what escapes retry). Reversing the order would let
+the inner isolation catch transients before retry sees them, defeating retry's purpose entirely.
+Implementations SHOULD document this composition explicitly in the middleware API documentation.
 
 ## 7. Determinism
 

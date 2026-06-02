@@ -1,0 +1,61 @@
+# §6.3 Failure isolation — callable degraded_update path. The callable
+# receives the pre-merge input state and returns the partial update.
+
+state:
+  fields:
+    attempt_count:
+      type: int
+      default: 0
+    result:
+      type: string
+      default: ""
+
+entry: failing
+
+nodes:
+  failing:
+    flaky:
+      failure_sequence:
+        - {transient: true, category: provider_unavailable, message: "down"}
+
+edges:
+  - {from: failing, to: END}
+
+initial_state:
+  attempt_count: 2
+  result: ""
+
+middleware:
+  per_node:
+    failing:
+      - type: failure_isolation
+        # Callable form: harness encodes a state-derived degraded update.
+        # The callable receives the input state and returns
+        # {result: "degraded after " + state.attempt_count + " attempts"}.
+        degraded_update:
+          callable: state_derived
+          template: "degraded after {{ state.attempt_count }} attempts"
+          target_field: result
+        event_name: "summarize_failed"
+
+expected:
+  final_state:
+    attempt_count: 2
+    result: "degraded after 2 attempts"
+  execution_order: [failing]
+
+  expected_failure_isolation_event:
+    event_name: "summarize_failed"
+    wrapped_node_lineage:
+      namespace: [failing]
+      attempt_index: 0
+      fan_out_index: null
+      branch_name: null
+    pre_state: {attempt_count: 2, result: ""}
+    post_state: {result: "degraded after 2 attempts"}
+    caught_exception:
+      category: provider_unavailable
+      message: "down"
+  invariants:
+    callable_receives_pre_merge_state: true
+    callable_return_merges_via_reducer: true

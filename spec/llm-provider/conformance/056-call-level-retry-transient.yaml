@@ -1,0 +1,49 @@
+# §7.1 Call-level retry — transient failure then success on retry. The
+# call returns the successful response; two LLM spans emit with
+# attempt_index 0 (failed) and 1 (succeeded).
+
+mock_provider:
+  responses:
+    # Attempt 0 — HTTP 503 → provider_unavailable.
+    - status: 503
+      body:
+        error:
+          type: "service_unavailable"
+          message: "service down"
+    # Attempt 1 — successful response.
+    - status: 200
+      body:
+        id: cc-056
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+        usage: {prompt_tokens: 4, completion_tokens: 1, total_tokens: 5}
+
+call:
+  operation: complete
+  messages: [{role: user, content: "go"}]
+  retry:
+    max_attempts: 2
+    backoff: {type: deterministic, seconds: 0}
+
+expected:
+  response:
+    message: {role: assistant, content: "ok"}
+    finish_reason: stop
+    usage: {prompt_tokens: 4, completion_tokens: 1, total_tokens: 5}
+  llm_spans:
+    - attempt_index: 0
+      attributes:
+        "openarmature.llm.attempt_index": 0
+      error_category: provider_unavailable
+    - attempt_index: 1
+      attributes:
+        "openarmature.llm.attempt_index": 1
+        "openarmature.llm.finish_reason": stop
+        "openarmature.llm.model": gpt-test
+      error_category: null
+  invariants:
+    call_returns_successful_response_after_transient_retry: true
+    n_attempts_emit_n_llm_spans: true
+    attempt_index_attribute_distinct_per_span: true

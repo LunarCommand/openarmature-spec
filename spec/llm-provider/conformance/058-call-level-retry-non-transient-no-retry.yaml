@@ -1,0 +1,36 @@
+# §7.1 Call-level retry — non-transient propagates without retry. The
+# call raises provider_invalid_request on attempt 0; the retry loop
+# does NOT iterate. Exactly one LLM span emits with attempt_index=0.
+
+mock_provider:
+  responses:
+    # Attempt 0 — HTTP 400 → provider_invalid_request (non-transient
+    # per §7). The retry loop MUST exit immediately; no second
+    # response is consumed.
+    - status: 400
+      body:
+        error:
+          type: "invalid_request_error"
+          code: "bad_request"
+          message: "missing required field"
+
+call:
+  operation: complete
+  messages: [{role: user, content: "go"}]
+  retry:
+    max_attempts: 3
+    backoff: {type: deterministic, seconds: 0}
+
+expected:
+  raises:
+    category: provider_invalid_request
+    message: "missing required field"
+  llm_spans:
+    - attempt_index: 0
+      attributes:
+        "openarmature.llm.attempt_index": 0
+      error_category: provider_invalid_request
+  invariants:
+    non_transient_exits_retry_loop_on_first_occurrence: true
+    exactly_one_attempt_span_for_non_transient: true
+    no_backoff_sleep_invoked: true

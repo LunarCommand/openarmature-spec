@@ -18,6 +18,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.5.3 extended with a new §5.5.3.1 sub-subsection *OA-namespaced cache attributes (stable-only mirror)* defining two new attributes on the LLM provider span: `openarmature.llm.cache_read.input_tokens` (sourced from the §6 `Response.usage.cached_tokens` field, emitted when the field is populated) and optional `openarmature.llm.cache_creation.input_tokens` (sourced from `Response.usage.cache_creation_tokens`, populated primarily by providers with explicit cache-control surfaces); OA-namespace placement governed by the *Stable-only upstream adoption* policy because the upstream OTel attribute names `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` are at Development status as of OTel semconv v1.41.1; emission honors the existing `disable_genai_semconv` opt-out (§5.5.4) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
   - §3.4 *Caller-supplied invocation metadata* extended with a *Read access* paragraph block introducing the symmetric `openarmature.observability.get_invocation_metadata()` read primitive — returns an immutable mapping snapshot of the metadata visible in the current async context, scoped per-async-context per the existing copy-on-write rule (sibling-instance writes invisible after fan-out joins; outermost-serial reads see only the outermost view), per-attempt under retry middleware (prior failed attempt's writes do NOT carry over), silent no-op (empty mapping) outside an active invocation, no observer emission on read, immutable-mapping return type with typed wrappers deferred; new §9 *Queryable observer pattern* (renumbers existing §9 *Determinism* → §10 and §10 *Out of scope* → §11) defining a normative convention for concrete observers exposing read methods on the instance — §9.1 read-method contract (query-only, no routing side effects, no observer-side emission, non-blocking SHOULD), §9.2 async-safety contract (read-consistent floor; post-completion stability gates on the invocation's completion signal), §9.3 *Three-channel data-access guidance* table comparing State / invocation-metadata / queryable observer accumulator carve-outs (default: prefer State), §9.4 lifecycle (auto-drop on completion rejected; explicit `drop()` required for accumulating queryable observers; long-lived accumulator memory-pressure caveat) by [proposal 0048](../../proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md)
   - §5.5 gained a new §5.5.7 *Typed LLM completion event* sub-subsection framing the typed `LlmCompletionEvent` variant (defined on the graph-engine §6 observer event union) as the structured form of the §5.5 LLM provider span attribute surface — same identity / scoping / outcome data, in a structured form rather than as separate span attributes; observers MAY filter via type discrimination rather than via the impl-current sentinel-namespace string match; a SHOULD-emit-both transition lets implementations that historically emitted a sentinel-namespaced NodeEvent for LLM completions continue emitting it alongside the typed event for an implementation-defined transition window (the spec does not pin the legacy NodeEvent shape — the sentinel `"openarmature.llm.complete"` value remains the OTel span name per §5 but is impl-current as a NodeEvent's `node_name` value); backends SHOULD subscribe to one variant per LLM completion to avoid double-counting by [proposal 0049](../../proposals/0049-typed-llm-completion-event.md)
+  - §5.5 baseline LLM provider span attribute list extended with `openarmature.llm.attempt_index` (int; `0..N-1` for an N-attempt call-level retry per llm-provider §7.1; defaults to `0` when call-level retry is not configured, preserving the single-span case verbatim); §5.5 single-span framing paragraph amended from "MUST emit a span around each `complete()` call" to "one span per attempt under call-level retry; one span per `complete()` call when retry is absent (the default)" — N attempts emit N sibling spans parented under the calling node's span, disambiguated by the new attribute. The attribute is OA-namespace because no upstream OTel GenAI semconv stable equivalent exists; a follow-on proposal MAY mirror to `gen_ai.*` if upstream stabilizes such an attribute by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -655,11 +656,15 @@ is the trace-id treatment per §4.4, not the per-instance layout.
 ### 5.5 LLM provider attributes
 
 Implementations of the llm-provider capability (per llm-provider §5 / proposal 0006), when paired
-with an OTel observer per this mapping, MUST emit a span around each `complete()` call. This is a
-cross-capability coupling: any implementation that ships both llm-provider and the OTel mapping
-MUST wire them together so that LLM calls are not invisible in the OTel trace. Production
-observability has no gaps by default rather than hoping the user remembered to instrument
-LLM calls. The §6 TracerProvider-isolation requirement prevents this from duplicating spans with
+with an OTel observer per this mapping, MUST emit a span per LLM provider attempt: one span per
+`complete()` call when call-level retry is not configured (the default — preserving the
+existing single-span framing), and one span per attempt when call-level retry per llm-provider
+§7.1 produces N attempts. The per-attempt spans are siblings parented
+under the calling node's span, disambiguated by the `openarmature.llm.attempt_index` attribute
+(per §5.5 below). This is a cross-capability coupling: any implementation that ships both
+llm-provider and the OTel mapping MUST wire them together so that LLM calls are not invisible
+in the OTel trace. Production observability has no gaps by default rather than hoping the user
+remembered to instrument LLM calls. The §6 TracerProvider-isolation requirement prevents this from duplicating spans with
 external auto-instrumentation libraries (OpenInference, opentelemetry-instrumentation-openai,
 etc.), which write to the OTel global provider while openarmature writes to its private one.
 
@@ -682,6 +687,16 @@ span unless the span itself is suppressed via `disable_llm_spans`:
 - `openarmature.llm.finish_reason` — string. The llm-provider §6 `finish_reason` from the response.
 - `openarmature.llm.usage.prompt_tokens`, `openarmature.llm.usage.completion_tokens`,
   `openarmature.llm.usage.total_tokens` — int. From the response's usage record. Omit when null.
+- `openarmature.llm.attempt_index` — int. The retry-attempt index for the LLM call, where `0`
+  is the first attempt and `0..N-1` covers the N spans produced by an N-attempt call-level
+  retry per llm-provider §7.1. Emitted on every LLM provider span; defaults to `0` when
+  call-level retry is not configured on the `complete()` call (a single attempt produces a
+  single span with `attempt_index = 0`). Paralleled with `openarmature.node.attempt_index`
+  per §5.2 for node-level retry; the two attributes are independent (a per-call retry attempt
+  `0` MAY be nested under a node-level attempt `1`, etc.). The attribute lives in the
+  `openarmature.llm.*` namespace per the §5.5.2 framing precedent; if the OpenTelemetry GenAI
+  semconv adds a stable `gen_ai.*` equivalent in a future release, a follow-on proposal MAY
+  mirror this attribute to both namespaces per the §5.5.3 / §5.5.3.1 mirror pattern.
 
 The remainder of §5.5 extends the attribute set across several sub-subsections: input/output
 payload (§5.5.1, default-off), `RuntimeConfig` request parameters under the OpenTelemetry GenAI

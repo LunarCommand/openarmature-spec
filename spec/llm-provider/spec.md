@@ -15,6 +15,7 @@ Canonical behavioral specification for the OpenArmature LLM provider abstraction
   - §8.2 Anthropic Messages wire-format mapping added (sibling to §8.1) with §8.2.1 request mapping / §8.2.1.1 content-block mapping (including spec `ThinkingBlock` round-trip and §3 opaque `signature` field) / §8.2.1.2 tool-result content blocks / §8.2.2 response mapping / §8.2.3 error mapping; §3 Message gained opaque `signature` fields on `TextBlock` / `ThinkingBlock` / `ToolCall` for round-trip preservation of provider-side reasoning signatures by [proposal 0037](../../proposals/0037-llm-provider-anthropic-messages-mapping.md)
   - §8.3 Google Gemini wire-format mapping added (sibling to §8.1 / §8.2) with §8.3.1 request mapping / §8.3.1.1 parts wire mapping (including thought-summary capture into `ThinkingBlock.text` and `thoughtSignature` round-trip into the §3 opaque `signature` field) / §8.3.1.2 `tool` role bidirectional translation / §8.3.2 response mapping / §8.3.3 error mapping; undeclared `RuntimeConfig` fields nest under Gemini's `generationConfig` (not the request root) to match Gemini's parameter location by [proposal 0038](../../proposals/0038-llm-provider-google-gemini-mapping.md)
   - §6 `Response.usage` extended with two optional fields (`cached_tokens?` for prefix-cache hit input tokens, `cache_creation_tokens?` for input tokens written to the cache during the call); §8 framing gained an *Intra-impl wire-byte stability* paragraph (canonical sorted-key serialization of JSON-schema, content-block, and RuntimeConfig-extras payloads — within a single implementation; cross-impl byte equality is non-normative); per-mapping *Wire-byte stability* sub-paragraphs added to §8.1.1 / §8.2.1 / §8.3.1 anchoring the rule to that mapping's payloads; §8.1.2 gained cache-stat source rows (`usage.cached_tokens` ← `usage.prompt_tokens_details.cached_tokens` with the OpenAI Responses API alternate path and a vLLM dual-flag caveat; `cache_creation_tokens` left absent for OpenAI); §8.2.2 gained the Anthropic-implicit-not-supported caveat (Anthropic implicit-cache fields left absent because Anthropic only supports explicit `cache_control`-driven caching, out of scope for §6's implicit-cache surface); §8.3.2 maps `usage.cached_tokens` ← Gemini's `usageMetadata.cachedContentTokenCount` (Gemini 2.5+ implicit caching) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
+  - §5 `complete()` signature extended with an optional `retry` kwarg accepting an instance of pipeline-utilities §6.1's retry middleware configuration record (or `None` / absent default preserving the v0.4.0 no-retry behavior); the "does NOT retry" operation-semantics bullet amended to note retry policy lives at the per-node layer (pipeline-utilities §6.1) OR the per-call layer (this kwarg per §7.1); new §7.1 *Call-level retry* sub-section defining the in-call retry loop semantics (transient classification reuses §6.1's default categories, backoff reuses §6.1's exponential-with-jitter default, cancellation propagation rule preserved, per-attempt span emission produces N spans for N attempts), reuses the §6.1 framework-agnostic four-field configuration record (cross-spec reference direction is the inverse of §6.1's existing dependency on §7 transient categories — bidirectional acceptable because the shared record is framework-agnostic), plus a *Two-level retry lane separation* table comparing per-call vs per-node layers and a *Common mistakes* list (multiplicative budget pitfall `3 × 5 × 3 = 45` worst-case, inline try/except defeating per-attempt attribution, classifier widening to mask real errors) by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -316,11 +317,12 @@ distinguishes "model in registry" from "model loaded" SHOULD be preferred over a
 `ready()` is a pre-flight check intended for fail-fast on startup or warmup polling. It MUST NOT
 be called automatically by `complete()`; callers decide when (or whether) to invoke it.
 
-### `complete(messages, tools=None, config=None, response_schema=None, tool_choice=None)`
+### `complete(messages, tools=None, config=None, response_schema=None, tool_choice=None, retry=None)`
 
 Async. Performs a single completion call. When `response_schema` is supplied, the call
 additionally constrains the model's output to conform to the schema. When `tool_choice` is
-supplied, the call additionally constrains the model's tool-calling behavior.
+supplied, the call additionally constrains the model's tool-calling behavior. When `retry` is
+supplied, the call additionally performs an in-call retry loop on transient failures per §7.1.
 
 - `messages` — non-empty ordered sequence of messages. The first message MAY be `system`; otherwise
   the message list begins with `user`. The last message before the call MUST be `user` or `tool` (the
@@ -359,6 +361,13 @@ supplied, the call additionally constrains the model's tool-calling behavior.
   `Literal["auto", "required", "none"] | ToolChoiceForce`; TypeScript could use a string union
   with the record form discriminated by `type`). Implementations MUST validate the shape at
   call time before sending.
+- `retry` — optional. Accepts an instance of the pipeline-utilities §6.1 retry middleware
+  configuration record (four-field `max_attempts` / `classifier` / `backoff` / `on_retry` shape)
+  or `None` / absent. Default is `None` / absent — the v0.4.0 behavior is preserved verbatim
+  (no in-call retry; transient errors raise to the caller). When supplied, the call performs an
+  in-call retry loop per §7.1 *Call-level retry*; the same configuration-record instance a
+  caller would pass to pipeline-utilities §6.1's retry middleware is accepted here (cross-spec
+  re-use of the framework-agnostic shape).
 
 Returns: a `Response` (§6).
 
@@ -390,8 +399,9 @@ Operation semantics:
 - `complete()` does NOT loop on tool calls. If the response's `finish_reason` is `"tool_calls"`,
   the caller is responsible for executing the tools, appending `tool` messages, and making a
   follow-on `complete()`.
-- `complete()` does NOT retry on transient errors. Errors propagate; retry policy belongs above this
-  layer.
+- `complete()` does NOT retry on transient errors by default. Errors propagate; retry policy
+  belongs above this layer — either at the node level via pipeline-utilities §6.1
+  `RetryMiddleware`, or at the call level via the optional `retry` parameter (above) per §7.1.
 - When `response_schema` is set and the model produces output that successfully parses as JSON but
   fails to validate against `response_schema`, OR fails to parse as JSON at all, `complete()`
   raises `structured_output_invalid` (§7).
@@ -546,6 +556,85 @@ retry policy.
 The categories `provider_authentication`, `provider_invalid_model`, `provider_invalid_request`,
 `provider_invalid_response`, `provider_unsupported_content_block`, and `structured_output_invalid`
 are *non-transient* — retrying without changing the request will not succeed.
+
+### 7.1 Call-level retry
+
+When `complete()` is called with a non-`None` `retry` parameter (per §5), the provider
+implementation performs an in-call retry loop:
+
+- On each attempt, dispatch the underlying request as it would for a non-retried call.
+- If the response is successful, return immediately.
+- If the response raises an exception classified as transient by the `retry` record's
+  `classifier` field (default behavior matches pipeline-utilities §6.1's default transient
+  classifier — `provider_unavailable`, `provider_rate_limit`, `provider_model_not_loaded`, plus
+  any category marked transient by its carrying spec), wait per `backoff(attempt_index)` and
+  re-attempt.
+- If `max_attempts` is exhausted, propagate the final error per the normal `complete()`
+  exception path.
+- Exceptions classified as non-transient propagate immediately on first occurrence (no retry).
+
+**Configuration record reuse.** The `retry` parameter accepts the same configuration record
+pipeline-utilities §6.1 defines — the four-field shape (`max_attempts`, `classifier`,
+`backoff`, `on_retry`) is framework-agnostic and reusable across the per-node and per-call
+retry contexts. Implementations MUST accept the same configuration record instance a caller
+would pass to the §6.1 retry middleware. (Cross-spec reference direction: this section
+references pipeline-utilities §6.1, which is the inverse of pipeline-utilities §6.1's existing
+dependency on this §7 for transient category names. The two-way dependency is acceptable
+because the shared retry config record is framework-agnostic and the per-section content
+remains independently coherent.)
+
+**Transient classification.** The default `classifier` field's behavior matches the §6.1
+*Default transient classifier* text — the same categories §6.1 enumerates as transient trigger
+the per-call retry loop. Callers MAY supply a user-defined `classifier` if their application
+has additional retriable categories or context-dependent retry policies. The classifier's
+two-argument `(exception, state) -> bool` signature carries over from §6.1; the shape of the
+`state` argument when the classifier is invoked at the call level is implementation-defined
+(the §6.1 default classifier ignores `state` and matches purely on exception category, so the
+default behaves correctly without depending on the `state` shape; custom classifiers that
+inspect `state` at the call level consult the implementation's documentation for the carried
+value's shape).
+
+**Backoff behavior.** The `backoff` field's `(attempt_index) -> seconds` contract from §6.1
+applies unchanged at the call-level retry. The §6.1 default (exponential with full jitter,
+base 1s, cap 30s) applies when the caller doesn't override; implementations MAY ship additional
+named backoff strategies per §6.1's MAY clause.
+
+**Cancellation signals MUST propagate.** Per the §6.1 cancellation-propagation rule,
+cancellation signals raised by the language runtime (Python's `CancelledError`, TypeScript's
+`AbortError`, equivalents) MUST NOT be classified as transient — call-level retry
+implementations MUST detect cancellation and re-raise it before consulting the classifier.
+
+**Per-attempt span emission.** Each retry attempt produces its own `openarmature.llm.complete`
+span per observability §5.5 — N retry attempts emit N LLM spans, all parented under the
+calling node's span. The per-attempt span carries the new `openarmature.llm.attempt_index`
+attribute (per observability §5.5). The final-error category lands on the LAST attempt's span;
+earlier failed-then-retried attempts carry their own per-span error categories.
+
+**Two-level retry lane separation.** Retry primitives operate at two semantic levels in OA:
+
+| Layer | Spec section | Semantic unit | Use when |
+|---|---|---|---|
+| Per-call retry | llm-provider §7.1 (this section) | A single `complete()` call | A node issues multiple LLM calls in a loop; you want to avoid re-running successful calls when a later call's transient fails |
+| Per-node retry | pipeline-utilities §6.1 `RetryMiddleware` | A whole node invocation | A node does LLM + non-LLM work (DB writes, parses, side effects); you want to re-run the entire body on failure |
+
+The layers compose: per-call exhausts → propagates → per-node retry catches → re-runs whole
+node → per-call budgets reset for each fresh per-node attempt.
+
+**Common mistakes to avoid:**
+
+- **Multiplicative budget on chunked nodes.** Stacking the §6.1 retry middleware (configured
+  with `max_attempts=3`) over a node that issues 5 LLM calls, each with a per-call `retry`
+  record configured for `max_attempts=3`, can issue up to `3 × 5 × 3 = 45` LLM calls in the
+  worst case. The budget multiplies. Authors stacking both layers SHOULD pick intentional
+  budgets per layer (e.g., per-call retries narrower than per-node retries, or one layer only).
+- **Inline retry via try/except inside the node body.** Implementing retry as a try/except
+  inside the node body loses the per-attempt span attribution and the backoff-utility
+  integration. Use the `retry` kwarg instead.
+- **Widening the transient classifier to mask real errors.** The §6.1 default classifier
+  excludes non-transient categories for a reason. Supplying a custom `classifier` that retries
+  on `provider_invalid_request` or `structured_output_invalid` (for example) masks bugs rather
+  than working around transient infrastructure issues. Custom classifiers SHOULD widen the
+  default only for categories that are genuinely transient but not yet enumerated by §6.1.
 
 ## 8. Wire-format mappings
 
