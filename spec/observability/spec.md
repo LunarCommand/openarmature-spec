@@ -20,6 +20,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.5 gained a new §5.5.7 *Typed LLM completion event* sub-subsection framing the typed `LlmCompletionEvent` variant (defined on the graph-engine §6 observer event union) as the structured form of the §5.5 LLM provider span attribute surface — same identity / scoping / outcome data, in a structured form rather than as separate span attributes; observers MAY filter via type discrimination rather than via the impl-current sentinel-namespace string match; a SHOULD-emit-both transition lets implementations that historically emitted a sentinel-namespaced NodeEvent for LLM completions continue emitting it alongside the typed event for an implementation-defined transition window (the spec does not pin the legacy NodeEvent shape — the sentinel `"openarmature.llm.complete"` value remains the OTel span name per §5 but is impl-current as a NodeEvent's `node_name` value); backends SHOULD subscribe to one variant per LLM completion to avoid double-counting by [proposal 0049](../../proposals/0049-typed-llm-completion-event.md)
   - §5.5 baseline LLM provider span attribute list extended with `openarmature.llm.attempt_index` (int; `0..N-1` for an N-attempt call-level retry per llm-provider §7.1; defaults to `0` when call-level retry is not configured, preserving the single-span case verbatim); §5.5 single-span framing paragraph amended from "MUST emit a span around each `complete()` call" to "one span per attempt under call-level retry; one span per `complete()` call when retry is absent (the default)" — N attempts emit N sibling spans parented under the calling node's span, disambiguated by the new attribute. The attribute is OA-namespace because no upstream OTel GenAI semconv stable equivalent exists; a follow-on proposal MAY mirror to `gen_ai.*` if upstream stabilizes such an attribute by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
   - §8.4.1 *Trace input/output sourcing* block gained an *Implementation surface caveat* paragraph noting that the vendor SDK method delivering the §8.4.1 contract's UI-visible projection (Langfuse SDK v4's `set_current_trace_io` / `Span.set_trace_io`, empirically verified 2026-05-31) is marked deprecated by the upstream vendor with stated removal in a future major version; the non-deprecated `propagate_attributes` does not currently project to the headline UI columns. The §8.4.1 normative contract (three-lever decision tree, hook signatures, status enum, resume semantics) is explicitly decoupled from any specific SDK-method binding and remains stable across SDK migrations. Cross-references `docs/compatibility.md` per the *External-dependency adoption* policy as the operational tracking record. No conformance fixture impact — the existing §8.4.1 fixture set remains valid unchanged by [proposal 0051](../../proposals/0051-langfuse-trace-io-deprecation-caveat.md)
+  - §5.1 invocation span attribute set gained two new implementation-emitted attributes — `openarmature.implementation.name` (string; canonical values `"openarmature-python"` / `"openarmature-typescript"` / `"openarmature-<language>"` matching the language's package-registry shape) and `openarmature.implementation.version` (string; sourced from the implementation library's package metadata in the language-idiomatic way — `openarmature.__version__` for Python, `package.json` `version` for TypeScript). Both attributes are reserved per §3.4 (the reserved-key set extends from 24 → 26 names) so a caller-supplied colliding key is rejected at the `invoke()` API boundary. New *Always-emit invariant* paragraph in §5.1 framing both new attributes plus the existing `spec_version` and `correlation_id` as runtime-identity constants that emit regardless of `disable_state_payload` / `disable_llm_payload` privacy knobs (privacy knobs gate runtime data, not runtime identity). §8.4.1 trace-level mapping table gained two new rows — `openarmature.implementation.name` → `trace.metadata.implementation_name` and `openarmature.implementation.version` → `trace.metadata.implementation_version` — sourced from the §5.1 attributes (parallel to the existing `spec_version` mapping row); the Langfuse rows inherit the always-emit invariant from the §5.1 attributes by [proposal 0052](../../proposals/0052-implementation-attribution-rows.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -193,7 +194,8 @@ outermost `invoke()` call, alongside the correlation ID. Implementations MUST:
   `subgraph_name`, `fan_out_item_count`, `fan_out_concurrency`, `fan_out_error_policy`,
   `fan_out_parent_node_name`, `prompt_group_name`, `request_extras`, `finish_reason`, `system`,
   `response_model`, `response_id`, `prompt`, `invocation_id`, `branch_name`, `detached`,
-  `detached_from_invocation_id`. Implementations MUST reject a caller key that exactly
+  `detached_from_invocation_id`, `implementation_name`, `implementation_version`.
+  Implementations MUST reject a caller key that exactly
   matches a reserved name at the `invoke()` API boundary, before any work begins, with the same
   per-language error idiom as the `openarmature.*` / `gen_ai.*` reservation above. The match is
   exact (whole keys, not prefixes), and the reservation applies regardless of which backends are
@@ -590,6 +592,37 @@ following normative attribute keys; implementations MUST emit each on the spans 
 - `openarmature.graph.entry_node` — string. The entry node name of the outermost graph.
 - `openarmature.graph.spec_version` — string. The version of the openarmature-spec the
   implementation targets (e.g., `"0.7.0"`). Sourced from the implementation's package metadata.
+- `openarmature.implementation.name` — string. The OA implementation that emitted the
+  invocation. Canonical values match each language's package-registry shape:
+  `"openarmature-python"` (PyPI), `"openarmature-typescript"` (npm), per-language equivalents
+  for future ports under the `openarmature-<language>` convention. Implementation-emitted; never
+  caller-supplied (reserved per §3.4). Stable per implementation; never null.
+- `openarmature.implementation.version` — string. The OA implementation's release identifier,
+  sourced from the implementation library's package metadata in the language-idiomatic way
+  (Python: `openarmature.__version__`; TypeScript: `package.json` `version` field; per-language
+  idiomatic equivalents otherwise). Implementation-emitted; never caller-supplied (reserved per
+  §3.4). Never null. Pre-release tags (e.g., `"0.12.0-rc.1"`) MAY appear; the spec does NOT
+  mandate semver vs CalVer vs any specific versioning discipline — the value matches the
+  package's release identity in whatever shape the package registers under.
+
+**Always-emit invariant.** `openarmature.implementation.name` and
+`openarmature.implementation.version` MUST be emitted on every invocation span regardless of
+the `disable_state_payload`, `disable_llm_payload`, or any other observer-level privacy knob.
+These attributes describe the OA runtime itself — they are runtime-identity constants, not
+runtime data. The privacy-knob framing applies to runtime data (caller state, LLM messages,
+etc.), not to runtime identity. The pattern is parallel to `openarmature.graph.spec_version`
+(above) and `openarmature.correlation_id` (§3.1 / §5.6) — all four mandated, all four
+always-emit, all four implementation-emitted (not caller-supplied). The §8.4.1 Langfuse-mapping
+rows derived from these attributes inherit the same always-emit invariant.
+
+Canonical implementation-name values per language follow the package-registry shape so
+operators can copy the name directly into the registry's search box without transliteration:
+
+| Implementation | `openarmature.implementation.name` value | `openarmature.implementation.version` source |
+|---|---|---|
+| openarmature-python | `"openarmature-python"` | `openarmature.__version__` |
+| openarmature-typescript | `"openarmature-typescript"` | `package.json` `version` field |
+| Future language ports | `"openarmature-<language>"` (matches PyPI / npm / cargo / etc. naming for that ecosystem) | language-idiomatic package-metadata source |
 
 ### 5.2 Node span attributes
 
@@ -1438,6 +1471,8 @@ to also catch Langfuse-specific constraints early, per §3.4's MAY-expand allowa
 | `openarmature.correlation_id` | `trace.metadata.correlation_id` AND propagated to every observation's `metadata.correlation_id` per §8.5 |
 | `openarmature.graph.entry_node` | `trace.metadata.entry_node` |
 | `openarmature.graph.spec_version` | `trace.metadata.spec_version` |
+| `openarmature.implementation.name` | `trace.metadata.implementation_name` |
+| `openarmature.implementation.version` | `trace.metadata.implementation_version` |
 | (caller-supplied invocation label OR entry node name, per §8.6) | `trace.name` |
 | §4.4 detached-mode dispatch context: the parent invocation's `invocation_id` | `trace.metadata.detached_from_invocation_id` — emitted on the detached child trace only (a trace produced by detached-mode dispatch per §4.4). Points back to the parent invocation for inverse lookup. Sibling to `trace.metadata.correlation_id` (preserved across detached / parent traces per §3.1, providing the forward direction). Absent on non-detached traces. |
 | Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at trace emission time (per §3.4, including any mid-invocation augmentations applied before trace closure) | `trace.metadata.<key>` (top level, sibling to `correlation_id` / `entry_node` / `spec_version`; NOT nested under a `user` sub-object so Langfuse UI filtering on `metadata.<key>` matches what callers supplied; implementations SHOULD use Langfuse SDK's `trace.update(metadata=...)` to apply mid-invocation augmentations to the open Trace) |

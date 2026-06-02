@@ -1,9 +1,9 @@
 # 0052: Implementation Attribution Attributes
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-01
-- **Accepted:**
+- **Accepted:** 2026-06-01
 - **Targets:** spec/observability/spec.md (§5.1 *Invocation span attributes* — adds two new invocation-level attributes, `openarmature.implementation.name` and `openarmature.implementation.version`, emitted on every invocation span and sourcing the OA implementation's identity; §8.4.1 *Trace-level mapping* — adds two new `trace.metadata.*` rows mapping the §5.1 attributes onto Langfuse trace metadata; §3.4 — extends the reserved caller-metadata key set from 24 to 26 names with `implementation_name` and `implementation_version` to reject caller collision at the `invoke()` API boundary); plus one positive-control conformance fixture asserting the OTel attributes present on the invocation span + one positive-control fixture asserting the Langfuse rows present on every Trace + one negative-control extension on existing fixture 028 (caller-metadata namespace rejection) asserting both new names are rejected per the §3.4 reservation rule.
 - **Related:** 0031 (observability §8 Langfuse mapping — established the §8.4 trace metadata mapping table this proposal extends), 0034 (caller-supplied invocation metadata — established the §3.4 reserved-key mechanism this proposal extends), 0041 (Langfuse reserved-key collision — established the reserved-key list maintenance rule this proposal follows), 0042 (reserved-keys extension — most recent prior maintenance-rule extension to the §3.4 reserved set)
 - **Supersedes:**
@@ -223,10 +223,14 @@ assigned at acceptance):
    `openarmature.implementation.version` as non-empty string
    attributes, and `openarmature.implementation.name` matches the
    implementation under test (`"openarmature-python"` for python
-   conformance runs).
-   The attributes appear once per invocation (on the invocation
-   span only — they are NOT cross-cutting attributes per §5.6;
-   they live in §5.1 alongside other invocation-level constants).
+   conformance runs). The attributes appear once per invocation (on
+   the invocation span only — they are NOT cross-cutting attributes
+   per §5.6; they live in §5.1 alongside other invocation-level
+   constants). A second case (`detached_subgraph_attribution_
+   propagates_to_child_trace_invocation_span`) asserts both the
+   parent invocation span AND the detached child trace's
+   invocation span carry the attributes per §5.1's always-emit
+   invariant applying to every invocation span.
 
 **Observability (Langfuse):**
 

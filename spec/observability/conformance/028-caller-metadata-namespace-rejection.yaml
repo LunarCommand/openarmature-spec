@@ -247,3 +247,60 @@ cases:
       # §3.4: the helper raises at the call site on a reserved name,
       # before the reserved key reaches any emission.
       augment_rejects_at_call_site: true
+
+  - name: rejects_reserved_oa_name_implementation_name
+    description: |
+      Caller supplies the bare key `implementation_name`, a reserved
+      OA-emitted Trace-metadata key name added by proposal 0052
+      (§8.4.1 — sourced from `openarmature.implementation.name` per
+      §5.1; an implementation-emitted runtime-identity constant that
+      MUST NOT be shadowable by caller-supplied metadata). Reserved
+      per §3.4; the framework MUST reject at the invoke() boundary.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      implementation_name: "spoof-impl"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_oa_name_implementation_version
+    description: |
+      Caller supplies the bare key `implementation_version`, a reserved
+      OA-emitted Trace-metadata key name added by proposal 0052
+      (§8.4.1 — sourced from `openarmature.implementation.version`
+      per §5.1; an implementation-emitted runtime-identity constant
+      that MUST NOT be shadowable by caller-supplied metadata).
+      Reserved per §3.4; the framework MUST reject at the invoke()
+      boundary.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      implementation_version: "9.9.9"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true

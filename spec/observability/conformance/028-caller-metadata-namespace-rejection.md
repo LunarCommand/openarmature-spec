@@ -44,6 +44,12 @@ error BEFORE any work begins — no spans emitted, no observability backend arti
    helper with the reserved name `step` (via the `augment_metadata` primitive). The helper
    MUST raise at the call site — the reservation is enforced at the helper, not only at the
    `invoke()` boundary.
+10. `rejects_reserved_oa_name_implementation_name` — caller key `implementation_name` (an
+    OA trace-metadata name, §8.4.1 — sourced from `openarmature.implementation.name` per §5.1;
+    added by proposal 0052). Rejected at `invoke()` entry.
+11. `rejects_reserved_oa_name_implementation_version` — caller key `implementation_version`
+    (an OA trace-metadata name, §8.4.1 — sourced from `openarmature.implementation.version`
+    per §5.1; added by proposal 0052). Rejected at `invoke()` entry.
 
 **Harness extensions:**
 
