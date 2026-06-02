@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.45.0] — 2026-06-01
+
+**Changed**
+
+- **observability §3.4 *Shared-parent boundary (MUST NOT)* — paragraph rewritten with conditional invocation-span classification.** The original prose framing (from proposal 0045) classified the invocation span as an unconditional shared parent "regardless of runtime cardinality" — but in the pure-serial case (no fan-out or parallel-branches dispatch on the augmenter's call-stack path), the invocation span has no sibling instances to leak to and is on the augmenter's call-stack ancestor path. The rewritten paragraph splits the classification into three bullets: fan-out node always a shared parent (degenerate single-instance cases included — structural classification governs); parallel-branches node always a shared parent (same rule); invocation span a shared parent **only when** at least one fan-out or parallel-branches dispatch is on the augmenter's call-stack path (predicate stated via the lineage chain having non-`null` `fan_out_index` or `branch_name` entries). Pure-serial augmentations reach the invocation span via rule 2 of the boundary decision tree; nested augmentations (inside any fan-out instance or parallel branch) do not reach the invocation span because at least one dispatcher is on the path. The decision tree's rule 3 gains a short parenthetical pointing readers at the conditional classification. ([proposal 0053](proposals/0053-shared-parent-boundary-clarification.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Documentary tightening only. The normative behavior is unchanged from what fixtures 034 (`034-caller-metadata-open-span-update-serial` — outermost-serial augmentation reaches the invocation span) and 039 (`039-nested-lineage-augmentation` — nested cases do not reach the invocation span) already exercise. The proposal closes the spec-text-vs-fixture ambiguity that previously made fixtures 034 and 039's behavior unreconcilable from §3.4's text alone — both pass under the predicate-derived reading; the tightened spec text retroactively records the predicate. No conformance fixture changes needed; implementations that pass 034 and 039 today already implement the predicate-derived behavior. Matches the *Textual* impl-tracking status precedent from proposals 0019 / 0026 / 0030 / 0051 — implementations adopt by bumping their spec-version pin without code changes.
+
 ## [0.44.0] — 2026-06-01
 
 **Added**

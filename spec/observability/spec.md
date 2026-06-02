@@ -21,6 +21,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.5 baseline LLM provider span attribute list extended with `openarmature.llm.attempt_index` (int; `0..N-1` for an N-attempt call-level retry per llm-provider §7.1; defaults to `0` when call-level retry is not configured, preserving the single-span case verbatim); §5.5 single-span framing paragraph amended from "MUST emit a span around each `complete()` call" to "one span per attempt under call-level retry; one span per `complete()` call when retry is absent (the default)" — N attempts emit N sibling spans parented under the calling node's span, disambiguated by the new attribute. The attribute is OA-namespace because no upstream OTel GenAI semconv stable equivalent exists; a follow-on proposal MAY mirror to `gen_ai.*` if upstream stabilizes such an attribute by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
   - §8.4.1 *Trace input/output sourcing* block gained an *Implementation surface caveat* paragraph noting that the vendor SDK method delivering the §8.4.1 contract's UI-visible projection (Langfuse SDK v4's `set_current_trace_io` / `Span.set_trace_io`, empirically verified 2026-05-31) is marked deprecated by the upstream vendor with stated removal in a future major version; the non-deprecated `propagate_attributes` does not currently project to the headline UI columns. The §8.4.1 normative contract (three-lever decision tree, hook signatures, status enum, resume semantics) is explicitly decoupled from any specific SDK-method binding and remains stable across SDK migrations. Cross-references `docs/compatibility.md` per the *External-dependency adoption* policy as the operational tracking record. No conformance fixture impact — the existing §8.4.1 fixture set remains valid unchanged by [proposal 0051](../../proposals/0051-langfuse-trace-io-deprecation-caveat.md)
   - §5.1 invocation span attribute set gained two new implementation-emitted attributes — `openarmature.implementation.name` (string; canonical values `"openarmature-python"` / `"openarmature-typescript"` / `"openarmature-<language>"` matching the language's package-registry shape) and `openarmature.implementation.version` (string; sourced from the implementation library's package metadata in the language-idiomatic way — `openarmature.__version__` for Python, `package.json` `version` for TypeScript). Both attributes are reserved per §3.4 (the reserved-key set extends from 24 → 26 names) so a caller-supplied colliding key is rejected at the `invoke()` API boundary. New *Always-emit invariant* paragraph in §5.1 framing both new attributes plus the existing `spec_version` and `correlation_id` as runtime-identity constants that emit regardless of `disable_state_payload` / `disable_llm_payload` privacy knobs (privacy knobs gate runtime data, not runtime identity). §8.4.1 trace-level mapping table gained two new rows — `openarmature.implementation.name` → `trace.metadata.implementation_name` and `openarmature.implementation.version` → `trace.metadata.implementation_version` — sourced from the §5.1 attributes (parallel to the existing `spec_version` mapping row); the Langfuse rows inherit the always-emit invariant from the §5.1 attributes by [proposal 0052](../../proposals/0052-implementation-attribution-rows.md)
+  - §3.4 *Shared-parent boundary (MUST NOT)* paragraph rewritten from "all three are unconditional shared parents regardless of runtime cardinality" prose to a three-bullet structural classification — fan-out node always a shared parent, parallel-branches node always a shared parent, invocation span a shared parent **only when** at least one fan-out or parallel-branches dispatch is on the augmenter's call-stack path (predicate stated via the lineage chain having non-`null` `fan_out_index` or `branch_name` entries; pure-serial augmentations reach the invocation span via rule 2 of the boundary decision tree). The decision tree's rule 3 gains a short parenthetical pointing readers at the conditional invocation-span classification. Documentary tightening only — fixtures 034 (outermost-serial updates invocation span) and 039 (nested cases do not) already exercise the predicate-derived behavior; this proposal closes the spec-text-vs-fixture ambiguity that previously made the two fixtures' behavior unreconcilable from §3.4's text alone by [proposal 0053](../../proposals/0053-shared-parent-boundary-clarification.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -259,15 +260,35 @@ The helper:
   per-invocation: siblings get their own copies of the metadata mapping at dispatch time
   (see *Per-async-context scoping* below), and the augmenter's mutation does not leak across
   the sibling boundary.
-- **Shared-parent boundary (MUST NOT).** Spans for a SHARED parent (the fan-out node itself,
-  the parallel-branches node itself, the invocation span) MUST NOT be updated. A shared
-  parent is by definition visible to multiple sibling instances / branches; updating it would
-  propagate the augmentation to siblings indirectly. Identify a shared parent structurally by
-  dispatch-node type — any span representing a fan-out node, any span representing a
-  parallel-branches node, and the invocation span — regardless of runtime cardinality. The
-  rule applies even in degenerate cases (a fan-out over a single-element list, a parallel-
-  branches dispatcher with one branch) where no sibling exists at runtime: the structural
-  classification governs, not the live sibling count.
+- **Shared-parent boundary (MUST NOT).** Spans for a SHARED parent MUST NOT be updated. A
+  shared parent is by definition visible to multiple sibling instances / branches; updating it
+  would propagate the augmentation to siblings indirectly. Identify a shared parent
+  structurally:
+
+  - **Fan-out node span** — always a shared parent. Identified structurally by dispatch-node
+    type; the rule applies even in degenerate cases (a fan-out over a single-element list)
+    where no sibling instance exists at runtime — the structural classification governs, not
+    the live sibling count.
+  - **Parallel-branches node span** — always a shared parent. Same structural-classification
+    rule; applies even in degenerate cases (a parallel-branches dispatcher with one branch).
+  - **Invocation span** — a shared parent **only when at least one fan-out or
+    parallel-branches dispatch is on the augmenter's call-stack path**. Concretely: the
+    augmenter's lineage chain (per the *Per-depth lineage tracking* paragraph below) contains
+    at least one non-`null` `fan_out_index` or `branch_name` entry. When the chain has only
+    `null` entries (pure-serial descent — no fork occurred between the invocation entry and
+    the augmenter), the invocation span is on the augmenter's call-stack ancestor path and is
+    NOT a shared parent; it gets updated per the *Augmenter's call-stack ancestor chain
+    (MUST)* rule above.
+
+  The structural framing applies to the fan-out and parallel-branches node spans (whose
+  dispatcher nature is intrinsic to their identity); the invocation span's classification is
+  conditional on whether any dispatcher has fired on the augmenter's path. Pure-serial
+  augmentations (an augmenter inside a node that runs in the outermost serial context, possibly
+  nested through serial-subgraph wrappers, with no fan-out or parallel-branches dispatch on the
+  call-stack path) reach the invocation span via rule 2 of the decision tree below; nested
+  augmentations (inside any fan-out instance or parallel branch) do not reach the invocation
+  span because at least one dispatcher is on the path, making the invocation span a shared
+  parent.
 
 The boundary decision tree, applied to each open span at augmentation time:
 
@@ -277,7 +298,8 @@ The boundary decision tree, applied to each open span at augmentation time:
    dispatch ancestor on the augmenter's specific path, not a shared parent above the fork)?
    → **Update.**
 3. Is the span's opening context a sibling of any context on the augmenter's call-stack
-   path, OR a shared parent at any depth? → **Do not update.**
+   path, OR a shared parent at any depth (per the conditional invocation-span classification
+   in the *Shared-parent boundary* paragraph above)? → **Do not update.**
 
 **Per-async-context scoping.** The metadata mapping is held in the language's idiomatic
 async-context primitive (Python `ContextVar`, TypeScript `AsyncLocalStorage`) with

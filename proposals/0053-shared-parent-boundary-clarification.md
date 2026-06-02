@@ -1,9 +1,9 @@
 # 0053: §3.4 Shared-Parent Boundary Clarification (Invocation Span)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-01
-- **Accepted:**
+- **Accepted:** 2026-06-01
 - **Targets:** spec/observability/spec.md (§3.4 *Shared-parent boundary (MUST NOT)* paragraph — tightens the structural-shared-parent classification to explicitly carve out the invocation span as a conditional shared parent rather than an unconditional one; the invocation span is structurally a shared parent ONLY when at least one fan-out or parallel-branches dispatch is on the augmenter's call-stack path. The §3.4 *Three-step boundary decision tree* rule 3 picks up matching wording. No conformance fixture impact — existing fixtures 034 (outermost-serial augmentation) and 039 (nested-lineage cases) already exercise the predicate-derived behavior; this proposal closes the spec-text ambiguity that previously made the two fixtures' apparent contradiction unresolvable from §3.4's text alone.
 - **Related:** 0040 (mid-invocation augmentation open-span update — established the §3.4 augmentation mechanism and the initial ancestor / sibling boundary rule), 0045 (nested-lineage augmentation containment scope — rewrote §3.4's boundary as the three lineage-aware rules this proposal tightens)
 - **Supersedes:**
