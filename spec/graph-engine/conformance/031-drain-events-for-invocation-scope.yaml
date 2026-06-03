@@ -1,0 +1,99 @@
+# §6 Per-invocation drain (drain_events_for): scope filter. The drain
+# scopes to events tagged with the supplied invocation_id; events
+# tagged with a different invocation_id do not affect completion. Two
+# serial invocations of the same compiled graph each get a fresh
+# invocation_id; each invocation's terminal-node drain MUST see only
+# its own invocation's events in the accumulator bucket.
+#
+# Locks down the cross-invocation scoping contract — including the
+# composition with resume rule from proposal 0039 (a resumed
+# invocation mints a fresh invocation_id; drain_events_for on the
+# resumed id scopes to the resumed invocation's events only). Resume
+# is not directly exercised here (the resume mechanism lands in
+# pipeline-utilities §10 / proposal 0021), but the per-id scoping
+# rule the resume case relies on is the same rule this fixture tests.
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1}
+  b:
+    update: {v: 2}
+    invoke_drain_events_for:
+      timeout_seconds: 5.0
+      snapshot_observer: accumulator
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: END}
+
+observers:
+  # Accumulator keys per-invocation_id buckets. The harness's read API
+  # returns the bucket for a specified invocation_id (defaulting to
+  # the current invocation's id when called from inside a node).
+  - name: accumulator
+    attach: graph
+    target: outer
+    behavior: accumulate
+    sleep_ms_per_event: 30
+
+invocations:
+  - name: first
+    initial_state: {}
+    # Harness mints a fresh invocation_id (UUIDv4) per §5.1; the value
+    # is captured in the invocation's context and is what drain
+    # scopes against.
+    expected:
+      final_state:
+        v: 2
+      execution_order: [a, b]
+      node_drain_summaries:
+        b:
+          timeout_reached: false
+          undelivered_count: 0
+      # Per-invocation accumulator bucket for invocation `first`
+      # contains only `first`'s events.
+      node_accumulator_snapshots:
+        b:
+          accumulator:
+            - {step: 0, phase: started,   node_name: a, namespace: [a]}
+            - {step: 0, phase: completed, node_name: a, namespace: [a]}
+            - {step: 1, phase: started,   node_name: b, namespace: [b]}
+
+  - name: second
+    initial_state: {}
+    expected:
+      final_state:
+        v: 2
+      execution_order: [a, b]
+      node_drain_summaries:
+        b:
+          timeout_reached: false
+          undelivered_count: 0
+      # Per-invocation accumulator bucket for invocation `second`
+      # contains only `second`'s events — events from invocation
+      # `first` do not bleed into `second`'s bucket, demonstrating
+      # the scope-by-invocation_id contract.
+      node_accumulator_snapshots:
+        b:
+          accumulator:
+            - {step: 0, phase: started,   node_name: a, namespace: [a]}
+            - {step: 0, phase: completed, node_name: a, namespace: [a]}
+            - {step: 1, phase: started,   node_name: b, namespace: [b]}
+
+invariants:
+  # Each invocation gets a fresh invocation_id; the accumulator's
+  # per-invocation buckets are distinct.
+  each_invocation_has_unique_invocation_id: true
+  # The scoping rule: drain_events_for(inv_id) covers only events
+  # tagged with inv_id. This is what makes the resume-id composition
+  # rule (proposal 0039) fall out naturally — the resumed invocation
+  # has a fresh inv_id, so its drain covers only its own events.
+  drain_scopes_strictly_to_supplied_invocation_id: true

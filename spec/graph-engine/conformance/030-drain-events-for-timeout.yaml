@@ -1,0 +1,86 @@
+# §6 Per-invocation drain (drain_events_for): timeout path. With a slow
+# observer and a tight timeout, drain_events_for MUST return within the
+# timeout, the summary MUST report timeout_reached=true and a non-zero
+# undelivered_count, and the graph MUST remain usable for subsequent
+# invocations (no worker cancellation — unlike the process-wide drain,
+# the per-invocation drain timeout MUST NOT terminate workers because
+# the graph is still active).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1}
+  b:
+    update: {v: 2}
+  c:
+    update: {v: 3}
+    invoke_drain_events_for:
+      timeout_seconds: 0.05
+      snapshot_observer: slow_accumulator
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: c}
+  - {from: c, to: END}
+
+initial_state: {}
+
+observers:
+  # 300ms per event × 5 events (a started, a completed, b started,
+  # b completed, c started) = 1500ms of work. Timeout is 50ms — orders
+  # of magnitude shorter. At most 0-1 events deliver before the timeout
+  # fires.
+  - name: slow_accumulator
+    attach: graph
+    target: outer
+    behavior: accumulate
+    sleep_ms_per_event: 300
+
+invocations:
+  - name: timed_drain
+    initial_state: {}
+    expected:
+      final_state:
+        v: 3
+      execution_order: [a, b, c]
+      node_drain_summaries:
+        c:
+          timeout_reached: true
+          # At least 4 of the 5 pre-drain events remain undelivered
+          # (300ms × 5 events vs 50ms timeout — at most one event can
+          # plausibly deliver within the timeout window).
+          undelivered_count_min: 4
+
+  # Critical follow-up: the graph remains usable for a subsequent
+  # invocation. The deliver loop continues processing the queue (no
+  # worker cancellation on per-invocation drain timeout), and the next
+  # invocation runs cleanly. Distinguishes per-invocation drain from
+  # process-wide drain (which DOES cancel workers on timeout).
+  - name: subsequent_clean_invocation
+    initial_state: {}
+    expected:
+      final_state:
+        v: 3
+      execution_order: [a, b, c]
+      # No per-invocation drain on this second invocation; the
+      # harness's normal drain at end-of-test verifies all events
+      # eventually deliver.
+      invariants:
+        graph_state_intact_after_per_invocation_drain_timeout: true
+
+invariants:
+  # Hard contract: drain_events_for MUST return within the supplied
+  # timeout, even when the deliver loop is far behind.
+  drain_returned_within_timeout: true
+  # Load-bearing difference from drain(): per-invocation drain
+  # timeout MUST NOT cancel workers; the graph remains active. The
+  # second invocation succeeding proves the deliver loop is still
+  # running after the first invocation's timeout.
+  workers_not_cancelled_on_per_invocation_drain_timeout: true

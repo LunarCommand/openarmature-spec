@@ -1,0 +1,79 @@
+# §6 Per-invocation drain (drain_events_for): basic synchronization
+# case. A terminal node calls drain_events_for(state.invocation_id, ...)
+# and the snapshotted set of events MUST have been delivered to every
+# registered observer by the time the drain returns.
+#
+# The accumulating observer records events into a per-invocation_id
+# bucket as they are delivered. Without the drain call, the terminal
+# node could read the accumulator before the prior node's `completed`
+# event has been dispatched (the race the primitive resolves).
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1}
+  b:
+    # Terminal node invokes drain_events_for(state.invocation_id, ...)
+    # via the harness primitive, then the harness snapshots the named
+    # accumulator's bucket for state.invocation_id and records both the
+    # drain summary and the snapshot under this node's name.
+    update: {v: 2}
+    invoke_drain_events_for:
+      timeout_seconds: 5.0
+      snapshot_observer: accumulator
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: END}
+
+initial_state: {}
+
+observers:
+  # Accumulating observer keyed by invocation_id. The harness exposes a
+  # read API (snapshot_observer above) returning the per-invocation
+  # bucket at the moment of the snapshot call. Per-event sleep simulates
+  # a non-trivial dispatch tail; without drain, the race window opens.
+  - name: accumulator
+    attach: graph
+    target: outer
+    behavior: accumulate
+    sleep_ms_per_event: 50
+
+expected:
+  final_state:
+    v: 2
+  execution_order: [a, b]
+
+  # The drain MUST return with no undelivered events and timeout_reached
+  # false — the accumulator has been brought current with all events
+  # emitted up to the moment of the drain call.
+  node_drain_summaries:
+    b:
+      timeout_reached: false
+      undelivered_count: 0
+
+  # At the moment drain_events_for returned (before node b's own
+  # `completed` event fires per the snapshot semantic), the accumulator
+  # contains every event emitted before the drain call: a's started /
+  # completed pair plus b's own started event (started fires before the
+  # node body runs per §6).
+  node_accumulator_snapshots:
+    b:
+      accumulator:
+        - {step: 0, phase: started,   node_name: a, namespace: [a]}
+        - {step: 0, phase: completed, node_name: a, namespace: [a]}
+        - {step: 1, phase: started,   node_name: b, namespace: [b]}
+
+  invariants:
+    # Without the drain call, the accumulator at the time of the
+    # terminal node's read could miss the prior node's `completed`
+    # event (the race the primitive resolves). With drain_events_for,
+    # the snapshot deterministically contains every pre-drain event.
+    drain_events_for_synchronized_accumulator_read: true

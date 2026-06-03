@@ -1,0 +1,86 @@
+# §6 Per-invocation drain (drain_events_for): snapshot semantic. The
+# set of events covered by a drain_events_for call is fixed at call
+# time. Events emitted with the matching invocation_id AFTER the call
+# begins do NOT block the drain — otherwise the caller (running inside
+# an active invocation that emits more events itself) would spin
+# indefinitely.
+#
+# Concretely: the terminal node calls drain_events_for then returns.
+# Node b's own `completed` event fires after the node returns. The
+# drain MUST return before b's `completed` event is dispatched; b's
+# `completed` event is delivered on the deliver loop's normal schedule
+# AFTER the drain returns and after the graph reaches END.
+
+state:
+  fields:
+    v:
+      type: int
+      default: 0
+
+entry: a
+
+nodes:
+  a:
+    update: {v: 1}
+  b:
+    update: {v: 2}
+    invoke_drain_events_for:
+      timeout_seconds: 5.0
+      snapshot_observer: accumulator
+
+edges:
+  - {from: a, to: b}
+  - {from: b, to: END}
+
+initial_state: {}
+
+observers:
+  - name: accumulator
+    attach: graph
+    target: outer
+    behavior: accumulate
+    sleep_ms_per_event: 30
+
+expected:
+  final_state:
+    v: 2
+  execution_order: [a, b]
+
+  node_drain_summaries:
+    b:
+      # The drain returned before b's `completed` event was dispatched
+      # (or even emitted — the node body is still running when drain is
+      # called). If the snapshot semantic were not honored, this drain
+      # would deadlock waiting for b's `completed`.
+      timeout_reached: false
+      undelivered_count: 0
+
+  node_accumulator_snapshots:
+    b:
+      accumulator:
+        # b's `completed` event is NOT in the accumulator at drain
+        # return time — proof that the drain scoped to events emitted
+        # before the call begins, not events that will be emitted by
+        # the caller's own node body after the call returns.
+        - {step: 0, phase: started,   node_name: a, namespace: [a]}
+        - {step: 0, phase: completed, node_name: a, namespace: [a]}
+        - {step: 1, phase: started,   node_name: b, namespace: [b]}
+
+  # AFTER the invocation completes, all events (including b's
+  # completed) MUST be in the accumulator — the deliver loop continues
+  # processing the queue after drain returns; the snapshot semantic
+  # only governs which events block the drain, not which events
+  # eventually deliver.
+  final_accumulator_state:
+    accumulator:
+      - {step: 0, phase: started,   node_name: a, namespace: [a]}
+      - {step: 0, phase: completed, node_name: a, namespace: [a]}
+      - {step: 1, phase: started,   node_name: b, namespace: [b]}
+      - {step: 1, phase: completed, node_name: b, namespace: [b]}
+
+  invariants:
+    # The load-bearing test: drain_events_for called inside a node
+    # body MUST NOT block on events emitted by that same node body
+    # after the drain call. If it did, every in-node drain would
+    # deadlock on the node's own `completed` event.
+    drain_returned_without_blocking_on_post_call_events: true

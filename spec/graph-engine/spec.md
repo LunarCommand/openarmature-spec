@@ -16,6 +16,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §3 *Execution model* gained a clarifying paragraph noting that `invoke()` accepts an optional caller-supplied metadata mapping (per observability §3.4) alongside the existing `correlation_id` argument and per-language invocation surface by [proposal 0034](../../proposals/0034-caller-supplied-invocation-metadata.md)
   - §6 NodeEvent gained an optional `parallel_branches_config` field (mirroring the existing `fan_out_config` field from proposal 0013), populated on every `started` / `completed` event for a parallel-branches node and carrying the resolved `branch_names`, `branch_count`, `error_policy`, and `parent_node_name` for the observability §5.7 attribute surface by [proposal 0044](../../proposals/0044-parallel-branches-dispatch-span.md)
   - §6 observer event union extended with `LlmCompletionEvent` — the first spec-normatively-typed event variant on the union (alongside `NodeEvent` and the framework-emitted metadata-augmentation event mechanism from proposal 0040). The typed event is dispatched on every LLM call completion that produces a structured response per llm-provider §6, carries 13 typed fields (identity / scoping per the existing event-source identity tuple, outcome data mirroring observability §5.5's attribute surface, plus an OPTIONAL `caller_invocation_metadata` opt-in snapshot field), and is NOT subject to the `phases` subscription filter (matches the metadata-augmentation event's no-phase treatment). Observers filter via type discrimination rather than via sentinel-namespace string match. Failure / streaming events are out of scope for v1; the rendering / mapping concern lives in observability §5.5 by [proposal 0049](../../proposals/0049-typed-llm-completion-event.md)
+  - §6 *Observer hooks* gained a per-invocation `drain_events_for(invocation_id, *, timeout)` primitive as a sibling to the existing process-wide `drain`; reuses the snapshot semantic and summary return shape (`undelivered_count`, `timeout_reached`), scopes the wait to events tagged with a single `invocation_id` (per observability §5.1), and diverges from `drain` on worker cancellation (per-invocation drain MUST NOT cancel workers on timeout because the graph remains active). Resolves the synchronization race for the queryable observer pattern (proposal 0048) when a terminal node reads accumulator state mid-invocation by [proposal 0054](../../proposals/0054-per-invocation-event-drain.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -312,6 +313,65 @@ a consistent shape regardless of whether they supplied a timeout.
 Implementations SHOULD document drain's worst-case duration in the presence of slow observers and
 SHOULD recommend setting a timeout in short-lived process contexts (CLIs, scripts, serverless
 functions).
+
+The process-wide `drain` above is the right primitive for lifespan / shutdown coordination — drain
+everything before the process exits. For per-invocation synchronization (a terminal node reading
+observer-accumulated state per the observability §9.1 read-method contract before returning, or any
+similar in-invocation read-after-write against an accumulator-style observer), use the
+`drain_events_for(invocation_id, ...)` primitive below — it scopes the wait to a single invocation
+rather than blocking on the whole graph's active invocation set.
+
+**Per-invocation drain.** The compiled graph MUST expose a
+`drain_events_for(invocation_id, *, timeout)` operation as a sibling to the process-wide `drain`
+above. When awaited, `drain_events_for` returns once all observer events tagged with the supplied
+`invocation_id` AND emitted up to the moment of the call have been delivered to every registered
+observer, OR once the timeout elapses, whichever happens first.
+
+Events are scoped via the `invocation_id` defined in observability §5.1; implementations MUST tag
+every observer event with the `invocation_id` of the invocation that emitted it. Events tagged with
+a different `invocation_id` do not affect the drain's completion. Detached subgraphs and detached
+fan-outs (per observability §4.4) inherit the parent invocation's identifier (per the
+*Invocation-scoped, not trace-scoped* paragraph of observability §3.4) and ARE covered by the
+parent's per-invocation drain.
+
+The set of events covered by a `drain_events_for` call is the set of events tagged with the matching
+`invocation_id` AND emitted up to the moment the call begins. Events emitted with the
+matching `invocation_id` AFTER the call begins are NOT covered by that drain — callers needing
+delivery guarantees for events emitted after their drain call MUST issue another drain. This
+snapshot rule parallels the existing `drain`'s rule (the set of invocations covered is fixed at call
+time) and exists for the same reason: a caller running inside an active invocation would otherwise
+spin indefinitely, because the caller's own node body emits a `completed` event AFTER the drain call
+returns (the deliver loop processes that event on the same queue the drain is waiting on).
+
+The `timeout` parameter follows the same discipline as the existing `drain`'s timeout above — a
+non-negative duration in seconds, mapped to the host language's idiomatic wait-bound type;
+implementations MUST reject negative or `NaN` values at the API boundary with a per-language
+idiomatic error. If `timeout` is omitted or `None`, the drain waits indefinitely for the snapshotted
+set to complete (the same default as `drain`); if supplied:
+
+- the operation MUST return no later than `timeout` seconds after the call begins;
+- any events still queued or in-flight when the timeout is reached are reported as **undelivered**
+  for the purposes of this drain call's summary;
+- workers MUST NOT be cancelled by per-invocation drain timeout (in contrast to `drain`'s timeout,
+  which cancels at graph shutdown) — the deliver loop continues processing the queue after a
+  per-invocation drain times out, because the graph remains active and other invocations may still
+  be in flight. This is the load-bearing difference between per-invocation drain (synchronization
+  barrier inside a running graph) and process-wide drain (shutdown coordination at lifespan end).
+
+`drain_events_for` MUST return the same summary shape `drain` returns — at minimum a count of
+undelivered events and a boolean flag indicating whether the timeout was reached. Implementations
+MAY provide richer detail (per-observer counts, sampled event metadata) following the same MAY
+allowance the existing summary contract permits.
+
+Calling `drain_events_for` on an invocation whose events have all been delivered MUST return
+immediately with `undelivered_count == 0` and `timeout_reached == false`. This is the common case in
+production where the queue empties faster than the pipeline's last few nodes execute.
+
+Per the resume-mints-fresh-id rule in §3 *Invocation entry surface*, a resumed invocation mints a
+fresh `invocation_id`. A `drain_events_for(resumed_invocation_id, ...)` call scopes to the resumed
+invocation's events only; events tagged with the original (pre-resume) invocation_id do not affect
+this drain. This falls out naturally from the per-invocation scoping but is called out explicitly
+to remove ambiguity for callers handling resume flows.
 
 Implementations MAY provide APIs to add or remove registered observers. Any change to the set of
 registered observers during a graph run MUST NOT take effect until the next invocation — the set of
