@@ -351,3 +351,68 @@
 [data-md-color-scheme="default"] .md-social__link {
   color: var(--md-default-fg-color);
 }
+
+/* Vertical guide line on the left of each sub-section's children
+ * group in the primary nav. Pattern lifted from openarmature-python
+ * (commit 4c2ba58 / PR #120). Material's primary-nav structure
+ * (relevant subset):
+ *
+ *   .md-nav--primary (root, data-md-level="0")
+ *     > .md-nav__list > .md-nav__item--section            (top-level section, e.g., Capabilities)
+ *       > .md-nav[data-md-level="1"]                      (the section's content)
+ *         > .md-nav__list > .md-nav__item                 (a sub-section, e.g., Pipeline Utilities)
+ *           > .md-nav                                     (children nav; line lives here)
+ *             > .md-nav__list > .md-nav__item             (page links, e.g., Middleware)
+ *
+ * (Python's docs site uses navigation.tabs, so its data-md-level="1"
+ * is the tab-content nav; this site uses navigation.sections, so its
+ * data-md-level="1" is the section-content nav under a top-level
+ * section like Capabilities. The selector matches both structures.)
+ *
+ * The line is a ::before pseudo-element so it can be absolutely
+ * positioned and bottom-stopped 5px short of the nav's lower edge.
+ * Requires modern browser :has() support (Chrome 105+, Safari 15.4+,
+ * Firefox 121+). */
+
+/* position:relative so the ::before can be absolutely positioned
+ * relative to this nav. Small left-margin so the line has breathing
+ * room from the parent's content edge. */
+.md-nav--primary
+  .md-nav[data-md-level="1"]
+  > .md-nav__list
+  > .md-nav__item
+  > .md-nav {
+  position: relative;
+  margin-left: 0.25rem;
+}
+
+/* The line itself. The :has() predicate excludes sub-sections whose
+ * nested nav is empty (e.g., when navigation.indexes has rolled up
+ * a single index.md child into the parent link). */
+.md-nav--primary
+  .md-nav[data-md-level="1"]
+  > .md-nav__list
+  > .md-nav__item:has(> .md-nav > .md-nav__list > .md-nav__item)
+  > .md-nav::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 5px;
+  width: 1px;
+  background: var(--md-default-fg-color--lightest);
+}
+
+/* Tighten the children-list left indent by 8px so page links sit
+ * closer to the vertical guide line above. Negative margin shifts
+ * the list (and its child links) left without affecting the line's
+ * position, which is anchored to the .md-nav element rather than the
+ * list inside it. */
+.md-nav--primary
+  .md-nav[data-md-level="1"]
+  > .md-nav__list
+  > .md-nav__item
+  > .md-nav
+  > .md-nav__list {
+  margin-left: -8px;
+}
