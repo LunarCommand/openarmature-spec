@@ -334,8 +334,8 @@ fan-outs (per observability §4.4) inherit the parent invocation's identifier (p
 *Invocation-scoped, not trace-scoped* paragraph of observability §3.4) and ARE covered by the
 parent's per-invocation drain.
 
-The set of events covered by a `drain_events_for` call is the set whose events were emitted with the
-matching `invocation_id` AND emitted up to the moment the call begins. Events emitted with the
+The set of events covered by a `drain_events_for` call is the set of events tagged with the matching
+`invocation_id` AND emitted up to the moment the call begins. Events emitted with the
 matching `invocation_id` AFTER the call begins are NOT covered by that drain — callers needing
 delivery guarantees for events emitted after their drain call MUST issue another drain. This
 snapshot rule parallels the existing `drain`'s rule (the set of invocations covered is fixed at call

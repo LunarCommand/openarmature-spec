@@ -127,9 +127,9 @@ the existing *Drain* paragraph block, within §6):
 > drain.
 >
 > **Snapshot semantic.** The set of events covered by a
-> `drain_events_for` call is the set whose events were emitted
-> with the matching `invocation_id` AND emitted up to the moment
-> the call begins. Events emitted with the matching
+> `drain_events_for` call is the set of events tagged with the
+> matching `invocation_id` AND emitted up to the moment the call
+> begins. Events emitted with the matching
 > `invocation_id` AFTER the call begins are NOT covered by that
 > drain — callers needing delivery guarantees for events emitted
 > after their drain call MUST issue another drain. This snapshot
