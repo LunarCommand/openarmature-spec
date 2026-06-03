@@ -173,8 +173,8 @@ the existing *Drain* paragraph block, within §6):
 >
 > **Idempotent / cheap on already-drained scopes.** Calling
 > `drain_events_for` on an invocation whose events have all been
-> delivered MUST return immediately with `undelivered = 0` and
-> `timeout_reached = False`. This is the common case in
+> delivered MUST return immediately with `undelivered_count == 0`
+> and `timeout_reached == false`. This is the common case in
 > production where the queue empties faster than the pipeline's
 > last few nodes execute.
 >
@@ -212,8 +212,8 @@ at acceptance):
 
 1. **Basic synchronization.** A graph with one LLM-calling node
    followed by a terminal node. A custom accumulating observer
-   records each `openarmature.llm.complete` event into a per-
-   invocation bucket. The terminal node calls
+   records each `LlmCompletionEvent` (per graph-engine §6) into a
+   per-invocation bucket. The terminal node calls
    `drain_events_for(invocation_id, timeout=2.0)` then reads the
    accumulator's bucket. Asserts the bucket contains the LLM
    call's record after the drain returns (no race; the drain
@@ -232,10 +232,11 @@ at acceptance):
    observer (sleeps before processing each event, parameterized
    by the harness). The terminal node calls `drain_events_for`
    with a timeout shorter than the observer's processing time.
-   Asserts the returned `DrainSummary` has `timeout_reached =
-   True` and `undelivered` non-zero; the graph remains usable for
-   subsequent invocations (the deliver loop continues processing
-   after the timeout; no worker cancellation).
+   Asserts the returned `DrainSummary` has
+   `timeout_reached == true` and `undelivered_count` non-zero;
+   the graph remains usable for subsequent invocations (the
+   deliver loop continues processing after the timeout; no worker
+   cancellation).
 
 4. **Resume with fresh `invocation_id`.** A graph that suspends
    and resumes (per pipeline-utilities §10.4). The resumed
@@ -281,7 +282,7 @@ increments:
 - Cross-reference paragraph in §6 *Drain* pointing at the new
   primitive (documentary; no behavior change to the existing
   primitive).
-- New conformance fixtures (four required). Existing fixtures
+- New conformance fixtures (five required). Existing fixtures
   unchanged.
 
 The change is backwards-compatible. Existing pipelines see no
