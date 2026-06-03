@@ -60,7 +60,7 @@ lifecycle and the proposal template.
 | [0051](proposals/0051-langfuse-trace-io-deprecation-caveat.md) | Langfuse trace input/output implementation-surface caveat | observability | Accepted | Pending         | —          |
 | [0052](proposals/0052-implementation-attribution-rows.md) | Implementation attribution attributes (§5.1 invocation span + §8.4.1 Langfuse mapping) | observability | Accepted | Pending         | —          |
 | [0053](proposals/0053-shared-parent-boundary-clarification.md) | §3.4 shared-parent boundary clarification (invocation span) | observability | Accepted | Pending         | —          |
-| [0054](proposals/0054-per-invocation-event-drain.md) | Per-invocation observer event drain | graph-engine | Draft | —               | —          |
+| [0054](proposals/0054-per-invocation-event-drain.md) | Per-invocation observer event drain | graph-engine | Accepted | Pending         | —          |
 
 Click any column header to sort.
 

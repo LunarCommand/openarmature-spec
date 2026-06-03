@@ -1,11 +1,11 @@
 # 0054: Per-Invocation Observer Event Drain
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-02
-- **Accepted:**
-- **Targets:** spec/graph-engine/spec.md (§6 *Observer hooks* — new `drain_events_for(invocation_id)` primitive as a sibling to the existing process-wide `drain()`, scoping the wait to events tagged with a single invocation; snapshot semantic at call time, reuses the existing `DrainSummary` return shape and timeout discipline); plus new conformance fixtures covering the basic synchronization case, the snapshot semantic (events emitted after the call do not block), the timeout path, and the resume-mints-fresh-invocation-id case from proposal 0039.
-- **Related:** 0010 (drain timeout — established the existing `drain()` timeout parameter and `DrainSummary` return shape this proposal extends), 0030 (drain snapshot semantic and timeout-input validation — established the snapshot-at-call-time rule this proposal generalizes to per-invocation scope), 0034 (caller-supplied invocation metadata / `invocation_id` propagation via the contextvar mechanism this proposal scopes against), 0039 (caller-supplied `invocation_id` — established the per-invocation identifier this primitive accepts as scope filter), 0048 (queryable observer pattern — established the accumulator-style observer convention that motivates this primitive by exposing the synchronization race)
+- **Accepted:** 2026-06-03
+- **Targets:** spec/graph-engine/spec.md (§6 *Observer hooks* — new `drain_events_for(invocation_id)` primitive as a sibling to the existing process-wide `drain()`, scoping the wait to events tagged with a single invocation; snapshot semantic at call time, reuses the existing summary return shape and timeout discipline); plus new conformance fixtures covering the basic synchronization case, the snapshot semantic (events emitted after the call do not block), the timeout path, the per-invocation scoping rule the resume case (proposal 0039) depends on, and the two concurrent-dispatch primitives (fan-out per proposal 0005 and parallel-branches per proposal 0011) whose inner events share the parent's `invocation_id`.
+- **Related:** 0010 (drain timeout — established the existing `drain()` timeout parameter and summary return shape this proposal extends), 0030 (drain snapshot semantic and timeout-input validation — established the snapshot-at-call-time rule this proposal generalizes to per-invocation scope), 0034 (caller-supplied invocation metadata — established the contextvar propagation pattern observability adopts for per-invocation context), 0039 (caller-supplied `invocation_id` — established the per-invocation identifier this primitive accepts as scope filter), 0048 (queryable observer pattern — established the accumulator-style observer convention that motivates this primitive by exposing the synchronization race)
 - **Supersedes:**
 
 ## Summary
@@ -42,7 +42,8 @@ as a sibling primitive under graph-engine §6 *Observer hooks*. The
 function scopes the wait to events tagged with a single
 `invocation_id`, snapshots the pending set at call time (so events
 emitted after the call do not block return), and returns the same
-`DrainSummary` shape the existing `drain()` returns.
+summary shape (`undelivered_count`, `timeout_reached`) the existing
+`drain()` returns.
 
 The change is additive at the spec level. Existing applications
 see no behavioral change; consumers opting into the accumulator
@@ -87,7 +88,7 @@ record).
 **Symmetric with the existing §6 *Drain* primitive.** The new
 primitive reuses the snapshot semantic (events emitted before the
 call vs after, established by proposal 0030 for the existing
-`drain()`), reuses the `DrainSummary` return shape (established by
+`drain()`), reuses the summary return shape (established by
 proposal 0010), and reuses the timeout discipline. The only design
 choice is the scope filter (process-wide vs per-`invocation_id`).
 A reader who understands the existing `drain()` reads the new
@@ -95,9 +96,8 @@ primitive's contract correctly with one parameter substitution.
 
 The cost is small (one new public method on the compiled graph
 surface; an implementation that already tags every event with its
-`invocation_id` per the contextvar propagation from proposal 0034
-can derive the per-invocation pending count from existing
-plumbing). The operator-UX improvement is the load-bearing payoff
+`invocation_id` per observability §5.1 can derive the per-invocation
+pending count from existing plumbing). The operator-UX improvement is the load-bearing payoff
 — accumulator-style observers become safe to treat as
 authoritative when callers synchronize at the right points.
 
@@ -116,15 +116,15 @@ the existing *Drain* paragraph block, within §6):
 > call have been delivered to every registered observer, OR once
 > the timeout elapses, whichever happens first.
 >
-> **Scope.** Events are scoped via the `invocation_id` propagated
-> through the §3.4 / proposal 0034 contextvar mechanism; the
-> framework tags every observer event with the invocation it
-> originated under. Events tagged with a different `invocation_id`
-> do not affect the drain's completion. Detached subgraphs and
-> detached fan-outs (per observability §4.4) inherit the parent
-> invocation's identifier (per the *Invocation-scoped, not
-> trace-scoped* paragraph of §3.4) and ARE covered by the parent's
-> per-invocation drain.
+> **Scope.** Events are scoped via the `invocation_id` defined in
+> observability §5.1; implementations MUST tag every observer event
+> with the `invocation_id` of the invocation that emitted it. Events
+> tagged with a different `invocation_id` do not affect the drain's
+> completion. Detached subgraphs and detached fan-outs (per
+> observability §4.4) inherit the parent invocation's identifier
+> (per the *Invocation-scoped, not trace-scoped* paragraph of
+> observability §3.4) and ARE covered by the parent's per-invocation
+> drain.
 >
 > **Snapshot semantic.** The set of events covered by a
 > `drain_events_for` call is the set whose events were emitted
@@ -178,14 +178,15 @@ the existing *Drain* paragraph block, within §6):
 > production where the queue empties faster than the pipeline's
 > last few nodes execute.
 >
-> **Composition with resume.** Per proposal 0039, a resumed
-> invocation mints a fresh `invocation_id`. A
-> `drain_events_for(resumed_invocation_id, ...)` call scopes to
-> the resumed invocation's events only; events tagged with the
-> original (pre-resume) invocation_id do not affect this drain.
-> This falls out naturally from the per-invocation scoping but
-> is called out explicitly to remove ambiguity for callers
-> handling resume flows.
+> **Composition with resume.** Per the resume-mints-fresh-id rule
+> in graph-engine §3 *Invocation entry surface* (sourced via
+> observability §5.1 / proposal 0039), a resumed invocation mints a
+> fresh `invocation_id`. A `drain_events_for(resumed_invocation_id, ...)`
+> call scopes to the resumed invocation's events only; events
+> tagged with the original (pre-resume) invocation_id do not affect
+> this drain. This falls out naturally from the per-invocation
+> scoping but is called out explicitly to remove ambiguity for
+> callers handling resume flows.
 
 ### graph-engine §6 *Drain* — cross-reference paragraph
 
@@ -196,18 +197,18 @@ discipline) pointing at the new primitive:
 > The process-wide `drain()` above is the right primitive for
 > lifespan / shutdown coordination — drain everything before the
 > process exits. For per-invocation synchronization (a terminal
-> node reading observer-accumulated state per observability §9.4
-> before returning, or any similar in-invocation read-after-write
-> against an accumulator-style observer), use the
-> `drain_events_for(invocation_id, ...)` primitive below — it
-> scopes the wait to a single invocation rather than blocking on
-> the whole graph's active invocation set.
+> node reading observer-accumulated state per the observability §9.1
+> read-method contract before returning, or any similar
+> in-invocation read-after-write against an accumulator-style
+> observer), use the `drain_events_for(invocation_id, ...)`
+> primitive below — it scopes the wait to a single invocation rather
+> than blocking on the whole graph's active invocation set.
 
 ## Conformance test impact
 
 ### New fixtures
 
-Five new fixtures under `graph-engine/conformance/` (numbers assigned
+Six new fixtures under `graph-engine/conformance/` (numbers assigned
 at acceptance):
 
 1. **Basic synchronization.** A graph with one LLM-calling node
@@ -232,7 +233,7 @@ at acceptance):
    observer (sleeps before processing each event, parameterized
    by the harness). The terminal node calls `drain_events_for`
    with a timeout shorter than the observer's processing time.
-   Asserts the returned `DrainSummary` has
+   Asserts the returned summary has
    `timeout_reached == true` and `undelivered_count` non-zero;
    the graph remains usable for subsequent invocations (the
    deliver loop continues processing after the timeout; no worker
@@ -264,6 +265,21 @@ at acceptance):
    per-invocation scoping handles correctly without the consumer
    having to enumerate inner node names.
 
+6. **Parallel-branches interaction.** Peer to fixture 5 for the
+   second concurrent-dispatch primitive. A graph with a
+   parallel-branches dispatcher firing multiple named branches
+   concurrently, followed by a downstream persist node after the
+   dispatcher joins. The downstream persist node calls
+   `drain_events_for(state.invocation_id, ...)` and reads the
+   accumulator. Asserts the drain covers events from EVERY branch
+   via the shared parent `invocation_id`. Locks down per-invocation
+   drain coverage for parallel-branches dispatch — which exercises
+   a different engine code path than fan-out (proposal 0011 vs
+   proposal 0005) even though both share the same `invocation_id`
+   scoping contract. Without this fixture, an implementation could
+   correctly tag fan-out instance events and silently break
+   parallel-branches event tagging (or vice versa).
+
 ### Unaffected fixtures
 
 All existing fixtures continue to pass unchanged. The new
@@ -282,7 +298,7 @@ increments:
 - Cross-reference paragraph in §6 *Drain* pointing at the new
   primitive (documentary; no behavior change to the existing
   primitive).
-- New conformance fixtures (five required). Existing fixtures
+- New conformance fixtures (six required). Existing fixtures
   unchanged.
 
 The change is backwards-compatible. Existing pipelines see no
@@ -396,8 +412,9 @@ text above:
   shutdown-cancel rule because the graph remains active after a
   per-invocation drain; the deliver loop continues processing
   the queue.
-- **Return type** — reuses the existing `DrainSummary` shape; no
-  new per-invocation variant.
+- **Return type** — reuses the existing summary return shape
+  (`undelivered_count`, `timeout_reached`); no new per-invocation
+  variant.
 
 If reviewers surface a substantive question during PR review, it
 gets resolved into the proposal text rather than left here as a

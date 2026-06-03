@@ -1,0 +1,138 @@
+# §6 Per-invocation drain (drain_events_for): parallel-branches
+# coverage. A parallel-branches dispatcher fires multiple named
+# branches concurrently; all branches share the parent's
+# invocation_id (per the same rule fan-out follows — concurrent inner
+# dispatch shares the parent's invocation context). A downstream node
+# after the dispatcher joins calls drain_events_for(state.invocation_id,
+# ...) and reads the accumulator; the snapshot MUST contain events from
+# EVERY branch.
+#
+# Peer fixture to 032 (fan-out coverage). The two concurrent-dispatch
+# primitives — fan-out (§3 / proposal 0005) and parallel-branches (§3
+# / proposal 0011) — exercise different engine code paths but share
+# the same invocation_id scoping contract for observer events. Both
+# fixtures lock down per-invocation drain coverage of all events
+# regardless of which dispatch shape produced them; without a
+# parallel-branches fixture, an implementation could correctly handle
+# fan-out's invocation_id tagging and silently break parallel-branches'
+# (or vice versa).
+
+subgraphs:
+  alpha:
+    state:
+      fields:
+        a_out:
+          type: int
+          default: 0
+    entry: a
+    nodes:
+      a:
+        update: {a_out: 1}
+    edges:
+      - {from: a, to: END}
+
+  beta:
+    state:
+      fields:
+        b_out:
+          type: int
+          default: 0
+    entry: b
+    nodes:
+      b:
+        update: {b_out: 2}
+    edges:
+      - {from: b, to: END}
+
+state:
+  fields:
+    a_result:
+      type: int
+      default: 0
+    b_result:
+      type: int
+      default: 0
+    summary:
+      type: int
+      default: 0
+
+entry: dispatcher
+
+nodes:
+  dispatcher:
+    parallel_branches:
+      branches:
+        alpha:
+          subgraph: alpha
+          outputs:
+            a_result: a_out
+        beta:
+          subgraph: beta
+          outputs:
+            b_result: b_out
+  # Downstream node sits at the outermost-serial context after the
+  # parallel-branches dispatcher joins. Calls drain_events_for and
+  # snapshots the accumulator — the canonical "end-of-parallel-branches
+  # consumer" pattern, peer to fixture 032's end-of-fan-out case.
+  persist:
+    update: {summary: 3}
+    invoke_drain_events_for:
+      timeout_seconds: 5.0
+      snapshot_observer: accumulator
+
+edges:
+  - {from: dispatcher, to: persist}
+  - {from: persist,    to: END}
+
+initial_state: {}
+
+observers:
+  - name: accumulator
+    attach: graph
+    target: outer
+    behavior: accumulate
+    sleep_ms_per_event: 30
+
+expected:
+  final_state:
+    a_result: 1
+    b_result: 2
+    summary: 3
+  execution_order: [dispatcher, persist]
+
+  node_drain_summaries:
+    persist:
+      timeout_reached: false
+      undelivered_count: 0
+
+  # The persist node's drain MUST cover events from BOTH parallel
+  # branches — both branches share the parent's invocation_id, so
+  # their events fall under the same drain scope. The harness asserts
+  # on counts and per-branch presence rather than ordering (branch
+  # event interleaving is observable but not uniquely determined per
+  # §3 — parallel-branches inherits the same nondeterministic-
+  # interleaving rule fan-out has).
+  node_accumulator_snapshot_invariants:
+    persist:
+      accumulator:
+        # dispatcher node's own started/completed pair.
+        dispatcher_node_events_count: 2
+        # Inner-branch events: 2 branches × 2 phases = 4 events, each
+        # carrying branch_name matching the branch identifier (per
+        # proposal 0011's branch_name field on NodeEvent).
+        inner_event_count: 4
+        inner_branch_names_seen: [alpha, beta]
+        # persist's started event is in the snapshot (per the
+        # snapshot semantic — started fires before the node body
+        # runs). persist's completed event is NOT (fires after the
+        # drain call returns).
+        persist_started_present: true
+        persist_completed_present: false
+
+  invariants:
+    # The load-bearing assertion: per-invocation scoping covers
+    # parallel-branches dispatch the same way it covers fan-out
+    # dispatch (fixture 032). A drain scoped to the invocation
+    # captures every concurrent inner branch via the shared
+    # invocation_id — no per-branch enumeration needed.
+    drain_covered_all_parallel_branches_via_shared_invocation_id: true

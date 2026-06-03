@@ -1,0 +1,122 @@
+# §6 Per-invocation drain (drain_events_for): fan-out coverage. A
+# fan-out node spawns multiple inner-instance executions that all share
+# the parent invocation_id. A downstream node after the fan-out joins
+# calls drain_events_for(state.invocation_id, ...) and reads the
+# accumulator; the snapshot MUST contain events from EVERY inner
+# instance (not just the most recent), because all instances share
+# the same invocation_id and therefore fall under the same drain
+# scope.
+#
+# Locks down the rationale that rejected the per-node-scope
+# alternative (per proposal 0054's Alternatives §3): a consumer at
+# the outermost-serial context that wants end-of-fan-out usage data
+# (sum across all instances before a downstream persist node runs)
+# needs the drain to scope to the fan-out parent's invocation. The
+# per-invocation scope handles this correctly without the consumer
+# having to enumerate inner node names.
+
+subgraph:
+  name: leaf
+  state:
+    fields:
+      x:
+        type: int
+        default: 0
+      result:
+        type: int
+        default: 0
+  entry: compute
+  nodes:
+    compute:
+      update_from_field: {result: x, multiplier: 2}
+  edges:
+    - {from: compute, to: END}
+
+state:
+  fields:
+    items:
+      type: list<int>
+      default: [1, 2, 3]
+    results:
+      type: list<int>
+      reducer: append
+      default: []
+    summary:
+      type: int
+      default: 0
+
+entry: process
+
+nodes:
+  process:
+    fan_out:
+      subgraph: leaf
+      items_field: items
+      item_field: x
+      collect_field: result
+      target_field: results
+  # Downstream node sits at the outermost-serial context after the
+  # fan-out joins. Calls drain_events_for(state.invocation_id) and
+  # snapshots the accumulator — the canonical "end-of-fan-out
+  # consumer" pattern proposal 0054 §3 calls out.
+  persist:
+    update: {summary: 12}
+    invoke_drain_events_for:
+      timeout_seconds: 5.0
+      snapshot_observer: accumulator
+
+edges:
+  - {from: process, to: persist}
+  - {from: persist, to: END}
+
+initial_state: {}
+
+observers:
+  - name: accumulator
+    attach: graph
+    target: outer
+    behavior: accumulate
+    sleep_ms_per_event: 30
+
+expected:
+  final_state:
+    items: [1, 2, 3]
+    results: [2, 4, 6]
+    summary: 12
+  execution_order: [process, persist]
+
+  node_drain_summaries:
+    persist:
+      timeout_reached: false
+      undelivered_count: 0
+
+  # The persist node's drain MUST cover events from every inner
+  # instance of the fan-out — all instances share the parent's
+  # invocation_id, so all instances' events fall under the same
+  # drain scope. The harness asserts on counts and per-instance
+  # presence rather than ordering (inner-instance scheduling order
+  # is observable but not uniquely determined per §3).
+  node_accumulator_snapshot_invariants:
+    persist:
+      accumulator:
+        # process node's own started/completed pair.
+        process_node_events_count: 2
+        # Inner-instance events: 3 instances × 2 phases = 6 events,
+        # each carrying fan_out_index matching the instance index.
+        inner_event_count: 6
+        inner_fan_out_indices_seen: [0, 1, 2]
+        # persist's started event is in the snapshot (per the
+        # snapshot semantic — fixture 029 — started fires before the
+        # node body runs).
+        persist_started_present: true
+        # persist's completed event is NOT in the snapshot (fires
+        # after the drain call returns).
+        persist_completed_present: false
+
+  invariants:
+    # The load-bearing assertion: per-invocation scoping covers the
+    # fan-out parent's full event set, including every inner
+    # instance. A per-node scope would not (it would need to
+    # enumerate every inner node name). A per-invocation scope
+    # handles it transparently.
+    drain_covered_all_fan_out_instances_via_shared_invocation_id: true
