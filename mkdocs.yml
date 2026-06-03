@@ -100,7 +100,9 @@ nav:
   - Releasing: releasing.md
   - Capabilities:
     - Graph Engine: capabilities/graph-engine.md
-    - Pipeline Utilities: capabilities/pipeline-utilities.md
+    - Pipeline Utilities:
+      - capabilities/pipeline-utilities.md
+      - Middleware: capabilities/middleware.md
     - LLM Provider: capabilities/llm-provider.md
     - Observability: capabilities/observability.md
     - Prompt Management: capabilities/prompt-management.md

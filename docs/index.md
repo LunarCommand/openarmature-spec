@@ -102,7 +102,7 @@ just compiled graphs.
     management — all driven by the conformance fixtures defined in this
     repo.
 
-    [Visit the repo on GitHub :octicons-link-external-16:](https://github.com/LunarCommand/openarmature-python){ .md-button target="_blank" rel="noopener" }
+    [Visit openarmature.ai :octicons-link-external-16:](https://openarmature.ai){ .md-button target="_blank" rel="noopener" }
 
 A TypeScript implementation is on the roadmap. Both will pin behavior to
 this spec.
