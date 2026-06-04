@@ -5,7 +5,7 @@
 - **Created:** 2026-06-03
 - **Accepted:**
 - **Targets:** spec/conformance-adapter/spec.md (creates — new capability spec ratifying the existing fixture YAML schema, directive vocabulary, harness primitives, and adapter responsibility model); docs/conformance.md (creates — readable explainer / tutorial alongside governance.md); spec/graph-engine/conformance/README.md (slim down — its v0 informal schema content moves into the new capability spec; the README becomes a one-line breadcrumb pointing at the capability spec); docs/governance.md §"Conformance tests" (extends to cross-reference the new capability spec as the normative source).
-- **Related:** 0001 (graph-engine — first capability with fixtures; source of the v0 informal YAML schema embedded in `spec/graph-engine/conformance/README.md`), 0020 (sessions — introduced the multi-invocation `invocations:` list directive for cross-invoke fixtures), 0048 (introduced `augment_metadata` / `augment_metadata_from_field` / `capture_invocation_metadata_into` for the read-symmetric invocation metadata read API), 0054 (introduced `behavior: accumulate`, `invoke_drain_events_for`, `node_drain_summaries`, `node_accumulator_snapshots`, `final_accumulator_state` for the per-invocation drain primitive), 0021 (introduced `suspend_with_descriptor`, `then_suspend_with_descriptor`, `conditional_suspend`, `wrap_with_middleware`, `resume_invocation`, `signal_payload`, `descriptor` / `suspending_node` / `metadata_includes` assertion shapes for the suspension primitive)
+- **Related:** 0001 (graph-engine — first capability with fixtures; source of the v0 informal YAML schema embedded in `spec/graph-engine/conformance/README.md`), 0020 (sessions — introduced the multi-invocation `invocations:` list directive for cross-invoke fixtures), 0048 (introduced `augment_metadata` / `augment_metadata_from_field` / `capture_invocation_metadata_into` for the read-symmetric invocation metadata read API), 0054 (introduced `behavior: accumulate`, `invoke_drain_events_for`, `node_drain_summaries`, `node_accumulator_snapshots`, `final_accumulator_state` for the per-invocation drain primitive), 0021 (introduced `suspend_with_descriptor`, `conditional_suspend`, `wrap_with_middleware`, `resume_invocation`, `signal_payload`, `descriptor` / `suspending_node` / `metadata_includes` assertion shapes for the suspension primitive)
 - **Supersedes:**
 
 ## Summary
@@ -57,8 +57,8 @@ directives:
   `node_accumulator_snapshots` / `node_accumulator_snapshot_invariants` /
   `final_accumulator_state` assertion shapes.
 - **Proposal 0021 (suspension):** `suspend_with_descriptor` /
-  `then_suspend_with_descriptor` / `conditional_suspend` / `pre_next_calls_suspend_with_descriptor`
-  node directives, `wrap_with_middleware` directive, `resume_invocation` / `signal_payload`
+  `conditional_suspend` / `pre_next_calls_suspend_with_descriptor` node directives,
+  `wrap_with_middleware` directive, `resume_invocation` / `signal_payload`
   per-invocation, `descriptor` / `suspending_node` / `metadata_includes` /
   `node_drain_summaries` / `outcome` / `error.category` assertion shapes.
 
@@ -171,10 +171,10 @@ The new `spec/conformance-adapter/spec.md` defines:
   whatever the spec version is at the time the fixture was authored).
 - **§5 Directive vocabulary** — enumerated by category (sub-sections §5.1-§5.9):
   - §5.1 Node behavior directives — `update`, `update_pure`, `update_from_field`, `raises`,
-    `suspend_with_descriptor`, `then_suspend_with_descriptor`,
-    `conditional_suspend`, `pre_next_calls_suspend_with_descriptor`,
-    `invoke_drain_events_for`, `wrap_with_middleware`, `augment_metadata`,
-    `augment_metadata_from_field`, `capture_invocation_metadata_into`.
+    `suspend_with_descriptor`, `conditional_suspend`,
+    `pre_next_calls_suspend_with_descriptor`, `invoke_drain_events_for`,
+    `wrap_with_middleware`, `augment_metadata`, `augment_metadata_from_field`,
+    `capture_invocation_metadata_into`.
   - §5.2 State / schema directives — `state.fields` shape (type, default, reducer),
     `initial_state`.
   - §5.3 Edge directives — static form, conditional form, conditional with `if_field` /
