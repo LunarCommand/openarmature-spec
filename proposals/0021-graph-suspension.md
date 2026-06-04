@@ -1,9 +1,9 @@
 # 0021: Graph Suspension and External Signal Resume
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-17
-- **Accepted:**
+- **Accepted:** 2026-06-03
 - **Targets:** spec/suspension/spec.md (creates), spec/graph-engine/spec.md (modifies §3 execution model + §6 NodeEvent to add `suspended` phase), spec/observability/spec.md (modifies §4 span lifecycle + §5 attributes), spec/pipeline-utilities/spec.md (modifies §10 checkpointing — shared persistence integration)
 - **Related:** 0008 (checkpointing — shared persistence machinery), 0020 (sessions — composes with suspension for cross-invoke pause), 0003 (observer hooks — paused-phase events), 0001 (graph-engine foundation — node phases)
 - **Supersedes:**

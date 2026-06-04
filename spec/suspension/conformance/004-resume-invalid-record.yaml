@@ -1,0 +1,65 @@
+# §7 + §9: resume requested for an invocation_id that does not
+# correspond to a suspended record MUST raise
+# suspension_record_invalid.
+
+cases:
+  - name: resume_unknown_invocation_id_raises_record_invalid
+    description: |
+      First invoke runs to completion (NOT suspended). Second invoke
+      requests resume_invocation against the completed invocation's
+      id. The engine MUST raise suspension_record_invalid (the record
+      exists in some form but is not in suspended status).
+    state:
+      fields:
+        done:
+          type: bool
+          default: false
+    entry: simple_node
+    nodes:
+      simple_node:
+        update: {done: true}
+    edges:
+      - {from: simple_node, to: END}
+    invocations:
+      - name: initial_invoke_completes_normally
+        initial_state: {}
+        expected:
+          outcome: completed
+          final_state: {done: true}
+      - name: resume_against_completed_invocation
+        resume_invocation: "<invocation_id from initial completed invoke>"
+        signal_payload: {done: false}
+        expected:
+          outcome: errored
+          error:
+            category: suspension_record_invalid
+
+  - name: resume_never_existed_invocation_id_raises_record_invalid
+    description: |
+      Resume requested with a fabricated invocation_id that has no
+      backing record at all. The engine MUST raise
+      suspension_record_invalid (covers the never-existed case
+      alongside the wrong-status case above).
+    state:
+      fields:
+        done:
+          type: bool
+          default: false
+    entry: simple_node
+    nodes:
+      simple_node:
+        update: {done: true}
+    edges:
+      - {from: simple_node, to: END}
+    invocations:
+      - name: resume_with_fake_invocation_id
+        resume_invocation: "00000000-0000-4000-8000-000000000000"
+        signal_payload: {}
+        expected:
+          outcome: errored
+          error:
+            category: suspension_record_invalid
+
+invariants:
+  resume_against_non_suspended_raises_record_invalid: true
+  resume_covers_completed_and_never_existed_cases: true

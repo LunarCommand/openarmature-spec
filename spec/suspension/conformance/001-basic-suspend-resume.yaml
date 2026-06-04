@@ -1,0 +1,58 @@
+# §3 + §5 + §7: basic suspend/resume cycle. A single node calls
+# suspend(descriptor) with mark_node_completed=True (default). The
+# first invoke() returns the suspended outcome carrying the
+# descriptor. A second invoke() with resume_invocation + signal_payload
+# loads the paused record, merges the payload into state, and continues
+# from the node AFTER the suspending node.
+
+cases:
+  - name: suspend_then_resume_continues_after_suspending_node
+    description: |
+      Two-node graph (gate, next). The gate node calls suspend() with a
+      descriptor; the engine returns suspended. Resume invoke supplies
+      signal_payload={approved: true}; the engine merges the payload,
+      skips re-running gate (mark_node_completed=True), and runs the
+      next node with the merged state.
+    state:
+      fields:
+        approved:
+          type: bool
+          default: false
+        completed_flag:
+          type: bool
+          default: false
+    entry: gate
+    nodes:
+      gate:
+        suspend_with_descriptor:
+          signal_id: "approval-12345"
+          metadata:
+            kind: "approval"
+      next_node:
+        update: {completed_flag: true}
+    edges:
+      - {from: gate,      to: next_node}
+      - {from: next_node, to: END}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: suspended
+          suspended_state: {approved: false, completed_flag: false}
+          descriptor:
+            signal_id: "approval-12345"
+            metadata: {kind: "approval"}
+          suspending_node: gate
+      - name: resume_invoke
+        resume_invocation: "<from previous suspended outcome>"
+        signal_payload: {approved: true}
+        expected:
+          outcome: completed
+          final_state: {approved: true, completed_flag: true}
+          # gate NOT in the execution order — mark_node_completed=True
+          # means the engine continues at the node AFTER gate.
+          execution_order: [next_node]
+    invariants:
+      suspend_returns_suspended_outcome: true
+      resume_merges_signal_payload: true
+      resume_continues_after_suspending_node: true

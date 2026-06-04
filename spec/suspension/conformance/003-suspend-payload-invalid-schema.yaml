@@ -1,0 +1,40 @@
+# §6 + §9: signal payload that fails state-schema validation MUST
+# raise suspension_resume_payload_invalid.
+
+cases:
+  - name: invalid_signal_payload_raises_resume_payload_invalid
+    description: |
+      State field `count` is declared as int. signal_payload supplies
+      count="not_an_int". On resume merge, schema validation MUST fail
+      and the engine MUST raise suspension_resume_payload_invalid.
+    state:
+      fields:
+        count:
+          type: int
+          default: 0
+    entry: gate
+    nodes:
+      gate:
+        suspend_with_descriptor:
+          signal_id: "type-violation-test"
+      consume:
+        update_pure: {}
+    edges:
+      - {from: gate,    to: consume}
+      - {from: consume, to: END}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: suspended
+      - name: resume_invoke
+        resume_invocation: "<from previous suspended outcome>"
+        signal_payload:
+          count: "not_an_int"
+        expected:
+          outcome: errored
+          error:
+            category: suspension_resume_payload_invalid
+    invariants:
+      invalid_payload_blocks_resume: true
+      error_category_is_resume_payload_invalid: true

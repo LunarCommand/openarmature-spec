@@ -22,6 +22,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §8.4.1 *Trace input/output sourcing* block gained an *Implementation surface caveat* paragraph noting that the vendor SDK method delivering the §8.4.1 contract's UI-visible projection (Langfuse SDK v4's `set_current_trace_io` / `Span.set_trace_io`, empirically verified 2026-05-31) is marked deprecated by the upstream vendor with stated removal in a future major version; the non-deprecated `propagate_attributes` does not currently project to the headline UI columns. The §8.4.1 normative contract (three-lever decision tree, hook signatures, status enum, resume semantics) is explicitly decoupled from any specific SDK-method binding and remains stable across SDK migrations. Cross-references `docs/compatibility.md` per the *External-dependency adoption* policy as the operational tracking record. No conformance fixture impact — the existing §8.4.1 fixture set remains valid unchanged by [proposal 0051](../../proposals/0051-langfuse-trace-io-deprecation-caveat.md)
   - §5.1 invocation span attribute set gained two new implementation-emitted attributes — `openarmature.implementation.name` (string; canonical values `"openarmature-python"` / `"openarmature-typescript"` / `"openarmature-<language>"` matching the language's package-registry shape) and `openarmature.implementation.version` (string; sourced from the implementation library's package metadata in the language-idiomatic way — `openarmature.__version__` for Python, `package.json` `version` for TypeScript). Both attributes are reserved per §3.4 (the reserved-key set extends from 24 → 26 names) so a caller-supplied colliding key is rejected at the `invoke()` API boundary. New *Always-emit invariant* paragraph in §5.1 framing both new attributes plus the existing `spec_version` and `correlation_id` as runtime-identity constants that emit regardless of `disable_state_payload` / `disable_llm_payload` privacy knobs (privacy knobs gate runtime data, not runtime identity). §8.4.1 trace-level mapping table gained two new rows — `openarmature.implementation.name` → `trace.metadata.implementation_name` and `openarmature.implementation.version` → `trace.metadata.implementation_version` — sourced from the §5.1 attributes (parallel to the existing `spec_version` mapping row); the Langfuse rows inherit the always-emit invariant from the §5.1 attributes by [proposal 0052](../../proposals/0052-implementation-attribution-rows.md)
   - §3.4 *Shared-parent boundary (MUST NOT)* paragraph rewritten from "all three are unconditional shared parents regardless of runtime cardinality" prose to a three-bullet structural classification — fan-out node always a shared parent, parallel-branches node always a shared parent, invocation span a shared parent **only when** at least one fan-out or parallel-branches dispatch is on the augmenter's call-stack path (predicate stated via the lineage chain having non-`null` `fan_out_index` or `branch_name` entries; pure-serial augmentations reach the invocation span via rule 2 of the boundary decision tree). The decision tree's rule 3 gains a short parenthetical pointing readers at the conditional invocation-span classification. Documentary tightening only — fixtures 034 (outermost-serial updates invocation span) and 039 (nested cases do not) already exercise the predicate-derived behavior; this proposal closes the spec-text-vs-fixture ambiguity that previously made the two fixtures' behavior unreconcilable from §3.4's text alone by [proposal 0053](../../proposals/0053-shared-parent-boundary-clarification.md)
+  - §4.2 *Status mapping* table extended with a new row for the `SUSPENDED` logical status (applied to both the suspending node's span and the invocation root span when a node calls `suspend()` per the suspension capability §3); new *Suspended status mapping* paragraph defining the OTel physical mapping (status `OK` plus an `openarmature.outcome = "suspended"` span attribute, since OTel's native status code field lacks a third state) with backend-mapping freedom for non-OTel backends. §4.3 *Parent-child rules* gained a *Suspended-resume invocation spans* paragraph defining the cross-invocation-span correlation invariant for suspension-resume (per suspension §7) — the resume invocation span carries the same `openarmature.invocation_id` as the suspended one; OTel observers SHOULD additionally link via span-link or parent-of mechanisms; explicitly distinguishes from checkpoint-resume per pipeline-utilities §10.4 (fresh `invocation_id`, correlated only via shared `correlation_id`). New §5.8 *Suspension span attributes* defining `openarmature.suspension.signal_id` (string; always present on a `suspended` node span; carries the descriptor's `signal_id` per suspension §4) and `openarmature.suspension.metadata.*` (flattened descriptor metadata fields, OTel-attribute-compatible scalars per §3.4 value-type contract) with composition rules for detached trace mode (§4.4) by [proposal 0021](../../proposals/0021-graph-suspension.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -462,10 +463,20 @@ A span's OTel status is set as follows:
 | State validation error (`state_validation_error`) at entry | `ERROR` | the §4 category identifier; status applied to the invocation span (no node has run yet) |
 | State validation error (`state_validation_error`) at a node boundary | `ERROR` | the §4 category identifier; status applied to the failing node's span (per the SHOULD-validate-at-node-boundaries rule in graph-engine §2) |
 | State validation error (`state_validation_error`) at exit | `ERROR` | the §4 category identifier; status applied to the invocation span (failure is at the framework boundary, not tied to any node) |
+| Node calls `suspend()` per suspension §3 | `SUSPENDED` (logical) | logical status distinct from OK and ERROR; suspension is intentional, not a failure. See *Suspended status mapping* below. Applies to both the suspending node's span and the invocation root span (both close at suspend time per §4.1's *Span timing*). |
 
 When a span is set to `ERROR`, an OTel exception event MUST be recorded on the span carrying the
 exception's class name and message; the exception's stack trace SHOULD be attached when the
 language's OTel SDK supports it.
+
+**Suspended status mapping.** The logical `SUSPENDED` status above is the spec's third-category
+outcome alongside `OK` and `ERROR`. OTel's native status code field has only `UNSET`, `OK`, and
+`ERROR` — implementations MUST map the logical `SUSPENDED` to OTel `OK` plus an
+`openarmature.outcome = "suspended"` span attribute on both the suspending node's span and the
+invocation root span. The suspending node's span additionally carries the suspension-attribute
+set per §5.8. Other observability backends MAY use a native suspended status if their data model
+supports one (e.g., a Trace status enum on Langfuse-side mappings); the spec defines the logical
+status, not the per-backend physical representation.
 
 The three `state_validation_error` rows above attribute the failure to exactly one span — the
 specific span where the validation occurred. The invocation span inherits `ERROR` via standard
@@ -506,6 +517,19 @@ population bullets above describe the common case; this rule handles the mixed-n
 The invariant `len(parent_states) == len(namespace) - 1` from §6 is preserved by this mapping: each
 parent-state entry corresponds to exactly one ancestor span. The `attempt_index`, `fan_out_index`,
 and `branch_name` fields disambiguate sibling spans at the same hierarchy level.
+
+**Suspended-resume invocation spans.** A suspension-resume invocation (per suspension §7) reuses
+the suspended invocation's `invocation_id` from the paused record. The resume opens a new
+invocation span carrying the same `invocation_id` value as the suspended invocation span; the
+suspend and resume spans are correlated by shared `openarmature.invocation_id` (per §5.1). OTel
+observers SHOULD additionally link the resume invocation span to the suspended invocation span
+via OTel's span-link mechanism or a parent-of relationship per OTel conventions. Whether the
+resume span is a continuation of the suspend span or a sibling under a shared trace is
+backend-mapping-dependent; the spec defines the correlation invariant (shared `invocation_id`),
+not the per-backend physical representation. This rule applies only to suspension-resume per
+suspension §7; checkpoint-resume per pipeline-utilities §10.4 mints a fresh `invocation_id` and
+therefore opens an unrelated invocation span (correlated to the original via shared
+`correlation_id` per §3.1, not via shared `invocation_id`).
 
 ### 4.4 Detached trace mode (opt-in)
 
@@ -1154,6 +1178,37 @@ fields, preserving the two-span-category distinction above:
 `name` attribute to the branch's `branch_name` value (e.g., `"fraud_check"`, `"policy_audit"`).
 This matches the Langfuse mapping's per-branch Span observation naming and gives operators a
 directly meaningful span name in the trace tree.
+
+### 5.8 Suspension span attributes
+
+When a node calls `suspend()` per the suspension capability §3, the suspending node's span
+carries the signal descriptor as the following span attributes:
+
+- `openarmature.suspension.signal_id` — string. The descriptor's `signal_id` (per suspension §4),
+  the caller-supplied correlation token for the awaited signal. Always present on a `suspended`
+  node span.
+- `openarmature.suspension.metadata.*` — flattened descriptor metadata fields. Applications using
+  a typed metadata schema (Pydantic / zod / equivalent) MUST have the implementation's
+  serializer surface each model field as an individual span attribute under this prefix (e.g., a
+  metadata model with fields `kind`, `approver_pool`, `expected_at` produces
+  `openarmature.suspension.metadata.kind`, `openarmature.suspension.metadata.approver_pool`,
+  `openarmature.suspension.metadata.expected_at`). Each flattened value MUST be an OTel-
+  attribute-compatible scalar per §3.4's value-type contract (string, int, float, bool, or
+  homogeneous array of those types). Implementations MAY drop or stringify nested objects that
+  do not flatten cleanly; the exact policy is implementation-defined and SHOULD be documented.
+
+These attributes apply to the **suspending node's span** specifically. The invocation root span
+does NOT carry them (the invocation as a whole is suspended; the descriptor identifies what the
+specific suspending node is waiting for, which is node-level attribution). The invocation root
+span carries the logical `SUSPENDED` status per §4.2 *Suspended status mapping*; that status
+plus the suspending node's `openarmature.suspension.*` attributes together describe the
+suspension.
+
+Composition with the §4.4 *Detached trace mode* — a node inside a detached subgraph or detached
+fan-out instance that calls `suspend()` records the suspension attributes on its own (detached-
+trace) node span per the rules above; the parent trace's invocation span carries the logical
+`SUSPENDED` status independently. Cross-trace correlation falls out of the existing detached-mode
+attribute set (`detached_from_invocation_id` per §3.4 / §8.4.x).
 
 ## 6. Driving span lifecycle
 

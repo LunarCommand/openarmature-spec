@@ -1,0 +1,57 @@
+# §8.6: session state SHOULD save at suspend time alongside the
+# paused-invocation record. A fresh worker resuming the suspension
+# sees consistent session state.
+
+cases:
+  - name: session_saves_at_suspend_and_resume_sees_consistent_state
+    description: |
+      Session-bound invocation: the gate node modifies session-scoped
+      state (here represented via the typical pattern of state being
+      sourced from a registered SessionStore on invoke entry and
+      saved on invoke exit). Suspend triggers a session save alongside
+      the paused-invocation record write. Resume loads the saved
+      session record and the paused-invocation record together; the
+      post-resume node sees consistent state.
+    state:
+      fields:
+        session_counter:
+          type: int
+          default: 0
+        completed_flag:
+          type: bool
+          default: false
+    entry: gate
+    nodes:
+      gate:
+        update: {session_counter: 5}
+        then_suspend_with_descriptor:
+          signal_id: "session-suspend-test"
+      post_resume:
+        update: {completed_flag: true}
+    edges:
+      - {from: gate,        to: post_resume}
+      - {from: post_resume, to: END}
+    session_store: in_memory
+    invocations:
+      - name: initial_invoke
+        session_id: "session-suspend-1"
+        initial_state: {}
+        expected:
+          outcome: suspended
+          # Session record persisted at suspend time, alongside the
+          # paused-invocation record.
+          saved_session_assertions:
+            state: {session_counter: 5, completed_flag: false}
+      - name: resume_invoke
+        session_id: "session-suspend-1"
+        resume_invocation: "<from previous suspended outcome>"
+        signal_payload: {}
+        expected:
+          outcome: completed
+          final_state: {session_counter: 5, completed_flag: true}
+          # After resume completes, session record is updated.
+          saved_session_assertions:
+            state: {session_counter: 5, completed_flag: true}
+    invariants:
+      session_saves_at_suspend_time: true
+      resume_sees_session_state_consistent_with_paused_record: true

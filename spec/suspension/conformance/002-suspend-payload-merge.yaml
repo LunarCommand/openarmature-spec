@@ -1,0 +1,59 @@
+# §6: signal payload merge semantics. Each field on signal_payload
+# overwrites the corresponding field in the loaded state; reducers on
+# the state schema are NOT consulted (rationale: the signal payload
+# represents authoritative external data).
+
+cases:
+  - name: shallow_field_overlay_ignores_reducers
+    description: |
+      State field `audit_log` is declared with the `append` reducer.
+      Pre-suspend the field is ["entry_a"]. The signal_payload supplies
+      audit_log=["entry_b"]. The merge MUST be direct overwrite —
+      append reducer NOT consulted — so the resumed state's audit_log
+      is ["entry_b"], not ["entry_a", "entry_b"].
+    state:
+      fields:
+        audit_log:
+          type: list
+          reducer: append
+          default: []
+        scalar_field:
+          type: string
+          default: ""
+    entry: pre_suspend
+    nodes:
+      pre_suspend:
+        update: {audit_log: ["entry_a"], scalar_field: "initial"}
+      gate:
+        suspend_with_descriptor:
+          signal_id: "merge-test"
+      after_resume:
+        # Captures the resumed state into a sentinel field for the
+        # invariant assertion.
+        update_pure: {}
+    edges:
+      - {from: pre_suspend,  to: gate}
+      - {from: gate,         to: after_resume}
+      - {from: after_resume, to: END}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: suspended
+          suspended_state:
+            audit_log: ["entry_a"]
+            scalar_field: "initial"
+      - name: resume_invoke
+        resume_invocation: "<from previous suspended outcome>"
+        signal_payload:
+          audit_log: ["entry_b"]
+          scalar_field: "overwritten"
+        expected:
+          outcome: completed
+          final_state:
+            # Direct overwrite — append reducer NOT consulted on merge.
+            audit_log: ["entry_b"]
+            scalar_field: "overwritten"
+    invariants:
+      signal_payload_overwrites_field_directly: true
+      reducer_not_consulted_on_signal_merge: true

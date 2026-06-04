@@ -27,7 +27,7 @@ lifecycle and the proposal template.
 | [0018](proposals/0018-state-migration-chain-ambiguity.md) | State migration chain ambiguity             | pipeline-utilities  | Accepted | Shipped (0.6.0) | —          |
 | [0019](proposals/0019-llm-provider-multi-provider-extension.md) | Multi-provider wire-format extension        | llm-provider        | Accepted | Textual (0.9.0) | —          |
 | [0020](proposals/0020-sessions-capability.md) | Sessions capability                         | sessions            | Accepted | Pending         | —          |
-| [0021](proposals/0021-graph-suspension.md) | Graph suspension and external-signal resume | suspension          | Draft    | —               | —          |
+| [0021](proposals/0021-graph-suspension.md) | Graph suspension and external-signal resume | suspension          | Accepted | Pending         | —          |
 | [0022](proposals/0022-harness-contract.md) | Harness contract                            | harness             | Draft    | —               | —          |
 | [0023](proposals/0023-canonical-state-reducers.md) | Canonical state reducers                    | graph-engine        | Draft    | —               | —          |
 | [0024](proposals/0024-llm-span-payload-and-semconv.md) | LLM span payload + GenAI semconv            | observability       | Accepted | Shipped (0.8.0) | —          |

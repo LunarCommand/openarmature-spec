@@ -1,0 +1,85 @@
+# §8.1: a node inside a subgraph calls suspend(). The suspension
+# propagates: the subgraph invocation suspends, the outer node
+# containing the subgraph also suspends as a consequence, the entire
+# outer invocation suspends. Resume re-enters at the subgraph's
+# suspended node.
+
+cases:
+  - name: subgraph_node_suspend_propagates_to_outer_invocation
+    description: |
+      Outer graph: pre → subgraph_wrapper → after_subgraph.
+      Subgraph: inner_pre → inner_suspend → inner_post.
+      inner_suspend calls suspend(). The whole outer invocation
+      suspends. On resume, the engine re-enters inner_post (since
+      inner_suspend is in completed_positions under the default
+      mark_node_completed=True), then exits the subgraph, then runs
+      after_subgraph in the outer graph.
+    subgraph:
+      name: leaf
+      state:
+        fields:
+          inner_done:
+            type: bool
+            default: false
+          inner_completed:
+            type: bool
+            default: false
+      entry: inner_pre
+      nodes:
+        inner_pre:
+          update: {inner_done: false}
+        inner_suspend:
+          suspend_with_descriptor:
+            signal_id: "subgraph-suspend"
+        inner_post:
+          update: {inner_completed: true}
+      edges:
+        - {from: inner_pre,     to: inner_suspend}
+        - {from: inner_suspend, to: inner_post}
+        - {from: inner_post,    to: END}
+    state:
+      fields:
+        outer_pre_ran:
+          type: bool
+          default: false
+        outer_post_ran:
+          type: bool
+          default: false
+        result:
+          type: bool
+          default: false
+    entry: pre
+    nodes:
+      pre:
+        update: {outer_pre_ran: true}
+      subgraph_wrapper:
+        subgraph: leaf
+        outputs:
+          result: inner_completed
+      after_subgraph:
+        update: {outer_post_ran: true}
+    edges:
+      - {from: pre,              to: subgraph_wrapper}
+      - {from: subgraph_wrapper, to: after_subgraph}
+      - {from: after_subgraph,   to: END}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: suspended
+          suspending_node: subgraph_wrapper
+          descriptor:
+            signal_id: "subgraph-suspend"
+      - name: resume_invoke
+        resume_invocation: "<from previous suspended outcome>"
+        signal_payload: {}
+        expected:
+          outcome: completed
+          final_state:
+            outer_pre_ran: true
+            outer_post_ran: true
+            result: true
+    invariants:
+      subgraph_suspend_propagates_to_outer: true
+      resume_re_enters_at_inner_post: true
+      after_subgraph_runs_post_resume: true

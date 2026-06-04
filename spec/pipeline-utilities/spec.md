@@ -17,6 +17,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §10.11 gained a "Count drift on resume" rule: when a saved `fan_out_progress` entry's `instance_count` differs from the resumed run's resolved count, the engine MUST raise `checkpoint_record_invalid` (per §10.10); silent pad/truncate of the saved `instances` list is not permitted. §10.10 `checkpoint_record_invalid` description extended to enumerate count drift as a failure mode by [proposal 0029](../../proposals/0029-count-drift-strict.md)
   - §10.14 *Composition with sessions* added — notes that the new sessions capability is an orthogonal cross-invoke persistence layer; checkpointing and sessions register independently, MAY share a backend, but resume / session-load and the respective error categories surface independently by [proposal 0020](../../proposals/0020-sessions-capability.md)
   - §6.3 *Failure isolation* middleware added as the third canonical primitive in the §6 bundled set (alongside §6.1 Retry and §6.2 Timing) — packages the §2 third-MAY-bullet catch-and-recover pattern with a four-field configuration record (`degraded_update` [static or callable], `event_name` [required, no default — naming decision at construction site], `predicate` [single-arg `(exception) -> bool`, defaults to always-true], `on_caught` [optional async callback]); catches `Exception` (not `BaseException`); on catch dispatches a framework-emitted failure-isolation event onto the observer delivery queue (parallels proposal 0040's metadata-augmentation event mechanism — distinct from `NodeEvent`, carries `event_name` + wrapped-node lineage tuple + `pre_state` / `post_state` + `caught_exception` record; not promoted to a typed variant on the observer event union for v1) and returns the configured degraded update so the engine continues edge resolution normally; documents the three-piece composition pattern with §6.1 retry (outer-to-inner: transient-aware node body + inner Retry + outer FailureIsolation) with outer-to-inner ordering load-bearing by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
+  - §10.15 *Composition with suspension* added — notes that the new suspension capability uses the same persistence mechanism as checkpointing for paused-invocation records (single store with discriminator OR separate stores; implementation choice); paused-invocation records and checkpoint records are distinct shapes; resume operations load the correct record type per the resume API in use (`invoke(resume_invocation=...)` per §10.4 → checkpoint record; `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 → paused-invocation record); paused-record lifetime is NOT bound to invocation completion (unlike checkpoint records, persists until resume completes / cancellation / backend retention); error categories are distinct (`suspension_persistence_failed` per suspension §9 does not signal checkpoint failure and vice versa). Refer to the suspension capability spec for the full primitive contract by [proposal 0021](../../proposals/0021-graph-suspension.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1527,6 +1528,41 @@ Composition rules:
   Both MAY happen on the same `invoke()`.
 - A `session_save_failed` (sessions §10) does NOT signal a checkpoint failure and vice versa;
   the error categories are distinct and surface independently.
+
+### 10.15 Composition with suspension
+
+The suspension capability (suspension §3 *The `suspend` operation*) uses the same persistence
+mechanism as checkpointing for storing **paused-invocation records** (the persisted state of an
+intentionally-suspended invocation: serialized state, signal descriptor per suspension §4,
+`invocation_id` / `correlation_id`, and `completed_positions`). Implementations MAY use a single
+backend store with a discriminator field distinguishing checkpoint records from paused-invocation
+records, or separate stores. The spec treats them as distinct record types with overlapping
+persistence requirements.
+
+Composition rules:
+
+- **Record-type distinction.** Checkpoint records (per §10.2) and paused-invocation records (per
+  suspension §2) are distinct record shapes. The discriminator (or the separate-stores choice)
+  is implementation-defined; the spec requires only that resume operations load the correct
+  record type per the resume API in use (`invoke(resume_invocation=...)` per §10.4 loads a
+  checkpoint record; `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 loads
+  a paused-invocation record).
+- **Independent registration.** An invocation MAY use both, neither, or either capability
+  independently. Registering a `Checkpointer` on the compiled graph enables checkpointing but
+  does NOT enable suspension; the suspension capability's `suspend()` operation depends on the
+  same persistence machinery being available but is invoked from the node body, not enabled by
+  configuration.
+- **Paused-record lifetime is not bound to invocation completion.** Unlike checkpoint records
+  (which MAY be deleted on invocation completion per §10.2's lifecycle), a paused-invocation
+  record persists until either (a) the invocation resumes and runs to completion, at which point
+  the record MAY be deleted per backend policy, or (b) the application explicitly deletes the
+  record (cancellation; backend-defined operation), or (c) backend-defined retention expires.
+- **Error categories are distinct.** A `suspension_persistence_failed` (suspension §9) does NOT
+  signal a checkpoint-save failure and vice versa; the error categories surface independently.
+
+For the full suspension primitive (suspend operation, signal descriptors, suspended outcome,
+signal payload merge, resume API, composition with sessions / subgraphs / fan-out /
+parallel-branches / middleware, error categories), see the suspension capability spec.
 
 ## 11. Parallel branches
 

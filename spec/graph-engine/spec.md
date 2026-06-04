@@ -17,6 +17,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 NodeEvent gained an optional `parallel_branches_config` field (mirroring the existing `fan_out_config` field from proposal 0013), populated on every `started` / `completed` event for a parallel-branches node and carrying the resolved `branch_names`, `branch_count`, `error_policy`, and `parent_node_name` for the observability §5.7 attribute surface by [proposal 0044](../../proposals/0044-parallel-branches-dispatch-span.md)
   - §6 observer event union extended with `LlmCompletionEvent` — the first spec-normatively-typed event variant on the union (alongside `NodeEvent` and the framework-emitted metadata-augmentation event mechanism from proposal 0040). The typed event is dispatched on every LLM call completion that produces a structured response per llm-provider §6, carries 13 typed fields (identity / scoping per the existing event-source identity tuple, outcome data mirroring observability §5.5's attribute surface, plus an OPTIONAL `caller_invocation_metadata` opt-in snapshot field), and is NOT subject to the `phases` subscription filter (matches the metadata-augmentation event's no-phase treatment). Observers filter via type discrimination rather than via sentinel-namespace string match. Failure / streaming events are out of scope for v1; the rendering / mapping concern lives in observability §5.5 by [proposal 0049](../../proposals/0049-typed-llm-completion-event.md)
   - §6 *Observer hooks* gained a per-invocation `drain_events_for(invocation_id, *, timeout)` primitive as a sibling to the existing process-wide `drain`; reuses the snapshot semantic and summary return shape (`undelivered_count`, `timeout_reached`), scopes the wait to events tagged with a single `invocation_id` (per observability §5.1), and diverges from `drain` on worker cancellation (per-invocation drain MUST NOT cancel workers on timeout because the graph remains active). Resolves the synchronization race for the queryable observer pattern (proposal 0048) when a terminal node reads accumulator state mid-invocation by [proposal 0054](../../proposals/0054-per-invocation-event-drain.md)
+  - §3 *Execution model* gained an *Invocation outcomes* paragraph classifying `invoke()`'s three return categories (completed, errored, suspended); the *Invocation entry surface* paragraph's `invocation_id` clause split into two cases — fresh id on checkpoint-resume per pipeline-utilities §10.4 (existing rule); reused id on suspension-resume per suspension §7 (new rule). §6 *Node event shape* `phase` field extended with `"suspended"`; new `descriptor` field populated only on `suspended` events carrying the signal descriptor per suspension §4; per-attempt terminal-shape paragraph extended to make `completed` and `suspended` mutually exclusive at the terminal slot (each attempt produces exactly one `started` event followed by exactly one terminal `completed` OR `suspended`). The suspension capability itself defines the suspend operation, signal descriptors, suspended outcome, signal payload merge, resume API, composition with other capabilities, and error categories by [proposal 0021](../../proposals/0021-graph-suspension.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -181,15 +182,25 @@ the rest of the parent run.
 **Invocation entry surface.** The `invoke()` operation accepts the initial state, an optional
 caller-supplied `correlation_id` (per observability §3.1), an optional caller-supplied
 `invocation_id` (per observability §5.1 — used verbatim when supplied, framework-minted as a
-UUIDv4 when absent; on a resume call the framework always mints a fresh id and ignores any
-caller-supplied `invocation_id`), and an optional caller-supplied metadata mapping (per
-observability §3.4). The metadata mapping carries arbitrary OTel-attribute-compatible key/value
-entries that propagate to every observability backend the implementation emits to. The exact
-mechanism by which callers supply these arguments at invoke time is per-language idiomatic (a
-keyword argument; a field on an invocation-config record; equivalent); the graph-engine spec
-does not prescribe the mechanism. The contracts for how these arguments are validated and
-propagated live in the observability spec (§3.1 for `correlation_id`, §5.1 for `invocation_id`,
-§3.4 for caller-supplied metadata).
+UUIDv4 when absent; on a checkpoint-resume call per pipeline-utilities §10.4 the framework
+always mints a fresh id and ignores any caller-supplied `invocation_id`; on a suspension-resume
+call per suspension §7 the framework loads the suspended invocation's id from the paused record
+and reuses it verbatim), and an optional caller-supplied metadata mapping (per observability
+§3.4). The metadata mapping carries arbitrary OTel-attribute-compatible key/value entries that
+propagate to every observability backend the implementation emits to. The exact mechanism by
+which callers supply these arguments at invoke time is per-language idiomatic (a keyword
+argument; a field on an invocation-config record; equivalent); the graph-engine spec does not
+prescribe the mechanism. The contracts for how these arguments are validated and propagated
+live in the observability spec (§3.1 for `correlation_id`, §5.1 for `invocation_id`, §3.4 for
+caller-supplied metadata).
+
+**Invocation outcomes.** `invoke()` returns one of three outcome categories: **completed** (the
+graph reached END; the final state is the return value), **errored** (a node raised; per §4 error
+semantics), or **suspended** (a node body called `suspend()` per the suspension capability §3;
+the engine persisted a paused-invocation record and returned a structured suspended outcome per
+suspension §5 distinct from completion or error). The suspended outcome is observable to
+attached observers via NodeEvent's new `"suspended"` phase per §6 below. Callers that do not use
+the suspension primitive see only completed / errored outcomes.
 
 ## 4. Error semantics
 
@@ -381,11 +392,15 @@ observers receiving events for an in-flight invocation is fixed at the point the
 framework-emitted augmentation events described under *Framework-emitted augmentation events* later in
 this section, which carry no `phase` — carries the following fields:
 
-- `phase` — required, one of `"started"` or `"completed"`. `started` events are dispatched before the
-  node executes (after middleware pre-phases; right before the wrapped function call). `completed`
-  events are dispatched after the node returns or raises and the reducer merge runs (or after the
-  failure is captured, on failure). Each node attempt produces exactly one `started` and exactly one
-  `completed` event in that order.
+- `phase` — required, one of `"started"`, `"completed"`, or `"suspended"`. `started` events are
+  dispatched before the node executes (after middleware pre-phases; right before the wrapped function
+  call). `completed` events are dispatched after the node returns or raises and the reducer merge
+  runs (or after the failure is captured, on failure). `suspended` events are dispatched when the
+  node body calls `suspend()` per the suspension capability §3 — the engine emits `suspended` in
+  place of `completed` for that attempt and returns from `invoke()` with a suspended outcome (per
+  §3 *Invocation outcomes* above). Each node attempt produces exactly one `started` event followed
+  by exactly one terminal event — either `completed` OR `suspended` — in that order; the two
+  terminal phases (`completed` and `suspended`) are mutually exclusive within any given attempt.
 - `node_name` — the name under which this node was registered in its immediate containing graph.
 - `namespace` — an ordered sequence of node names identifying the execution path from the outermost graph
   down to this node. For a node in the outermost graph, `namespace` is `[node_name]`. For a node inside a
@@ -404,6 +419,10 @@ this section, which carry no `phase` — carries the following fields:
   shape-varies-with-namespace rule as `pre_state`.
 - `error` — the error category identifier from §4 (e.g., `node_exception`, `reducer_error`) together with
   the raised error instance. Populated only when the node event corresponds to a failed node execution.
+- `descriptor` — the signal descriptor attached at suspend time (per suspension §4). Populated only
+  on events whose `phase == "suspended"`; absent on `started` and `completed` events. Carries the
+  caller-supplied `signal_id` plus the optional application-typed `metadata`. Observers consuming
+  this field see what the invocation is waiting for at the moment it suspended.
 - `parent_states` — an ordered sequence of state snapshots, one per containing graph, outermost first.
   For a node in the outermost graph, `parent_states` is empty. For a node inside a subgraph,
   `parent_states[0]` is the outermost graph's state, `parent_states[1]` is the next-inner containing
@@ -532,10 +551,13 @@ this section, which carry no `phase` — carries the following fields:
   §11.5) at runtime after config resolution succeeded, the resolved configuration visible at
   parallel-branches entry MUST appear on the completed event with all four keys populated.
 
-`pre_state` is populated on both `started` and `completed` events (it is the state the node received,
-identical across the pair). `post_state` and `error` are populated only on `completed` events;
-exactly one of them MUST be populated on a `completed` event. `started` events MUST have both
-`post_state` and `error` absent.
+`pre_state` is populated on `started`, `completed`, and `suspended` events (it is the state the node
+received, identical across all events of one attempt). `post_state` and `error` are populated only
+on `completed` events; exactly one of them MUST be populated on a `completed` event. `started` events
+MUST have `post_state`, `error`, and `descriptor` absent. `descriptor` is populated only on
+`suspended` events; `post_state` and `error` MUST be absent on `suspended` events. The three
+terminal-event shapes (`completed` with `post_state`, `completed` with `error`, `suspended` with
+`descriptor`) are mutually exclusive for any given node attempt.
 
 **Parent-state snapshot semantics.** Each entry of `parent_states` is the corresponding containing graph's
 state **at the moment that graph entered the subgraph-as-node leading down to this event**. The parent is

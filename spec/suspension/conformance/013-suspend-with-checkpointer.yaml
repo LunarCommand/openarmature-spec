@@ -1,0 +1,50 @@
+# §8.5 + pipeline-utilities §10.15: paused-invocation records persist
+# via the same persistence machinery as checkpoint records. The
+# resume call loads from that machinery and continues.
+
+cases:
+  - name: paused_invocation_record_persists_via_configured_checkpointer
+    description: |
+      A checkpointer is registered on the graph. The gate node calls
+      suspend(). The engine writes the paused-invocation record to the
+      configured backend (either in the same store as checkpoints with
+      a discriminator, or in a separate store — implementation
+      choice). Resume loads the record from that backend and
+      continues. The fixture also validates that checkpoint records
+      and paused-invocation records are distinct record types (resume
+      via §10.4's checkpoint-resume API on the same id would NOT
+      succeed — the record is suspended, not checkpointed).
+    state:
+      fields:
+        completed_flag:
+          type: bool
+          default: false
+    entry: gate
+    nodes:
+      gate:
+        suspend_with_descriptor:
+          signal_id: "checkpointer-backed-suspend"
+      post_resume:
+        update: {completed_flag: true}
+    edges:
+      - {from: gate,        to: post_resume}
+      - {from: post_resume, to: END}
+    checkpointer: in_memory
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: suspended
+          # Paused-invocation record exists in the configured backend.
+          checkpointer_assertions:
+            paused_invocation_record_exists: true
+            record_type: "suspended"
+      - name: resume_invoke_via_suspension_api
+        resume_invocation: "<from previous suspended outcome>"
+        signal_payload: {}
+        expected:
+          outcome: completed
+          final_state: {completed_flag: true}
+    invariants:
+      paused_record_persists_via_checkpointer_backend: true
+      record_type_distinguishes_suspended_from_checkpointed: true

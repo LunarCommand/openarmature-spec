@@ -1,0 +1,54 @@
+# graph-engine §6: observer sees a `suspended` phase NodeEvent with
+# the descriptor populated. The suspending node emits exactly one
+# `started` event followed by exactly one `suspended` event (NOT a
+# `completed` event).
+
+cases:
+  - name: suspended_phase_node_event_carries_descriptor
+    description: |
+      Single-node graph; node calls suspend(). The attached observer
+      records every NodeEvent. The expected event stream is: started
+      for gate, then suspended for gate carrying the descriptor.
+      A `completed` event for gate MUST NOT appear in the stream
+      (completed and suspended are mutually exclusive terminal phases
+      per graph-engine §6).
+    state:
+      fields:
+        ignored:
+          type: bool
+          default: false
+    entry: gate
+    nodes:
+      gate:
+        suspend_with_descriptor:
+          signal_id: "observable-suspend"
+          metadata:
+            kind: "review"
+            description: "needs human review"
+    edges:
+      - {from: gate, to: END}
+    observers:
+      - name: obs
+        attach: graph
+        target: outer
+        behavior: record
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: suspended
+          observer_events:
+            obs:
+              - {phase: started,   node_name: gate, namespace: [gate]}
+              - phase: suspended
+                node_name: gate
+                namespace: [gate]
+                descriptor:
+                  signal_id: "observable-suspend"
+                  metadata:
+                    kind: "review"
+                    description: "needs human review"
+          observer_event_invariants:
+            no_completed_event_for_suspending_node: true
+            suspended_event_carries_descriptor: true
+            started_followed_by_suspended_in_order: true

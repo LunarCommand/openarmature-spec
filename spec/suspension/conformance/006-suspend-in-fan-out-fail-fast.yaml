@@ -1,0 +1,75 @@
+# §8.2: under error_policy="fail_fast" (the default), when one fan-out
+# instance calls suspend(), the entire fan-out node suspends at the
+# outer-graph level. Sibling instances are cancelled. The descriptor
+# bubbles up with fan_out_index annotated in metadata so the runtime
+# knows which instance is awaited.
+
+cases:
+  - name: fan_out_instance_suspend_cancels_siblings_and_propagates
+    description: |
+      Subgraph instances process items [0, 1, 2]. Inner node suspends
+      on the instance with index 1 only (others return normally).
+      Under fail_fast, the fan-out node suspends; siblings are
+      cancelled. The descriptor's metadata carries fan_out_index=1.
+      The outer invocation suspends.
+    subgraph:
+      name: leaf
+      state:
+        fields:
+          item_idx:
+            type: int
+            default: 0
+          result:
+            type: int
+            default: 0
+      entry: process
+      nodes:
+        process:
+          # Harness primitive: suspend conditional on item index.
+          conditional_suspend:
+            suspend_on_item_index: 1
+            descriptor:
+              signal_id: "fan-out-instance-suspend"
+              metadata: {kind: "approval"}
+          on_other_indices:
+            update_from_field: {result: item_idx, multiplier: 10}
+      edges:
+        - {from: process, to: END}
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [0, 1, 2]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: fan_out
+    nodes:
+      fan_out:
+        fan_out:
+          subgraph: leaf
+          items_field: items
+          item_field: item_idx
+          collect_field: result
+          target_field: results
+          error_policy: fail_fast
+    edges:
+      - {from: fan_out, to: END}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: suspended
+          suspending_node: fan_out
+          descriptor:
+            signal_id: "fan-out-instance-suspend"
+            # fan_out_index annotated by the engine into metadata so
+            # the runtime can attribute which instance is awaited.
+            metadata_includes:
+              kind: "approval"
+              fan_out_index: 1
+    invariants:
+      single_instance_suspend_suspends_whole_fan_out: true
+      siblings_cancelled_under_fail_fast: true
+      descriptor_carries_fan_out_index: true
