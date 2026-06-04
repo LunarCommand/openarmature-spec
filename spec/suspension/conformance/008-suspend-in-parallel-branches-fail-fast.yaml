@@ -1,0 +1,79 @@
+# §8.3: under error_policy="fail_fast" (the default), when one
+# parallel-branches branch calls suspend(), the entire parallel-
+# branches node suspends at the outer-graph level. Sibling branches
+# are cancelled. The descriptor bubbles up with branch_name annotated
+# in metadata.
+
+cases:
+  - name: parallel_branch_suspend_cancels_siblings_and_propagates
+    description: |
+      Two-branch parallel-branches dispatcher (alpha, beta). Alpha
+      suspends; beta would normally complete with a result. Under
+      fail_fast, the parallel-branches node suspends; beta is
+      cancelled. The descriptor's metadata carries branch_name="alpha".
+    subgraphs:
+      alpha:
+        state:
+          fields:
+            a_out:
+              type: int
+              default: 0
+        entry: a
+        nodes:
+          a:
+            suspend_with_descriptor:
+              signal_id: "branch-alpha-suspend"
+              metadata: {kind: "approval"}
+        edges:
+          - {from: a, to: END}
+      beta:
+        state:
+          fields:
+            b_out:
+              type: int
+              default: 0
+        entry: b
+        nodes:
+          b:
+            update: {b_out: 99}
+        edges:
+          - {from: b, to: END}
+    state:
+      fields:
+        a_result:
+          type: int
+          default: 0
+        b_result:
+          type: int
+          default: 0
+    entry: dispatcher
+    nodes:
+      dispatcher:
+        parallel_branches:
+          error_policy: fail_fast
+          branches:
+            alpha:
+              subgraph: alpha
+              outputs:
+                a_result: a_out
+            beta:
+              subgraph: beta
+              outputs:
+                b_result: b_out
+    edges:
+      - {from: dispatcher, to: END}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: suspended
+          suspending_node: dispatcher
+          descriptor:
+            signal_id: "branch-alpha-suspend"
+            metadata_includes:
+              kind: "approval"
+              branch_name: "alpha"
+    invariants:
+      single_branch_suspend_suspends_whole_parallel_branches: true
+      siblings_cancelled_under_fail_fast: true
+      descriptor_carries_branch_name: true

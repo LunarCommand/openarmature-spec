@@ -1,0 +1,44 @@
+# §8.4 + §9: middleware itself calls suspend() (rather than its
+# wrapped node doing so). The engine MUST raise
+# suspension_in_unsupported_context per §8.4.
+
+cases:
+  - name: middleware_calling_suspend_raises_unsupported_context
+    description: |
+      A middleware's pre-next() block (or post-next() block) calls
+      suspend() directly, rather than wrapping a node that itself
+      calls suspend(). The engine MUST raise
+      suspension_in_unsupported_context. The wrapped node's normal
+      update does NOT apply (the suspension intercepts execution
+      before the node body completes — the failure converts the
+      attempt to an error per §3's terminal-action contract and the
+      §9 error category).
+    state:
+      fields:
+        wrapped_node_ran:
+          type: bool
+          default: false
+    entry: gate
+    nodes:
+      gate:
+        wrap_with_middleware:
+          - name: suspending_middleware
+            pre_next_calls_suspend_with_descriptor:
+              signal_id: "middleware-suspend-rejected"
+        update: {wrapped_node_ran: true}
+    edges:
+      - {from: gate, to: END}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: errored
+          error:
+            category: suspension_in_unsupported_context
+          # The wrapped node's update did NOT apply — the middleware-
+          # suspend intercepted execution before the node body ran.
+          final_state_at_error:
+            wrapped_node_ran: false
+    invariants:
+      middleware_suspend_raises_unsupported_context: true
+      wrapped_node_does_not_execute_after_middleware_suspend_attempt: true

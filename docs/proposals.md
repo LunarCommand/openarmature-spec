@@ -27,7 +27,7 @@ lifecycle and the proposal template.
 | [0018](proposals/0018-state-migration-chain-ambiguity.md) | State migration chain ambiguity             | pipeline-utilities  | Accepted | Shipped (0.6.0) | —          |
 | [0019](proposals/0019-llm-provider-multi-provider-extension.md) | Multi-provider wire-format extension        | llm-provider        | Accepted | Textual (0.9.0) | —          |
 | [0020](proposals/0020-sessions-capability.md) | Sessions capability                         | sessions            | Accepted | Pending         | —          |
-| [0021](proposals/0021-graph-suspension.md) | Graph suspension and external-signal resume | suspension          | Draft    | —               | —          |
+| [0021](proposals/0021-graph-suspension.md) | Graph suspension and external-signal resume | suspension          | Accepted | Pending         | —          |
 | [0022](proposals/0022-harness-contract.md) | Harness contract                            | harness             | Draft    | —               | —          |
 | [0023](proposals/0023-canonical-state-reducers.md) | Canonical state reducers                    | graph-engine        | Draft    | —               | —          |
 | [0024](proposals/0024-llm-span-payload-and-semconv.md) | LLM span payload + GenAI semconv            | observability       | Accepted | Shipped (0.8.0) | —          |
@@ -57,9 +57,9 @@ lifecycle and the proposal template.
 | [0048](proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md) | Read-symmetric invocation metadata + queryable observer pattern | observability | Accepted | Pending         | —          |
 | [0049](proposals/0049-typed-llm-completion-event.md) | Typed LLM completion event | observability | Accepted | Pending         | —          |
 | [0050](proposals/0050-retry-and-degradation-primitives.md) | Retry & degradation primitives (failure-isolation middleware + call-level retry) | pipeline-utilities | Accepted | Pending         | —          |
-| [0051](proposals/0051-langfuse-trace-io-deprecation-caveat.md) | Langfuse trace input/output implementation-surface caveat | observability | Accepted | Pending         | —          |
+| [0051](proposals/0051-langfuse-trace-io-deprecation-caveat.md) | Langfuse trace input/output implementation-surface caveat | observability | Accepted | Textual (0.12.0)| —          |
 | [0052](proposals/0052-implementation-attribution-rows.md) | Implementation attribution attributes (§5.1 invocation span + §8.4.1 Langfuse mapping) | observability | Accepted | Pending         | —          |
-| [0053](proposals/0053-shared-parent-boundary-clarification.md) | §3.4 shared-parent boundary clarification (invocation span) | observability | Accepted | Pending         | —          |
+| [0053](proposals/0053-shared-parent-boundary-clarification.md) | §3.4 shared-parent boundary clarification (invocation span) | observability | Accepted | Textual (0.12.0)| —          |
 | [0054](proposals/0054-per-invocation-event-drain.md) | Per-invocation observer event drain | graph-engine | Accepted | Pending         | —          |
 
 Click any column header to sort.

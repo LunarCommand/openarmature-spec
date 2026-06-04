@@ -1,0 +1,43 @@
+# §8.4: middleware wraps a node that itself calls suspend(). The
+# middleware's pre-next() block runs normally; the middleware's
+# post-next() block does NOT execute on the suspending attempt.
+
+cases:
+  - name: middleware_pre_next_runs_post_next_skipped_on_suspending_node
+    description: |
+      A timing-recording middleware wraps a node that calls suspend().
+      The middleware's pre-next() block writes a marker
+      ("entered_pre"); its post-next() block writes a marker
+      ("entered_post"). On the suspending attempt, the pre-next marker
+      MUST appear in the test harness's middleware log; the post-next
+      marker MUST NOT.
+    state:
+      fields:
+        middleware_log:
+          type: list
+          reducer: append
+          default: []
+    entry: gate
+    nodes:
+      gate:
+        wrap_with_middleware:
+          - name: pre_post_logger
+            pre_log: "entered_pre"
+            post_log: "entered_post"
+        suspend_with_descriptor:
+          signal_id: "wrapped-suspend"
+    edges:
+      - {from: gate, to: END}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: suspended
+          # The middleware log captures only the pre-next() marker.
+          # post-next() did NOT execute because the inner node
+          # suspended.
+          middleware_log_captured:
+            - "entered_pre"
+    invariants:
+      middleware_pre_next_block_runs_on_suspending_node: true
+      middleware_post_next_block_skipped_on_suspending_node: true

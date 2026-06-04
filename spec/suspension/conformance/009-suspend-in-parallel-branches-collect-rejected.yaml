@@ -1,0 +1,71 @@
+# §8.3 + §9: a parallel-branches branch inside a collect-mode parallel-
+# branches node calls suspend(). The engine MUST raise
+# suspension_in_unsupported_context per §8.3.
+
+cases:
+  - name: collect_mode_parallel_branches_suspend_raises_unsupported_context
+    description: |
+      Two-branch parallel-branches dispatcher configured with
+      error_policy="collect". Alpha calls suspend(); the engine MUST
+      raise suspension_in_unsupported_context. (collect-mode
+      parallel-branches aggregates partial results across concurrent
+      branches; the multi-suspend aggregate case is deferred.)
+    subgraphs:
+      alpha:
+        state:
+          fields:
+            a_out:
+              type: int
+              default: 0
+        entry: a
+        nodes:
+          a:
+            suspend_with_descriptor:
+              signal_id: "collect-branch-suspend-rejected"
+        edges:
+          - {from: a, to: END}
+      beta:
+        state:
+          fields:
+            b_out:
+              type: int
+              default: 0
+        entry: b
+        nodes:
+          b:
+            update: {b_out: 1}
+        edges:
+          - {from: b, to: END}
+    state:
+      fields:
+        a_result:
+          type: int
+          default: 0
+        b_result:
+          type: int
+          default: 0
+    entry: dispatcher
+    nodes:
+      dispatcher:
+        parallel_branches:
+          error_policy: collect
+          branches:
+            alpha:
+              subgraph: alpha
+              outputs:
+                a_result: a_out
+            beta:
+              subgraph: beta
+              outputs:
+                b_result: b_out
+    edges:
+      - {from: dispatcher, to: END}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: errored
+          error:
+            category: suspension_in_unsupported_context
+    invariants:
+      collect_mode_parallel_branches_suspend_rejected_at_runtime: true

@@ -1,0 +1,53 @@
+# §8.2 + §9: a fan-out instance inside a collect-mode fan-out calls
+# suspend(). The engine MUST raise suspension_in_unsupported_context
+# — collect + suspend is incompatible in v1 (multi-suspend aggregation
+# is deferred).
+
+cases:
+  - name: collect_mode_fan_out_suspend_raises_unsupported_context
+    description: |
+      Fan-out configured with error_policy="collect"; an inner-instance
+      node calls suspend(). The engine MUST raise
+      suspension_in_unsupported_context per §8.2. Implementations
+      SHOULD detect this at compile / registration time when feasible
+      (this fixture exercises runtime detection — the minimum
+      spec-mandated coverage).
+    subgraph:
+      name: leaf
+      state:
+        fields:
+          item_idx:
+            type: int
+            default: 0
+      entry: process
+      nodes:
+        process:
+          suspend_with_descriptor:
+            signal_id: "collect-suspend-rejected"
+      edges:
+        - {from: process, to: END}
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [0]
+    entry: fan_out
+    nodes:
+      fan_out:
+        fan_out:
+          subgraph: leaf
+          items_field: items
+          item_field: item_idx
+          target_field: items  # collect mode aggregates results
+          error_policy: collect
+    edges:
+      - {from: fan_out, to: END}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: errored
+          error:
+            category: suspension_in_unsupported_context
+    invariants:
+      collect_mode_suspend_rejected_at_runtime: true

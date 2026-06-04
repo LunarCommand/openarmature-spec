@@ -1,0 +1,56 @@
+# observability §4.2 + §5.8: OTel span closes with the logical
+# SUSPENDED status (mapped to OTel `OK` + `openarmature.outcome =
+# "suspended"` attribute) when a node calls suspend(). The suspending
+# node's span carries the suspension-attribute set per §5.8.
+
+cases:
+  - name: otel_suspended_span_status_and_suspension_attributes
+    description: |
+      Single-node graph; node suspends with a descriptor carrying
+      typed metadata. The OTel observer's span tree shows: invocation
+      span with logical SUSPENDED (status=OK + openarmature.outcome=
+      "suspended"); node span with the same status PLUS the
+      §5.8 suspension attribute set (signal_id and flattened metadata
+      keys).
+    state:
+      fields:
+        ignored:
+          type: bool
+          default: false
+    entry: gate
+    nodes:
+      gate:
+        suspend_with_descriptor:
+          signal_id: "span-status-test-12345"
+          metadata:
+            kind: "approval"
+            approver_pool: "finance"
+    edges:
+      - {from: gate, to: END}
+    observers:
+      - {name: otel_obs, attach: graph, target: outer, behavior: otel}
+    invocations:
+      - name: initial_invoke
+        initial_state: {}
+        expected:
+          outcome: suspended
+          otel_spans:
+            otel_obs:
+              name: "openarmature.invocation"
+              status: OK
+              attributes:
+                openarmature.outcome: "suspended"
+                openarmature.invocation_id: "<uuid>"
+              children:
+                - name: "gate"
+                  status: OK
+                  attributes:
+                    openarmature.outcome: "suspended"
+                    openarmature.suspension.signal_id: "span-status-test-12345"
+                    openarmature.suspension.metadata.kind: "approval"
+                    openarmature.suspension.metadata.approver_pool: "finance"
+                  children: []
+    invariants:
+      invocation_span_carries_outcome_suspended: true
+      node_span_carries_suspension_attributes: true
+      otel_status_code_is_OK_per_4_2_mapping: true

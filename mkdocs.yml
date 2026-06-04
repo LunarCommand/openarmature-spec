@@ -107,6 +107,7 @@ nav:
     - Observability: capabilities/observability.md
     - Prompt Management: capabilities/prompt-management.md
     - Sessions: capabilities/sessions.md
+    - Suspension: capabilities/suspension.md
   - Proposals: proposals.md
   - Open questions: open-questions.md
   - Compatibility: compatibility.md
