@@ -85,6 +85,7 @@ they are Accepted.
 |---|---|---|---|
 | [0022](proposals/0022-harness-contract.md) | Draft | spec/harness/spec.md (new) | Harness contract — abstract behavioral contract for any harness wrapping the OA engine to serve a deployment runtime (three inbound dispatch paths, turn lifecycle, error categorization, runtime-neutral) |
 | [0023](proposals/0023-canonical-state-reducers.md) | Draft | graph-engine §2 | Canonical state reducers — extend baseline reducers with `bounded_append`, `dedupe_append`, `merge_by_key` (factory-style closures for chat-agent and tool-loop patterns) |
+| [0055](proposals/0055-conformance-adapter-capability.md) | Draft | spec/conformance-adapter/spec.md (new), docs/conformance.md (new), docs/governance.md §"Conformance tests", spec/graph-engine/conformance/README.md | Conformance adapter capability — ratifies the YAML fixture schema, directive vocabulary, harness primitives, and adapter responsibility model that accreted across proposals 0001-0054; gives language adapters a versioned, spec-side source of truth |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
