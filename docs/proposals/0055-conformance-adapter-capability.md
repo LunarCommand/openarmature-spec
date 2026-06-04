@@ -1,0 +1,1 @@
+../../proposals/0055-conformance-adapter-capability.md
