@@ -70,12 +70,12 @@ directive's documented semantics.
 The downstream consequence is that the **reference Python implementation has become the de
 facto source of truth** for what each directive means at runtime. A future
 `openarmature-typescript` adapter would have to reverse-engineer the directive semantics from
-the python implementation rather than from spec text — an inversion of the spec-repo-as-truth
+the Python implementation rather than from spec text — an inversion of the spec-repo-as-truth
 model the rest of OA is built on.
 
 **Cross-language consistency is the load-bearing payoff.** OA's whole rationale for shipping
 as a spec repo separate from any language implementation is that future language ports build
-against the spec, not against the python implementation. The conformance fixtures are the
+against the spec, not against the Python implementation. The conformance fixtures are the
 behavioral truth for cross-language consistency (per `docs/governance.md` §"Multi-language
 consistency" — "APIs MAY differ in syntactic shape; behavior MUST match conformance tests").
 For that promise to hold, the YAML schema + directive vocabulary + harness primitives + assertion
@@ -260,7 +260,7 @@ as a readable explainer / tutorial. Distinct from the normative `spec/conformanc
 - **Spec text** (normative): exact directive shapes, error categories, MUST/SHOULD/MAY
   language, version pin.
 - **Docs page** (informative): why the fixture system exists, end-to-end worked example
-  (here's a real fixture, here's what the python adapter does with it, here's the
+  (here's a real fixture, here's what the Python adapter does with it, here's the
   pytest output), how an implementer ships a conformance-passing adapter for a new
   language, the "every proposal that introduces new fixtures adds to the
   conformance-adapter capability" rule, cross-link to the formal capability spec for
@@ -349,12 +349,12 @@ either continue the established pattern OR open a cleanup proposal targeting spe
 directive consolidations once the v0.X.0 surface stabilizes.
 
 **4. Defer the proposal until cross-language demand surfaces (when openarmature-typescript
-starts).** Argue that the python adapter remains the de facto source of truth until a
+starts).** Argue that the Python adapter remains the de facto source of truth until a
 second language adapter actually needs to be built.
 
 Rejected: the documentation gap exists now; deferring it makes the eventual TS adapter
 work harder (more accreted directives to reverse-engineer) and pushes the cross-impl
-consistency burden onto the python implementer (who would have to document the directives
+consistency burden onto the Python implementer (who would have to document the directives
 ad-hoc for the TS implementer). Documenting now, while the vocabulary is fresh in mind, is
 cheaper than documenting later.
 
@@ -363,9 +363,9 @@ cheaper than documenting later.
 - **Whether the conformance-adapter capability includes the OTel and Langfuse mock harness
   primitives in its v1 surface, or leaves them to a follow-on proposal.** The current
   conformance directories include observability fixtures that exercise OTel span emission
-  and Langfuse trace/observation emission; the python adapter ships in-memory mocks for
+  and Langfuse trace/observation emission; the Python adapter ships in-memory mocks for
   both. Including them in v1 ratifies the existing pattern; deferring them shrinks the v1
-  surface but leaves the existing mocks under-specified. Lean: include in v1 (the python
+  surface but leaves the existing mocks under-specified. Lean: include in v1 (the Python
   implementation already has them; documenting matches reality).
 - **Whether the `conformance_version` per-fixture pin is enforced at parse time.** A fixture
   authored against conformance-adapter v0.5.0 declares
