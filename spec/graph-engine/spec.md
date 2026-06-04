@@ -184,8 +184,8 @@ caller-supplied `correlation_id` (per observability §3.1), an optional caller-s
 `invocation_id` (per observability §5.1 — used verbatim when supplied, framework-minted as a
 UUIDv4 when absent; on a checkpoint-resume call per pipeline-utilities §10.4 the framework
 always mints a fresh id and ignores any caller-supplied `invocation_id`; on a suspension-resume
-call per suspension §7 the framework loads the suspended invocation's id from the paused record
-and reuses it verbatim), and an optional caller-supplied metadata mapping (per observability
+call per suspension §7 the framework loads the suspended invocation's id from the paused record,
+reuses it verbatim, and ignores any caller-supplied `invocation_id`), and an optional caller-supplied metadata mapping (per observability
 §3.4). The metadata mapping carries arbitrary OTel-attribute-compatible key/value entries that
 propagate to every observability backend the implementation emits to. The exact mechanism by
 which callers supply these arguments at invoke time is per-language idiomatic (a keyword

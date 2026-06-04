@@ -218,7 +218,8 @@ suspended from completed and errored:
 | `outcome` | One of `"completed"`, `"errored"`, `"suspended"`. |
 | `state` | The invocation state at the suspension point. NOT the final state; the graph is paused, not done. |
 | `descriptor` | The signal descriptor attached at suspend time. Caller stores this for later correlation. |
-| `node_name` | The node that suspended (qualified-name form per graph-engine §6's `namespace` field shape). |
+| `node_name` | The suspending node's registered name in its immediate containing graph, per graph-engine §6. |
+| `namespace` | The ordered sequence of node names identifying the execution path from the outermost graph down to the suspending node, per graph-engine §6's `namespace` field shape (a list, not a delimiter-joined string). |
 
 Implementations MAY return this as a discriminated union, an outcome object with optional fields, or a
 result-pattern type — surface syntax is language-idiomatic. The spec defines the fields, not the shape.

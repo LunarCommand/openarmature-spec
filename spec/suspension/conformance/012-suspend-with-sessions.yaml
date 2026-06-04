@@ -20,15 +20,17 @@ cases:
         completed_flag:
           type: bool
           default: false
-    entry: gate
+    entry: pre_gate
     nodes:
-      gate:
+      pre_gate:
         update: {session_counter: 5}
-        then_suspend_with_descriptor:
+      gate:
+        suspend_with_descriptor:
           signal_id: "session-suspend-test"
       post_resume:
         update: {completed_flag: true}
     edges:
+      - {from: pre_gate,    to: gate}
       - {from: gate,        to: post_resume}
       - {from: post_resume, to: END}
     session_store: in_memory
