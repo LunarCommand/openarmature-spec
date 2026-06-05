@@ -213,6 +213,6 @@ implementation's spec-version pin (e.g., the openarmature-python `pyproject.toml
 ## Where to look next
 
 - **Normative spec** — [`capabilities/conformance-adapter.md`](capabilities/conformance-adapter.md)
-- **Governance overview** — [`governance.md` §"Conformance tests"](governance.md#conformance-tests)
+- **Governance overview** — [`governance.md`](governance.md#conformance-tests) (Conformance tests section)
 - **A real fixture suite to study** — `spec/graph-engine/conformance/` in the repository
 - **The reference Python adapter** — `openarmature-python/tests/conformance/` (sibling repository)
