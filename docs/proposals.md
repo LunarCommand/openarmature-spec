@@ -61,7 +61,7 @@ lifecycle and the proposal template.
 | [0052](proposals/0052-implementation-attribution-rows.md) | Implementation attribution attributes (§5.1 invocation span + §8.4.1 Langfuse mapping) | observability | Accepted | Pending         | —          |
 | [0053](proposals/0053-shared-parent-boundary-clarification.md) | §3.4 shared-parent boundary clarification (invocation span) | observability | Accepted | Textual (0.12.0)| —          |
 | [0054](proposals/0054-per-invocation-event-drain.md) | Per-invocation observer event drain | graph-engine | Accepted | Pending         | —          |
-| [0055](proposals/0055-conformance-adapter-capability.md) | Conformance adapter capability | conformance-adapter | Draft    | —               | —          |
+| [0055](proposals/0055-conformance-adapter-capability.md) | Conformance adapter capability | conformance-adapter | Accepted | Pending         | —          |
 
 Click any column header to sort.
 
