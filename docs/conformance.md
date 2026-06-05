@@ -21,6 +21,16 @@ language. So one fixture file works for every implementation. If the Python adap
 TypeScript adapter both pass the same fixture, they're behaviorally equivalent on whatever that
 fixture tests.
 
+**Most fixtures test behaviors WITHIN `invoke()`** — they describe a graph, run it, and assert on
+the outcome. A small but important class of fixtures test behaviors **ABOVE** `invoke()` — for
+example, the harness fixture suite (`spec/harness/conformance/`) describes a harness configuration
+that WRAPS `invoke()`, with synthetic inbound transmissions and assertions on the harness's
+dispatch-path classification, outcome handling, signal-coordinator behavior, and error
+categorization. The schema is the same (declarative YAML; adapter translates to host language); the
+layer being tested is different. The capability spec's §3.2 *per-directory harness notes via
+fixture-header comments* rule lets each suite document its specialized fixture conventions inline
+in the fixture headers.
+
 ## A concrete example
 
 Here's a real fixture (`spec/graph-engine/conformance/001-linear-static-flow.yaml`, abbreviated):
@@ -115,6 +125,28 @@ The required harness primitives are enumerated in
 The "real, not simulated" rule is load-bearing. The adapter constructs a real compiled graph and
 calls real `invoke()`. The fixture describes what shape that graph takes and what outcome to
 expect. The engine doesn't know it's being tested.
+
+**Per-directory harness contracts.** Beyond the general harness primitives, some fixture suites
+need specialized scaffolding that only applies inside that capability's directory. Per the
+[capability spec's §3.2](capabilities/conformance-adapter.md#3-fixture-file-format), these
+specializations live in **fixture-header comments** rather than the general directive vocabulary.
+Two worked examples:
+
+- **Observability fixtures** (`spec/observability/conformance/`) document an in-memory OTel
+  `SpanExporter` + private `TracerProvider` (per observability §6 isolation), `caller_*` config
+  blocks, and `<uuid>` / `<any-string>` placeholder syntax in the header of fixture
+  `001-otel-basic-trace.yaml`. Those conventions are normative for the observability suite even
+  though they aren't in the capability spec.
+- **Harness fixtures** (`spec/harness/conformance/`) document a synthetic in-process transport
+  with a `transmissions:` list (each entry is a simulated inbound request / event with
+  `dispatch_intent`, optional `session_id`, optional `signal_payload`), a `harness:` block
+  configuring mode (sessioned / stateless) and signal coordinator, and per-transmission assertion
+  shapes (`dispatch_path`, `invoke_args`, `invoke_outcome`, `outbound_shape`, `error_bucket`,
+  etc.). The fixture-header in `001-inbound-new-session.yaml` is the suite's documentation.
+
+The pattern keeps the capability spec maintainable (it documents the general surface) while
+letting specialized suites grow the scaffolding they need without bloating the general
+vocabulary.
 
 ## Nondeterminism
 
@@ -214,5 +246,11 @@ implementation's spec-version pin (e.g., the openarmature-python `pyproject.toml
 
 - **Normative spec** — [`capabilities/conformance-adapter.md`](capabilities/conformance-adapter.md)
 - **Governance overview** — [`governance.md`](governance.md#conformance-tests) (Conformance tests section)
-- **A real fixture suite to study** — `spec/graph-engine/conformance/` in the repository
+- **A real fixture suite to study (graph-level)** — `spec/graph-engine/conformance/` in the
+  repository; lower-level fixtures that describe a graph, run it, and assert on the outcome
+- **A real fixture suite to study (above-invoke level)** — `spec/harness/conformance/` in the
+  repository; higher-level fixtures that describe a harness configuration wrapping `invoke()`,
+  with synthetic inbound transmissions and assertions on dispatch-path classification, outcome
+  handling, signal coordination, and error categorization. A useful contrast to the graph-engine
+  suite — same YAML schema, different layer being tested
 - **The reference Python adapter** — `openarmature-python/tests/conformance/` (sibling repository)

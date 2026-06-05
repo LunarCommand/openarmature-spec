@@ -1,0 +1,56 @@
+# §3.2 Existing-active-session inbound path: a synthetic transmission
+# carrying a known session_id; the harness invokes with that id threaded;
+# the engine loads the prior session record.
+
+cases:
+  - name: harness_threads_caller_session_id_on_existing_session
+    description: |
+      Sessioned-mode harness. Two sequential transmissions under the
+      same session_id "conv-001". The first is path §3.1 (new-session)
+      and persists message_count=1. The second is path §3.2
+      (existing-active-session); the harness resolves session_id from
+      the payload (not auto-generating one) and invokes; the engine
+      loads the prior record so the second invocation observes the
+      accumulated count.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        message_count:
+          type: int
+          reducer: append
+          default: []
+    entry: append_one
+    nodes:
+      append_one:
+        update: {message_count: [1]}
+    edges:
+      - {from: append_one, to: END}
+    session_store: in_memory
+    transmissions:
+      - name: tx_initial
+        payload: {kind: "new_session_start", session_id: "conv-001"}
+        dispatch_intent: new_session
+        expected:
+          dispatch_path: "3.1"
+          invoke_args:
+            session_id: "conv-001"
+            session_id_caller_supplied: true   # from payload, not auto-generated
+          invoke_outcome: completed
+          final_state: {message_count: [1]}
+      - name: tx_continuation
+        payload: {kind: "continue_session", session_id: "conv-001"}
+        dispatch_intent: existing_session
+        expected:
+          dispatch_path: "3.2"
+          invoke_args:
+            session_id: "conv-001"
+            session_id_caller_supplied: true
+          invoke_outcome: completed
+          # Second invoke loads the prior record (one prior message) and
+          # appends another; final state has both.
+          final_state: {message_count: [1, 1]}
+    invariants:
+      harness_classified_first_as_new_second_as_existing: true
+      harness_threaded_caller_session_id_verbatim: true
+      engine_loaded_prior_session_state_on_second_invoke: true

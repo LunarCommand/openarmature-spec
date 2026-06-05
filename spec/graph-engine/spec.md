@@ -18,6 +18,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 observer event union extended with `LlmCompletionEvent` — the first spec-normatively-typed event variant on the union (alongside `NodeEvent` and the framework-emitted metadata-augmentation event mechanism from proposal 0040). The typed event is dispatched on every LLM call completion that produces a structured response per llm-provider §6, carries 13 typed fields (identity / scoping per the existing event-source identity tuple, outcome data mirroring observability §5.5's attribute surface, plus an OPTIONAL `caller_invocation_metadata` opt-in snapshot field), and is NOT subject to the `phases` subscription filter (matches the metadata-augmentation event's no-phase treatment). Observers filter via type discrimination rather than via sentinel-namespace string match. Failure / streaming events are out of scope for v1; the rendering / mapping concern lives in observability §5.5 by [proposal 0049](../../proposals/0049-typed-llm-completion-event.md)
   - §6 *Observer hooks* gained a per-invocation `drain_events_for(invocation_id, *, timeout)` primitive as a sibling to the existing process-wide `drain`; reuses the snapshot semantic and summary return shape (`undelivered_count`, `timeout_reached`), scopes the wait to events tagged with a single `invocation_id` (per observability §5.1), and diverges from `drain` on worker cancellation (per-invocation drain MUST NOT cancel workers on timeout because the graph remains active). Resolves the synchronization race for the queryable observer pattern (proposal 0048) when a terminal node reads accumulator state mid-invocation by [proposal 0054](../../proposals/0054-per-invocation-event-drain.md)
   - §3 *Execution model* gained an *Invocation outcomes* paragraph classifying `invoke()`'s three return categories (completed, errored, suspended); the *Invocation entry surface* paragraph's `invocation_id` clause split into two cases — fresh id on checkpoint-resume per pipeline-utilities §10.4 (existing rule); reused id on suspension-resume per suspension §7 (new rule). §6 *Node event shape* `phase` field extended with `"suspended"`; new `descriptor` field populated only on `suspended` events carrying the signal descriptor per suspension §4; per-attempt terminal-shape paragraph extended to make `completed` and `suspended` mutually exclusive at the terminal slot (each attempt produces exactly one `started` event followed by exactly one terminal `completed` OR `suspended`). The suspension capability itself defines the suspend operation, signal descriptors, suspended outcome, signal payload merge, resume API, composition with other capabilities, and error categories by [proposal 0021](../../proposals/0021-graph-suspension.md)
+  - §3 *Execution model* gained a *Deployment-runtime wrapping* paragraph noting that `invoke()` is the per-call surface the harness capability wraps when an OpenArmature graph runs inside a deployment runtime (HTTP server, event bus, queue worker, CLI repl, etc.); cross-references the abstract contract for inbound dispatch classification, turn-level outcome handling, signal coordination, error categorization at the turn boundary, and the sessioned vs stateless mode distinction by [proposal 0022](../../proposals/0022-harness-contract.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -201,6 +202,14 @@ the engine persisted a paused-invocation record and returned a structured suspen
 suspension §5 distinct from completion or error). The suspended outcome is observable to
 attached observers via NodeEvent's new `"suspended"` phase per §6 below. Callers that do not use
 the suspension primitive see only completed / errored outcomes.
+
+**Deployment-runtime wrapping.** `invoke()` is the per-call surface that the harness capability
+wraps when an OpenArmature graph runs inside a deployment runtime (HTTP server, event bus, queue
+worker, CLI repl, etc.). The harness capability defines the abstract contract for inbound
+dispatch classification, turn-level outcome handling, signal coordination for suspended
+invocations, error categorization at the turn boundary, and the sessioned vs stateless mode
+distinction. The graph engine itself stays runtime-neutral — the contract above describes what
+`invoke()` does; the harness contract describes how a deployment runtime invokes it.
 
 ## 4. Error semantics
 

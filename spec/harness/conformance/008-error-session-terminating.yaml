@@ -1,0 +1,49 @@
+# §7.1 Session-terminating errors: session_load_failed (sessions §10)
+# is classified by the harness as terminating per §7.1. The harness
+# surfaces a "session is broken; intervention required" outbound and
+# SHOULD NOT auto-retry.
+
+cases:
+  - name: session_load_failed_classified_as_terminating
+    description: |
+      Sessioned-mode harness; transmission targets an existing-active
+      session whose SessionStore is configured to raise on load. The
+      engine surfaces session_load_failed; the harness classifies into
+      the terminating bucket per §7.1 and emits a terminating-shaped
+      outbound. NO auto-retry occurs.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        v:
+          type: int
+          default: 0
+    entry: noop
+    nodes:
+      noop:
+        update: {v: 1}
+    edges:
+      - {from: noop, to: END}
+    session_store:
+      type: in_memory
+      behavior:
+        load_raises: session_load_failed   # synthetic injection
+    transmissions:
+      - name: tx_targets_broken_session
+        payload: {session_id: "broken-session"}
+        dispatch_intent: existing_session
+        expected:
+          dispatch_path: "3.2"
+          invoke_outcome: errored
+          error_category: session_load_failed
+          error_bucket: session_terminating    # per §7.1
+          outbound_shape: error_response
+          outbound_payload_includes:
+            category: session_load_failed
+            bucket: session_terminating
+            intervention_required: true
+          harness_auto_retried: false           # MUST NOT auto-retry
+    invariants:
+      session_load_failed_classified_as_terminating: true
+      harness_did_not_auto_retry: true
+      outbound_marked_intervention_required: true

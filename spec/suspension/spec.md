@@ -6,6 +6,7 @@ Canonical behavioral specification for the OpenArmature suspension capability.
 - **Introduced:** spec version 0.47.0
 - **History:**
   - created by [proposal 0021](../../proposals/0021-graph-suspension.md)
+  - §8.7 *Deployment runtime / harness contract* paragraph tightened from a forward-looking placeholder ("formalized by the harness capability when its spec lands") to a concrete cross-reference into the now-existing harness capability spec — points at its §6 *Signal coordinator*, §3.3 *Signal-resume inbound dispatch path*, §5.3 *Suspended outcome handling* (harness MUST NOT block on suspended turns), and §7 *Error categorization at the turn boundary*. Suspension itself stays runtime-neutral; this is a documentary tightening of the cross-spec touchpoint by [proposal 0022](../../proposals/0022-harness-contract.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -435,9 +436,12 @@ signals back to the right paused invocation. The suspension primitive provides t
 subscription side (callback URL allocation, event-bus subscription, scheduled-trigger registration,
 etc.) and the lookup side (mapping arriving signals to the target `invocation_id`).
 
-This contract is formalized by the harness capability when its spec lands. Suspension itself is
-runtime-neutral — the descriptor's `signal_id` and `metadata` shapes are the only interface points; the
-runtime decides how signals reach it and how they correlate.
+This contract is formalized by the harness capability spec, which specifies the signal-coordinator
+contract (per its §6 *Signal coordinator*), the signal-resume inbound dispatch path (per its §3.3),
+the suspended-outcome handling rule (per its §5.3 — harness MUST NOT block on suspended turns), and
+the cross-capability error categorization for suspension-related errors at the turn boundary (per
+its §7). Suspension itself is runtime-neutral — the descriptor's `signal_id` and `metadata` shapes
+are the only interface points; the runtime decides how signals reach it and how they correlate.
 
 ## 9. Errors
 

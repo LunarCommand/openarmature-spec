@@ -1,0 +1,72 @@
+# §6 Signal coordinator roundtrip: suspend → subscription registered
+# → signal delivered → routed to signal-resume inbound path → resume
+# invoked. Combines the §5.3 suspended-outcome path and the §3.3
+# signal-resume path through one full lifecycle.
+
+cases:
+  - name: signal_coordinator_full_roundtrip_suspend_to_resume
+    description: |
+      Sessioned-mode harness with in-memory signal coordinator. Three
+      transmissions in sequence:
+      (1) Initial invoke; graph suspends; harness registers subscription.
+      (2) Synthetic external signal arrival; signal coordinator looks
+          up the paused invocation by the signal descriptor's
+          signal_id; resume is dispatched.
+      (3) Resume completes the graph.
+      Asserts each step's behavior and the end-to-end roundtrip
+      correlation (signal_id → paused invocation_id mapping).
+    harness:
+      mode: sessioned
+      signal_coordinator: in_memory
+    state:
+      fields:
+        approved:
+          type: bool
+          default: false
+        completed_flag:
+          type: bool
+          default: false
+    entry: gate
+    nodes:
+      gate:
+        suspend_with_descriptor:
+          signal_id: "roundtrip-approval-001"
+      after_resume:
+        update: {completed_flag: true}
+    edges:
+      - {from: gate,         to: after_resume}
+      - {from: after_resume, to: END}
+    session_store: in_memory
+    checkpointer: in_memory
+    transmissions:
+      - name: tx_initial_suspends
+        payload: {session_id: "conv-001"}
+        dispatch_intent: new_session
+        expected:
+          dispatch_path: "3.1"
+          invoke_outcome: suspended
+          descriptor:
+            signal_id: "roundtrip-approval-001"
+          signal_subscription_registered: true
+      - name: tx_external_signal_arrives
+        payload:
+          kind: "signal_arrival"
+          signal_id: "roundtrip-approval-001"   # matches the subscription
+        signal_payload: {approved: true}
+        dispatch_intent: signal_resume
+        expected:
+          dispatch_path: "3.3"
+          # Signal coordinator looked up the paused invocation by
+          # signal_id (the subscription's correlation key).
+          signal_correlation_resolved: true
+          resolved_to_invocation_id: "<from tx_initial_suspends suspended outcome>"
+          invoke_args:
+            resume_invocation: "<from tx_initial_suspends suspended outcome>"
+            signal_payload: {approved: true}
+          invoke_outcome: completed
+          final_state: {approved: true, completed_flag: true}
+    invariants:
+      suspend_registered_subscription: true
+      signal_arrival_correlated_to_paused_invocation: true
+      resume_invocation_completed_the_graph: true
+      end_to_end_signal_roundtrip_succeeded: true

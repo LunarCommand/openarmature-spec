@@ -1,9 +1,9 @@
 # 0022: Harness Contract
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-17
-- **Accepted:**
+- **Accepted:** 2026-06-05
 - **Targets:** spec/harness/spec.md (creates)
 - **Related:** 0020 (sessions — multiplexing key + cross-invoke state), 0021 (suspension — signal coordination), 0008 (checkpointing — shared persistence), 0007 (observability — turn-level spans)
 - **Supersedes:**
@@ -144,8 +144,27 @@ ends at invoke return (one of: completed, errored, or suspended).
 The transport-level boundary (HTTP request lifetime, event-handler
 duration, etc.) is set by the runtime, not by the harness contract.
 
-**Inbound dispatch path.** One of the three classification paths the
-harness routes inbound traffic into. See §3.
+**Inbound dispatch path.** One of the classification paths the harness
+routes inbound traffic into. See §3.
+
+**Harness mode (sessioned vs stateless).** A harness operates in one of
+two modes, determined at construction:
+
+- **Sessioned mode.** Every inbound transmission is associated with a
+  `session_id` (resolved by the harness's session resolver). The
+  harness threads `session_id` into every `invoke()`. Session state
+  loads at invoke entry and saves at invoke exit per sessions §6.
+- **Stateless mode.** Inbound transmissions carry no session identity.
+  Every turn is independent. The harness does NOT resolve a
+  `session_id`, does NOT invoke any SessionStore, and does NOT thread
+  any `session_id` into `invoke()`. Used by deployment runtimes
+  serving inherently stateless workloads (REST APIs without per-
+  conversation context, batch processors, scoring services).
+
+Stateless mode is first-class — not a degenerate sessioned case with
+`session_id = None`. The two modes have different inbound dispatch
+classification (sessioned mode uses §3.1 / §3.2 / §3.3; stateless
+mode uses §3.0) and different sessions composition (per §8.1).
 
 **Outbound surface.** The mechanisms by which the harness exposes
 in-invocation effects to the runtime: sync return values, async
@@ -165,7 +184,40 @@ mechanism.
 ### 3. Inbound dispatch paths
 
 Every inbound transmission (request / event / CLI input) the harness
-receives MUST be classified into exactly one of three paths:
+receives MUST be classified into exactly one path. In **sessioned
+mode**, the path is one of §3.1 / §3.2 / §3.3. In **stateless mode**,
+every transmission routes through §3.0.
+
+#### 3.0 Stateless transmission path (stateless-mode harnesses only)
+
+The harness is configured in stateless mode (per §2 *Harness mode*).
+Every inbound transmission is independent — the harness does NOT
+resolve a `session_id`, does NOT load or save session state, and does
+NOT thread any `session_id` into the engine.
+
+The harness:
+
+1. Constructs the initial state from the inbound payload per
+   harness-implementation logic.
+2. Calls `invoke(initial_state)` — no `session_id` argument; no
+   SessionStore interaction occurs even if one happens to be
+   registered on the compiled graph.
+3. Handles the outcome per §5.
+
+A stateless-mode harness MUST NOT classify any transmission into
+§3.1 / §3.2 / §3.3 (the sessioned paths). A sessioned-mode harness
+MUST NOT classify any transmission into §3.0. Mode is fixed at
+construction; mixing modes within one harness instance is out of
+scope (an application that needs both shapes constructs two harness
+instances, one per mode).
+
+The signal-resume case under stateless mode (§3.3-equivalent) is
+permitted IF the runtime emits identifiable resume signals carrying
+the paused-invocation_id. The stateless harness's signal coordinator
+(§6) routes the signal to a resume invocation without any session
+context — the paused-invocation record carries no `session_id` (it
+was created by a stateless invoke), so resume threading is
+session-free.
 
 #### 3.1 New-session path
 
@@ -230,11 +282,14 @@ record carries it.
 #### 3.4 Path classification
 
 The harness MUST classify every inbound transmission into exactly one
-of 3.1 / 3.2 / 3.3 before calling `invoke()`. The classification is
-the harness's responsibility; specific transports (HTTP routes, event
-types, etc.) typically determine it. The contract requires the
-classification be deterministic from the inbound payload (a given
-payload always routes to the same path).
+path before calling `invoke()`. In sessioned mode, the choice is among
+3.1 / 3.2 / 3.3; in stateless mode, every transmission routes
+through 3.0 (with the resume-equivalent allowance per 3.0's last
+paragraph). The classification is the harness's responsibility;
+specific transports (HTTP routes, event types, etc.) typically
+determine it. The contract requires the classification be
+deterministic from the inbound payload (a given payload always routes
+to the same path).
 
 ### 4. Turn lifecycle
 
@@ -400,11 +455,26 @@ transport's conventions.
 
 ### 8. Composition with capabilities
 
-**8.1 Sessions (proposal 0020).** The harness threads `session_id`
-into every `invoke()` per the inbound dispatch paths in §3. The
-engine handles session load/save per proposal 0020 §6. The harness
-does NOT directly access the SessionStore — the engine owns that
-interaction.
+**8.1 Sessions (proposal 0020).** Composition splits by harness mode
+(per §2):
+
+- **Sessioned-mode harnesses** thread `session_id` into every
+  `invoke()` per the inbound dispatch paths in §3.1 / §3.2 / §3.3.
+  The engine handles session load/save per proposal 0020 §6. The
+  harness does NOT directly access the SessionStore — the engine owns
+  that interaction.
+- **Stateless-mode harnesses** omit `session_id` from every
+  `invoke()` per §3.0. The engine MUST NOT invoke any SessionStore
+  even if one is registered on the compiled graph (the
+  `session_id=absent` discipline from sessions §3 governs). Stateless
+  harnesses MAY share a compiled graph with sessioned harnesses if an
+  application instantiates both for different transport surfaces —
+  the engine's behavior is determined per-invocation by whether
+  `session_id` is supplied, not by graph configuration.
+
+In both modes, the harness does NOT directly access the SessionStore;
+sessioned-mode harnesses delegate to the engine via `session_id`
+threading, and stateless-mode harnesses don't touch it at all.
 
 **8.2 Suspension (proposal 0021).** The harness handles the
 suspended outcome per §5.3 and the signal coordinator per §6. The
@@ -446,10 +516,18 @@ packages. Examples (not normative — names are illustrative):
   to continue when ready".
 
 Each per-harness-type implementation MAY ship its own conformance
-suite (against the abstract contract here). Whether spec-level
-per-harness-type sections (§9.1 chat, §9.2 HTTP, etc.) are added in
-follow-on proposals is open; this proposal lands the abstract
-contract first.
+suite (against the abstract contract here). Spec-level per-harness-type
+sub-specs are added by follow-on proposals when cross-impl divergence
+risk warrants the ratification. **The chat harness is committed to a
+follow-on sub-spec** (planned proposal `0NNN-harness-chat`), per the
+*Open questions* resolution below — chat-loop semantics (message-shape,
+conversation-history threading, higher-level `harness.send(session_id,
+message)` callable surface) have the highest cross-impl-divergence
+risk and warrant ratification once across implementations. Other
+per-harness-type sub-specs (FastAPI, Inngest, CLI, …) remain
+decided-per-case when each ships its first implementation and
+surfaces cross-impl questions. This proposal lands the abstract
+contract first; the chat sub-spec layers on top.
 
 ### 10. Errors
 
@@ -546,6 +624,12 @@ takes the following approach:
     classified as retryable.
   - **`010-error-user-correctable`** — `provider_invalid_request`
     surfaces with diagnostic info.
+  - **`011-stateless-mode-no-session`** — stateless-mode harness
+    invokes a graph without resolving a `session_id` and without
+    invoking any SessionStore (even when one is registered on the
+    compiled graph). Verifies §3.0 stateless-transmission path +
+    §8.1 stateless-mode composition rule; asserts the SessionStore
+    received zero load / save calls across the invocation.
 
 - **Per-harness-implementation suites** in each sibling package
   (`openarmature-fastapi`, `openarmature-chat`, etc.) verify the
@@ -595,11 +679,20 @@ fits both natively.
 ## Open questions
 
 - **Whether to spec per-harness-type behavior in follow-on proposals.**
-  The chat harness specifically has rich turn-level semantics (message
-  shape, conversation history flow, partial / streaming responses) that
-  could warrant a `0023-harness-chat` follow-on. FastAPI, Inngest, etc.
-  might or might not. Open: decide per-harness-type basis when each
-  ships its first implementation and surfaces cross-impl questions.
+  Resolved: **the chat harness gets a follow-on sub-spec** (planned
+  proposal `0NNN-harness-chat`) that specifies the inbound message →
+  session → invoke wiring, the outbound assistant message → session →
+  response wiring, and the higher-level callable surface
+  (`harness.send(session_id, message)` rather than hand-threading invoke
+  arguments). Downstream demand surfaced during 0022's pre-Accept
+  review (a reference chat agent in production would otherwise
+  re-invent that contract per-deployment); a chat sub-spec ratifies
+  the shape once for cross-impl consistency. FastAPI, Inngest, and
+  other per-harness-type specs remain decided-per-case when each
+  ships its first implementation. The abstract contract in this
+  proposal is the foundation both chat and other harness types build
+  on; chat is the first to commit because the chat-loop contract has
+  the highest cross-impl-divergence risk.
 - **Streaming hooks.** This proposal stays at turn-level granularity.
   Token-level streaming (SSE, gRPC bidi, WebSocket message-by-message)
   is a separate concern that could fit as either: (a) an extension to
@@ -607,13 +700,16 @@ fits both natively.
   completed/errored/suspended), or (b) a separate proposal that
   composes with this one. Recommendation: separate proposal,
   prerequisite-on-this-one.
-- **The harness's relationship to `invoke()` callable shape.** This
-  proposal assumes the harness calls `invoke()` directly. An
-  alternative is that the harness wraps `invoke()` in a higher-level
-  callable (e.g., `harness.handle(transmission)`). The callable-
-  wrapping shape might be useful for testability; the contract says
-  the harness MUST call `invoke()`, leaving the wrapping convention
-  to implementations.
+- **The harness's relationship to `invoke()` callable shape.**
+  Resolved at the abstract contract level: **the abstract contract
+  stays neutral.** Concrete harness-type sub-specs (per Q1 — chat
+  sub-spec planned) MAY mandate a higher-level callable surface
+  (e.g., `harness.send(session_id, message)` for the chat case)
+  appropriate to their transport model. Non-chat harness types MAY
+  stay close to `invoke()` if no higher-level callable serves their
+  shape. The abstract contract requires the harness MUST call
+  `invoke()` somewhere on the inbound path; the wrapping convention
+  is per-harness-type, not abstract.
 - **Where the abstract conformance fixtures actually run.** The
   abstract-contract fixtures need a "reference harness" with a
   synthetic transport to exercise the contract. This reference might
@@ -627,8 +723,17 @@ fits both natively.
   must produce semantically-equivalent results. Worth designing
   before the first non-Python harness ships.
 - **Whether sessions auto-load is mandatory at the harness layer.**
-  This proposal assumes the harness ALWAYS resolves `session_id` and
-  threads it into invoke. An alternative: stateless-mode harnesses
-  that skip session resolution entirely (every turn is independent).
-  Recommendation: stateless mode is `session_id=None` on the
-  inbound dispatch; no special case needed. Confirming.
+  Resolved: **stateless mode is first-class** (per §2 *Harness mode*
+  and the new §3.0 *Stateless transmission path*). The earlier draft
+  framing treated stateless as a degenerate sessioned case with
+  `session_id=None`, but downstream review surfaced real production
+  use cases (REST APIs, batch processors, scoring services) where
+  stateless is the natural deployment shape, and where the
+  session-resolver / session-load / session-save machinery is dead
+  code that doesn't belong on the inbound path. Stateless-mode
+  harnesses don't resolve any `session_id`, don't invoke any
+  SessionStore, and follow the §3.0 dispatch path instead of §3.1 /
+  §3.2 / §3.3. The §8.1 sessions composition rule splits between
+  sessioned and stateless modes explicitly. Mode is fixed at harness
+  construction; an application needing both shapes constructs two
+  harness instances.

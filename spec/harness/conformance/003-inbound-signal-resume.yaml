@@ -1,0 +1,68 @@
+# §3.3 Signal-resume inbound path: a synthetic signal payload
+# correlating to a paused invocation; the harness invokes resume with
+# the signal_payload threaded; the engine reuses the suspended
+# invocation_id and continues from the node after the suspending one.
+
+cases:
+  - name: harness_resumes_paused_invocation_on_signal_arrival
+    description: |
+      Sessioned-mode harness with a checkpointer + session_store. First
+      transmission triggers a graph that suspends mid-execution; the
+      harness handles the suspended outcome per §5.3 and registers a
+      synthetic signal subscription. Second transmission carries the
+      resume signal (with the paused invocation_id); the harness
+      classifies as §3.3 and invokes
+      invoke(resume_invocation=<id>, signal_payload=<payload>).
+    harness:
+      mode: sessioned
+      signal_coordinator: in_memory
+    state:
+      fields:
+        approved:
+          type: bool
+          default: false
+        completed_flag:
+          type: bool
+          default: false
+    entry: gate
+    nodes:
+      gate:
+        suspend_with_descriptor:
+          signal_id: "approval-test-001"
+      after_resume:
+        update: {completed_flag: true}
+    edges:
+      - {from: gate,         to: after_resume}
+      - {from: after_resume, to: END}
+    session_store: in_memory
+    checkpointer: in_memory
+    transmissions:
+      - name: tx_initial_suspends
+        payload: {session_id: "conv-001"}
+        dispatch_intent: existing_session
+        expected:
+          dispatch_path: "3.2"
+          invoke_outcome: suspended
+          descriptor:
+            signal_id: "approval-test-001"
+          # Harness MUST register a signal subscription per §5.3 step 2.
+          harness_signal_subscription_registered: true
+          harness_did_not_block: true
+      - name: tx_resume_signal
+        payload:
+          kind: "signal_arrival"
+          invocation_id: "<from previous suspended outcome>"
+        signal_payload: {approved: true}
+        dispatch_intent: signal_resume
+        expected:
+          dispatch_path: "3.3"
+          invoke_args:
+            resume_invocation: "<from previous suspended outcome>"
+            signal_payload: {approved: true}
+          invoke_outcome: completed
+          final_state: {approved: true, completed_flag: true}
+    invariants:
+      first_invoke_suspended_and_signal_subscribed: true
+      second_invoke_classified_as_signal_resume: true
+      resume_threaded_signal_payload_into_engine: true
+      harness_did_not_block_between_suspend_and_signal: true

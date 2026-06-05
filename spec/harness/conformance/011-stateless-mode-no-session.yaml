@@ -1,0 +1,53 @@
+# §3.0 + §8.1 Stateless-mode harness: invokes a graph without resolving
+# any session_id and without invoking the SessionStore — EVEN WHEN a
+# SessionStore is registered on the compiled graph. Verifies the §3.0
+# stateless-transmission path and the §8.1 stateless-mode composition
+# rule (engine MUST NOT invoke SessionStore when session_id is absent).
+
+cases:
+  - name: stateless_harness_skips_session_machinery_entirely
+    description: |
+      Stateless-mode harness. A SessionStore is registered on the
+      compiled graph (the application happens to use the same graph
+      under a different harness with sessions enabled — a permitted
+      composition per §8.1). The stateless harness invokes WITHOUT a
+      session_id; the engine MUST NOT call into the SessionStore for
+      load OR save. Verifies the stateless dispatch path skips session
+      resolution entirely and that the engine's session-skip rule
+      kicks in correctly when session_id is absent.
+    harness:
+      mode: stateless
+    state:
+      fields:
+        v:
+          type: int
+          default: 0
+    entry: process
+    nodes:
+      process:
+        update: {v: 42}
+    edges:
+      - {from: process, to: END}
+    # SessionStore IS registered — but stateless harness shouldn't touch it.
+    session_store: in_memory
+    transmissions:
+      - name: tx_stateless
+        payload: {kind: "compute_request", input: 7}
+        # No session_id; no dispatch_intent: new_session — stateless
+        # mode classifies every transmission into §3.0.
+        expected:
+          dispatch_path: "3.0"
+          invoke_args:
+            session_id_present: false
+            session_id_absent_verified: true   # adapter MUST verify the call site DID NOT pass session_id
+          invoke_outcome: completed
+          final_state: {v: 42}
+          # Critical assertion: the SessionStore received ZERO calls
+          # across this invocation despite being registered.
+          session_store_load_calls: 0
+          session_store_save_calls: 0
+    invariants:
+      stateless_harness_classified_via_path_3_0: true
+      stateless_harness_did_not_resolve_session_id: true
+      engine_did_not_invoke_session_store: true
+      session_store_completely_untouched: true

@@ -6,6 +6,7 @@ Canonical behavioral specification for the OpenArmature sessions capability.
 - **Introduced:** spec version 0.33.0
 - **History:**
   - created by [proposal 0020](../../proposals/0020-sessions-capability.md)
+  - §3 *Identity scoping* gained a *Harness threading* paragraph noting that deployments wrapping the engine via a harness (per the harness capability spec) are responsible for resolving `session_id` from inbound traffic and threading it into every `invoke()` call in sessioned mode; stateless-mode harnesses never thread a `session_id`. Documentary cross-reference; no behavior change at the sessions layer (the omit-and-skip rule was already normative) by [proposal 0022](../../proposals/0022-harness-contract.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -92,6 +93,13 @@ graph-engine §3). When `session_id` is supplied, the engine MUST:
 
 When `session_id` is omitted, the engine MUST NOT call into the `SessionStore` even if one is registered.
 The session machinery is opt-in per-invoke.
+
+**Harness threading.** In deployments wrapping the engine via a harness (per the harness capability spec),
+the harness is responsible for resolving `session_id` from inbound traffic and threading it into every
+`invoke()` call — in **sessioned mode**. **Stateless-mode harnesses** never thread a `session_id`; every
+turn invokes the engine without one and the session machinery stays inert. The harness capability spec
+defines the contract for both modes; this capability defines what happens when `session_id` IS supplied
+(per the above) or is NOT (the omit-and-skip rule above). The two contracts compose without duplication.
 
 ## 4. Session shape and projection
 
