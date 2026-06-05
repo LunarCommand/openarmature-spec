@@ -486,6 +486,11 @@ These directives appear at top level and configure persistence backends.
 - **`checkpointer_assertions: { ... }`** — appears under per-invocation expected blocks. Asserts
   the checkpointer backend's state at invocation completion (e.g., `paused_invocation_record_exists`,
   `record_type`). Exercises pipeline-utilities §10 + suspension §8.5.
+- **`populate_checkpointer_via_runs: <int>`** — appears at the per-invocation level. Tells the
+  adapter to run the graph the specified number of times BEFORE the test invocation, seeding the
+  checkpointer with N completed invocation records. Used by fixtures that need to verify
+  checkpoint resume behavior against a populated backend (e.g., "resume with a fake id when other
+  records DO exist" — fixture 030). Exercises pipeline-utilities §10.
 
 ### 5.7 Invocation-shape directives
 
@@ -498,11 +503,16 @@ initial_state: { ... }
 caller_metadata: { ... }      # observability §3.4
 caller_correlation_id: <id>   # observability §3.1
 caller_invocation_id: <id>    # observability §5.1
-invoke:
+invoke:                       # OR invoke_with: — equivalent
   drain: { timeout_seconds: <float> }  # graph-engine §6 (process-wide drain at end)
   # OR drain: {} for explicit no-timeout
+  resume_invocation: <id>             # when resuming from a checkpoint or suspended record
 expected: { ... }
 ```
+
+The container key MAY be spelled `invoke:` OR `invoke_with:` — adapters MUST treat them as
+equivalent. Different fixtures use different spellings historically; the spec ratifies both. Both
+forms accept the same set of sub-keys (`drain:`, `resume_invocation:`, etc.).
 
 **Multi-invocation (`invocations:` list):**
 
@@ -559,7 +569,9 @@ These directives appear under per-invocation or per-case `expected:` blocks and 
   any optional fields the fixture cares about.
 - **`observer_event_invariants: {<predicate_name>: <value>, ...}`** — name-keyed invariant predicates
   the adapter MUST verify against the observer's recorded events. Used for nondeterministic-ordering
-  cases (see §7). Per-fixture predicate names are listed in §5.9.
+  cases (see §7). §5.9 documents common predicate names; the full set is per-fixture and grows per
+  proposal. Adapter authors implement predicates as fixtures demand — the originating fixture's
+  prose names the predicates and describes their semantics.
 - **`otel_spans: {<observer_name>: {name: <span_name>, status: <status>, attributes: { ... }, children: [ ... ]}}`**
   — hierarchical span-tree assertion for OTel observers (observability fixtures only).
 - **`langfuse_*: { ... }`** — Langfuse-specific assertion shapes (observability fixtures only).
@@ -582,7 +594,11 @@ additional checks beyond exact-equality assertions. Predicate names are declarat
 ship logic that interprets each predicate name and runs the corresponding check against the executed
 outcome.
 
-Common predicate names currently in use (non-exhaustive; new predicates are added per proposal):
+Canonical / cross-cutting predicates that span multiple fixtures or capabilities. Adapters MUST
+ship logic that interprets each canonical predicate name in this section. Fixture-specific
+predicates not listed here are documented in the originating fixture's prose per §3.2
+per-directory harness notes; adapters MUST also implement those, but the spec scopes its normative
+enumeration to the canonical set below to keep this list maintainable.
 
 - `inner_event_count: <int>` — total events from inner-instance / inner-branch nodes.
 - `inner_fan_out_indices_seen: [<int>, ...]` — set of `fan_out_index` values observed.
@@ -599,9 +615,9 @@ Common predicate names currently in use (non-exhaustive; new predicates are adde
 - `workers_not_cancelled_on_per_invocation_drain_timeout: <bool>` — verifies the per-invocation
   drain's no-worker-cancellation rule per graph-engine §6 *Per-invocation drain*.
 
-Each predicate is a property name the adapter resolves to a runtime check. New proposals that add
-fixtures with new invariant predicates extend this section's enumeration the same way they extend the
-directive vocabulary in §5.1–§5.8.
+New proposals that add canonical predicates extend this section. Fixture-specific predicates added
+in the course of a per-fixture exercise stay in the fixture's prose; the canonical promotion
+happens when a predicate recurs across multiple fixtures or capabilities.
 
 ## 6. Harness primitives
 
