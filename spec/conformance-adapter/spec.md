@@ -303,6 +303,12 @@ These directives appear under `nodes.<node_name>:` and define what the node does
   from its current state, multiplies by `<multiplier>` (default 1), and returns
   `{<target>: <product>}`. Used in fan-out fixtures where each instance applies a deterministic
   transformation. Exercises pipeline-utilities §9 (fan-out item-projection rules).
+- **`update_pure_from_state: {<output_field>: <harness_operation_name>}`** — per-directory harness
+  extension (per §3.2). Used by observability fan-out / detached-trace fixtures (006, 008, 032,
+  033) to derive a value from state via a named harness operation (e.g., `input_times_two`
+  produces `output = input * 2`); operation names and semantics are documented inline in the
+  fixture's YAML header comment. The adapter MUST implement each operation as specified in the
+  fixture's prose.
 - **`raises: "<error_message>"`** — node raises an exception with the given message instead of
   returning. Exercises graph-engine §4 (error semantics).
 - **`suspend_with_descriptor: {signal_id: <id>, metadata: { ... }}`** — node calls
@@ -313,11 +319,6 @@ These directives appear under `nodes.<node_name>:` and define what the node does
   — node executing inside a fan-out instance: when `state.<item_idx_field>` equals the configured
   index, calls `suspend(descriptor)`; on other instance indices, applies the `on_other_indices`
   directive (typically `update_from_field`). Exercises suspension §8.2 fan-out propagation.
-- **`pre_next_calls_suspend_with_descriptor: {signal_id: <id>}`** — paired with `wrap_with_middleware`:
-  the named middleware's pre-`next()` block calls `suspend(descriptor)` directly (rather than the
-  wrapped node doing so). Used by fixture 015 (suspension §8.4 — middleware MUST NOT call
-  `suspend()`; this directive exists to verify the prohibition raises
-  `suspension_in_unsupported_context`). Exercises suspension §8.4 + §9.
 - **`invoke_drain_events_for: {timeout_seconds: <float>, snapshot_observer: <observer_name>}`** —
   before this node returns, the adapter MUST invoke
   `graph.drain_events_for(state.invocation_id, timeout=<timeout_seconds>)` then snapshot the named
@@ -346,10 +347,20 @@ These directives appear under `nodes.<node_name>:` and define what the node does
 
 These directives appear under `state:` and define the typed-state schema.
 
-- **`state.fields.<field_name>.type`** — string. The declared type. Adapters MUST accept the values
-  `string`, `int`, `float`, `bool`, `list`, `list<int>`, `list<string>`, `list<float>`, `list<bool>`,
-  `list`, `dict`, `dict<string,string>`, `dict<string,int>`. List-element-type-omitted (`list`) is
-  permitted; the adapter MUST NOT impose element-type constraints in that case.
+- **`state.fields.<field_name>.type`** — string. Declares the field's type. The type system supports
+  three category classes, which compose recursively:
+  - **Primitives.** `string`, `int`, `float`, `bool`, `any`.
+  - **Parameterized containers.** `list` (no element constraint) OR `list<T>` where T is recursively
+    any accepted type string; `dict` (no constraints) OR `dict<K,V>` where K and V are recursively
+    any accepted type strings.
+  - **User-defined record types.** A bareword (e.g., `error_entry`) refers to a record type the
+    fixture defines elsewhere (typically as a nested `state.fields` schema with its own fields). The
+    adapter MUST support user-defined record types as element types of `list<T>` and as value types
+    of `dict<K,V>`.
+
+  Adapters MUST translate the type string into a host-language typed-state field with equivalent
+  shape semantics. List-element-type-omitted (`list`) is permitted; the adapter MUST NOT impose
+  element-type constraints in that case.
 - **`state.fields.<field_name>.default`** — the field's initial value if `initial_state` does not
   supply one. MUST match the declared type.
 - **`state.fields.<field_name>.reducer`** — string. One of `last_write_wins` (default),

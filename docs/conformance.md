@@ -120,7 +120,7 @@ expect. The engine doesn't know it's being tested.
 
 Some execution orderings are observable but not uniquely determined by the spec — fan-out instance
 scheduling, parallel-branches branch scheduling, observer event dispatch within one phase. The
-spec defines these as nondeterministic per graph-engine §3 and §5.
+spec defines these as nondeterministic per graph-engine §3, §5, and §6.
 
 Fixtures touching these surfaces use `observer_event_invariants:` instead of `observer_events:`,
 with named boolean predicates that the adapter resolves to runtime checks:
