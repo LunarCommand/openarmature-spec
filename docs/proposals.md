@@ -54,14 +54,14 @@ lifecycle and the proposal template.
 | [0045](proposals/0045-observability-nested-lineage-augmentation.md) | Nested-lineage augmentation containment scope | observability | Accepted | Shipped (0.11.0)| —          |
 | [0046](proposals/0046-prompt-management-multi-message-rendering.md) | Multi-message / chat prompt rendering | prompt-management | Accepted | Shipped (0.11.0)| —          |
 | [0047](proposals/0047-implicit-prefix-cache-wire-stability.md) | Implicit prefix-cache wire-byte stability | llm-provider | Accepted | Pending         | —          |
-| [0048](proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md) | Read-symmetric invocation metadata + queryable observer pattern | observability | Accepted | Partial (0.12.0)| —          |
+| [0048](proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md) | Read-symmetric invocation metadata + queryable observer pattern | observability | Accepted | Shipped (0.12.0)| —          |
 | [0049](proposals/0049-typed-llm-completion-event.md) | Typed LLM completion event | observability | Accepted | Pending         | —          |
 | [0050](proposals/0050-retry-and-degradation-primitives.md) | Retry & degradation primitives (failure-isolation middleware + call-level retry) | pipeline-utilities | Accepted | Pending         | —          |
 | [0051](proposals/0051-langfuse-trace-io-deprecation-caveat.md) | Langfuse trace input/output implementation-surface caveat | observability | Accepted | Textual (0.12.0)| —          |
 | [0052](proposals/0052-implementation-attribution-rows.md) | Implementation attribution attributes (§5.1 invocation span + §8.4.1 Langfuse mapping) | observability | Accepted | Pending         | —          |
 | [0053](proposals/0053-shared-parent-boundary-clarification.md) | §3.4 shared-parent boundary clarification (invocation span) | observability | Accepted | Textual (0.12.0)| —          |
 | [0054](proposals/0054-per-invocation-event-drain.md) | Per-invocation observer event drain | graph-engine | Accepted | Pending         | —          |
-| [0055](proposals/0055-conformance-adapter-capability.md) | Conformance adapter capability | conformance-adapter | Draft    | —               | —          |
+| [0055](proposals/0055-conformance-adapter-capability.md) | Conformance adapter capability | conformance-adapter | Accepted | Pending         | —          |
 
 Click any column header to sort.
 

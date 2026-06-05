@@ -1,0 +1,1 @@
+../../spec/conformance-adapter/spec.md

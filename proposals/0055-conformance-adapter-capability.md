@@ -1,9 +1,9 @@
 # 0055: Conformance Adapter Capability
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-03
-- **Accepted:**
+- **Accepted:** 2026-06-04
 - **Targets:** spec/conformance-adapter/spec.md (creates — new capability spec ratifying the existing fixture YAML schema, directive vocabulary, harness primitives, and adapter responsibility model); docs/conformance.md (creates — readable explainer / tutorial alongside governance.md); spec/graph-engine/conformance/README.md (slim down — its v0 informal schema content moves into the new capability spec; the README becomes a one-line breadcrumb pointing at the capability spec); docs/governance.md §"Conformance tests" (extends to cross-reference the new capability spec as the normative source).
 - **Related:** 0001 (graph-engine — first capability with fixtures; source of the v0 informal YAML schema embedded in `spec/graph-engine/conformance/README.md`), 0020 (sessions — introduced the multi-invocation `invocations:` list directive for cross-invoke fixtures), 0048 (introduced `augment_metadata` / `augment_metadata_from_field` / `capture_invocation_metadata_into` for the read-symmetric invocation metadata read API), 0054 (introduced `behavior: accumulate`, `invoke_drain_events_for`, `node_drain_summaries`, `node_accumulator_snapshots`, `final_accumulator_state` for the per-invocation drain primitive), 0021 (introduced `suspend_with_descriptor`, `conditional_suspend`, `wrap_with_middleware`, `resume_invocation`, `signal_payload`, `descriptor` / `suspending_node` / `metadata_includes` assertion shapes for the suspension primitive)
 - **Supersedes:**

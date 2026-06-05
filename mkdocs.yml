@@ -97,6 +97,7 @@ nav:
   - OpenArmature: index.md
   - Charter: openarmature.md
   - Governance: governance.md
+  - Conformance: conformance.md
   - Releasing: releasing.md
   - Capabilities:
     - Graph Engine: capabilities/graph-engine.md
@@ -108,6 +109,7 @@ nav:
     - Prompt Management: capabilities/prompt-management.md
     - Sessions: capabilities/sessions.md
     - Suspension: capabilities/suspension.md
+    - Conformance Adapter: capabilities/conformance-adapter.md
   - Proposals: proposals.md
   - Open questions: open-questions.md
   - Compatibility: compatibility.md
