@@ -33,8 +33,9 @@ The capability composes with:
 - **suspension** — the harness handles the `suspended` outcome from `invoke()` by either returning
   it to the caller (sync runtimes) or by dispatching a signal-subscription to the runtime (async
   runtimes). On signal arrival, the harness routes the callback to the signal-resume inbound path.
-- **observability** — turn boundaries map to span scopes; the harness is responsible for
-  opening / closing turn-level spans around `invoke()`.
+- **observability** — turn boundaries map to span scopes; the harness MAY open / close a
+  turn-level wrapper span around `invoke()` per observability §4.6 (optional — runtimes that
+  already provide a transport-level parent span MAY skip the wrapper).
 - **pipeline-utilities §10 *Checkpointing*** — the harness MAY use checkpointing to make
   turn-level invokes resumable across worker restarts; not required by the contract.
 
@@ -373,14 +374,17 @@ checkpointer to make multi-node invokes resumable.
 
 ### 8.4 Observability
 
-The harness opens a turn-level span around `invoke()` carrying:
+The harness MAY open a turn-level wrapper span around `invoke()` per observability §4.6
+(optional — runtimes that already provide a transport-level parent span MAY skip it). When the
+wrapper IS opened, it carries:
 
 - `openarmature.session_id` (sessioned mode only — absent in stateless mode per observability
   §5.6)
 - The signal descriptor attributes per observability §5.8 on signal-resume turns
 
-The invocation root span (per observability §4) is a child of the turn span. This nesting lets
-trace UIs scope traces to turns when desired.
+The invocation root span (per observability §4) becomes a child of the turn wrapper span when
+present. This nesting lets trace UIs scope traces to turns when desired; when the wrapper is
+absent, the invocation span attaches to whatever transport-level parent the runtime provides.
 
 ## 9. Per-harness-type implementations
 

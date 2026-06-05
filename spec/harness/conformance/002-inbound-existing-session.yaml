@@ -17,7 +17,7 @@ cases:
     state:
       fields:
         message_count:
-          type: int
+          type: list<int>
           reducer: append
           default: []
     entry: append_one

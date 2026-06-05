@@ -42,7 +42,7 @@ cases:
             category: session_load_failed
             bucket: session_terminating
             intervention_required: true
-          harness_auto_retried: false           # MUST NOT auto-retry
+          harness_auto_retried: false           # SHOULD NOT auto-retry per §7.1
     invariants:
       session_load_failed_classified_as_terminating: true
       harness_did_not_auto_retry: true
