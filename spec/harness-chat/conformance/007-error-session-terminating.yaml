@@ -35,12 +35,12 @@ cases:
           content: "Hello"
         expected:
           outcome: errored
-          error_category: session_terminating
+          error_bucket: session_terminating
+          error_category: session_load_failed
           reply:
             role: system
             content_matches_template: "this conversation can't continue"
-          error_diagnostic: session_load_failed
     invariants:
-      error_category_routes_to_harness_section_7_1: true
+      error_bucket_routes_to_harness_section_7_1: true
       reply_role_is_system: true
       chat_harness_does_not_invoke_graph_when_session_load_fails: true

@@ -53,9 +53,9 @@ cases:
         subscribe_listener: chat_listener
         expected:
           outcome: suspended
-          pending_message:
-            role: assistant
-            content: "Approve sending email?"
+          pending_messages:
+            - role: assistant
+              content: "Approve sending email?"
           signal_descriptor:
             signal_id: "approval-002"
     signal_arrivals:

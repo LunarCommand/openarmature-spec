@@ -24,16 +24,24 @@
 #   extraction rule (length matches the new-message tail; content matches
 #   per-message).
 #
-# - **`expected.error_category:`** — on `errored` outcomes, one of
+# - **`expected.error_bucket:`** — on `errored` outcomes, one of
 #   `session_terminating` / `retryable_transient` / `user_correctable` per
-#   harness-chat §10's three-bucket mapping (also harness §7).
+#   harness-chat §10's three-bucket mapping (also harness §7). Matches the
+#   harness suite's `error_bucket` field for the three-way classification.
+#
+# - **`expected.error_category:`** — on `errored` outcomes (OPTIONAL), the
+#   underlying concrete error category (e.g., `provider_unavailable`,
+#   `session_load_failed`, `chat_message_shape_invalid`). Matches the
+#   harness suite's `error_category` field.
 #
 # - **`expected.reply:`** — on `errored` outcomes, the system-shaped
 #   `ChatMessage` reply per harness-chat §10.
 #
-# - **`expected.pending_message:`** — on `suspended` outcomes, the synthetic
-#   assistant message the graph appended before calling `suspend()` (per
-#   harness-chat §8.1); MAY be omitted when no pending message was emitted.
+# - **`expected.pending_messages:`** — on `suspended` outcomes, the list
+#   of synthetic assistant messages the graph appended before calling
+#   `suspend()` (per harness-chat §8.1), in graph-execution order. Empty
+#   list when no pending messages were emitted; always a list (matches
+#   `expected.replies:`'s always-list shape).
 #
 # - **`expected.signal_descriptor:`** — on `suspended` outcomes, the
 #   suspension descriptor per suspension §4 (`signal_id`, optional
@@ -53,6 +61,35 @@
 #   `ChatTurnOutcome` it received). Distinct from the harness suite's
 #   `transmissions[]` shape because the listener-based resume path is
 #   harness-chat-specific (per §8.2's listener-default rationale).
+#
+# - **`expected.final_state.messages_count:`** — integer assertion on the
+#   post-turn session's `messages`-field length (verifies the inbound user
+#   message + the graph's new messages all landed in history).
+#
+# - **`expected.final_state.messages_history_contains:`** — ordered
+#   subsequence assertion on the post-turn `messages` field; each entry
+#   is a `ChatMessage` shape (role + content) that MUST appear in order
+#   in history. Pairs naturally with `messages_count` for end-to-end
+#   history-shape verification.
+#
+# - **`content_includes:`** — assertion helper on a `ChatMessage`'s
+#   `content`: a list of substrings the message's text content MUST
+#   contain (in any order). Used for `errored` replies whose template
+#   incorporates an upstream diagnostic substring (§10.3) or a
+#   bucket-framing substring.
+#
+# - **`content_matches_template:`** — assertion helper on a `ChatMessage`'s
+#   `content`: a substring of the §10 reply template the message MUST
+#   contain (e.g., `"this conversation can't continue"`). Used for the
+#   session-terminating / retryable-transient bucket reply assertions where
+#   the spec defines only the template framing and not the exact text
+#   (implementations MAY customize per §10).
+#
+# **Cross-suite reuse.** The chat suite reuses
+# `expected.dispatch_path` from the harness suite (harness §3.1 / §3.2 /
+# §3.3 inbound dispatch path classification) — the chat harness's
+# inbound wiring (§6) IS a chat-shaped implementation of those dispatch
+# paths, so the assertion vocabulary carries over unchanged.
 #
 # The chat suite uses a synthetic chat-message transport (the adapter
 # constructs `ChatMessage` instances from YAML and feeds them through the

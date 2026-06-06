@@ -35,12 +35,12 @@ cases:
           # llm-provider §3)
         expected:
           outcome: errored
-          error_category: user_correctable
+          error_bucket: user_correctable
+          error_category: chat_message_shape_invalid
           reply:
             role: system
             content_includes:
               - "adjust your message"
-          error_diagnostic: chat_message_shape_invalid
     invariants:
       message_validation_runs_at_send_api_boundary_before_session_load: true
       chat_message_shape_invalid_routes_to_user_correctable: true

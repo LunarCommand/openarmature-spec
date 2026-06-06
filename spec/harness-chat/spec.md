@@ -92,7 +92,7 @@ A `ChatMessage` mirrors the llm-provider §3 message shape unchanged. The fields
 | Field | Required | Description |
 |---|---|---|
 | `role` | yes | One of `"system"`, `"user"`, `"assistant"`, `"tool"`. Discriminator per llm-provider §3. |
-| `content` | conditional | A non-empty string OR a non-empty ordered sequence of content blocks per llm-provider §3.1 (`text` / `image` / `thinking` / `redacted_thinking`). Role-dependent shape per llm-provider §3's per-role constraints. |
+| `content` | conditional | Per llm-provider §3's per-role constraints (a non-empty string OR a non-empty ordered sequence of content blocks per llm-provider §3.1 — `text` / `image` / `thinking` / `redacted_thinking`; `content` MAY be empty on `assistant` messages with non-empty `tool_calls`). |
 | `tool_calls` | only on `assistant` | Ordered list of `ToolCall` records per llm-provider §3 (top-level message field — NOT a content-block type). |
 | `tool_call_id` | required on `tool` | The `id` of the matching `assistant` tool call. |
 
@@ -181,17 +181,22 @@ etc.) — the callable contract is the same.
   - `final_state` (OPTIONAL) — the final state of the session after the turn. Implementations MAY
     expose this for callers that need to read other state fields the chat graph populated.
 - **`errored`** — the turn errored at the harness boundary. Carries:
-  - `error_category` — one of harness §7's three buckets: `session_terminating` / `retryable_transient` /
-    `user_correctable`.
+  - `error_bucket` — one of harness §7's three buckets: `session_terminating` / `retryable_transient` /
+    `user_correctable`. (Matches the harness conformance vocabulary's `error_bucket` field for the
+    three-way classification.)
+  - `error_category` (OPTIONAL) — the underlying concrete error category from harness §10 /
+    sessions §10 / suspension §10 / llm-provider §7 / etc. (e.g., `provider_unavailable`,
+    `session_load_failed`, `chat_message_shape_invalid`). Matches the harness vocabulary's
+    `error_category` for the concrete error name.
   - `reply: ChatMessage` — a system-shaped reply per §10's mapping; the application's chat UI
     surfaces this directly to the user.
-  - `error_diagnostic` (OPTIONAL) — the underlying error category from harness §10 / sessions §10 /
-    suspension §10 / llm-provider §7 / etc., for implementations that want to expose the technical
-    detail alongside the user-facing reply.
 - **`suspended`** — the turn called `suspend()` mid-invocation. Carries:
   - `signal_descriptor` — the suspension descriptor per suspension §4 (signal id, metadata).
-  - `pending_message` (OPTIONAL) — a `ChatMessage` the graph appended to state before calling
-    `suspend()` (per §8). Absent when the graph suspended without pre-emitting a pending message.
+  - `pending_messages: list[ChatMessage]` — messages the graph appended to `state.messages`
+    before reaching the suspending node (per §8.1), in graph-execution order. Empty list when
+    the graph suspended without pre-emitting any pending message; one or more entries when it
+    did. Always a list (matches `ChatTurnOutcome.completed.replies`'s always-list shape; same
+    rationale per the proposal's Open Questions resolution).
   - `invocation_id` — the paused invocation's identifier per harness §3.3 (needed by the caller
     when the resume-via-listener pattern is not used and `invoke(resume_invocation=...)` is called
     explicitly).
@@ -292,27 +297,30 @@ graph-engine node-body contract has a node either return a partial update OR cal
 not both — `suspend()` raises before any return value is captured. The two-node composition
 expresses "compose pending message, then suspend" as a graph topology.)
 
-The synthetic message typically informs the user the turn is awaiting an external signal —
+The synthetic messages typically inform the user the turn is awaiting an external signal —
 "I'm waiting for approval to send this email," "Approve transferring $500 to Bob's account?",
-etc. The chat harness MUST extract this pending message from the suspended outcome's
-`state.messages` tail (the same extraction rule from §7; the tail past the pre-invoke history
-length) and surface it on the `ChatTurnOutcome.suspended.pending_message` field. The engine
+etc. The chat harness MUST extract the pending-message tail from the suspended outcome's
+`state.messages` (the same extraction rule from §7; the tail past the pre-invoke history
+length) and surface it on the `ChatTurnOutcome.suspended.pending_messages` list. The engine
 persists the post-update state at suspend time per suspension §4, so the upstream node's
-appended message is in the captured state by the time the chat harness reads the tail.
+appended messages are in the captured state by the time the chat harness reads the tail.
+
+**Always-list shape.** `pending_messages` is always a `list[ChatMessage]` — empty when the
+graph suspended without pre-emitting any message, one or more entries (in graph-execution
+order) when it did. The always-list shape matches the OQ-6 resolution for
+`ChatTurnOutcome.completed.replies`; per-language singular-or-list ergonomics is not a
+spec-level concern, the shape is fixed.
 
 **No chat-specific engine hook.** The pending-message pattern composes from existing graph
 primitives — partial-update + edge + `suspend()`. The chat harness extracts the appended
-message via the same tail-extraction rule §7 uses for completed replies. Implementations
+messages via the same tail-extraction rule §7 uses for completed replies. Implementations
 MUST NOT introduce a chat-specific engine hook (`chat.emit_pending()` or equivalent) for this
 purpose — the graph-primitive composition is the canonical pattern.
 
-**Pending-message tail handling.** Multiple synthetic messages MAY appear in the tail (e.g., an
+**Multi-message pending tails.** Multiple synthetic messages MAY appear in the tail (e.g., an
 assistant text-explanation message AND an assistant tool-call message describing the action
-awaiting approval, then `suspend()`). All MUST surface on `pending_message` if the field's shape
-permits a list; implementations MAY define `pending_message` as a single-message field carrying
-the last appended assistant-role message and put any preceding tail messages elsewhere on the
-outcome. Per-language ergonomics; the spec mandates the field's presence and the tail-extraction
-rule, not its singular-vs-list shape.
+awaiting approval, then `suspend()`). All surface on `pending_messages` in graph-execution
+order.
 
 ### 8.2 Signal-resume flow
 
@@ -368,10 +376,12 @@ mandates. `send_streaming()` becomes mandatory when the streaming proposal lands
 the engine-side hook surface; until then, implementations MAY ship a non-conformant streaming
 variant (or skip streaming entirely) without violating the chat-harness contract.
 
-**Forward-compatibility.** The API-surface contract / implementation contract split means the
-chat sub-spec locks the streaming `send()` SURFACE shape (signature, parameter semantics, return
-discriminator) at the surface level; the streaming proposal fills in the engine hooks
-(`token_chunk` / `tool_call_progress` / equivalent observer events) that the streaming variant
+**Forward-compatibility.** This section defines only the method name and parameter semantics
+today (`send_streaming(session_id, message)`); the return shape — including any discriminator
+between chunks and the final outcome — is the streaming proposal's contract surface. The split
+keeps the chat sub-spec from over-claiming a return type that hasn't been validated against the
+engine-side hooks yet. The streaming proposal will fill in both the return shape and the engine
+hooks (`token_chunk` / `tool_call_progress` / equivalent observer events) the streaming variant
 consumes. Both compose when streaming lands; no v2 chat sub-spec revision is needed.
 
 ## 10. Error → user-facing reply mapping
@@ -385,7 +395,7 @@ Categories: `session_load_failed`, `session_save_failed`, `session_state_migrati
 (sessions §10), `suspension_persistence_failed` (suspension §10), `harness_session_id_unresolved`
 (harness §10).
 
-Mapping: `ChatTurnOutcome.errored` with `error_category = "session_terminating"` and a reply
+Mapping: `ChatTurnOutcome.errored` with `error_bucket = "session_terminating"` and a reply
 shaped:
 
 > "This conversation can't continue. Please start a new one."
@@ -399,7 +409,7 @@ should start a new session — MUST be preserved.
 Categories: `provider_unavailable`, `provider_timeout`, `provider_rate_limited` (llm-provider §7),
 network-layer transient failures the underlying transport surfaces, observer-side transients.
 
-Mapping: `ChatTurnOutcome.errored` with `error_category = "retryable_transient"` and a reply
+Mapping: `ChatTurnOutcome.errored` with `error_bucket = "retryable_transient"` and a reply
 shaped:
 
 > "I had trouble responding. Try again in a moment."
@@ -412,7 +422,7 @@ the reply text; the bucket semantics — transient failure, retry is appropriate
 Categories: `provider_invalid_request`, `provider_invalid_response`,
 `chat_message_shape_invalid` (this sub-spec; see below), other user-input-shape failures.
 
-Mapping: `ChatTurnOutcome.errored` with `error_category = "user_correctable"` and a reply
+Mapping: `ChatTurnOutcome.errored` with `error_bucket = "user_correctable"` and a reply
 incorporating the upstream error's diagnostic detail, shaped:
 
 > "That request couldn't be processed: <diagnostic>. Please adjust your message and try again."

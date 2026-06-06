@@ -35,14 +35,14 @@ cases:
           content: "Very long prompt..."
         expected:
           outcome: errored
-          error_category: user_correctable
+          error_bucket: user_correctable
+          error_category: provider_invalid_request
           reply:
             role: system
             content_includes:
               - "context length exceeds maximum"
               - "adjust your message"
-          error_diagnostic: provider_invalid_request
     invariants:
-      error_category_routes_to_harness_section_7_3: true
+      error_bucket_routes_to_harness_section_7_3: true
       reply_role_is_system: true
       reply_content_includes_upstream_diagnostic: true

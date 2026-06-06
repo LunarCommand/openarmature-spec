@@ -47,9 +47,9 @@ cases:
           content: "Send the email to Bob."
         expected:
           outcome: suspended
-          pending_message:
-            role: assistant
-            content: "I'm waiting for approval to send this email."
+          pending_messages:
+            - role: assistant
+              content: "I'm waiting for approval to send this email."
           signal_descriptor:
             signal_id: "approval-001"
             metadata:

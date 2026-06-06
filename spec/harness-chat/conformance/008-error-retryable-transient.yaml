@@ -34,12 +34,12 @@ cases:
           content: "Hello"
         expected:
           outcome: errored
-          error_category: retryable_transient
+          error_bucket: retryable_transient
+          error_category: provider_unavailable
           reply:
             role: system
             content_matches_template: "try again in a moment"
-          error_diagnostic: provider_unavailable
     invariants:
-      error_category_routes_to_harness_section_7_2: true
+      error_bucket_routes_to_harness_section_7_2: true
       reply_role_is_system: true
       session_state_preserved_after_transient_error: true
