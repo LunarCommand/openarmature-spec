@@ -95,18 +95,21 @@ chat-specific surface on top so a downstream Python chat agent has a single spec
 
 The new `spec/harness-chat/spec.md` defines:
 
-- **`ChatMessage` shape.** Canonical typed message at the chat-harness API boundary.
-  Field shape: `role: "user" | "assistant" | "system" | "tool"`, `content: list[ContentBlock]`
-  (reusing llm-provider §3.1 / prompt-management §3.1 content blocks — text, image_url,
-  inline image, tool_call, tool_result). Optional fields per the existing prompt-management
-  shape (`name`, `tool_call_id`, etc.).
+- **`ChatMessage` shape.** Canonical typed message at the chat-harness API boundary,
+  mirroring llm-provider §3's message shape unchanged. Field shape:
+  `role: "user" | "assistant" | "system" | "tool"` (discriminator);
+  `content: str | list[ContentBlock]` (role-dependent per llm-provider §3 per-role
+  constraints; `ContentBlock` per §3.1 — `text` / `image` / `thinking` /
+  `redacted_thinking`); `tool_calls: list[ToolCall]` (assistant-role only, per
+  llm-provider §3); `tool_call_id: str` (tool-role only, per llm-provider §3).
 - **Conversation history convention.** Per-session state field `messages: list[ChatMessage]`
   with the `append` reducer. Each user message appends to history; each assistant reply
-  (plus any tool-call / tool-result messages from a tool-loop agent) appends to history.
-  The chat harness reads + writes through this canonical field name. v1 mandates the
-  canonical name; a follow-on proposal MAY add a configurable field-name option if real
-  applications surface a naming conflict, but the v1 contract keeps the surface tight
-  (one canonical name; zero-config against any sessioned graph using it).
+  (plus any assistant-role messages carrying `tool_calls` and tool-role messages carrying
+  tool results, from a tool-loop agent) appends to history. The chat harness reads + writes
+  through this canonical field name. v1 mandates the canonical name; a follow-on proposal
+  MAY add a configurable field-name option if real applications surface a naming conflict,
+  but the v1 contract keeps the surface tight (one canonical name; zero-config against any
+  sessioned graph using it).
 - **The `send()` callable.**
   `harness.send(session_id: str, message: ChatMessage) -> ChatTurnOutcome` where
   `ChatTurnOutcome` discriminates between `completed` (assistant reply available),
@@ -124,9 +127,10 @@ The new `spec/harness-chat/spec.md` defines:
   tool-result messages from a tool-loop agent surface alongside the assistant reply) and
   returns them on `ChatTurnOutcome.completed.replies: list[ChatMessage]` (always a list;
   length 1 in the common single-message case). Multi-message replies (tool-calling agents
-  that emit multiple turns within one invocation; a typical pattern is an assistant message
-  with `tool_call` content blocks → a tool-role message with `tool_result` content blocks
-  → a final assistant text reply) surface as the full new-message sequence in
+  that emit multiple turns within one invocation; a typical pattern per llm-provider §3 is
+  an assistant message with `tool_calls` populated → a tool-role message with
+  `tool_call_id` + string `content` → a final assistant text reply) surface as the full
+  new-message sequence in
   graph-execution order, deterministic per harness §11 (the `messages` field's `append`
   reducer preserves order naturally). Chat UIs decide how to render tool-role messages
   (typically with "thinking" / "calling X" / "got result" affordances).
@@ -181,11 +185,12 @@ The new `spec/harness-chat/spec.md` defines:
   shapes and 0022 for the abstract foundation.
 - **§2 Concepts** — `ChatMessage`, `ContentBlock` (cross-ref to prompt-management),
   `ConversationHistory`, `ChatTurnOutcome`, the `send()` callable surface.
-- **§3 Message shape (`ChatMessage`)** — full field enumeration: `role`, `content` (list of
-  content blocks per prompt-management §3.1), optional `name`, optional `tool_call_id`.
-  Validation rules (each `role` value mandates / forbids specific content-block types per
-  llm-provider §3.1's wire contracts). Cross-reference to prompt-management for the
-  authoritative content-block definitions.
+- **§3 Message shape (`ChatMessage`)** — mirrors llm-provider §3 unchanged. Full field
+  enumeration: `role` (discriminator), `content` (string or list of content blocks per
+  llm-provider §3.1 — `text` / `image` / `thinking` / `redacted_thinking` — with the
+  role-dependent shape from llm-provider §3's per-role constraints), `tool_calls`
+  (assistant-only), `tool_call_id` (tool-only). Cross-reference to llm-provider for the
+  authoritative message-shape definition.
 - **§4 Conversation history convention** — the canonical `messages: list[ChatMessage]`
   session-state field with the `append` reducer (v1 mandates this canonical name; a
   follow-on proposal MAY add field-name configurability if applications surface real
@@ -267,10 +272,11 @@ New fixtures under `spec/harness-chat/conformance/` (numbers assigned at accepta
    conversation history accumulates; each turn observes the prior turn's messages in the
    loaded state.
 3. **Multi-message reply (tool-calling agent).** Graph fires three new messages within
-   one invocation: an assistant-role message with `tool_call` content blocks, a tool-role
-   message with the `tool_result`, and a final assistant-role text reply.
-   `ChatTurnOutcome` surfaces all three on the new-message tail (all roles included; the
-   chat UI decides how to render the tool-role intermediate).
+   one invocation per llm-provider §3's canonical shape: an assistant-role message with
+   `tool_calls` populated, a tool-role message with matching `tool_call_id` + string
+   `content`, and a final assistant-role text reply. `ChatTurnOutcome` surfaces all
+   three on the new-message tail (all roles included; the chat UI decides how to render
+   the tool-role intermediate).
 4. **Multimodal user message.** `send()` receives a `ChatMessage` with a mix of text and
    image content blocks; the graph processes it (e.g., a vision-LLM node); assistant reply
    threads cleanly into history.
