@@ -58,7 +58,7 @@ lifecycle and the proposal template.
 | [0049](proposals/0049-typed-llm-completion-event.md) | Typed LLM completion event | observability | Accepted | Pending         | —          |
 | [0050](proposals/0050-retry-and-degradation-primitives.md) | Retry & degradation primitives (failure-isolation middleware + call-level retry) | pipeline-utilities | Accepted | Pending         | —          |
 | [0051](proposals/0051-langfuse-trace-io-deprecation-caveat.md) | Langfuse trace input/output implementation-surface caveat | observability | Accepted | Textual (0.12.0)| —          |
-| [0052](proposals/0052-implementation-attribution-rows.md) | Implementation attribution attributes | observability | Accepted | Pending         | —          |
+| [0052](proposals/0052-implementation-attribution-rows.md) | Implementation attribution attributes | observability | Accepted | Shipped (0.12.0)| —          |
 | [0053](proposals/0053-shared-parent-boundary-clarification.md) | Shared-parent boundary clarification (invocation span) | observability | Accepted | Textual (0.12.0)| —          |
 | [0054](proposals/0054-per-invocation-event-drain.md) | Per-invocation observer event drain | graph-engine | Accepted | Shipped (0.12.0)| —          |
 | [0055](proposals/0055-conformance-adapter-capability.md) | Conformance adapter capability | conformance-adapter | Accepted | Pending         | —          |
