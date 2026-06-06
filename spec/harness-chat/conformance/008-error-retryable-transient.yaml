@@ -1,0 +1,45 @@
+# §10.2 retryable-transient error mapping: provider_unavailable
+# (llm-provider §7) routes through harness §7.2 to ChatTurnOutcome.errored
+# with the "try again in a moment" system-shaped reply.
+
+cases:
+  - name: error_retryable_transient_provider_unavailable
+    description: |
+      Sessioned chat harness; graph node simulates a provider_unavailable
+      raise from an LLM call. The chat harness MUST surface the error as
+      ChatTurnOutcome.errored with error_category=retryable_transient and
+      a system-shaped reply matching the §10.2 template.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        messages:
+          type: list[ChatMessage]
+          reducer: append
+          default: []
+    entry: call_llm
+    nodes:
+      call_llm:
+        raises:
+          category: provider_unavailable
+          message: "upstream model rate limited"
+    edges:
+      - {from: call_llm, to: END}
+    session_store: in_memory
+    chat_turns:
+      - name: retryable_error_turn
+        session_id: "conv-008"
+        user_message:
+          role: user
+          content: "Hello"
+        expected:
+          outcome: errored
+          error_bucket: retryable_transient
+          error_category: provider_unavailable
+          reply:
+            role: system
+            content_matches_template: "try again in a moment"
+    invariants:
+      error_bucket_routes_to_harness_section_7_2: true
+      reply_role_is_system: true
+      session_state_preserved_after_transient_error: true

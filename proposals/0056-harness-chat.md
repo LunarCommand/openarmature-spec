@@ -1,9 +1,9 @@
 # 0056: Chat Harness Sub-Spec
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-05
-- **Accepted:**
+- **Accepted:** 2026-06-06
 - **Targets:** spec/harness-chat/spec.md (creates — new sub-spec capability layering on top of the abstract harness contract (proposal 0022) to specify the chat-loop deployment shape); plus new conformance fixtures covering the canonical message I/O cycle, conversation-history threading, the `send()` callable, suspension handling for chat (HITL pause-and-prompt), and the error → user-facing reply mapping for each of the three harness error buckets; plus a small cross-spec edit to spec/harness/spec.md replacing two `0NNN-harness-chat` placeholder references in §1 and §9 with concrete proposal-number references to 0056 (the placeholders existed because 0022 was Accepted before 0056 was drafted; the `0NNN-harness-chat` references in 0022's own text stay verbatim per the post-Accept immutability rule).
 - **Related:** 0022 (harness contract — the abstract foundation this sub-spec layers on top of; Q1 *Per-harness-type behavior* committed the chat sub-spec to a follow-on, Q3 *Higher-level callable shape* committed the `harness.send(session_id, message)` surface to the chat sub-spec), 0020 (sessions — chat is sessioned-mode by default; conversation history lives in session state), 0017 (prompt management core — chat-prompt content-block shape this sub-spec inherits), 0046 (multi-message / chat prompt rendering — informs the message-shape composition rules), 0006 (LLM provider core — the underlying message + tool-call shapes the chat harness consumes), 0021 (graph suspension — chat agents commonly pause for HITL approvals; the chat harness needs a clean conversational surface for the suspended outcome)
 - **Supersedes:**

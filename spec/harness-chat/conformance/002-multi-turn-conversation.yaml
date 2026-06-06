@@ -1,0 +1,65 @@
+# §4 conversation history convention + §6 path classification: two
+# sequential send() calls under one session_id; history accumulates via the
+# `append` reducer; turn 2 observes turn 1's messages in the loaded state.
+
+cases:
+  - name: multi_turn_conversation
+    description: |
+      Sequential chat turns under the same session_id. Turn 1 hits the §3.1
+      new-session dispatch path (empty history); turn 2 hits the §3.2
+      existing-active-session path (non-empty history). History accumulates
+      across both turns via the `append` reducer.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        messages:
+          type: list[ChatMessage]
+          reducer: append
+          default: []
+    entry: reply
+    nodes:
+      reply:
+        update:
+          messages:
+            - role: assistant
+              content: "echo"
+    edges:
+      - {from: reply, to: END}
+    session_store: in_memory
+    chat_turns:
+      - name: turn_1
+        session_id: "conv-002"
+        user_message:
+          role: user
+          content: "First message"
+        expected:
+          outcome: completed
+          dispatch_path: "3.1"
+          replies:
+            - role: assistant
+              content: "echo"
+          final_state:
+            messages_count: 2
+      - name: turn_2
+        session_id: "conv-002"
+        user_message:
+          role: user
+          content: "Second message"
+        expected:
+          outcome: completed
+          dispatch_path: "3.2"
+          replies:
+            - role: assistant
+              content: "echo"
+          final_state:
+            messages_count: 4
+            messages_history_contains:
+              - {role: user, content: "First message"}
+              - {role: assistant, content: "echo"}
+              - {role: user, content: "Second message"}
+              - {role: assistant, content: "echo"}
+    invariants:
+      turn_2_loads_turn_1_history: true
+      session_messages_field_accumulates_via_append_reducer: true
+      replies_field_contains_only_current_turn_new_messages: true

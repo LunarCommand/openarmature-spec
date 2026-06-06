@@ -45,8 +45,9 @@ This capability does NOT define:
   shapes — per-harness implementation concerns.
 - **Specific harness types.** Chat harness, FastAPI harness, Inngest harness, etc. — sibling-package
   implementations. The contract defines what they share; the implementations define how each
-  surfaces. The chat harness specifically gets a follow-on sub-spec (planned
-  `0NNN-harness-chat` per proposal 0022 *Open questions* resolution); other per-harness-type
+  surfaces. The chat harness specifically gets a follow-on sub-spec
+  ([proposal 0056](../../proposals/0056-harness-chat.md), capability
+  `harness-chat` at `spec/harness-chat/spec.md`); other per-harness-type
   sub-specs land as cross-impl-divergence risk warrants.
 - **Authentication / authorization.** Cross-cutting application concern, not a harness concern.
 - **Rate limiting / quotas.** Runtime concerns, layered above the harness.
@@ -407,11 +408,13 @@ normative — names are illustrative):
 
 Each per-harness-type implementation MAY ship its own conformance suite (against the abstract
 contract here). Spec-level per-harness-type sub-specs land as cross-impl-divergence risk
-warrants — **the chat harness is committed to a follow-on sub-spec** (planned proposal
-`0NNN-harness-chat`), specifying the inbound message → session → invoke wiring, the outbound
-assistant message → session → response wiring, and the higher-level callable surface
-(`harness.send(session_id, message)` rather than hand-threading `invoke()` arguments). Other
-per-harness-type sub-specs remain decided-per-case when each ships its first implementation.
+warrants — **the chat harness gets its sub-spec at**
+`spec/harness-chat/spec.md`
+([proposal 0056](../../proposals/0056-harness-chat.md)), specifying the inbound message →
+session → invoke wiring, the outbound assistant message → session → response wiring, and the
+higher-level callable surface (`harness.send(session_id, message)` rather than hand-threading
+`invoke()` arguments). Other per-harness-type sub-specs remain decided-per-case when each
+ships its first implementation.
 
 ## 10. Errors
 

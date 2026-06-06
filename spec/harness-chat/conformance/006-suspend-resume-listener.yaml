@@ -1,0 +1,73 @@
+# §8.2 signal-resume flow: after a suspending turn, a signal arrives via
+# the harness signal coordinator; the post-resume assistant reply fires
+# through a subscribed listener registered against the chat harness.
+
+cases:
+  - name: suspend_resume_listener
+    description: |
+      Sessioned chat harness; three-node graph (compose_pending +
+      suspend_gate + post_resume). Turn 1's send() returns suspended
+      carrying the pending message; the caller registers a subscribed
+      listener against the harness; signal arrives via the coordinator;
+      resumed invocation runs post_resume and appends an "Email sent."
+      assistant message; the listener fires with the
+      ChatTurnOutcome.completed carrying the post-resume reply.
+    harness:
+      mode: sessioned
+      signal_coordinator: in_memory
+    state:
+      fields:
+        messages:
+          type: list[ChatMessage]
+          reducer: append
+          default: []
+        approved:
+          type: bool
+          default: false
+    entry: compose_pending
+    nodes:
+      compose_pending:
+        update:
+          messages:
+            - role: assistant
+              content: "Approve sending email?"
+      suspend_gate:
+        suspend_with_descriptor:
+          signal_id: "approval-002"
+      post_resume:
+        update:
+          messages:
+            - role: assistant
+              content: "Email sent."
+    edges:
+      - {from: compose_pending, to: suspend_gate}
+      - {from: suspend_gate,    to: post_resume}
+      - {from: post_resume,     to: END}
+    session_store: in_memory
+    chat_turns:
+      - name: suspending_turn
+        session_id: "conv-006"
+        user_message:
+          role: user
+          content: "Send the email."
+        subscribe_listener: chat_listener
+        expected:
+          outcome: suspended
+          pending_messages:
+            - role: assistant
+              content: "Approve sending email?"
+          signal_descriptor:
+            signal_id: "approval-002"
+    signal_arrivals:
+      - signal_id: "approval-002"
+        signal_payload: {approved: true}
+        expected_listener_callback:
+          listener: chat_listener
+          outcome: completed
+          replies:
+            - role: assistant
+              content: "Email sent."
+    invariants:
+      listener_fires_exactly_once_per_resumed_turn: true
+      listener_callback_carries_post_resume_chat_turn_outcome: true
+      next_send_call_does_not_consume_the_post_resume_reply: true

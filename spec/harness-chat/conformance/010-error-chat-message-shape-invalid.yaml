@@ -1,0 +1,47 @@
+# §10.4 chat_message_shape_invalid error: inbound ChatMessage failing §3.1
+# validation (e.g., tool-role message without tool_call_id) routes through
+# harness §7.3 (user-correctable) as the new chat-specific error category.
+
+cases:
+  - name: chat_message_shape_invalid_tool_role_missing_id
+    description: |
+      Sessioned chat harness; the caller sends a malformed ChatMessage (a
+      tool-role message without the required tool_call_id field per
+      llm-provider §3). The chat harness MUST surface
+      chat_message_shape_invalid as a user-correctable error per §10.4 +
+      §10.3.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        messages:
+          type: list[ChatMessage]
+          reducer: append
+          default: []
+    entry: noop
+    nodes:
+      noop:
+        update: {}
+    edges:
+      - {from: noop, to: END}
+    session_store: in_memory
+    chat_turns:
+      - name: invalid_message_turn
+        session_id: "conv-010"
+        user_message:
+          role: tool
+          content: "result from earlier tool call"
+          # MISSING: tool_call_id (required on tool-role messages per
+          # llm-provider §3)
+        expected:
+          outcome: errored
+          error_bucket: user_correctable
+          error_category: chat_message_shape_invalid
+          reply:
+            role: system
+            content_includes:
+              - "adjust your message"
+    invariants:
+      message_validation_runs_at_send_api_boundary_before_session_load: true
+      chat_message_shape_invalid_routes_to_user_correctable: true
+      graph_body_not_invoked_when_message_validation_fails: true

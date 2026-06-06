@@ -1,0 +1,61 @@
+# §8.1 pending message protocol: an upstream node appends a synthetic
+# assistant "pending" message via the standard `append` reducer; a
+# downstream node calls suspend(). The chat harness extracts the pending
+# message from state.messages tail and surfaces it on
+# ChatTurnOutcome.suspended.pending_message — no chat-specific engine
+# hook needed, the pattern composes from existing graph primitives.
+
+cases:
+  - name: suspend_with_pending_message
+    description: |
+      Sessioned chat harness; two-node graph (compose_pending +
+      suspend_gate). The compose_pending node returns a partial update
+      appending an assistant "I'm waiting for approval" pending message;
+      the suspend_gate node calls suspend() with the descriptor. The
+      chat harness returns ChatTurnOutcome.suspended carrying the
+      pending message (extracted from state.messages tail) plus the
+      signal descriptor; the harness MUST NOT block.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        messages:
+          type: list[ChatMessage]
+          reducer: append
+          default: []
+    entry: compose_pending
+    nodes:
+      compose_pending:
+        update:
+          messages:
+            - role: assistant
+              content: "I'm waiting for approval to send this email."
+      suspend_gate:
+        suspend_with_descriptor:
+          signal_id: "approval-001"
+          metadata:
+            action: "send_email"
+    edges:
+      - {from: compose_pending, to: suspend_gate}
+      - {from: suspend_gate, to: END}
+    session_store: in_memory
+    chat_turns:
+      - name: suspending_turn
+        session_id: "conv-005"
+        user_message:
+          role: user
+          content: "Send the email to Bob."
+        expected:
+          outcome: suspended
+          pending_messages:
+            - role: assistant
+              content: "I'm waiting for approval to send this email."
+          signal_descriptor:
+            signal_id: "approval-001"
+            metadata:
+              action: "send_email"
+    invariants:
+      pending_message_extracted_from_state_messages_tail: true
+      chat_harness_does_not_block_on_suspended_outcome: true
+      no_chat_specific_engine_hook_required_for_pending_message: true
+      compose_pending_state_persisted_before_suspend_node_runs: true

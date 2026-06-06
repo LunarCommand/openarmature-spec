@@ -1,0 +1,46 @@
+# §10.1 session-terminating error mapping: session_load_failed (sessions
+# §10) routes through harness §7.1 to ChatTurnOutcome.errored with the
+# "this conversation can't continue" system-shaped reply.
+
+cases:
+  - name: error_session_terminating_load_failed
+    description: |
+      Sessioned chat harness configured against a faulty session store that
+      raises session_load_failed on load. The chat harness MUST surface the
+      error as ChatTurnOutcome.errored with error_category=session_terminating
+      and a system-shaped reply matching the §10.1 template.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        messages:
+          type: list[ChatMessage]
+          reducer: append
+          default: []
+    entry: noop
+    nodes:
+      noop:
+        update: {}
+    edges:
+      - {from: noop, to: END}
+    session_store:
+      type: in_memory
+      behavior:
+        load_raises: session_load_failed   # synthetic injection per harness suite's fixture 008 pattern
+    chat_turns:
+      - name: terminating_error_turn
+        session_id: "conv-007"
+        user_message:
+          role: user
+          content: "Hello"
+        expected:
+          outcome: errored
+          error_bucket: session_terminating
+          error_category: session_load_failed
+          reply:
+            role: system
+            content_matches_template: "this conversation can't continue"
+    invariants:
+      error_bucket_routes_to_harness_section_7_1: true
+      reply_role_is_system: true
+      chat_harness_does_not_invoke_graph_when_session_load_fails: true
