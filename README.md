@@ -86,6 +86,7 @@ they are Accepted.
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
 | [0023](proposals/0023-canonical-state-reducers.md) | Draft | graph-engine §2 | Canonical state reducers — extend baseline reducers with `bounded_append`, `dedupe_append`, `merge_by_key` (factory-style closures for chat-agent and tool-loop patterns) |
+| [0056](proposals/0056-harness-chat.md) | Draft | spec/harness-chat/spec.md (new) | Chat harness sub-spec — first per-harness-type sub-spec on top of the abstract harness contract (proposal 0022). Canonical `ChatMessage` shape (reuses prompt-management §3.1 content blocks), conversation-history convention (per-session, NOT cross-session memory), `harness.send(session_id, message)` callable, suspension handling (HITL pause-and-prompt), error → user-facing reply mapping. Sessioned-mode only; cross-session memory deferred to a future capability |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 

@@ -62,6 +62,7 @@ lifecycle and the proposal template.
 | [0053](proposals/0053-shared-parent-boundary-clarification.md) | Shared-parent boundary clarification (invocation span) | observability | Accepted | Textual (0.12.0)| —          |
 | [0054](proposals/0054-per-invocation-event-drain.md) | Per-invocation observer event drain | graph-engine | Accepted | Shipped (0.12.0)| —          |
 | [0055](proposals/0055-conformance-adapter-capability.md) | Conformance adapter capability | conformance-adapter | Accepted | Pending         | —          |
+| [0056](proposals/0056-harness-chat.md) | Chat harness sub-spec | harness-chat | Draft    | —               | —          |
 
 Click any column header to sort.
 
