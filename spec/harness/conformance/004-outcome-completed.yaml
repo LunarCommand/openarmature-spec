@@ -1,0 +1,44 @@
+# §5.1 Completed outcome handling: invoke returns completed; the
+# harness exposes the final state to the inbound caller via a
+# transport-shaped surface that's observably distinct from suspended
+# and errored outcomes.
+
+cases:
+  - name: completed_outcome_surfaces_final_state
+    description: |
+      Sessioned-mode harness; single transmission runs a graph to END.
+      The synthetic transport records the harness's outbound shape
+      ("completion_response" vs "error_response" vs
+      "suspended_acknowledgment"). Verifies the harness surfaces the
+      final state via the completion-response shape.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        value:
+          type: int
+          default: 0
+    entry: compute
+    nodes:
+      compute:
+        update: {value: 42}
+    edges:
+      - {from: compute, to: END}
+    session_store: in_memory
+    transmissions:
+      - name: tx_completes
+        payload: {session_id: "conv-001"}
+        dispatch_intent: new_session
+        expected:
+          dispatch_path: "3.1"
+          invoke_outcome: completed
+          final_state: {value: 42}
+          # The harness surfaces a completion-shaped outbound response
+          # (distinct from error / suspended shapes per §5.1's
+          # observability requirement).
+          outbound_shape: completion_response
+          outbound_payload_includes:
+            value: 42
+    invariants:
+      completed_outcome_surfaced_as_completion_response_shape: true
+      outbound_shape_distinct_from_error_or_suspended: true

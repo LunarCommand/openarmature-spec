@@ -1,0 +1,48 @@
+# §7.3 User-correctable errors: provider_invalid_request (llm-provider
+# §7) is classified by the harness as user_correctable per §7.3. The
+# harness surfaces diagnostic information; the caller adjusts inputs
+# and retries explicitly.
+
+cases:
+  - name: provider_invalid_request_classified_as_user_correctable
+    description: |
+      Sessioned-mode harness; transmission triggers a graph whose node
+      raises provider_invalid_request (e.g., the upstream LLM rejected
+      a request shape). The harness classifies into the user_correctable
+      bucket per §7.3 and surfaces with diagnostic info so the caller
+      can fix and retry.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        v:
+          type: int
+          default: 0
+    entry: bad_request_node
+    nodes:
+      bad_request_node:
+        raises:
+          category: provider_invalid_request
+          message: "model 'gpt-NONEXISTENT' not found"
+    edges:
+      - {from: bad_request_node, to: END}
+    session_store: in_memory
+    transmissions:
+      - name: tx_bad_request
+        payload: {session_id: "conv-001"}
+        dispatch_intent: new_session
+        expected:
+          dispatch_path: "3.1"
+          invoke_outcome: errored
+          error_category: provider_invalid_request
+          error_bucket: user_correctable   # per §7.3
+          outbound_shape: error_response
+          outbound_payload_includes:
+            category: provider_invalid_request
+            bucket: user_correctable
+            diagnostic_message: "model 'gpt-NONEXISTENT' not found"
+            user_action_required: true
+    invariants:
+      provider_invalid_request_classified_as_user_correctable: true
+      outbound_includes_diagnostic_message: true
+      outbound_marks_user_action_required: true

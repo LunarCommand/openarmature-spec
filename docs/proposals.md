@@ -28,28 +28,28 @@ lifecycle and the proposal template.
 | [0019](proposals/0019-llm-provider-multi-provider-extension.md) | Multi-provider wire-format extension        | llm-provider        | Accepted | Textual (0.9.0) | —          |
 | [0020](proposals/0020-sessions-capability.md) | Sessions capability                         | sessions            | Accepted | Pending         | —          |
 | [0021](proposals/0021-graph-suspension.md) | Graph suspension and external-signal resume | suspension          | Accepted | Pending         | —          |
-| [0022](proposals/0022-harness-contract.md) | Harness contract                            | harness             | Draft    | —               | —          |
+| [0022](proposals/0022-harness-contract.md) | Harness contract                            | harness             | Accepted | Pending         | —          |
 | [0023](proposals/0023-canonical-state-reducers.md) | Canonical state reducers                    | graph-engine        | Draft    | —               | —          |
 | [0024](proposals/0024-llm-span-payload-and-semconv.md) | LLM span payload + GenAI semconv            | observability       | Accepted | Shipped (0.8.0) | —          |
 | [0025](proposals/0025-llm-provider-tool-choice.md) | LLM provider `tool_choice` parameter        | llm-provider        | Accepted | Shipped (0.9.0) | —          |
-| [0026](proposals/0026-llm-provider-wire-format-mapping-template.md) | §8.X wire-format mapping subsection template | llm-provider        | Accepted | Textual (0.9.0) | —          |
+| [0026](proposals/0026-llm-provider-wire-format-mapping-template.md) | Wire-format mapping subsection template | llm-provider        | Accepted | Textual (0.9.0) | —          |
 | [0027](proposals/0027-fan-out-instance-progress-result-is-error.md) | `result_is_error` on fan-out progress entries | pipeline-utilities  | Accepted | Shipped (0.9.0) | —          |
 | [0028](proposals/0028-schema-version-canonical-source.md) | Canonical `schema_version` source | pipeline-utilities  | Accepted | Shipped (0.9.0) | —          |
 | [0029](proposals/0029-count-drift-strict.md) | Strict fan-out count-drift detection | pipeline-utilities  | Accepted | Shipped (0.9.0) | —          |
 | [0030](proposals/0030-drain-snapshot-and-timeout-validation.md) | Drain snapshot + timeout-input validation | graph-engine        | Accepted | Textual (0.9.0) | —          |
-| [0031](proposals/0031-observability-langfuse-mapping.md) | Langfuse backend mapping (§8 sibling to OTel)             | observability       | Accepted | Shipped (0.10.0)| —          |
+| [0031](proposals/0031-observability-langfuse-mapping.md) | Langfuse backend mapping                                  | observability       | Accepted | Shipped (0.10.0)| —          |
 | [0032](proposals/0032-llm-provider-runtime-config-refinements.md) | RuntimeConfig surface refinements | llm-provider | Accepted | Shipped (0.10.0)| —          |
 | [0033](proposals/0033-prompt-management-surface-refinements.md) | Prompt-management surface refinements | prompt-management | Accepted | Shipped (0.10.0)| —          |
 | [0034](proposals/0034-caller-supplied-invocation-metadata.md) | Caller-supplied invocation metadata | observability | Accepted | Shipped (0.10.0)| —          |
 | [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse graph-topology fixtures | observability | Accepted | Shipped (0.10.0)| —          |
 | [0036](proposals/0036-graph-engine-fan-out-collection-reducers.md) | Fan-out collection reducers | graph-engine  | Accepted | Shipped (0.10.0)| —          |
-| [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping (§8.2) | llm-provider  | Accepted | Pending         | —          |
-| [0038](proposals/0038-llm-provider-google-gemini-mapping.md) | Google Gemini wire-format mapping (§8.3) | llm-provider  | Accepted | Pending         | —          |
+| [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping | llm-provider  | Accepted | Pending         | —          |
+| [0038](proposals/0038-llm-provider-google-gemini-mapping.md) | Google Gemini wire-format mapping | llm-provider  | Accepted | Pending         | —          |
 | [0039](proposals/0039-observability-caller-supplied-invocation-id.md) | Caller-supplied `invocation_id` | observability | Accepted | Shipped (0.11.0)| —          |
 | [0040](proposals/0040-observability-mid-invocation-metadata-open-span-update.md) | Mid-invocation metadata open-span update | observability | Accepted | Shipped (0.11.0)| —          |
 | [0041](proposals/0041-observability-langfuse-metadata-key-collision.md) | Reserve OA-emitted Langfuse metadata keys | observability | Accepted | Shipped (0.11.0)| —          |
 | [0042](proposals/0042-observability-reserved-keys-extension.md) | Reserve `branch_name`, `detached`, `detached_from_invocation_id` metadata keys | observability | Accepted | Shipped (0.11.0)| —          |
-| [0043](proposals/0043-observability-langfuse-trace-input-output.md) | §8 Langfuse `trace.input` / `trace.output` population | observability | Accepted | Shipped (0.11.0)| —          |
+| [0043](proposals/0043-observability-langfuse-trace-input-output.md) | Langfuse `trace.input` / `trace.output` population | observability | Accepted | Shipped (0.11.0)| —          |
 | [0044](proposals/0044-parallel-branches-dispatch-span.md) | Parallel-branches dispatch span synthesis | graph-engine  | Accepted | Shipped (0.11.0)| —          |
 | [0045](proposals/0045-observability-nested-lineage-augmentation.md) | Nested-lineage augmentation containment scope | observability | Accepted | Shipped (0.11.0)| —          |
 | [0046](proposals/0046-prompt-management-multi-message-rendering.md) | Multi-message / chat prompt rendering | prompt-management | Accepted | Shipped (0.11.0)| —          |
@@ -58,9 +58,9 @@ lifecycle and the proposal template.
 | [0049](proposals/0049-typed-llm-completion-event.md) | Typed LLM completion event | observability | Accepted | Pending         | —          |
 | [0050](proposals/0050-retry-and-degradation-primitives.md) | Retry & degradation primitives (failure-isolation middleware + call-level retry) | pipeline-utilities | Accepted | Pending         | —          |
 | [0051](proposals/0051-langfuse-trace-io-deprecation-caveat.md) | Langfuse trace input/output implementation-surface caveat | observability | Accepted | Textual (0.12.0)| —          |
-| [0052](proposals/0052-implementation-attribution-rows.md) | Implementation attribution attributes (§5.1 invocation span + §8.4.1 Langfuse mapping) | observability | Accepted | Pending         | —          |
-| [0053](proposals/0053-shared-parent-boundary-clarification.md) | §3.4 shared-parent boundary clarification (invocation span) | observability | Accepted | Textual (0.12.0)| —          |
-| [0054](proposals/0054-per-invocation-event-drain.md) | Per-invocation observer event drain | graph-engine | Accepted | Pending         | —          |
+| [0052](proposals/0052-implementation-attribution-rows.md) | Implementation attribution attributes | observability | Accepted | Pending         | —          |
+| [0053](proposals/0053-shared-parent-boundary-clarification.md) | Shared-parent boundary clarification (invocation span) | observability | Accepted | Textual (0.12.0)| —          |
+| [0054](proposals/0054-per-invocation-event-drain.md) | Per-invocation observer event drain | graph-engine | Accepted | Shipped (0.12.0)| —          |
 | [0055](proposals/0055-conformance-adapter-capability.md) | Conformance adapter capability | conformance-adapter | Accepted | Pending         | —          |
 
 Click any column header to sort.

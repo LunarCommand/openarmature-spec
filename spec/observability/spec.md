@@ -23,6 +23,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.1 invocation span attribute set gained two new implementation-emitted attributes — `openarmature.implementation.name` (string; canonical values `"openarmature-python"` / `"openarmature-typescript"` / `"openarmature-<language>"` matching the language's package-registry shape) and `openarmature.implementation.version` (string; sourced from the implementation library's package metadata in the language-idiomatic way — `openarmature.__version__` for Python, `package.json` `version` for TypeScript). Both attributes are reserved per §3.4 (the reserved-key set extends from 24 → 26 names) so a caller-supplied colliding key is rejected at the `invoke()` API boundary. New *Always-emit invariant* paragraph in §5.1 framing both new attributes plus the existing `spec_version` and `correlation_id` as runtime-identity constants that emit regardless of `disable_state_payload` / `disable_llm_payload` privacy knobs (privacy knobs gate runtime data, not runtime identity). §8.4.1 trace-level mapping table gained two new rows — `openarmature.implementation.name` → `trace.metadata.implementation_name` and `openarmature.implementation.version` → `trace.metadata.implementation_version` — sourced from the §5.1 attributes (parallel to the existing `spec_version` mapping row); the Langfuse rows inherit the always-emit invariant from the §5.1 attributes by [proposal 0052](../../proposals/0052-implementation-attribution-rows.md)
   - §3.4 *Shared-parent boundary (MUST NOT)* paragraph rewritten from "all three are unconditional shared parents regardless of runtime cardinality" prose to a three-bullet structural classification — fan-out node always a shared parent, parallel-branches node always a shared parent, invocation span a shared parent **only when** at least one fan-out or parallel-branches dispatch is on the augmenter's call-stack path (predicate stated via the lineage chain having non-`null` `fan_out_index` or `branch_name` entries; pure-serial augmentations reach the invocation span via rule 2 of the boundary decision tree). The decision tree's rule 3 gains a short parenthetical pointing readers at the conditional invocation-span classification. Documentary tightening only — fixtures 034 (outermost-serial updates invocation span) and 039 (nested cases do not) already exercise the predicate-derived behavior; this proposal closes the spec-text-vs-fixture ambiguity that previously made the two fixtures' behavior unreconcilable from §3.4's text alone by [proposal 0053](../../proposals/0053-shared-parent-boundary-clarification.md)
   - §4.2 *Status mapping* table extended with a new row for the `SUSPENDED` logical status (applied to both the suspending node's span and the invocation root span when a node calls `suspend()` per the suspension capability §3); new *Suspended status mapping* paragraph defining the OTel physical mapping (status `OK` plus an `openarmature.outcome = "suspended"` span attribute, since OTel's native status code field lacks a third state) with backend-mapping freedom for non-OTel backends. §4.3 *Parent-child rules* gained a *Suspended-resume invocation spans* paragraph defining the cross-invocation-span correlation invariant for suspension-resume (per suspension §7) — the resume invocation span carries the same `openarmature.invocation_id` as the suspended one; OTel observers SHOULD additionally link via span-link or parent-of mechanisms; explicitly distinguishes from checkpoint-resume per pipeline-utilities §10.4 (fresh `invocation_id`, correlated only via shared `correlation_id`). New §5.8 *Suspension span attributes* defining `openarmature.suspension.signal_id` (string; always present on a `suspended` node span; carries the descriptor's `signal_id` per suspension §4) and `openarmature.suspension.metadata.*` (flattened descriptor metadata fields, OTel-attribute-compatible scalars per §3.4 value-type contract) with composition rules for detached trace mode (§4.4) by [proposal 0021](../../proposals/0021-graph-suspension.md)
+  - §4 *Span hierarchy* gained a new §4.6 *Turn-level wrapper span (harness capability)* — the harness MAY open a turn-level wrapper span around `invoke()` when running inside a deployment runtime, with the invocation root span becoming its child. Wrapper is OPTIONAL (runtimes that already provide a transport-level parent span MAY skip it). Span name + attributes are harness-implementation-defined; turn-level attributes follow §5.6 (`openarmature.session_id` in sessioned mode) and §5.8 (suspension descriptor attributes on signal-resume turns). See the harness capability spec for the full contract by [proposal 0022](../../proposals/0022-harness-contract.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -618,6 +619,30 @@ framework emissions without colliding with user-chosen names. Cardinality concer
 typically not a problem for LLM workflows (10–50 nodes per pipeline, not thousands); backends
 needing low-cardinality aggregations build them from the `openarmature.node.name` attribute
 (per §5.2) instead.
+
+### 4.6 Turn-level wrapper span (harness capability)
+
+When an OpenArmature graph runs inside a deployment runtime via a harness (per the harness
+capability spec), the harness MAY open a **turn-level wrapper span** around the `invoke()` call.
+The invocation root span (per §4.1) becomes a child of the turn span; the trace hierarchy from
+root to leaf becomes:
+
+```
+turn span  (harness)
+└── invocation span  (this spec, §4.1)
+    └── node spans
+        └── ...
+```
+
+The turn span MUST carry whatever turn-level attributes the harness deems useful for trace
+correlation (`openarmature.session_id` per §5.6 in sessioned mode; signal descriptor attributes
+per §5.8 on signal-resume turns). The span name and additional attributes are harness-
+implementation-defined.
+
+This wrapper span is OPTIONAL — harnesses MAY skip it if the runtime already provides a
+transport-level parent span (e.g., an OTel-instrumented FastAPI adds a request span; the
+invocation span becomes its child directly). The wrapper exists so trace UIs can scope traces to
+turns when a runtime-level parent is absent. See the harness capability spec for the contract.
 
 ## 5. Attribute namespace
 

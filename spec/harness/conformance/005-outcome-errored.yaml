@@ -1,0 +1,45 @@
+# §5.2 Errored outcome handling: invoke returns errored; the harness
+# categorizes the error per §7 and surfaces it via a transport-shaped
+# error response.
+
+cases:
+  - name: errored_outcome_categorized_and_surfaced
+    description: |
+      Single-transmission case where the graph's node raises
+      provider_unavailable (a §7.2 retryable transient). The harness
+      categorizes the error, surfaces it via the error_response
+      outbound shape, and includes the bucket classification so the
+      caller can decide what to do (retry vs surface to user).
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        v:
+          type: int
+          default: 0
+    entry: failing_node
+    nodes:
+      failing_node:
+        raises:
+          category: provider_unavailable
+          message: "provider temporarily unreachable"
+    edges:
+      - {from: failing_node, to: END}
+    session_store: in_memory
+    transmissions:
+      - name: tx_errors
+        payload: {session_id: "conv-001"}
+        dispatch_intent: new_session
+        expected:
+          dispatch_path: "3.1"
+          invoke_outcome: errored
+          error_category: provider_unavailable
+          error_bucket: retryable_transient   # per §7.2
+          outbound_shape: error_response
+          outbound_payload_includes:
+            category: provider_unavailable
+            bucket: retryable_transient
+    invariants:
+      errored_outcome_categorized_into_retryable_transient_bucket: true
+      outbound_shape_is_error_response: true
+      outbound_includes_category_and_bucket: true

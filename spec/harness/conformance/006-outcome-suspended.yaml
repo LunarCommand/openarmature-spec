@@ -1,0 +1,52 @@
+# §5.3 Suspended outcome handling: invoke returns suspended; the
+# harness registers a signal subscription per §6 and exits without
+# blocking. The outbound shape is a "suspended_acknowledgment"
+# distinct from completion / error.
+
+cases:
+  - name: suspended_outcome_registers_subscription_and_exits
+    description: |
+      Single-transmission case where the graph's node calls
+      suspend(). The harness MUST:
+      (1) Read the signal descriptor from the suspended outcome.
+      (2) Register a signal subscription with the signal coordinator.
+      (3) Return a suspended_acknowledgment outbound shape.
+      (4) EXIT — not block on the suspended turn.
+    harness:
+      mode: sessioned
+      signal_coordinator: in_memory
+    state:
+      fields:
+        v:
+          type: int
+          default: 0
+    entry: gate
+    nodes:
+      gate:
+        suspend_with_descriptor:
+          signal_id: "approval-suspended-test"
+          metadata:
+            kind: "approval"
+    edges:
+      - {from: gate, to: END}
+    session_store: in_memory
+    checkpointer: in_memory
+    transmissions:
+      - name: tx_suspends
+        payload: {session_id: "conv-001"}
+        dispatch_intent: new_session
+        expected:
+          dispatch_path: "3.1"
+          invoke_outcome: suspended
+          descriptor:
+            signal_id: "approval-suspended-test"
+            metadata: {kind: "approval"}
+          # The four §5.3 requirements:
+          descriptor_read_from_outcome: true
+          signal_subscription_registered: true
+          outbound_shape: suspended_acknowledgment
+          harness_did_not_block: true
+    invariants:
+      suspended_outcome_registered_subscription: true
+      suspended_outcome_distinct_outbound_shape: true
+      harness_did_not_block_on_suspended_turn: true

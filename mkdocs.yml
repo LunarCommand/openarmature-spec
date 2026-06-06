@@ -109,6 +109,7 @@ nav:
     - Prompt Management: capabilities/prompt-management.md
     - Sessions: capabilities/sessions.md
     - Suspension: capabilities/suspension.md
+    - Harness: capabilities/harness.md
     - Conformance Adapter: capabilities/conformance-adapter.md
   - Proposals: proposals.md
   - Open questions: open-questions.md
