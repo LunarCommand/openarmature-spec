@@ -1,0 +1,48 @@
+# §10.3 user-correctable error mapping: provider_invalid_request
+# (llm-provider §7) routes through harness §7.3 to ChatTurnOutcome.errored
+# with a system-shaped reply incorporating the diagnostic message.
+
+cases:
+  - name: error_user_correctable_provider_invalid_request
+    description: |
+      Sessioned chat harness; graph node simulates a
+      provider_invalid_request raise (e.g., context-window-exceeded) with a
+      diagnostic message. The chat harness MUST surface the error as
+      ChatTurnOutcome.errored with error_category=user_correctable and a
+      system-shaped reply incorporating the diagnostic.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        messages:
+          type: list[ChatMessage]
+          reducer: append
+          default: []
+    entry: call_llm
+    nodes:
+      call_llm:
+        raises:
+          category: provider_invalid_request
+          message: "context length exceeds maximum"
+    edges:
+      - {from: call_llm, to: END}
+    session_store: in_memory
+    chat_turns:
+      - name: user_correctable_error_turn
+        session_id: "conv-009"
+        user_message:
+          role: user
+          content: "Very long prompt..."
+        expected:
+          outcome: errored
+          error_category: user_correctable
+          reply:
+            role: system
+            content_includes:
+              - "context length exceeds maximum"
+              - "adjust your message"
+          error_diagnostic: provider_invalid_request
+    invariants:
+      error_category_routes_to_harness_section_7_3: true
+      reply_role_is_system: true
+      reply_content_includes_upstream_diagnostic: true

@@ -1,0 +1,116 @@
+# §5 send() callable + §6 inbound wiring + §7 outbound wiring: a basic
+# user-message → assistant-reply cycle through the chat harness's send()
+# surface.
+#
+# =============================================================================
+# Per-directory contract (harness-chat fixture suite)
+# =============================================================================
+#
+# Chat harness fixtures use a chat-specific assertion vocabulary alongside the
+# base directive set the conformance-adapter capability ratifies. Per
+# conformance-adapter §3.2 *per-directory harness notes*, the chat suite's
+# additional vocabulary is:
+#
+# - **`chat_turns:`** — list of inbound chat turns to dispatch through the
+#   harness's `send()` callable. Each turn carries a `user_message`
+#   (`ChatMessage` per harness-chat §3) and an `expected` block describing the
+#   `ChatTurnOutcome` shape per harness-chat §5.2.
+#
+# - **`expected.outcome:`** — discriminator value, one of `completed` /
+#   `errored` / `suspended` per harness-chat §5.2.
+#
+# - **`expected.replies:`** — on `completed` outcomes, the expected
+#   `ChatMessage` list. Asserts shape + content per harness-chat §7's tail
+#   extraction rule (length matches the new-message tail; content matches
+#   per-message).
+#
+# - **`expected.error_category:`** — on `errored` outcomes, one of
+#   `session_terminating` / `retryable_transient` / `user_correctable` per
+#   harness-chat §10's three-bucket mapping (also harness §7).
+#
+# - **`expected.reply:`** — on `errored` outcomes, the system-shaped
+#   `ChatMessage` reply per harness-chat §10.
+#
+# - **`expected.pending_message:`** — on `suspended` outcomes, the synthetic
+#   assistant message the graph appended before calling `suspend()` (per
+#   harness-chat §8.1); MAY be omitted when no pending message was emitted.
+#
+# - **`expected.signal_descriptor:`** — on `suspended` outcomes, the
+#   suspension descriptor per suspension §4 (`signal_id`, optional
+#   `metadata`).
+#
+# - **`chat_turns[].subscribe_listener: <listener_name>`** — registers a
+#   subscribed listener primitive against the chat harness for the duration
+#   of the case (per harness-chat §8.2). The adapter binds the listener and
+#   records every fired callback under the given listener name.
+#
+# - **`signal_arrivals:`** — top-level list of signal arrivals to inject
+#   via the harness signal coordinator during the case. Each arrival
+#   carries the `signal_id` to match the suspended invocation's descriptor,
+#   the `signal_payload` to thread into resume (per suspension §7), and an
+#   `expected_listener_callback:` block asserting the listener-side
+#   delivery shape (which listener fired, and the
+#   `ChatTurnOutcome` it received). Distinct from the harness suite's
+#   `transmissions[]` shape because the listener-based resume path is
+#   harness-chat-specific (per §8.2's listener-default rationale).
+#
+# The chat suite uses a synthetic chat-message transport (the adapter
+# constructs `ChatMessage` instances from YAML and feeds them through the
+# implementation's `send()` callable); no HTTP / event-bus / queue surface is
+# exercised. The synthetic transport models what every concrete chat-harness
+# implementation builds on top of.
+#
+# The chat suite reuses established cross-capability directives unchanged:
+# `nodes.<name>.update:` for partial-state updates (graph-engine §2),
+# `nodes.<name>.suspend_with_descriptor:` for suspend points (suspension §3
+# + harness suite's fixture 010 pattern), `nodes.<name>.raises:
+# {category, message}` for node-raised errors (harness suite's fixtures
+# 009 / 010 pattern), `session_store.behavior.load_raises:` for session
+# store fault injection (harness suite's fixture 008 pattern).
+#
+# Adapters that don't support the harness-chat surface MUST raise
+# `harness_primitive_missing` per the conformance-adapter spec's adapter-
+# layer error rules. Silent skipping is forbidden.
+# =============================================================================
+
+cases:
+  - name: basic_send_and_reply
+    description: |
+      Sessioned chat harness; single-node graph appends a constant assistant
+      reply to state.messages. The chat harness's send() returns a
+      ChatTurnOutcome.completed with the new-message tail (one assistant
+      reply) on the .replies field.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        messages:
+          type: list[ChatMessage]
+          reducer: append
+          default: []
+    entry: reply
+    nodes:
+      reply:
+        update:
+          messages:
+            - role: assistant
+              content: "Hi there"
+    edges:
+      - {from: reply, to: END}
+    session_store: in_memory
+    chat_turns:
+      - name: turn_1
+        session_id: "conv-001"
+        user_message:
+          role: user
+          content: "Hello"
+        expected:
+          outcome: completed
+          replies:
+            - role: assistant
+              content: "Hi there"
+          final_state:
+            messages_count: 2
+    invariants:
+      send_returns_chat_turn_outcome: true
+      replies_contain_only_new_messages_appended_during_turn: true

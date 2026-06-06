@@ -110,6 +110,7 @@ nav:
     - Sessions: capabilities/sessions.md
     - Suspension: capabilities/suspension.md
     - Harness: capabilities/harness.md
+    - Harness — Chat: capabilities/harness-chat.md
     - Conformance Adapter: capabilities/conformance-adapter.md
   - Proposals: proposals.md
   - Open questions: open-questions.md

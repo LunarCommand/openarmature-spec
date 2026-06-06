@@ -1,0 +1,66 @@
+# §7 outbound wiring + §3 message shape: a tool-loop agent emits three new
+# messages within one invocation per llm-provider §3's canonical shape
+# (assistant with tool_calls → tool-role with tool_call_id + string content
+# → final assistant text); all three surface on .replies in graph-execution
+# order.
+
+cases:
+  - name: multi_message_tool_loop
+    description: |
+      Sessioned chat harness; graph emits a tool-loop's canonical three-message
+      sequence in one invocation. Verifies the chat harness's tail extraction
+      handles assistant `tool_calls`, tool-role `tool_call_id` + string
+      `content`, and the final assistant text — all on the .replies list, in
+      append order.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        messages:
+          type: list[ChatMessage]
+          reducer: append
+          default: []
+    entry: tool_loop
+    nodes:
+      tool_loop:
+        update:
+          messages:
+            - role: assistant
+              content: []
+              tool_calls:
+                - id: "call_abc"
+                  name: "get_weather"
+                  arguments: {location: "Paris"}
+            - role: tool
+              tool_call_id: "call_abc"
+              content: "Sunny, 22°C"
+            - role: assistant
+              content: "The weather in Paris is sunny, 22°C."
+    edges:
+      - {from: tool_loop, to: END}
+    session_store: in_memory
+    chat_turns:
+      - name: tool_loop_turn
+        session_id: "conv-003"
+        user_message:
+          role: user
+          content: "What's the weather in Paris?"
+        expected:
+          outcome: completed
+          replies:
+            - role: assistant
+              tool_calls:
+                - id: "call_abc"
+                  name: "get_weather"
+                  arguments: {location: "Paris"}
+            - role: tool
+              tool_call_id: "call_abc"
+              content: "Sunny, 22°C"
+            - role: assistant
+              content: "The weather in Paris is sunny, 22°C."
+          final_state:
+            messages_count: 4
+    invariants:
+      replies_list_preserves_graph_execution_order: true
+      tool_calls_lives_on_assistant_message_not_in_content_blocks: true
+      tool_role_message_has_tool_call_id_and_string_content: true

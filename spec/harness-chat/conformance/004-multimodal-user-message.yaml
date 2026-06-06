@@ -1,0 +1,58 @@
+# §3 message shape: inbound `ChatMessage` with mixed text + image content
+# blocks; the graph processes it; assistant reply threads cleanly into
+# history.
+
+cases:
+  - name: multimodal_user_message
+    description: |
+      Sessioned chat harness; user sends a message with mixed text + image
+      content blocks (per llm-provider §3.1's content-block model). Graph
+      acknowledges; assistant reply appends to history. Verifies the chat
+      harness accepts the canonical content-block shape unchanged.
+    harness:
+      mode: sessioned
+    state:
+      fields:
+        messages:
+          type: list[ChatMessage]
+          reducer: append
+          default: []
+    entry: acknowledge
+    nodes:
+      acknowledge:
+        update:
+          messages:
+            - role: assistant
+              content: "Got your image. Looks like a sunset."
+    edges:
+      - {from: acknowledge, to: END}
+    session_store: in_memory
+    chat_turns:
+      - name: multimodal_turn
+        session_id: "conv-004"
+        user_message:
+          role: user
+          content:
+            - type: text
+              text: "What's in this picture?"
+            - type: image
+              source:
+                type: url
+                url: "https://example.com/sunset.jpg"
+        expected:
+          outcome: completed
+          replies:
+            - role: assistant
+              content: "Got your image. Looks like a sunset."
+          final_state:
+            messages_count: 2
+            messages_history_contains:
+              - role: user
+                content:
+                  - {type: text, text: "What's in this picture?"}
+                  - type: image
+                    source: {type: url, url: "https://example.com/sunset.jpg"}
+              - {role: assistant, content: "Got your image. Looks like a sunset."}
+    invariants:
+      multimodal_content_blocks_preserved_in_history: true
+      content_block_types_match_llm_provider_3_1_set: true
