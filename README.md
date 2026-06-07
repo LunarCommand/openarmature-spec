@@ -87,6 +87,7 @@ they are Accepted.
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
 | [0023](proposals/0023-canonical-state-reducers.md) | Draft | graph-engine §2 | Canonical state reducers — extend baseline reducers with `bounded_append`, `dedupe_append`, `merge_by_key` (factory-style closures for chat-agent and tool-loop patterns) |
+| [0057](proposals/0057-llm-completion-event-field-set-extension.md) | Draft | graph-engine §6 | LlmCompletionEvent field-set extension — eight additive fields on the typed event (request-side payload + GenAI request parameters + prompt-identity snapshots + `response_model` + `call_id` per-call disambiguator) so observers migrating off the sentinel-namespace `NodeEvent` pattern keep their span attribute surface; plus one rename (`request_id` → `response_id`) for response-side naming coherence |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
