@@ -42,9 +42,11 @@ finish_reason) plus identity / scoping, with the framing:
 > surfaces.
 
 **Observer demand has surfaced.** OTel and Langfuse observers
-(observability §5.5 and §8 respectively) source twelve §5.5 span
-attributes from the sentinel-namespaced NodeEvent payload that have no
-equivalent on the typed event today:
+(observability §5.5 and §8 respectively) source attributes from the
+sentinel-namespaced NodeEvent payload across the §5.5 LLM provider span
+attribute surface and the prompt-identity attribute family (per
+prompt-management §12 / observability §8.4.4) that have no equivalent
+on the typed event today:
 
 - Three §5.5.1 payload attributes (`input.messages`, `output.content`,
   `request.extras`)
@@ -106,9 +108,12 @@ changes are:
 - **One renamed field**: `request_id` → `response_id`. Type, source, and
   nullability unchanged; only the field name changes. The description
   updates to remove the now-anomalous "request_id" naming reference.
-- **Eight new fields** appended after the existing field set:
-  `response_model`, `input_messages`, `output_content`, `request_params`,
-  `request_extras`, `active_prompt`, `active_prompt_group`, `call_id`.
+- **Eight new fields**. `response_model` is interleaved between `model`
+  and `response_id` so the response-side cluster reads coherently
+  (`model` / `response_model` / `response_id`); the remaining seven —
+  `input_messages`, `output_content`, `request_params`,
+  `request_extras`, `active_prompt`, `active_prompt_group`, `call_id`
+  — are appended after the v0.41.0 field set.
 
 Below: the full replacement table. Rows from the v0.41.0 field table are
 preserved verbatim except for the `request_id` → `response_id` rename;
@@ -136,10 +141,10 @@ mention. Eight new rows follow.
 > | `latency_ms` | float \| null | Wall-clock latency of the LLM call measured at the adapter boundary, in milliseconds. May be null when latency is not measured. Implementations MAY use a provider-reported latency value when the provider surfaces one, documenting which source is in use. |
 > | `finish_reason` | string \| null | The LLM call's finish reason per llm-provider §6 `Response.finish_reason`. May be null when the call did not complete normally. |
 > | `caller_invocation_metadata` | mapping \| null | OPTIONAL field — a snapshot of the caller-supplied invocation metadata (per §3.4 of observability) at the time of the LLM call, populated only when the observer is configured to include it (per-language opt-in mechanism). Default absent / null; off by default to avoid bloating every event with potentially-large metadata. Consumers wanting a fresh metadata view rather than a snapshot use the `get_invocation_metadata()` read API per proposal 0048. |
-> | `input_messages` | list of message records \| null | The §3 message list the call was made with, in the typed-event-native form of the spec's message shape (NOT the JSON-encoded string form §5.5.1 emits on the OTel span). Each record carries `{role, content, tool_calls?, tool_call_id?}` per llm-provider §3, including content-block sequences for multimodal messages. Inline image bytes follow the §5.5.5 redaction rule (replaced with the redacted placeholder per §5.5.5) before population. Populated by the implementation on every typed event; observer-side privacy gating applies at the rendering boundary per *Privacy and observer-side gating* below. |
+> | `input_messages` | list of message records | The §3 message list the call was made with, in the typed-event-native form of the spec's message shape (NOT the JSON-encoded string form §5.5.1 emits on the OTel span). Each record carries `{role, content, tool_calls?, tool_call_id?}` per llm-provider §3, including content-block sequences for multimodal messages. Inline image bytes follow the §5.5.5 redaction rule (replaced with the redacted placeholder per §5.5.5) before population. Populated by the implementation on every typed event; the empty-history case is represented as an empty list, not null. Observer-side privacy gating applies at the rendering boundary per *Privacy and observer-side gating* below. |
 > | `output_content` | string \| null | The assistant's response content verbatim per llm-provider §6 `Response.message.content`. Null when the response was a tool-call-only assistant message with empty content (the structured-response and tool-call paths are mutually exclusive at the response level, matching the §5.5.1 framing for `openarmature.llm.output.content`). Same privacy-gating posture as `input_messages`. |
-> | `request_params` | mapping[string, scalar] \| null | The §5.5.2 GenAI request-parameter family — `temperature`, `max_tokens`, `top_p`, `seed`, `frequency_penalty`, `presence_penalty`, `stop_sequences`. Keys are the GenAI semconv attribute names without the `gen_ai.request.` prefix (e.g., `temperature`, not `gen_ai.request.temperature`). Values are the per-parameter types §5.5.2 specifies (double for `temperature` / `top_p` / `frequency_penalty` / `presence_penalty`, int for `max_tokens` / `seed`, list-of-string for `stop_sequences`). **Absence is meaningful**: the mapping carries only parameters the caller actually supplied — a parameter not in the mapping means "not supplied on this call," distinct from "supplied with a zero value." Mapping-shape rather than flat fields to keep the typed event compact when most parameters are unset. Null only when no §5.5.2 parameters were supplied. |
-> | `request_extras` | mapping[string, opaque] \| null | The `RuntimeConfig` extras pass-through bag per llm-provider §6 — vendor-specific sampling parameters callers supplied as un-declared fields (vLLM `guided_decoding`, OpenAI `service_tier`, etc.). Same shape as `openarmature.llm.request.extras` per §5.5.1 but in the typed-event-native mapping form rather than the JSON-encoded string form. Same privacy-gating posture as `input_messages`. Null when no extras were supplied. |
+> | `request_params` | mapping | The §5.5.2 GenAI request-parameter family — `temperature`, `max_tokens`, `top_p`, `seed`, `frequency_penalty`, `presence_penalty`, `stop_sequences`. Keys are the GenAI semconv attribute names without the `gen_ai.request.` prefix (e.g., `temperature`, not `gen_ai.request.temperature`). Values are the per-parameter types §5.5.2 specifies (double for `temperature` / `top_p` / `frequency_penalty` / `presence_penalty`, int for `max_tokens` / `seed`, list-of-string for `stop_sequences`). **Absence is meaningful**: the mapping carries only parameters the caller actually supplied — a parameter not in the mapping means "not supplied on this call," distinct from "supplied with a zero value." Mapping-shape rather than flat fields to keep the typed event compact when most parameters are unset. Empty mapping when no §5.5.2 parameters were supplied. |
+> | `request_extras` | mapping | The `RuntimeConfig` extras pass-through bag per llm-provider §6 — vendor-specific sampling parameters callers supplied as un-declared fields (vLLM `guided_decoding`, OpenAI `service_tier`, etc.). Values are opaque to the spec; the bag carries whatever the caller supplied, in the typed-event-native mapping form rather than the JSON-encoded string form §5.5.1 emits on the OTel span. Same privacy-gating posture as `input_messages`. Empty mapping when no extras were supplied. |
 > | `active_prompt` | record \| null | A snapshot of the active `Prompt` identity at LLM-call time, sourced from the implementation's prompt-context binding mechanism (per prompt-management §12 / observability §8.4.4 — the mechanism that drives the `openarmature.prompt.*` span attributes; specific mechanism per-language idiomatic). Fields: `{name, version, label, template_hash, rendered_hash}` matching the §8.4.4 prompt-identity attribute family one-for-one. Null when the LLM call ran outside any prompt-context binding (no `openarmature.prompt.*` attributes would have been emitted on the span). |
 > | `active_prompt_group` | record \| null | A snapshot of the active `PromptGroup` identity at LLM-call time, sourced from the same prompt-context binding mechanism. Fields: `{group_name}` matching the §8.4.4 / prompt-management §12 prompt-group attribute family. Null when no group was active. |
 > | `call_id` | string | A per-call disambiguator minted by the implementation. **Always present** (never null); implementations MUST mint a fresh identifier per `provider.complete()` call. The value MUST be stable for the call's lifetime and unique within the implementation's run. Wire shape unconstrained — UUID, ULID, monotonic counter, any stable string format works. Use cases: cross-language trace correlation, observer-side per-call buffering, log-line correlation with the impl-side trace exporter. Distinct from `response_id` (which is the provider-returned identifier and MAY be absent or duplicated across providers); `call_id` is the implementation's own correlation token. |
