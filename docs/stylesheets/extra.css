@@ -1,3 +1,64 @@
+/* ===== Sortable table headers (mode-agnostic) =====
+ * The vendored ``tablesort.min.js`` (Tablesort 5.2.1) is wired by
+ * ``javascripts/tablesort.js`` to every ``article table:not([class])``,
+ * but provides no visual cue that headers are clickable. Add a pointer
+ * cursor + a small ↑/↓ chevron for the current sort direction (Tablesort
+ * sets ``aria-sort`` on the active header). */
+.md-typeset article table:not([class]) thead th {
+  cursor: pointer;
+}
+
+.md-typeset article table:not([class]) thead th[aria-sort="ascending"]::after {
+  content: " ↑";
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.md-typeset article table:not([class]) thead th[aria-sort="descending"]::after {
+  content: " ↓";
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+/* ===== Table pagination controls (mode-agnostic) =====
+ * Vanilla-JS pagination wired by ``javascripts/paginate-tables.js``;
+ * applied to any ``article table:not([class])`` with more than 20 rows.
+ * Buttons follow the same outline+hover pattern as the landing CTAs
+ * (transparent + purple text/border by default; solid fill on hover). */
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.table-pagination button {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+  background-color: transparent;
+  color: #9d4edd;
+  border: 1px solid #9d4edd;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.table-pagination button:hover:not(:disabled),
+.table-pagination button:focus:not(:disabled) {
+  background-color: #9d4edd;
+  color: white;
+}
+
+.table-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.table-pagination__info {
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light);
+}
+
 /* ===== Footer meta row (mode-agnostic structural fix) =====
  * Compact, vertically-centered, single-row at all viewport widths.
  * Material's default leaves the copyright text and social icons at

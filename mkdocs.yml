@@ -137,11 +137,17 @@ extra_css:
 extra_javascript:
   # Sortable tables on the Proposals index page. Material's data-tables
   # docs document this exact integration. ``tablesort.min.js`` is
-  # vendored under ``docs/javascripts/`` (Tablesort 5.3.0) rather than
+  # vendored under ``docs/javascripts/`` (Tablesort 5.2.1) rather than
   # loaded from a CDN — eliminates the supply-chain risk of a public
   # third-party script with no SRI.
   - javascripts/tablesort.min.js
   - javascripts/tablesort.js
+  # Paginate long tables — vanilla JS, auto-applies to any
+  # ``article table:not([class])`` with more than 20 rows. Currently
+  # only the Proposals index page meets the bar; other long tables
+  # would auto-benefit. Loaded after ``tablesort.js`` so the
+  # ``afterSort`` listener wires after Tablesort is initialized.
+  - javascripts/paginate-tables.js
   # Wrap the header site-name wordmark in a link to the site root —
   # Material's default markup leaves it as plain text.
   - javascripts/header-link.js
