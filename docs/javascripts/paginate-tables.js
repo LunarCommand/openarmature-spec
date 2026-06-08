@@ -33,7 +33,7 @@ document$.subscribe(function () {
     var currentPage = parsePageFromHash() || 1;
     var nav = renderNav(table);
 
-    function showPage(n) {
+    function showPage(n, userInitiated) {
       var allRows = Array.from(tbody.rows);
       var totalPages = Math.ceil(allRows.length / pageSize);
       if (n < 1) n = 1;
@@ -46,24 +46,35 @@ document$.subscribe(function () {
       });
 
       updateNav(nav, n, totalPages);
-      window.history.replaceState(null, "", "#page-" + n);
+      // Only take over the URL hash when the user explicitly opted
+      // into pagination (arrived with #page-N or clicked Prev/Next).
+      // Otherwise Material's ``navigation.tracking`` owns the hash
+      // for section-anchor tracking and we shouldn't clobber it.
+      if (userInitiated) {
+        window.history.replaceState(null, "", "#page-" + n);
+      }
     }
 
     nav.addEventListener("click", function (e) {
       if (e.target.tagName !== "BUTTON") return;
       e.preventDefault();
       var action = e.target.dataset.action;
-      if (action === "prev") showPage(currentPage - 1);
-      else if (action === "next") showPage(currentPage + 1);
+      if (action === "prev") showPage(currentPage - 1, true);
+      else if (action === "next") showPage(currentPage + 1, true);
     });
 
     // Re-paginate after the user activates a sortable column header
     // (Tablesort 5.x emits an `afterSort` event on the table element
     // once row reorder completes; fires on both mouse + keyboard
-    // activation).
-    table.addEventListener("afterSort", function () { showPage(currentPage); });
+    // activation). userInitiated=false — sort doesn't change the
+    // page the user is viewing, so don't touch the URL hash.
+    table.addEventListener("afterSort", function () { showPage(currentPage, false); });
 
-    showPage(currentPage);
+    // Initial render. userInitiated=true if the user arrived with
+    // #page-N in the URL (they explicitly asked for a page);
+    // userInitiated=false otherwise — first-time visitors leave
+    // Material's hash tracking untouched.
+    showPage(currentPage, parsePageFromHash() !== null);
   }
 
   function renderNav(table) {
