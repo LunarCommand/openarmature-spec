@@ -10,6 +10,10 @@ a language-agnostic specification.** Implementations conform to the same
 behavior via canonical fixtures, so the same workload runs the same way
 regardless of language or runtime.
 
+[![CI](https://img.shields.io/github/actions/workflow/status/LunarCommand/openarmature-spec/validate-markdown.yaml?label=CI)](https://github.com/LunarCommand/openarmature-spec/actions/workflows/validate-markdown.yaml){target="_blank" rel="noopener"}
+[![spec](https://img.shields.io/github/v/release/LunarCommand/openarmature-spec?label=spec&color=9D4EDD)](https://github.com/LunarCommand/openarmature-spec/releases){target="_blank" rel="noopener"}
+[![License](https://img.shields.io/github/license/LunarCommand/openarmature-spec)](https://github.com/LunarCommand/openarmature-spec/blob/main/LICENSE){target="_blank" rel="noopener"}
+
 [Read the charter](openarmature.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/LunarCommand/openarmature-spec){ .md-button target="_blank" rel="noopener" }
 

@@ -1,12 +1,14 @@
 # OpenArmature Specification
 
+[![CI](https://img.shields.io/github/actions/workflow/status/LunarCommand/openarmature-spec/validate-markdown.yaml?label=CI)](https://github.com/LunarCommand/openarmature-spec/actions/workflows/validate-markdown.yaml)
+[![spec](https://img.shields.io/github/v/release/LunarCommand/openarmature-spec?label=spec&color=9D4EDD)](https://github.com/LunarCommand/openarmature-spec/releases)
+[![License](https://img.shields.io/github/license/LunarCommand/openarmature-spec)](https://github.com/LunarCommand/openarmature-spec/blob/main/LICENSE)
+
 Language-agnostic behavioral specification for **OpenArmature**, a workflow
 framework for LLM pipelines and tool-calling agents. This repository holds the
 specification text, conformance fixtures, governance rules, and numbered
 RFC-style proposals. **No implementation code lives here.** Implementations
 are in sibling repositories.
-
-**Current spec version:** [v0.52.0](CHANGELOG.md)
 
 ---
 
