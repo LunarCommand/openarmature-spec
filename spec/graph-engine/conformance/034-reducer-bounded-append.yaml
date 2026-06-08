@@ -1,0 +1,106 @@
+# §2 bounded_append(max_len) reducer: append-with-truncate-from-front.
+# Verifies proposal 0023's bounded_append factory — concatenate prior
+# + update, drop oldest entries from the front when the result
+# exceeds max_len. Bound applies to post-merge length; updates larger
+# than max_len keep only the LAST max_len items.
+#
+# Uses the `reducer:` directive's factory form per conformance-adapter
+# §5.2: a single-key mapping {factory_name: {kwargs}} (e.g.,
+# {bounded_append: {max_len: 3}}) instantiates the named factory
+# with the kwargs at field-registration time.
+
+cases:
+  - name: bounded_append_basic_truncates_when_concat_exceeds_bound
+    state:
+      fields:
+        items:
+          type: list<string>
+          reducer:
+            bounded_append: {max_len: 3}
+          default: []
+    entry: x
+    nodes:
+      x:
+        update: {items: ["a", "b", "c", "d", "e"]}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: ["c", "d", "e"]
+      execution_order: [x]
+
+  - name: bounded_append_multi_step_cumulative_bound_across_merges
+    state:
+      fields:
+        items:
+          type: list<string>
+          reducer:
+            bounded_append: {max_len: 4}
+          default: []
+    entry: a
+    nodes:
+      a:
+        update: {items: ["1", "2"]}
+      b:
+        update: {items: ["3", "4"]}
+      c:
+        update: {items: ["5", "6"]}
+    edges:
+      - {from: a, to: b}
+      - {from: b, to: c}
+      - {from: c, to: END}
+    initial_state: {}
+    expected:
+      # After a: [1, 2]. After b: [1, 2, 3, 4]. After c: [3, 4, 5, 6].
+      final_state:
+        items: ["3", "4", "5", "6"]
+      execution_order: [a, b, c]
+
+  - name: bounded_append_update_larger_than_max_len_evicts_prior_entirely
+    state:
+      fields:
+        items:
+          type: list<string>
+          reducer:
+            bounded_append: {max_len: 2}
+          default: ["seed-1", "seed-2"]
+    entry: x
+    nodes:
+      x:
+        # Update has 5 items > max_len=2; prior is fully evicted; only
+        # the LAST 2 items of the update remain.
+        update: {items: ["a", "b", "c", "d", "e"]}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: ["d", "e"]
+      execution_order: [x]
+
+  - name: bounded_append_empty_update_is_noop_even_when_prior_exceeds_bound
+    state:
+      fields:
+        items:
+          type: list<string>
+          reducer:
+            bounded_append: {max_len: 3}
+          # Schema default deliberately exceeds max_len=3 (5 items).
+          # The reducer transforms updates; it does NOT validate
+          # prior. An empty update returns prior as-is even when
+          # prior itself violates the bound — matching the established
+          # concat_flatten / merge_all empty-update pattern.
+          default: ["a", "b", "c", "d", "e"]
+    entry: x
+    nodes:
+      x:
+        # Empty update — bounded_append returns prior unchanged.
+        update: {items: []}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: ["a", "b", "c", "d", "e"]
+      execution_order: [x]

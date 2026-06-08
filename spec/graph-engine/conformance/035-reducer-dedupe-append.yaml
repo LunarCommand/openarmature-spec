@@ -1,0 +1,61 @@
+# §2 dedupe_append(key=None) reducer: append-unique. Verifies proposal
+# 0023's dedupe_append factory — extend a list with items from the
+# update whose key is not already present (either in prior OR earlier
+# in the same update).
+#
+# Uses the `reducer:` directive's factory form per conformance-adapter
+# §5.2: for factory reducers taking a `key` callable, the YAML
+# expresses the key as a field-name string. The adapter constructs
+# the callable as the language-idiomatic accessor for that field.
+
+cases:
+  - name: dedupe_append_default_key_filters_duplicates_within_update
+    state:
+      fields:
+        tags:
+          type: list<string>
+          reducer:
+            dedupe_append: {}
+          default: ["seed"]
+    entry: x
+    nodes:
+      x:
+        # Update has "a" twice and one match against existing ("seed").
+        # First "a" wins; second "a" is filtered; "seed" is filtered
+        # against prior; "b" is novel.
+        update: {tags: ["seed", "a", "b", "a"]}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        tags: ["seed", "a", "b"]
+      execution_order: [x]
+
+  - name: dedupe_append_with_key_callable_filters_by_extracted_field
+    state:
+      fields:
+        records:
+          type: list
+          reducer:
+            dedupe_append: {key: id}
+          default: [{id: 1, value: "alpha"}]
+    entry: x
+    nodes:
+      x:
+        # id=1 matches prior — filtered. id=2 is novel. id=2 again
+        # within update — first wins, second filtered.
+        update:
+          records:
+            - {id: 1, value: "alpha-updated"}
+            - {id: 2, value: "beta"}
+            - {id: 2, value: "beta-dup"}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        records:
+          - {id: 1, value: "alpha"}
+          - {id: 2, value: "beta"}
+      execution_order: [x]

@@ -1,0 +1,31 @@
+# §4 ReducerError when bounded_append receives a non-list update.
+# Verifies proposal 0023's runtime-error mapping: parameters checkable
+# without invoking callables → reducer_configuration_invalid at
+# compilation; runtime contract violations (like a non-list update to
+# a list reducer) → reducer_error at merge time.
+
+cases:
+  - name: bounded_append_non_list_update_raises_reducer_error
+    description: |
+      Declare a field with bounded_append(max_len=3). A node returns
+      a non-list update value. The reducer MUST raise ReducerError per
+      §4 at merge time (the engine surfaces the offending field, the
+      reducer name, and a root-cause naming the non-list value).
+    state:
+      fields:
+        items:
+          type: list
+          reducer:
+            bounded_append: {max_len: 3}
+          default: []
+    entry: x
+    nodes:
+      x:
+        # Non-list update — bounded_append rejects at merge time.
+        update: {items: "not_a_list"}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected_error:
+      category: reducer_error
+      raised_from: x

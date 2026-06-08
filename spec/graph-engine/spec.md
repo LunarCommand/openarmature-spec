@@ -59,11 +59,15 @@ engine constant, not a reserved node name, so a user node may happen to be named
 
 **Reducer.** A function that merges a node's partial update into the prior state for a given field. Each state
 field has exactly one reducer. The default reducer is _last-write-wins_ (the new value replaces the old).
-Implementations MUST provide at least: `last_write_wins`, `append` (for list-typed fields), `merge`
-(for mapping-typed fields), `concat_flatten` (for list-typed fields whose updates are lists of lists —
-e.g., fan-out target fields collecting list-emitting per-instance values), and `merge_all` (for
-mapping-typed fields whose updates are lists of mappings — e.g., fan-out target fields collecting
-dict-emitting per-instance values). Users MAY register custom reducers per field.
+Implementations MUST provide at least the following eight canonical reducers: `last_write_wins`, `append`
+(for list-typed fields), `merge` (for mapping-typed fields), `concat_flatten` (for list-typed fields whose
+updates are lists of lists — e.g., fan-out target fields collecting list-emitting per-instance values),
+`merge_all` (for mapping-typed fields whose updates are lists of mappings — e.g., fan-out target fields
+collecting dict-emitting per-instance values), `bounded_append(max_len)` (factory; `append` capped at
+`max_len` entries with front-drop on overflow), `dedupe_append(key=None)` (factory; `append` skipping
+items whose key already appears in the existing list), and `merge_by_key(key)` (factory; list-of-records
+keyed merge — entries with a key matching an existing entry replace the existing entry in place; entries
+with novel keys are appended). Users MAY register custom reducers per field.
 
 **`concat_flatten` semantics.** `concat_flatten(prior, update)` returns the concatenation of `prior` with the
 one-level flattening of `update`. Both `prior` and `update` MUST be lists, and every element of `update` MUST
@@ -84,6 +88,57 @@ Violations raise `ReducerError` per §4. Empty `update` is a no-op (returns `pri
 inside `update` contribute zero keys. Implementations MUST NOT auto-detect whether `update` is a list of
 mappings vs. a single mapping — `merge_all` is strictly the list-of-mappings reducer; callers needing both
 behaviors on the same field MUST register a custom reducer rather than rely on shape-dependent behavior.
+
+**`bounded_append(max_len)` semantics.** A factory returning a reducer that extends a list with the update's
+items and truncates from the front (oldest entries dropped first) if the post-merge length exceeds `max_len`.
+`max_len` MUST be a positive integer (≥ 1); a factory call with `max_len ≤ 0` raises
+`reducer_configuration_invalid` at field registration time. Behavior: concatenate prior + update, then if
+the concatenated list's length exceeds `max_len`, drop entries from the front until the length equals
+`max_len`. The bound applies to the post-merge length, not to the update's individual size — an update
+larger than `max_len` keeps only the last `max_len` items of the update and the prior list is fully evicted. Both `prior` and `update` MUST be lists;
+violations raise `ReducerError` per §4. Empty `update` is a no-op (returns `prior` unchanged) — the bound
+applies to merge-time transformations, not as a prior-validation pass; `prior` is returned as-is even if
+it somehow already exceeds `max_len` (matching the established `concat_flatten` / `merge_all` empty-update
+pattern). Truncation MUST be from the front (oldest-first eviction) for cross-impl consistency; back-drop
+is recoverable via a
+custom reducer if needed. `bounded_append` is for cases where silent drop of evicted data is acceptable
+(recent-events buffers, debug log windows, sliding metric caches); for cases where dropped data must be
+summarized or transformed first (the canonical chat-history-with-LLM-summarization shape), use unbounded
+`append` plus a separate compaction node or middleware — reducers are pure synchronous functions per the
+contract above and cannot perform the IO that real compaction requires.
+
+**`dedupe_append(key=None)` semantics.** A factory returning a reducer that extends a list with items from
+the update that are not already present (by key) in the existing list. The `key` parameter is an optional
+callable mapping an item to its dedup key; if omitted, the item itself is used as the key (requires hashable
+items). Behavior: initialize a seen-keys set from `prior` (preserving `prior` unchanged in the result),
+iterate `update` in order, and for each item compute its key — if the key is NOT yet in seen-keys, append
+the item to the result and record its key; otherwise skip. Existing items appear before update items;
+within each, original order is maintained. Duplicates within the update itself are filtered alongside
+matches against `prior` — first occurrence wins (preserves left-to-right precedence consistent with
+`append`). The computed key (the item itself when no `key` callable is supplied, or the value returned by
+the callable) MUST be hashable; a non-hashable key raises `ReducerError` per §4 at merge time. A `key`
+callable that raises on any item propagates as `ReducerError`. The reducer does NOT mutate existing items
+(no in-place dedup of `prior`); only the update is filtered.
+
+**`merge_by_key(key)` semantics.** A factory returning a reducer for list-of-records fields. Items in the
+update with a key matching an existing item REPLACE the existing item in place; items with novel keys are
+appended at the end of the list in the order they appear in the update. The `key` parameter is a required
+callable mapping an item to its merge key — the spec does NOT default this; keyed merge without a key
+function is meaningless and a factory call with `key=None` raises `reducer_configuration_invalid` at field
+registration time. Behavior: build a `key_to_idx` index from `prior` (when `prior` contains duplicate keys,
+the index MUST hold the LAST index for each duplicate key — implementations whose native dict construction
+uses first-wins semantics MUST iterate explicitly to enforce last-wins); for each item in `update`, if its
+key is in the index, replace the prior entry at that index with the update item; otherwise append the
+update item to the result and register its key. Existing entry order MUST be preserved (replacements are
+in-place); novel entries are appended in update order. Duplicate keys within the update collapse to
+last-occurrence-wins (consistent with how dict updates work for repeated keys). Earlier duplicates in
+`prior` are preserved in place — the reducer does NOT in-place dedupe existing entries (parallel to
+`dedupe_append`'s "no in-place dedup of existing" rule). The value returned by the `key` callable MUST
+be hashable (required by the index-build step); a non-hashable return value raises `ReducerError` per §4
+at merge time. The `key` callable raising on any item propagates as `ReducerError`. Empty `update` is a
+no-op. `merge_by_key` is NOT a substitute for `merge` — `merge`
+operates on dict-typed fields with shallow key-value semantics; `merge_by_key` operates on list-of-records
+fields with item-key semantics. The qualifier `_by_key` distinguishes the two shapes.
 
 **Subgraph.** A compiled graph used as a node inside another graph. A subgraph executes against its own state
 schema and produces a partial update that is merged into the parent's state. The merge uses the same reducer
@@ -149,6 +204,11 @@ identifiers (as an error class, error code, or tagged discriminant, per the lang
 - `conflicting_reducers` — a state field has more than one declared reducer.
 - `mapping_references_undeclared_field` — a subgraph-as-node `inputs` or `outputs` mapping names a field
   not declared in the relevant state schema.
+- `reducer_configuration_invalid` — a reducer factory was supplied invalid construction parameters
+  (e.g., `bounded_append(max_len=0)`, `merge_by_key(key=None)`). Raised at field registration / graph
+  compilation time, before any node body runs. Distinct from `conflicting_reducers`, which is about
+  the reducer-declaration shape across multiple reducers on the same field; `reducer_configuration_invalid`
+  is about parameters supplied to a single reducer factory.
 
 ## 3. Execution model
 

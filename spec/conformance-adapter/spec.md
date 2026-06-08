@@ -363,9 +363,16 @@ These directives appear under `state:` and define the typed-state schema.
   element-type constraints in that case.
 - **`state.fields.<field_name>.default`** — the field's initial value if `initial_state` does not
   supply one. MUST match the declared type.
-- **`state.fields.<field_name>.reducer`** — string. One of `last_write_wins` (default),
-  `append`, `merge`, `concat_flatten`, `merge_all` (per graph-engine §2). Adapters MUST translate
-  each reducer name into the corresponding implementation-side reducer.
+- **`state.fields.<field_name>.reducer`** — string OR single-key mapping. The string form names a
+  parameter-less canonical reducer: one of `last_write_wins` (default), `append`, `merge`,
+  `concat_flatten`, `merge_all` (per graph-engine §2). The single-key mapping form names a
+  canonical factory reducer with its construction kwargs: `{<factory_name>: <kwargs_mapping>}` —
+  e.g., `{bounded_append: {max_len: 3}}`, `{dedupe_append: {key: id}}`, `{merge_by_key: {key: id}}`
+  (per graph-engine §2's factory reducers from proposal 0023). The adapter instantiates the named
+  factory with the kwargs at field-registration time and translates each reducer name into the
+  corresponding implementation-side reducer. For factory reducers taking a `key` callable, the
+  YAML expresses the key as a field-name string (e.g., `key: id`); the adapter constructs the
+  callable as the language-idiomatic accessor for that field.
 - **`initial_state: {<field>: <value>, ...}`** — top-level (or per-invocation) initial state. Fields
   omitted from `initial_state` default to the schema's declared default. Adapters MUST validate the
   resulting initial state against the schema before invocation.

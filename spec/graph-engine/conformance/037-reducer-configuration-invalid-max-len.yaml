@@ -1,0 +1,53 @@
+# §2 reducer_configuration_invalid: bounded_append(max_len=0) MUST
+# raise the compile-time error at field registration / graph
+# compilation time, before any node body runs. Verifies proposal
+# 0023's reducer_configuration_invalid error category.
+#
+# Uses the established `expected_compile_error: <category>` scalar
+# directive (per fixture 007). The adapter MUST verify that graph
+# compilation fails with the named compile-time error category,
+# BEFORE any node body executes.
+
+cases:
+  - name: bounded_append_max_len_zero_raises_at_compilation
+    description: |
+      Declare a field with bounded_append(max_len=0). The factory MUST
+      raise reducer_configuration_invalid at field registration time
+      (compile-time error category), before any node body runs.
+    state:
+      fields:
+        items:
+          type: list<string>
+          reducer:
+            bounded_append: {max_len: 0}
+          default: []
+    entry: x
+    nodes:
+      x:
+        update: {items: ["never-runs"]}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected_compile_error: reducer_configuration_invalid
+
+  - name: merge_by_key_key_none_raises_at_compilation
+    description: |
+      Declare a field with merge_by_key(key=null). The factory MUST
+      raise reducer_configuration_invalid at field registration time
+      — keyed merge without a key function is meaningless and the
+      spec does NOT default key.
+    state:
+      fields:
+        records:
+          type: list
+          reducer:
+            merge_by_key: {key: null}
+          default: []
+    entry: x
+    nodes:
+      x:
+        update: {records: [{id: 1}]}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected_compile_error: reducer_configuration_invalid

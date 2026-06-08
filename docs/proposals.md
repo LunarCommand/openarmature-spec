@@ -29,7 +29,7 @@ lifecycle and the proposal template.
 | [0020](proposals/0020-sessions-capability.md) | Sessions capability                         | sessions            | Accepted | Pending         | —          |
 | [0021](proposals/0021-graph-suspension.md) | Graph suspension and external-signal resume | suspension          | Accepted | Pending         | —          |
 | [0022](proposals/0022-harness-contract.md) | Harness contract                            | harness             | Accepted | Pending         | —          |
-| [0023](proposals/0023-canonical-state-reducers.md) | Canonical state reducers                    | graph-engine        | Draft    | —               | —          |
+| [0023](proposals/0023-canonical-state-reducers.md) | Canonical state reducers                    | graph-engine        | Accepted | Pending         | —          |
 | [0024](proposals/0024-llm-span-payload-and-semconv.md) | LLM span payload + GenAI semconv            | observability       | Accepted | Shipped (0.8.0) | —          |
 | [0025](proposals/0025-llm-provider-tool-choice.md) | LLM provider `tool_choice` parameter        | llm-provider        | Accepted | Shipped (0.9.0) | —          |
 | [0026](proposals/0026-llm-provider-wire-format-mapping-template.md) | Wire-format mapping subsection template | llm-provider        | Accepted | Textual (0.9.0) | —          |
@@ -55,7 +55,7 @@ lifecycle and the proposal template.
 | [0046](proposals/0046-prompt-management-multi-message-rendering.md) | Multi-message / chat prompt rendering | prompt-management | Accepted | Shipped (0.11.0)| —          |
 | [0047](proposals/0047-implicit-prefix-cache-wire-stability.md) | Implicit prefix-cache wire-byte stability | llm-provider | Accepted | Pending         | —          |
 | [0048](proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md) | Read-symmetric invocation metadata + queryable observer pattern | observability | Accepted | Shipped (0.12.0)| —          |
-| [0049](proposals/0049-typed-llm-completion-event.md) | Typed LLM completion event | observability | Accepted | Pending         | —          |
+| [0049](proposals/0049-typed-llm-completion-event.md) | Typed LLM completion event | observability | Accepted | Shipped (0.13.0)| —          |
 | [0050](proposals/0050-retry-and-degradation-primitives.md) | Retry & degradation primitives (failure-isolation middleware + call-level retry) | pipeline-utilities | Accepted | Pending         | —          |
 | [0051](proposals/0051-langfuse-trace-io-deprecation-caveat.md) | Langfuse trace input/output implementation-surface caveat | observability | Accepted | Textual (0.12.0)| —          |
 | [0052](proposals/0052-implementation-attribution-rows.md) | Implementation attribution attributes | observability | Accepted | Shipped (0.12.0)| —          |
