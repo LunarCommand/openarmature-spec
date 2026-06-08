@@ -1,10 +1,10 @@
 # 0057: LlmCompletionEvent Field-Set Extension
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-07
-- **Accepted:**
-- **Targets:** spec/graph-engine/spec.md (§6 — extends the `LlmCompletionEvent` field table from proposal 0049 with eight additive request-side / response-side fields, and renames `request_id` → `response_id` so the field name matches the response-side data it carries); spec/observability/spec.md (§5.5.7 — updates the typed-event framing paragraph to acknowledge that the typed event now mirrors the request-parameter (§5.5.2), payload (§5.5.1), and prompt-identity (§5.5.4 / prompt-management §12) attribute surfaces in addition to the §5.5.3 response-side attributes it covered at v0.41.0); plus new conformance fixtures under `spec/observability/conformance/` covering each of the new fields' population semantics, plus updates to existing fixtures 050-056 for the `response_id` rename.
+- **Accepted:** 2026-06-07
+- **Targets:** spec/graph-engine/spec.md (§6 — extends the `LlmCompletionEvent` field table from proposal 0049 with eight additive request-side / response-side fields, and renames `request_id` → `response_id` so the field name matches the response-side data it carries); spec/observability/spec.md (§5.5.7 — updates the typed-event framing paragraph to acknowledge that the typed event now mirrors the request-parameter (§5.5.2), payload (§5.5.1), and prompt-identity (§5.5.4 / prompt-management §12) attribute surfaces in addition to the §5.5.3 response-side attributes it covered at v0.41.0); plus new conformance fixtures under `spec/observability/conformance/` covering each of the new fields' population semantics, plus an update to fixture 050 for the `response_id` rename (the only existing 0049 fixture asserting on this field).
 - **Related:** 0049 (typed LLM completion event — this proposal extends the field set the original Accepted via the alternative-5 follow-on hook), 0024 (LLM span payload + GenAI semconv — established the §5.5 attribute surface this proposal mirrors in typed-event form on the request side), 0033 (prompt-management active-prompt context binding — the source for the `active_prompt` / `active_prompt_group` fields), 0047 (implicit prefix cache wire stability — `usage.cached_tokens` and `usage.cache_creation_tokens` flow through the existing `usage` field on the typed event unchanged; this proposal does not touch the `usage` field shape)
 - **Supersedes:**
 
