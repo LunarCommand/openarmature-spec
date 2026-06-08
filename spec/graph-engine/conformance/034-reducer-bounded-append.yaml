@@ -4,12 +4,10 @@
 # exceeds max_len. Bound applies to post-merge length; updates larger
 # than max_len keep only the LAST max_len items.
 #
-# Per-suite directive (per conformance-adapter §3.2): a `reducer:`
-# value may be either a string (named reducer with no parameters,
-# e.g., `append`) OR a single-key mapping {factory_name: {kwargs}}
-# (factory call, e.g., {bounded_append: {max_len: 3}}). The adapter
-# instantiates the named factory with the kwargs at field-registration
-# time.
+# Uses the `reducer:` directive's factory form per conformance-adapter
+# §5.2: a single-key mapping {factory_name: {kwargs}} (e.g.,
+# {bounded_append: {max_len: 3}}) instantiates the named factory
+# with the kwargs at field-registration time.
 
 cases:
   - name: bounded_append_basic_truncates_when_concat_exceeds_bound
@@ -79,4 +77,30 @@ cases:
     expected:
       final_state:
         items: ["d", "e"]
+      execution_order: [x]
+
+  - name: bounded_append_empty_update_is_noop_even_when_prior_exceeds_bound
+    state:
+      fields:
+        items:
+          type: list<string>
+          reducer:
+            bounded_append: {max_len: 3}
+          # Schema default deliberately exceeds max_len=3 (5 items).
+          # The reducer transforms updates; it does NOT validate
+          # prior. An empty update returns prior as-is even when
+          # prior itself violates the bound — matching the established
+          # concat_flatten / merge_all empty-update pattern.
+          default: ["a", "b", "c", "d", "e"]
+    entry: x
+    nodes:
+      x:
+        # Empty update — bounded_append returns prior unchanged.
+        update: {items: []}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: ["a", "b", "c", "d", "e"]
       execution_order: [x]

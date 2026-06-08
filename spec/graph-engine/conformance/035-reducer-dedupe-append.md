@@ -17,11 +17,9 @@ in the existing list. First occurrence wins for in-update duplicates.
    over a list of records keyed on `id`; replays the same dedup semantics over the extracted
    key.
 
-**Per-suite directive:**
-
-- For factory reducers taking a `key` callable, the YAML expresses the key as a field-name
-  string. The adapter constructs the callable as the language-idiomatic accessor for that
-  field.
+Uses the `reducer:` directive's factory form per conformance-adapter §5.2: for factory
+reducers taking a `key` callable, the YAML expresses the key as a field-name string; the
+adapter constructs the callable as the language-idiomatic accessor for that field.
 
 **What passes:**
 

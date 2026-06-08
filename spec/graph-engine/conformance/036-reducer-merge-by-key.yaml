@@ -97,3 +97,42 @@ cases:
           - {id: 3, status: "running"}
           - {id: 4, status: "queued"}
       execution_order: [x]
+
+  - name: merge_by_key_duplicate_keys_in_prior_and_update_last_wins
+    state:
+      fields:
+        records:
+          type: list
+          reducer:
+            merge_by_key: {key: id}
+          default:
+            # `prior` contains duplicate key id=1 — the index MUST
+            # hold the LAST occurrence (the second entry, "old-b")
+            # as the target for an update item sharing that key.
+            # The first entry ("old-a") is preserved in place; the
+            # reducer does NOT in-place dedupe `prior`.
+            - {id: 1, value: "old-a"}
+            - {id: 1, value: "old-b"}
+            - {id: 2, value: "old-c"}
+    entry: x
+    nodes:
+      x:
+        # `update` contains duplicate key id=2 — last-occurrence-wins;
+        # the second entry ("new-c2") replaces the prior id=2 entry.
+        # `update`'s id=1 replaces the LAST prior id=1 entry
+        # ("old-b" → "new-b"); "old-a" is preserved in place.
+        update:
+          records:
+            - {id: 1, value: "new-b"}
+            - {id: 2, value: "new-c1"}
+            - {id: 2, value: "new-c2"}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        records:
+          - {id: 1, value: "old-a"}
+          - {id: 1, value: "new-b"}
+          - {id: 2, value: "new-c2"}
+      execution_order: [x]

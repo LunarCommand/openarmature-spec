@@ -19,6 +19,11 @@ REPLACE that entry in place; items with novel keys are appended at the end in up
 3. `merge_by_key_mixed_replace_and_append` — Mixed updates: 2 keys match existing (replace
    in place); 2 keys are novel (append at end). Final list: prior entries in original order
    (with replacements applied) + novel entries appended in update order.
+4. `merge_by_key_duplicate_keys_in_prior_and_update_last_wins` — Exercises both subtle
+   duplicate-key rules: `prior` contains two entries with the same key (`id=1`) — the
+   index uses the LAST occurrence as the target; the first occurrence is preserved in place
+   (no in-place dedupe). `update` contains two entries with the same key (`id=2`) —
+   last-occurrence-wins for in-update duplicates.
 
 **What passes:**
 

@@ -29,3 +29,25 @@ cases:
       - {from: x, to: END}
     initial_state: {}
     expected_compile_error: reducer_configuration_invalid
+
+  - name: merge_by_key_key_none_raises_at_compilation
+    description: |
+      Declare a field with merge_by_key(key=null). The factory MUST
+      raise reducer_configuration_invalid at field registration time
+      — keyed merge without a key function is meaningless and the
+      spec does NOT default key.
+    state:
+      fields:
+        records:
+          type: list
+          reducer:
+            merge_by_key: {key: null}
+          default: []
+    entry: x
+    nodes:
+      x:
+        update: {records: [{id: 1}]}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected_compile_error: reducer_configuration_invalid

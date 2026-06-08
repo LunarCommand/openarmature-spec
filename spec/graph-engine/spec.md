@@ -115,7 +115,8 @@ iterate `update` in order, and for each item compute its key — if the key is N
 the item to the result and record its key; otherwise skip. Existing items appear before update items;
 within each, original order is maintained. Duplicates within the update itself are filtered alongside
 matches against `prior` — first occurrence wins (preserves left-to-right precedence consistent with
-`append`). Non-hashable items with no `key` callable raise `ReducerError` per §4 at merge time. A `key`
+`append`). The computed key (the item itself when no `key` callable is supplied, or the value returned by
+the callable) MUST be hashable; a non-hashable key raises `ReducerError` per §4 at merge time. A `key`
 callable that raises on any item propagates as `ReducerError`. The reducer does NOT mutate existing items
 (no in-place dedup of `prior`); only the update is filtered.
 
@@ -132,8 +133,10 @@ update item to the result and register its key. Existing entry order MUST be pre
 in-place); novel entries are appended in update order. Duplicate keys within the update collapse to
 last-occurrence-wins (consistent with how dict updates work for repeated keys). Earlier duplicates in
 `prior` are preserved in place — the reducer does NOT in-place dedupe existing entries (parallel to
-`dedupe_append`'s "no in-place dedup of existing" rule). The `key` callable raising propagates as
-`ReducerError` per §4. Empty `update` is a no-op. `merge_by_key` is NOT a substitute for `merge` — `merge`
+`dedupe_append`'s "no in-place dedup of existing" rule). The value returned by the `key` callable MUST
+be hashable (required by the index-build step); a non-hashable return value raises `ReducerError` per §4
+at merge time. The `key` callable raising on any item propagates as `ReducerError`. Empty `update` is a
+no-op. `merge_by_key` is NOT a substitute for `merge` — `merge`
 operates on dict-typed fields with shallow key-value semantics; `merge_by_key` operates on list-of-records
 fields with item-key semantics. The qualifier `_by_key` distinguishes the two shapes.
 

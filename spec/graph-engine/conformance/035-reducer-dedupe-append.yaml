@@ -3,10 +3,10 @@
 # update whose key is not already present (either in prior OR earlier
 # in the same update).
 #
-# Per-suite directive (per conformance-adapter §3.2): for factory
-# reducers taking a `key` callable, the YAML expresses the key as a
-# field-name string. The adapter constructs the callable as the
-# language-idiomatic accessor for that field.
+# Uses the `reducer:` directive's factory form per conformance-adapter
+# §5.2: for factory reducers taking a `key` callable, the YAML
+# expresses the key as a field-name string. The adapter constructs
+# the callable as the language-idiomatic accessor for that field.
 
 cases:
   - name: dedupe_append_default_key_filters_duplicates_within_update

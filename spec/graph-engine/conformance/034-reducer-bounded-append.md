@@ -18,12 +18,14 @@ dropped first) when the post-merge length exceeds `max_len`.
 3. `bounded_append_update_larger_than_max_len_evicts_prior_entirely` — Single update of 5 items
    into a 2-item prior with `max_len=2`. Prior is fully evicted; final list is the last 2
    items of the update.
+4. `bounded_append_empty_update_is_noop_even_when_prior_exceeds_bound` — Schema default
+   deliberately exceeds `max_len=3` (5 items). Empty update returns prior unchanged — the
+   reducer does NOT proactively truncate prior; it transforms updates only. Matches the
+   established `concat_flatten` / `merge_all` empty-update pattern.
 
-**Per-suite directive:**
-
-- `reducer:` value may be a single-key mapping `{<factory_name>: <kwargs>}` for factory
-  reducers, in addition to the string form for parameter-less reducers. The adapter
-  instantiates the named factory with the kwargs at field-registration time.
+Uses the `reducer:` directive's factory form per conformance-adapter §5.2: a single-key
+mapping `{<factory_name>: <kwargs>}` (e.g., `{bounded_append: {max_len: 3}}`) instantiates
+the named factory with the kwargs at field-registration time.
 
 **What passes:**
 
