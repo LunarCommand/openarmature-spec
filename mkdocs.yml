@@ -142,6 +142,12 @@ extra_javascript:
   # third-party script with no SRI.
   - javascripts/tablesort.min.js
   - javascripts/tablesort.js
+  # Paginate long tables — vanilla JS, auto-applies to any
+  # ``article table:not([class])`` with more than 20 rows. Currently
+  # only the Proposals index page meets the bar; other long tables
+  # would auto-benefit. Loaded after ``tablesort.js`` so the
+  # Sort-event listener wires after Tablesort is initialized.
+  - javascripts/paginate-tables.js
   # Wrap the header site-name wordmark in a link to the site root —
   # Material's default markup leaves it as plain text.
   - javascripts/header-link.js
