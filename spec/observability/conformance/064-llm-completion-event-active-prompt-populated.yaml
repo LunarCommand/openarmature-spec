@@ -1,0 +1,65 @@
+# graph-engine §6 LlmCompletionEvent.active_prompt — snapshot of the
+# active Prompt identity at LLM-call time, sourced from the impl's
+# prompt-context binding mechanism (the same mechanism that drives
+# the openarmature.prompt.* span attributes per prompt-management §12).
+# Verifies proposal 0057.
+
+cases:
+  - name: active_prompt_populated_when_call_inside_prompt_context
+    description: |
+      Graph with one LLM-calling node that renders a prompt first (using
+      the established `renders_prompt:` directive from fixture 024) and
+      then calls the LLM with that prompt active. The typed event's
+      active_prompt carries the 5-field identity record matching the
+      rendered prompt.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-064
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              active_prompt:
+                name: "classify"
+                version: "v7"
+                label: "production"
+                template_hash: "abc123"
+                rendered_hash: "<any-string>"
+      invariants:
+        active_prompt_snapshot_matches_prompt_management_section_12_identity_attrs: true

@@ -1,0 +1,52 @@
+# graph-engine §6 LlmCompletionEvent.input_messages — populated on
+# every typed event with the spec-canonical §3 message list of
+# llm-provider. Verifies proposal 0057's request-side field
+# extension.
+
+cases:
+  - name: input_messages_populated_from_call_arguments
+    description: |
+      Graph with one LLM-calling node sending a two-message conversation
+      (system + user). The typed event MUST carry input_messages with
+      both records in spec-canonical {role, content} shape per
+      llm-provider §3.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages:
+            - {role: system, content: "You are a helpful assistant."}
+            - {role: user, content: "What's the weather?"}
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-060
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "Sunny."}, finish_reason: stop}
+          usage: {prompt_tokens: 12, completion_tokens: 1, total_tokens: 13}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              input_messages:
+                - {role: system, content: "You are a helpful assistant."}
+                - {role: user, content: "What's the weather?"}
+      invariants:
+        input_messages_populated_unconditionally: true
+        input_messages_shape_matches_llm_provider_section_3: true

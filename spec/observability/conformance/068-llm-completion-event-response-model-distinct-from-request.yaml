@@ -1,0 +1,94 @@
+# graph-engine §6 LlmCompletionEvent.response_model — the provider-
+# returned model identifier (matches gen_ai.response.model per
+# observability §5.5.3). Distinct from `model` (which is the
+# requested identifier). Verifies proposal 0057's response_model
+# bundled addition.
+
+cases:
+  - name: response_model_distinct_when_provider_returns_specific_identifier
+    description: |
+      Provider returns a more specific model identifier
+      ("gpt-4o-2024-08-06") for a request bound against the alias
+      "gpt-4o". The typed event's `model` carries the requested
+      model identifier; `response_model` carries the
+      provider-returned model identifier.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+          model: gpt-4o
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-068a
+          object: chat.completion
+          model: gpt-4o-2024-08-06
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              model: "gpt-4o"
+              response_model: "gpt-4o-2024-08-06"
+      invariants:
+        response_model_distinct_from_request_model: true
+
+  - name: response_model_null_when_provider_omits_it
+    description: |
+      Provider returns a response body without a `model` field. The
+      typed event's `response_model` is null; `model` still carries
+      the requested identifier.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+          model: test-model
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-068b
+          object: chat.completion
+          # No `model` field on the response.
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              model: "test-model"
+              response_model: null
+      invariants:
+        response_model_null_when_absent_from_response: true

@@ -14,10 +14,10 @@ populated from the provider's response.
 
 1. `llm_completion_event_dispatched_with_populated_fields` — A graph with one LLM-calling node;
    a mocked provider returns a structured response with known `usage`, `finish_reason`, and a
-   `request_id`. A custom observer collects all events received. Asserts the observer received
+   `response_id`. A custom observer collects all events received. Asserts the observer received
    an `LlmCompletionEvent` whose typed fields match the response: `provider` is the configured
    provider id, `model` is the bound model, `usage.prompt_tokens` / `usage.completion_tokens` /
-   `usage.total_tokens` match the mocked response, `finish_reason = "stop"`, `request_id` is
+   `usage.total_tokens` match the mocked response, `finish_reason = "stop"`, `response_id` is
    the mocked id, and the identity / scoping fields (`invocation_id`, `node_name`, `namespace`,
    `attempt_index`) are populated correctly.
 
@@ -38,7 +38,7 @@ by event type + field values.
 **What fails:**
 
 - No `LlmCompletionEvent` observed — the framework did not emit the typed event.
-- The event's `usage` / `finish_reason` / `request_id` do not match the provider response.
+- The event's `usage` / `finish_reason` / `response_id` do not match the provider response.
 - The event's `namespace` / `node_name` do not identify the calling node correctly.
 - `LlmCompletionEvent` was emitted for a `provider_unavailable` exception path (failure case
   — see fixture 053).

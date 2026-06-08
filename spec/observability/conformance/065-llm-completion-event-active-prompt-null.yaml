@@ -1,0 +1,48 @@
+# graph-engine §6 LlmCompletionEvent.active_prompt — null when the LLM
+# call ran outside any prompt-context binding (no openarmature.prompt.*
+# attributes would have been emitted on the span). Verifies proposal
+# 0057's nullability semantics.
+
+cases:
+  - name: active_prompt_null_when_call_outside_prompt_context
+    description: |
+      Graph with one LLM-calling node that does NOT render a prompt
+      (calls_llm directly without renders_prompt). The typed event's
+      active_prompt is null, paralleling the span-attribute absence
+      case where no openarmature.prompt.* attributes would be emitted.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-065
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hi"}, finish_reason: stop}
+          usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              active_prompt: null
+              active_prompt_group: null
+      invariants:
+        active_prompt_null_parallels_prompt_attr_absence_on_span: true

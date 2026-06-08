@@ -669,12 +669,20 @@ The event carries the following typed fields:
 | `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling fan-out instances. |
 | `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11, with the resolved `branch_names` per proposal 0044 governing the value space). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling parallel branches. |
 | `provider` | string | The LLM provider identifier (matches `gen_ai.system` per observability §5.5.3). |
-| `model` | string | The model identifier (matches `gen_ai.request.model` / `openarmature.llm.model` per observability §5.5 / §5.5.3). |
-| `request_id` | string \| null | The provider-returned response identifier, when present (matches `gen_ai.response.id` per observability §5.5.3). |
-| `usage` | record \| null | Token usage record per llm-provider §6 `Response.usage` shape. May be null when the provider does not report usage. |
+| `model` | string | The model identifier the request was made against (matches `gen_ai.request.model` / `openarmature.llm.model` per observability §5.5 / §5.5.3). The provider-returned model identifier — which MAY be more specific — is carried separately on `response_model` below. |
+| `response_model` | string \| null | The model identifier the provider returned in the response (matches `gen_ai.response.model` per observability §5.5.3). Distinct from `model` because providers MAY return a more specific identifier than the one requested (e.g., requested `gpt-4o`, response carries `gpt-4o-2024-08-06`). Null when the provider does not return a response model. |
+| `response_id` | string \| null | The provider-returned response identifier, when present (matches `gen_ai.response.id` per observability §5.5.3). |
+| `usage` | record \| null | Token usage record per llm-provider §6 `Response.usage` shape (including the prefix-cache fields `cached_tokens` and `cache_creation_tokens` per proposal 0047 when populated). May be null when the provider does not report usage. |
 | `latency_ms` | float \| null | Wall-clock latency of the LLM call measured at the adapter boundary, in milliseconds. May be null when latency is not measured. Implementations MAY use a provider-reported latency value when the provider surfaces one, documenting which source is in use. |
 | `finish_reason` | string \| null | The LLM call's finish reason per llm-provider §6 `Response.finish_reason`. May be null when the call did not complete normally. |
 | `caller_invocation_metadata` | mapping \| null | OPTIONAL field — a snapshot of the caller-supplied invocation metadata (per observability §3.4) at the time of the LLM call, populated only when the observer is configured to include it (per-language opt-in mechanism). Default absent / null; off by default to avoid bloating every event with potentially-large metadata. Consumers wanting a fresh metadata view rather than a snapshot use the `get_invocation_metadata()` read API per observability §3.4. |
+| `input_messages` | list of message records | The §3 message list of llm-provider that the call was made with, in the typed-event-native form of the spec's message shape (NOT the JSON-encoded string form observability §5.5.1 emits on the OTel span). Each record carries `{role, content, tool_calls?, tool_call_id?}` per llm-provider §3, including content-block sequences for multimodal messages. Inline image bytes follow the observability §5.5.5 redaction rule (replaced with the redacted placeholder) before population. Populated by the implementation on every typed event; the empty-history case is represented as an empty list, not null. Observer-side privacy gating applies at the rendering boundary per *Privacy and observer-side gating* below. |
+| `output_content` | string \| null | The assistant's response content verbatim per llm-provider §6 `Response.message.content`. Null when the response was a tool-call-only assistant message with empty content (the structured-response and tool-call paths are mutually exclusive at the response level, matching observability §5.5.1's framing for `openarmature.llm.output.content`). Same privacy-gating posture as `input_messages`. |
+| `request_params` | mapping | The observability §5.5.2 GenAI request-parameter family — `temperature`, `max_tokens`, `top_p`, `seed`, `frequency_penalty`, `presence_penalty`, `stop_sequences`. Keys are the GenAI semconv attribute names without the `gen_ai.request.` prefix (e.g., `temperature`, not `gen_ai.request.temperature`). Values are the per-parameter types observability §5.5.2 specifies (double for `temperature` / `top_p` / `frequency_penalty` / `presence_penalty`, int for `max_tokens` / `seed`, list-of-string for `stop_sequences`). **Absence is meaningful**: the mapping carries only parameters the caller actually supplied — a parameter not in the mapping means "not supplied on this call," distinct from "supplied with a zero value." Empty mapping when no observability §5.5.2 parameters were supplied. |
+| `request_extras` | mapping | The `RuntimeConfig` extras pass-through bag per llm-provider §6 — vendor-specific sampling parameters callers supplied as un-declared fields. Values are opaque to the spec; the bag carries whatever the caller supplied, in the typed-event-native mapping form rather than the JSON-encoded string form observability §5.5.1 emits on the OTel span. Same privacy-gating posture as `input_messages`. Empty mapping when no extras were supplied. |
+| `active_prompt` | record \| null | A snapshot of the active `Prompt` identity at LLM-call time, sourced from the implementation's prompt-context binding mechanism (the mechanism that drives the `openarmature.prompt.*` span attributes per prompt-management §12 / observability §8.4.4; specific mechanism per-language idiomatic). Fields: `{name, version, label, template_hash, rendered_hash}` matching the prompt-identity attribute family one-for-one. Null when the LLM call ran outside any prompt-context binding (no `openarmature.prompt.*` attributes would have been emitted on the span). |
+| `active_prompt_group` | record \| null | A snapshot of the active `PromptGroup` identity at LLM-call time, sourced from the same prompt-context binding mechanism. Fields: `{group_name}` matching the prompt-group attribute family per prompt-management §12 / observability §8.4.4. Null when no group was active. |
+| `call_id` | string | A per-call disambiguator minted by the implementation. **Always present** (never null); implementations MUST mint a fresh identifier per `provider.complete()` call. The value MUST be stable for the call's lifetime and unique within the implementation's run. Wire shape unconstrained — any stable string format works. Distinct from `response_id` (which is the provider-returned identifier and MAY be absent or duplicated across providers); `call_id` is the implementation's own correlation token. |
 
 The event MUST be dispatched on the observer delivery queue at the point of LLM call completion (after
 the adapter receives a successful response and before the call returns to the caller). Delivery
@@ -695,6 +703,24 @@ to phase-bearing `NodeEvent` variants. Observers that want to selectively consum
 filter via type discrimination rather than via phase subscription. graph-engine does not define the
 event's emission timing semantics beyond this representation and delivery ordering; the rendering /
 mapping concern lives in observability §5.5.
+
+**Privacy and observer-side gating.** The `input_messages`, `output_content`, and `request_extras`
+fields carry potentially sensitive payload data. Implementations MUST populate these fields on the
+typed event by default; observer-side privacy gating applies at the rendering boundary, matching the
+observability §5.5.4 `disable_llm_payload` opt-out flag semantics for the equivalent observability
+§5.5.1 span attributes. The OTel observer (per observability §5.5) and the Langfuse observer (per
+observability §8) honor their existing `disable_llm_payload` flag on the typed-event rendering path
+identically to the §5.5.1 span attribute path.
+
+Custom queryable observers (per observability §9) consuming the typed event are responsible for
+their own redaction posture — the §5.5.4 `disable_llm_payload` flag gates OTel + Langfuse
+rendering; the typed-event field surface is uniform across observer types. Accumulator authors with
+payload-redaction requirements MUST gate at their own rendering / persistence boundary.
+
+Inline image bytes in `input_messages` MUST be redacted per the observability §5.5.5 inline-image
+redaction rule before the field is populated, identically to how the observability §5.5.1
+`openarmature.llm.input.messages` attribute treats inline images. The hard-rule prohibition on
+emitting inline image bytes applies to the typed event field identically.
 
 ## 7. Out of scope
 

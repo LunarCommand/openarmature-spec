@@ -1,0 +1,96 @@
+# graph-engine §6 LlmCompletionEvent.output_content — verbatim assistant
+# content per llm-provider §6 Response.message.content. Null on
+# tool-call-only assistant responses (structured-response and tool-call
+# paths are mutually exclusive). Verifies proposal 0057 + the llm-provider
+# §6 mutual-exclusion rule.
+
+cases:
+  - name: output_content_populated_for_text_response
+    description: |
+      Mocked assistant returns content="Done." with finish_reason=stop.
+      The typed event's output_content carries the content verbatim.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "do it"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-061a
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "Done."}, finish_reason: stop}
+          usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              output_content: "Done."
+              finish_reason: stop
+
+  - name: output_content_null_for_tool_call_only_response
+    description: |
+      Mocked assistant returns tool_calls (no content) with
+      finish_reason=tool_calls. The typed event's output_content is null
+      per the structured-response / tool-call mutual-exclusion rule
+      (llm-provider §6, mirrored in observability §5.5.1).
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "search for X"}]
+          stores_response_in: msg
+          tools:
+            - {type: function, function: {name: search, parameters: {type: object, properties: {q: {type: string}}, required: [q]}}}
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-061b
+          object: chat.completion
+          model: test-model
+          choices:
+            - index: 0
+              message:
+                role: assistant
+                content: null
+                tool_calls:
+                  - {id: call_1, type: function, function: {name: search, arguments: "{\"q\": \"X\"}"}}
+              finish_reason: tool_calls
+          usage: {prompt_tokens: 5, completion_tokens: 8, total_tokens: 13}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              output_content: null
+              finish_reason: tool_calls
+      invariants:
+        output_content_null_when_tool_calls_present_with_empty_content: true

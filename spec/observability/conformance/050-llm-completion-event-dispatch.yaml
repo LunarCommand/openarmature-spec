@@ -52,7 +52,7 @@ cases:
             fields:
               provider: openai
               model: gpt-test
-              request_id: cc-050-id
+              response_id: cc-050-id
               finish_reason: stop
               usage:
                 prompt_tokens: 14

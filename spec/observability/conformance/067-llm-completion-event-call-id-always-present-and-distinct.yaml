@@ -1,0 +1,84 @@
+# graph-engine §6 LlmCompletionEvent.call_id — always present, freshly
+# minted per provider.complete() call, unique within the implementation's
+# run. Verifies proposal 0057.
+#
+# Per-directory invariant (per conformance-adapter §3.2):
+# `call_ids_pairwise_distinct` — the adapter MUST verify every
+# LlmCompletionEvent in the collector observer carries a non-null
+# call_id AND that all collected call_id values are pairwise distinct.
+
+cases:
+  - name: call_id_always_present_and_distinct_across_three_calls
+    description: |
+      Graph chains three LLM-calling nodes in sequence. The collector
+      observer collects three LlmCompletionEvents. Each event's call_id
+      MUST be a non-null string AND the three values MUST be distinct
+      (per the per-call freshness contract).
+    state:
+      fields:
+        a:
+          type: string
+          default: ""
+        b:
+          type: string
+          default: ""
+        c:
+          type: string
+          default: ""
+    entry: call1
+    nodes:
+      call1:
+        calls_llm:
+          messages: [{role: user, content: "first"}]
+          stores_response_in: a
+      call2:
+        calls_llm:
+          messages: [{role: user, content: "second"}]
+          stores_response_in: b
+      call3:
+        calls_llm:
+          messages: [{role: user, content: "third"}]
+          stores_response_in: c
+    edges:
+      - {from: call1, to: call2}
+      - {from: call2, to: call3}
+      - {from: call3, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-067a
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "1"}, finish_reason: stop}
+          usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2}
+      - status: 200
+        body:
+          id: cc-067b
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "2"}, finish_reason: stop}
+          usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2}
+      - status: 200
+        body:
+          id: cc-067c
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "3"}, finish_reason: stop}
+          usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          event_count:
+            event_type: LlmCompletionEvent
+            count: 3
+      invariants:
+        all_call_ids_present: true
+        call_ids_pairwise_distinct: true
+        all_call_ids_are_non_empty_strings: true

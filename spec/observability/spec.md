@@ -1089,10 +1089,25 @@ lookup) MAY differ. The above are the cross-impl behavioral surface.
 
 Implementations MUST emit the `LlmCompletionEvent` typed variant (per graph-engine §6) on every
 LLM call completion that produces a structured response. The typed event carries the same
-identity / scoping / outcome data the §5.5 span attribute surface exposes — `gen_ai.system`,
-`gen_ai.request.model`, `gen_ai.response.id`, `gen_ai.usage.*`, `gen_ai.response.finish_reasons`,
-plus the OA-namespaced attributes (`openarmature.invocation_id`, `openarmature.node.name`, etc.)
-— in a structured form rather than as separate span attributes.
+identity / scoping / outcome data the §5.5 span attribute surface exposes — the §5.5.3 GenAI
+semconv response attributes (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.model`,
+`gen_ai.response.id`, `gen_ai.usage.*`, `gen_ai.response.finish_reasons`), the §5.5.1 payload
+attributes (`openarmature.llm.input.messages`, `openarmature.llm.output.content`,
+`openarmature.llm.request.extras`), the §5.5.2 GenAI request-parameter family
+(`gen_ai.request.temperature`, `gen_ai.request.max_tokens`, etc.), the prompt-identity attribute
+family per prompt-management §12 / §8.4.4 (`openarmature.prompt.name`,
+`openarmature.prompt.version`, `openarmature.prompt.label`, `openarmature.prompt.template_hash`,
+`openarmature.prompt.rendered_hash`, `openarmature.prompt.group_name`), plus the OA-namespaced
+cross-cutting attributes (`openarmature.invocation_id`, `openarmature.node.name`, etc.) — in a
+structured form
+rather than as separate span attributes.
+
+The §5.5.4 `disable_llm_payload` opt-out flag continues to gate rendering of payload-bearing data
+(`openarmature.llm.input.messages`, `openarmature.llm.output.content`,
+`openarmature.llm.request.extras`) at the OTel observer's rendering boundary. The equivalent
+typed-event fields (`input_messages`, `output_content`, `request_extras`) are populated by the
+implementation unconditionally; observers respect their own `disable_llm_payload` flag on the
+typed-event rendering path identically to the span attribute path.
 
 Observers consuming the typed event for backend-specific rendering (Langfuse generation per
 §8.7, OTel span enrichment per §5.5, custom queryable observer accumulators per §9) MAY filter
