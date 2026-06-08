@@ -6,7 +6,7 @@
 //
 // Composes with the existing tablesort.js: tablesort reorders rows
 // in place; this script re-runs `showPage(currentPage)` on the
-// Tablesort 5.x `Sort` event so the sorted order is paginated
+// Tablesort 5.x `afterSort` event so the sorted order is paginated
 // consistently.
 //
 // URL hash sync: `#page-N` persists the current page across reloads
@@ -58,9 +58,10 @@ document$.subscribe(function () {
     });
 
     // Re-paginate after the user activates a sortable column header
-    // (Tablesort 5.x emits a `Sort` event on the table element on
-    // both mouse and keyboard activation).
-    table.addEventListener("Sort", function () { showPage(currentPage); });
+    // (Tablesort 5.x emits an `afterSort` event on the table element
+    // once row reorder completes; fires on both mouse + keyboard
+    // activation).
+    table.addEventListener("afterSort", function () { showPage(currentPage); });
 
     showPage(currentPage);
   }

@@ -1,5 +1,5 @@
 /* ===== Sortable table headers (mode-agnostic) =====
- * The vendored ``tablesort.min.js`` (Tablesort 5.3.0) is wired by
+ * The vendored ``tablesort.min.js`` (Tablesort 5.2.1) is wired by
  * ``javascripts/tablesort.js`` to every ``article table:not([class])``,
  * but provides no visual cue that headers are clickable. Add a pointer
  * cursor + a small ↑/↓ chevron for the current sort direction (Tablesort
