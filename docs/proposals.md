@@ -29,7 +29,7 @@ lifecycle and the proposal template.
 | [0020](proposals/0020-sessions-capability.md) | Sessions capability                         | sessions            | Accepted | Pending         | —          |
 | [0021](proposals/0021-graph-suspension.md) | Graph suspension and external-signal resume | suspension          | Accepted | Pending         | —          |
 | [0022](proposals/0022-harness-contract.md) | Harness contract                            | harness             | Accepted | Pending         | —          |
-| [0023](proposals/0023-canonical-state-reducers.md) | Canonical state reducers                    | graph-engine        | Draft    | —               | —          |
+| [0023](proposals/0023-canonical-state-reducers.md) | Canonical state reducers                    | graph-engine        | Accepted | Pending         | —          |
 | [0024](proposals/0024-llm-span-payload-and-semconv.md) | LLM span payload + GenAI semconv            | observability       | Accepted | Shipped (0.8.0) | —          |
 | [0025](proposals/0025-llm-provider-tool-choice.md) | LLM provider `tool_choice` parameter        | llm-provider        | Accepted | Shipped (0.9.0) | —          |
 | [0026](proposals/0026-llm-provider-wire-format-mapping-template.md) | Wire-format mapping subsection template | llm-provider        | Accepted | Textual (0.9.0) | —          |

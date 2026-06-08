@@ -1,0 +1,99 @@
+# §2 merge_by_key(key) reducer: list-of-records keyed merge. Verifies
+# proposal 0023's merge_by_key factory — items in the update with a
+# key matching an existing entry REPLACE that entry in place; items
+# with novel keys are appended at the end.
+
+cases:
+  - name: merge_by_key_replace_existing_preserves_position
+    state:
+      fields:
+        records:
+          type: list
+          reducer:
+            merge_by_key: {key: id}
+          default:
+            - {id: 1, status: "pending"}
+            - {id: 2, status: "pending"}
+            - {id: 3, status: "pending"}
+    entry: x
+    nodes:
+      x:
+        # All 3 keys match existing — replace in place, preserve order.
+        update:
+          records:
+            - {id: 2, status: "done"}
+            - {id: 1, status: "running"}
+            - {id: 3, status: "errored"}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        records:
+          - {id: 1, status: "running"}
+          - {id: 2, status: "done"}
+          - {id: 3, status: "errored"}
+      execution_order: [x]
+
+  - name: merge_by_key_append_novel_at_end_in_update_order
+    state:
+      fields:
+        records:
+          type: list
+          reducer:
+            merge_by_key: {key: id}
+          default:
+            - {id: 1, status: "pending"}
+    entry: x
+    nodes:
+      x:
+        # All 3 keys are novel — appended at end in update order.
+        update:
+          records:
+            - {id: 7, status: "running"}
+            - {id: 2, status: "done"}
+            - {id: 5, status: "errored"}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        records:
+          - {id: 1, status: "pending"}
+          - {id: 7, status: "running"}
+          - {id: 2, status: "done"}
+          - {id: 5, status: "errored"}
+      execution_order: [x]
+
+  - name: merge_by_key_mixed_replace_and_append
+    state:
+      fields:
+        records:
+          type: list
+          reducer:
+            merge_by_key: {key: id}
+          default:
+            - {id: 1, status: "pending"}
+            - {id: 2, status: "pending"}
+    entry: x
+    nodes:
+      x:
+        # id=1 matches — replace in place. id=3 novel — append.
+        # id=2 matches — replace in place. id=4 novel — append (after 3).
+        update:
+          records:
+            - {id: 1, status: "done"}
+            - {id: 3, status: "running"}
+            - {id: 2, status: "errored"}
+            - {id: 4, status: "queued"}
+    edges:
+      - {from: x, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        records:
+          - {id: 1, status: "done"}
+          - {id: 2, status: "errored"}
+          - {id: 3, status: "running"}
+          - {id: 4, status: "queued"}
+      execution_order: [x]

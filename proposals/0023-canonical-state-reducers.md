@@ -1,9 +1,9 @@
 # 0023: Canonical State Reducers
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-05-17
-- **Accepted:**
+- **Accepted:** 2026-06-07
 - **Targets:** spec/graph-engine/spec.md (extends §2 Reducer concept)
 - **Related:** 0001 (graph-engine foundation — establishes the three baseline reducers), 0006 (llm-provider — `Message` shape that motivates the chat-agent use cases), 0017 (prompt-management — composes with state-tracked message history), 0020 (sessions — declares which reducer-managed fields survive across invokes)
 - **Supersedes:**
@@ -425,43 +425,31 @@ gets its own future proposal.
 
 ## Open questions
 
-- **Naming.** `bounded_append` vs `append_bounded`, `dedupe_append`
-  vs `append_unique`, `merge_by_key` vs `keyed_merge`. The chosen
-  names lead with the operation (append/merge) and qualify with the
-  modifier (bounded/dedupe/by_key). Consistent with how
-  `last_write_wins` reads; might want a separate review.
-- **`merge_by_key` default behavior for novel keys: append vs
-  ignore.** Current spec: append at end. Alternative: ignore the
-  novel-keyed update (the reducer only updates existing entries).
-  The "append novel" version is the more useful default for most
-  workflows; "ignore novel" is recoverable via filtering at the
-  node body. Confirming the append-novel default.
-- **`bounded_append` truncation direction: front vs back.** Current
-  spec: from front (drop oldest). Alternative: from back (drop
-  newest). For chat history bounds, front-drop is the
-  near-universal need; for "keep first N successful results"
-  patterns, back-drop matters. The spec picks front-drop as the
-  default and recommends users implement back-drop via a custom
-  reducer if they need it (or a follow-on `bounded_prepend` if
-  demand surfaces).
-- **Configuration-time vs runtime validation for reducer
-  parameters.** `bounded_append(max_len=0)` raises at registration;
-  `dedupe_append(key=<callable that always raises>)` only surfaces
-  at merge time when the callable is actually invoked. The spec
-  draws this line at "parameters checkable without invoking
-  callables → configuration-time"; runtime-only checks raise
-  `reducer_error`. Worth confirming.
-- **Whether `reducer_configuration_invalid` is a new error
-  category or a sub-flavor of an existing one.** Existing `§4
-  error_semantics` doesn't enumerate a configuration-time category
-  for reducers. This proposal adds one. Alternative: reuse the
-  generic "graph configuration error" surface that exists for
-  other compile-time issues like `conflicting_reducers`. Probably
-  the latter is cleaner; this proposal can fold into the existing
-  configuration-error surface without inventing a new category.
-- **Whether `merge_by_key` belongs alongside `merge` (which is
-  dict-shallow-merge) vs in a separate family.** The naming
-  collision is real: both have "merge" in the name but operate on
-  different shapes (dict-shallow vs list-of-records-keyed). Could
-  rename to `replace_by_key` or `upsert_by_key` to remove the
-  ambiguity. Worth a vote.
+None at Accept time. All six design decisions are settled in the
+proposal text above:
+
+- **Naming convention.** Operation-first / modifier-second
+  (`bounded_append`, `dedupe_append`, `merge_by_key`), consistent
+  with `last_write_wins`.
+- **`merge_by_key` novel-key behavior.** Append at end (the more
+  useful default for most workflows).
+- **`bounded_append` truncation direction.** Front-drop (oldest
+  evicted first). Back-drop deferred to a follow-on
+  `bounded_prepend` if demand surfaces.
+- **Reducer-parameter validation timing.** Parameters checkable
+  without invoking callables → configuration-time
+  (`reducer_configuration_invalid`); callable-dependent checks
+  surface at merge time as `reducer_error`.
+- **`reducer_configuration_invalid` as a distinct compile-time
+  category.** Added as a new category alongside the existing six
+  (`no_declared_entry`, `unreachable_node`, `dangling_edge`,
+  `multiple_outgoing_edges`, `conflicting_reducers`,
+  `mapping_references_undeclared_field`). Distinct from
+  `conflicting_reducers` (which is about reducer-declaration shape;
+  the new category is about parameters supplied to a single reducer
+  factory).
+- **`merge_by_key` naming.** Retained alongside `merge` (which is
+  dict-shallow) despite the partial name collision; the qualifier
+  `_by_key` distinguishes the list-of-records-keyed shape from the
+  dict-shallow shape, and the operation-first naming convention
+  applies symmetrically.
