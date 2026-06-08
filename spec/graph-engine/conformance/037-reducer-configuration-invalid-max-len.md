@@ -16,11 +16,9 @@ error at field registration / graph compilation time, before any node body runs.
    `bounded_append(max_len=0)`. The factory raises `reducer_configuration_invalid` at
    compilation; no node body runs.
 
-**Per-suite directive:**
-
-- `expected_compile_error: {category: <name>}` — the adapter MUST verify that graph
-  compilation fails with the named compile-time error category, BEFORE any node body
-  executes (paralleling the `expected_error` directive for runtime errors).
+Uses the established `expected_compile_error: <category>` scalar directive (per fixture 007).
+The adapter MUST verify that graph compilation fails with the named compile-time error
+category, BEFORE any node body executes.
 
 **What passes:**
 

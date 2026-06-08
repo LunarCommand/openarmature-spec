@@ -3,11 +3,10 @@
 # compilation time, before any node body runs. Verifies proposal
 # 0023's reducer_configuration_invalid error category.
 #
-# Per-suite directive (per conformance-adapter §3.2):
-# `expected_compile_error: {category: <name>}` — the adapter MUST
-# verify that graph compilation fails with the named compile-time
-# error category, BEFORE any node body executes (parallel to the
-# existing `expected_error:` directive for runtime errors).
+# Uses the established `expected_compile_error: <category>` scalar
+# directive (per fixture 007). The adapter MUST verify that graph
+# compilation fails with the named compile-time error category,
+# BEFORE any node body executes.
 
 cases:
   - name: bounded_append_max_len_zero_raises_at_compilation
@@ -29,5 +28,4 @@ cases:
     edges:
       - {from: x, to: END}
     initial_state: {}
-    expected_compile_error:
-      category: reducer_configuration_invalid
+    expected_compile_error: reducer_configuration_invalid

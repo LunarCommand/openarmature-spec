@@ -96,8 +96,11 @@ items and truncates from the front (oldest entries dropped first) if the post-me
 the concatenated list's length exceeds `max_len`, drop entries from the front until the length equals
 `max_len`. The bound applies to the post-merge length, not to the update's individual size — an update
 larger than `max_len` keeps only the last `max_len` items of the update and the prior list is fully evicted. Both `prior` and `update` MUST be lists;
-violations raise `ReducerError` per §4. Empty `update` is a no-op (returns `prior` unchanged). Truncation
-MUST be from the front (oldest-first eviction) for cross-impl consistency; back-drop is recoverable via a
+violations raise `ReducerError` per §4. Empty `update` is a no-op (returns `prior` unchanged) — the bound
+applies to merge-time transformations, not as a prior-validation pass; `prior` is returned as-is even if
+it somehow already exceeds `max_len` (matching the established `concat_flatten` / `merge_all` empty-update
+pattern). Truncation MUST be from the front (oldest-first eviction) for cross-impl consistency; back-drop
+is recoverable via a
 custom reducer if needed. `bounded_append` is for cases where silent drop of evicted data is acceptable
 (recent-events buffers, debug log windows, sliding metric caches); for cases where dropped data must be
 summarized or transformed first (the canonical chat-history-with-LLM-summarization shape), use unbounded
