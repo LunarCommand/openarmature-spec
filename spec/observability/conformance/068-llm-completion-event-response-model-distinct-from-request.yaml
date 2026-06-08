@@ -9,8 +9,9 @@ cases:
     description: |
       Provider returns a more specific model identifier
       ("gpt-4o-2024-08-06") for a request bound against the alias
-      "gpt-4o". The typed event's `model` carries the requested id;
-      `response_model` carries the response id.
+      "gpt-4o". The typed event's `model` carries the requested
+      model identifier; `response_model` carries the
+      provider-returned model identifier.
     state:
       fields:
         msg:

@@ -1095,9 +1095,11 @@ semconv response attributes (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.re
 attributes (`openarmature.llm.input.messages`, `openarmature.llm.output.content`,
 `openarmature.llm.request.extras`), the §5.5.2 GenAI request-parameter family
 (`gen_ai.request.temperature`, `gen_ai.request.max_tokens`, etc.), the prompt-identity attribute
-family per prompt-management §12 / §8.4.4 (`openarmature.prompt.name`, `.version`, `.label`,
-`.template_hash`, `.rendered_hash`, `.group_name`), plus the OA-namespaced cross-cutting
-attributes (`openarmature.invocation_id`, `openarmature.node.name`, etc.) — in a structured form
+family per prompt-management §12 / §8.4.4 (`openarmature.prompt.name`,
+`openarmature.prompt.version`, `openarmature.prompt.label`, `openarmature.prompt.template_hash`,
+`openarmature.prompt.rendered_hash`, `openarmature.prompt.group_name`), plus the OA-namespaced
+cross-cutting attributes (`openarmature.invocation_id`, `openarmature.node.name`, etc.) — in a
+structured form
 rather than as separate span attributes.
 
 The §5.5.4 `disable_llm_payload` opt-out flag continues to gate rendering of payload-bearing data

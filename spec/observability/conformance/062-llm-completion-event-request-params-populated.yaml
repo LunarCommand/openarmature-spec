@@ -49,6 +49,12 @@ cases:
               request_params:
                 temperature: 0.7
                 max_tokens: 512
+            # `fields_absent_keys` (per-fixture directive, per
+            # conformance-adapter §3.2): adapter MUST assert that the
+            # named field is a mapping AND that none of the listed
+            # keys appear in it. Distinct from asserting key presence
+            # with a null value; absence asserts "key not supplied at
+            # all" — the absence-is-meaningful rule for request_params.
             fields_absent_keys:
               request_params: [top_p, seed, frequency_penalty, presence_penalty, stop_sequences]
       invariants:
