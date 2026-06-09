@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 Proposals currently in flight. Status is Draft; contracts may change before
 they are Accepted.
 
-_No Draft proposals currently in flight._
+| [0059](proposals/0059-retrieval-provider-embedding.md) | Draft | spec/retrieval-provider/spec.md (new) | Retrieval-provider capability + `EmbeddingProvider` protocol. New sibling capability to llm-provider for non-LLM-completion provider operations. Lands the capability scaffold + the embedding protocol (`ready()` + `embed(input: list[str]) -> EmbeddingResponse`); paired typed events `EmbeddingEvent` + `EmbeddingFailedEvent` on the observer event union (same pairing + mutual-exclusion pattern as `LlmCompletionEvent` + `LlmFailedEvent`); OTel mapping per GenAI semconv `gen_ai.operation.name = "embeddings"`; Langfuse mapping as Generation observation with operation discriminator. Sibling rerank protocol scoped to a forthcoming proposal extending the same capability |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 

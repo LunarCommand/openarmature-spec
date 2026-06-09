@@ -1,0 +1,1 @@
+../../proposals/0059-retrieval-provider-embedding.md

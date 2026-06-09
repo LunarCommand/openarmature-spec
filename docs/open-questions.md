@@ -257,6 +257,74 @@ response-side clause.
   follow-on proposal 0042 extended the set with `branch_name`,
   `detached`, `detached_from_invocation_id` per the maintenance rule.
 
+### Cross-cutting — Langfuse observation-type coverage
+
+- **§8 currently maps onto a narrow subset of Langfuse's observation
+  types.** [candidate-for-new-proposal] — surfaced during proposal 0059
+  drafting via verification against current Langfuse docs. Langfuse
+  exposes 10 observation types: `Event`, `Span`, `Generation`, `Agent`,
+  `Tool`, `Chain`, `Retriever`, `Evaluator`, `Embedding`, `Guardrail`.
+  The existing `spec/observability/spec.md` §8 mapping uses `Trace`,
+  `Generation`, `Span`, `Event`; proposal 0059 adds `Embedding`; the
+  forthcoming retrieval-provider rerank proposal will add `Retriever`.
+  The other four types (`Agent`, `Tool`, `Chain`, `Evaluator`,
+  `Guardrail`) are unmapped.
+
+  Worth a small dedicated proposal to audit each unmapped type and
+  decide: is there a natural OA construct that should map onto this
+  Langfuse type, or is the type genuinely orthogonal to OA's surface?
+  Likely candidates: `LlmCompletionEvent.tool_calls` → `Tool`
+  observations (today: metadata on the `Generation`); multi-step
+  graph subtrees → `Chain` observations (today: nested `Span`
+  observations); harness-chat sessions → `Agent` observations
+  (today: nested spans). `Evaluator` and `Guardrail` likely need
+  new OA capabilities to back them and are out of scope until those
+  capabilities surface.
+
+## Forward-looking provider capabilities
+
+Each new provider domain lands as its own capability following the
+`<domain>-provider` naming convention (`llm-provider`,
+`retrieval-provider`, etc.) — new domains land as separate capabilities
+rather than as extensions to existing ones. Two domains in the
+short-horizon roadmap below.
+
+### Cross-cutting — `voice-provider` capability
+
+- **`SpeechToTextProvider` + `TextToSpeechProvider` protocols on a new
+  voice-provider capability.** [candidate-for-new-proposal] — voice
+  agents (real-time chat with ASR transcription + TTS replies) are a
+  growing OA-relevant use case. ASR shape: audio → transcript text;
+  TTS shape: text → audio bytes. Both fit Langfuse's `Generation`
+  observation type cleanly (each carries model + usage + input + output).
+  Capability follows the retrieval-provider pattern: per-protocol typed
+  events (`SpeechToTextEvent` + `SpeechToTextFailedEvent`,
+  `TextToSpeechEvent` + `TextToSpeechFailedEvent`); per-model binding;
+  error categories inherited from llm-provider §7; privacy posture
+  inherits the `disable_provider_payload` flag established in proposal
+  0059. Audio payloads have their own privacy framing (audio is
+  directly intelligible as speech; same threat-model weight as raw
+  text). Probably a 2-proposal batch like retrieval-provider, or one
+  combined proposal — to be decided when the capability is drafted.
+
+### Cross-cutting — `multimodal-provider` capability
+
+- **`ImageGenerationProvider` + `ImageEditProvider` protocols on a new
+  multimodal-provider capability.** [candidate-for-new-proposal] —
+  image generation in agent + content workflows; image-edit + vision
+  for multimodal pipelines (text+image → image, or image+text → text
+  for image understanding). Shape: text prompt → image output for
+  generation; image+prompt → image for edit. Both fit Langfuse's
+  `Generation` observation type with binary-payload outputs. Capability
+  follows the retrieval-provider pattern: per-protocol typed events,
+  per-model binding, inherited error categories, inherited privacy
+  flag. Image payloads are payload-bearing under the same threat
+  model as text (images are directly intelligible content; same
+  default-suppression posture as `input_messages` /
+  `EmbeddingResponse.vectors`). Video generation NOT in scope under
+  this capability — different cost / latency / streaming-shape; lands
+  separately if downstream demand surfaces.
+
 ## prompt-management
 
 ### 0033 — prompt-management surface refinements
