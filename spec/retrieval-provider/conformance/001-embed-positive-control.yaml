@@ -1,7 +1,7 @@
 # retrieval-provider §3 + §4 — EmbeddingProvider.embed() positive control.
 # Verifies the response shape contract: vectors length matches input
 # length, all inner vectors share dimensionality, dimensions field
-# matches inner-vector length, usage.input_tokens populated, request_id
+# matches inner-vector length, usage.input_tokens populated, response_id
 # populated when the provider returns one.
 #
 # Per-directory harness directive (per conformance-adapter §3.2):
@@ -30,7 +30,7 @@ cases:
     description: |
       Bound EmbeddingProvider with mocked /v1/embeddings response
       returning 3 vectors for 3 input strings, dimensions=4, with
-      a provider-returned request id and usage.prompt_tokens. The
+      a provider-returned response id and usage.prompt_tokens. The
       harness asserts the response carries:
       - vectors length = 3
       - all inner vectors of length 4
