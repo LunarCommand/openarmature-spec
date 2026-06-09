@@ -1,9 +1,9 @@
 # 0059: Retrieval-Provider Capability (Embedding Protocol)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-08
-- **Accepted:**
+- **Accepted:** 2026-06-09
 - **Targets:** spec/retrieval-provider/spec.md (creates — new capability defining the protocol shape for non-LLM-completion provider operations; this proposal lands the capability scaffold + the `EmbeddingProvider` protocol as the first protocol surface; sibling rerank protocol scoped to a forthcoming proposal extending the same capability); spec/graph-engine/spec.md (§6 — add two new typed event variants on the observer event union: `EmbeddingEvent` and `EmbeddingFailedEvent`, paralleling `LlmCompletionEvent` + `LlmFailedEvent`); spec/observability/spec.md (§5.5 — OTel mapping for embedding spans using the Stable subset of GenAI semconv attributes plus OA-namespace operation discrimination via span name; §8 — Langfuse mapping using Langfuse's dedicated `Embedding` observation type; §5.5.4 — rename the existing `disable_llm_payload` observer-level privacy flag to `disable_provider_payload` so the flag's scope cleanly covers payload from any provider operation, with cross-references in §8 + graph-engine §6 updated accordingly); plus new conformance fixtures under `spec/retrieval-provider/conformance/` and `spec/observability/conformance/`.
 - **Related:** 0006 (llm-provider core — established the per-model-binding + typed-response pattern this proposal mirrors for embedding), 0049 (typed `LlmCompletionEvent` — typed-event pattern on the observer union this extends), 0057 (LlmCompletionEvent field-set extension — request-side / prompt-identity / per-call disambiguator fields this proposal mirrors onto `EmbeddingEvent` from launch rather than via a follow-on cycle), 0058 (LlmFailedEvent typed variant — failure-side typed event paired with the success-side per the success+failure pairing precedent this proposal applies)
 - **Supersedes:**

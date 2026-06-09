@@ -18,7 +18,7 @@
 #       observer SHOULD default trace.name to the entry-node name.
 #     * `langfuse_observer` — block configuring the Langfuse observer:
 #       * `disable_llm_spans: bool` (default false)
-#       * `disable_llm_payload: bool` (default true)
+#       * `disable_provider_payload: bool` (default true)
 #     * `mock_llm` — canned responses for an OpenAI-compatible mock
 #       provider (per llm-provider §8 wire format).
 #   - Expected output:

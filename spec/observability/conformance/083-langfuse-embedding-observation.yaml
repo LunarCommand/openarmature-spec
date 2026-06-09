@@ -1,0 +1,123 @@
+# observability §8 — Langfuse embedding observation mapping.
+# Verifies that EmbeddingProvider.embed() calls render as a
+# dedicated `Embedding` observation type (NOT Generation), with
+# input/output/model/usageDetails/metadata field population per
+# proposal 0059. Two cases gate the disable_provider_payload flag.
+
+cases:
+  - name: embedding_observation_payload_suppressed_by_default
+    description: |
+      One embedding call. Default Langfuse observer config
+      (disable_provider_payload=True). The Embedding observation
+      MUST emit with model, usageDetails, identity metadata, but
+      NOT input or output (payload-gated). Asserts the observation
+      type is "embedding" (created via asType="embedding") rather
+      than "generation".
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query one", "query two"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          id: emb-083-id
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3]}
+            - {object: embedding, index: 1, embedding: [0.4, 0.5, 0.6]}
+          usage: {prompt_tokens: 4, total_tokens: 4}
+    langfuse_observer:
+      disable_provider_payload: true
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "embed_node"
+            children:
+              - type: embedding
+                name: "openarmature.embedding.complete"
+                model: "text-embedding-test"
+                usageDetails:
+                  input: 4
+                metadata:
+                  openarmature_input_count: 2
+                  openarmature_dimensions: 3
+                  openarmature_response_id: "emb-083-id"
+                level: DEFAULT
+                input: null
+                output: null
+                children: []
+      invariants:
+        observation_type_is_embedding_not_generation: true
+        input_and_output_suppressed_under_default_privacy_posture: true
+
+  - name: embedding_observation_payload_emitted_with_flag_off
+    description: |
+      One embedding call. Langfuse observer with
+      disable_provider_payload=False. The Embedding observation
+      MUST emit with input (the input strings list) and output
+      (the full vectors) populated alongside the always-emitted
+      fields.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query one", "query two"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          id: emb-083b-id
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3]}
+            - {object: embedding, index: 1, embedding: [0.4, 0.5, 0.6]}
+          usage: {prompt_tokens: 4, total_tokens: 4}
+    langfuse_observer:
+      disable_provider_payload: false
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "embed_node"
+            children:
+              - type: embedding
+                name: "openarmature.embedding.complete"
+                model: "text-embedding-test"
+                usageDetails:
+                  input: 4
+                metadata:
+                  openarmature_input_count: 2
+                  openarmature_dimensions: 3
+                  openarmature_response_id: "emb-083b-id"
+                level: DEFAULT
+                input: ["query one", "query two"]
+                output:
+                  - [0.1, 0.2, 0.3]
+                  - [0.4, 0.5, 0.6]
+                children: []
+      invariants:
+        observation_type_is_embedding_not_generation: true
+        input_and_output_populated_when_payload_flag_disabled: true

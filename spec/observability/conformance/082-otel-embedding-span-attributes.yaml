@@ -1,0 +1,65 @@
+# observability §5.5 — OTel embedding span attributes.
+# Verifies the embedding span name (openarmature.embedding.complete),
+# the Stable GenAI semconv attribute subset (gen_ai.system,
+# gen_ai.request.model, gen_ai.response.model, gen_ai.response.id,
+# gen_ai.usage.input_tokens), and the OA-namespace embedding
+# attributes (openarmature.embedding.input_count,
+# openarmature.embedding.dimensions). Asserts the upstream
+# gen_ai.operation.name attribute is NOT emitted (deferred per
+# stable-only adoption policy until upstream Stable).
+
+cases:
+  - name: otel_embedding_span_emitted_with_expected_attributes
+    description: |
+      One embedding-calling node. Default OTel observer config.
+      Asserts the embedding span emits with the spec-required
+      attribute set, parented under the calling node's span.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["hello", "world"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          id: emb-082-id
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3]}
+            - {object: embedding, index: 1, embedding: [0.4, 0.5, 0.6]}
+          usage: {prompt_tokens: 2, total_tokens: 2}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "embed_node"
+              status: OK
+              children:
+                - name: "openarmature.embedding.complete"
+                  status: OK
+                  attributes:
+                    gen_ai.system: "openai"
+                    gen_ai.request.model: "text-embedding-test"
+                    gen_ai.response.model: "text-embedding-test"
+                    gen_ai.response.id: "emb-082-id"
+                    gen_ai.usage.input_tokens: 2
+                    openarmature.embedding.input_count: 2
+                    openarmature.embedding.dimensions: 3
+                  attribute_absence:
+                    - gen_ai.operation.name
+                  children: []
+      invariants:
+        embedding_span_name_is_openarmature_embedding_complete: true
+        stable_genai_semconv_subset_emitted: true
+        operation_name_attribute_not_emitted_in_v1: true

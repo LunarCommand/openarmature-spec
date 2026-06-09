@@ -105,6 +105,7 @@ nav:
       - capabilities/pipeline-utilities.md
       - Middleware: capabilities/middleware.md
     - LLM Provider: capabilities/llm-provider.md
+    - Retrieval Provider: capabilities/retrieval-provider.md
     - Observability: capabilities/observability.md
     - Prompt Management: capabilities/prompt-management.md
     - Sessions: capabilities/sessions.md

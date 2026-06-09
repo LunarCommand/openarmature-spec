@@ -1,0 +1,45 @@
+# retrieval-provider §4 — dimensionality consistency invariant.
+# Verifies that an EmbeddingProvider receiving a response whose
+# inner vectors have inconsistent lengths raises
+# provider_invalid_response per §5.
+
+cases:
+  - name: embed_raises_provider_invalid_response_on_inconsistent_dimensions
+    description: |
+      EmbeddingProvider called with 3 input strings; mocked provider
+      returns 3 vectors with inner-list lengths 4, 4, and 3 — the
+      third vector is one dimension short of its siblings. The
+      adapter MUST detect the dimensionality inconsistency per §4
+      and raise provider_invalid_response per §5.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha", "beta", "gamma"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3, 0.4]}
+            - {object: embedding, index: 1, embedding: [0.5, 0.6, 0.7, 0.8]}
+            - {object: embedding, index: 2, embedding: [0.9, 1.0, 1.1]}
+          usage:
+            prompt_tokens: 6
+            total_tokens: 6
+    expected_error:
+      category: provider_invalid_response
+      raised_from: embed_node
+    expected:
+      invariants:
+        exception_raised_out_of_embed_call: true

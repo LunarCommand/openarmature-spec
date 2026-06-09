@@ -1,0 +1,43 @@
+# retrieval-provider §4 — vector-count invariant.
+# Verifies that an EmbeddingProvider receiving a response with
+# fewer vectors than input strings raises provider_invalid_response
+# per §5.
+
+cases:
+  - name: embed_returns_provider_invalid_response_on_vector_count_mismatch
+    description: |
+      EmbeddingProvider called with 3 input strings; mocked provider
+      returns only 2 vectors. The implementation MUST detect the
+      mismatch per §4 cross-impl invariants and raise
+      provider_invalid_response per §5.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha", "beta", "gamma"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3]}
+            - {object: embedding, index: 1, embedding: [0.4, 0.5, 0.6]}
+          usage:
+            prompt_tokens: 6
+            total_tokens: 6
+    expected_error:
+      category: provider_invalid_response
+      raised_from: embed_node
+    expected:
+      invariants:
+        exception_raised_out_of_embed_call: true

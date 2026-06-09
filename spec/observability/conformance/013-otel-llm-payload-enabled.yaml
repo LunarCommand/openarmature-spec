@@ -1,4 +1,4 @@
-# OTel observer constructed with disable_llm_payload=False. Verifies the
+# OTel observer constructed with disable_provider_payload=False. Verifies the
 # §5.5.1 payload attributes emit and that openarmature.llm.input.messages
 # parses to the §3 message structure that was sent to the provider.
 
@@ -6,7 +6,7 @@ cases:
   - name: payload_enabled
     description: |
       Single LLM call with a two-turn conversation prefix sent to the
-      provider. disable_llm_payload=False on the observer. The
+      provider. disable_provider_payload=False on the observer. The
       openarmature.llm.input.messages attribute carries a JSON-encoded
       message list that parses to the §3 message structure. The
       openarmature.llm.output.content attribute carries the assistant's
@@ -37,7 +37,7 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "hello back"}, finish_reason: stop}
           usage: {prompt_tokens: 7, completion_tokens: 2, total_tokens: 9}
-    disable_llm_payload: false
+    disable_provider_payload: false
     expected:
       span_tree:
         - name: "openarmature.invocation"

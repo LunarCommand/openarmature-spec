@@ -1,0 +1,87 @@
+# graph-engine §6 — EmbeddingEvent.request_params carries the
+# embedding-specific runtime-config fields supplied by the caller
+# (initially: dimensions). Absence-is-meaningful for other params.
+
+cases:
+  - name: request_params_populates_dimensions_when_supplied
+    description: |
+      embed() called with config.dimensions=128. The harness
+      asserts the typed event's request_params carries
+      {dimensions: 128} and no other keys.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query"]
+          stores_response_in: embedding_response
+          config:
+            dimensions: 128
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2]}
+          usage: {prompt_tokens: 1, total_tokens: 1}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              request_params:
+                dimensions: 128
+      invariants:
+        request_params_populated_with_caller_supplied_fields: true
+
+  - name: request_params_empty_when_no_config_supplied
+    description: |
+      embed() called without config. The harness asserts the
+      typed event's request_params is an empty mapping
+      (absence-is-meaningful — no keys carried).
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2]}
+          usage: {prompt_tokens: 1, total_tokens: 1}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              request_params: {}
+      invariants:
+        request_params_empty_when_caller_supplied_none: true

@@ -7,7 +7,7 @@ decision tree for `trace.input` / `trace.output` emission plus resume semantics.
 
 - **§8.2** — Trace entity carries `input` / `output` payload fields as headline columns.
 - **§8.4.1** *Trace input/output sourcing* — the `disable_state_payload` privacy knob
-  (default ON, mirroring §5.5.4's `disable_llm_payload`), the three-lever decision tree
+  (default ON, mirroring §5.5.4's `disable_provider_payload`), the three-lever decision tree
   (caller hook → raw state when knob is OFF → minimal stub by default), the closed `status`
   enum on the minimal stub's `trace.output`, the caller-hook contract, and resume
   semantics.

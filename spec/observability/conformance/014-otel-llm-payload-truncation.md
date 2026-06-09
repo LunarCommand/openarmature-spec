@@ -14,7 +14,7 @@ the serialized value exceeds the default 64 KiB per-attribute byte cap.
 **Cases:**
 
 1. `truncation_default_cap` — single user message containing ~100 KiB of content. Observer has
-   `disable_llm_payload = False` and the default 64 KiB cap. The emitted
+   `disable_provider_payload = False` and the default 64 KiB cap. The emitted
    `openarmature.llm.input.messages` is at most 64 KiB, ends with the marker pattern, and the
    bytes preceding the marker form a valid prefix of the full (untruncated) serialization.
 

@@ -1,0 +1,63 @@
+# graph-engine §6 EmbeddingFailedEvent dispatch on
+# provider_unavailable. Verifies proposal 0059's failure-side
+# dispatch contract: the typed event MUST fire on the observer
+# delivery queue when EmbeddingProvider.embed() raises a §7 category
+# exception, AND the exception MUST still raise out of the call
+# (exception-flow contract preserved).
+
+cases:
+  - name: embedding_failure_event_dispatched_on_provider_unavailable
+    description: |
+      Graph with one embedding-calling node. Mocked provider raises
+      provider_unavailable. The harness asserts:
+      - exactly one EmbeddingFailedEvent observed
+      - exactly zero EmbeddingEvent observed (mutual exclusion)
+      - the exception propagates out of embed()
+      - the typed event carries error_category="provider_unavailable"
+        plus mirrored identity / scoping / request-side fields.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: embed_node
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingFailedEvent
+            fields:
+              provider: openai
+              model: text-embedding-test
+              error_category: provider_unavailable
+              node_name: embed_node
+              namespace: [embed_node]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+              caller_invocation_metadata: null
+          event_count:
+            event_type: EmbeddingEvent
+            count: 0
+      invariants:
+        exactly_one_embedding_failed_event_observed: true
+        zero_embedding_events_on_failed_call: true
+        exception_propagates_alongside_typed_event: true

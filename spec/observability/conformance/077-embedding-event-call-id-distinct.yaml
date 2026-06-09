@@ -1,0 +1,59 @@
+# graph-engine §6 — EmbeddingEvent.call_id is per-call: distinct
+# call_id values across multiple embed() calls in the same
+# invocation. Mirrors fixture 067 for the LLM-side variant.
+
+cases:
+  - name: multiple_embed_calls_have_distinct_call_ids
+    description: |
+      Graph with two embedding-calling nodes in series. Both calls
+      succeed. The harness asserts two EmbeddingEvent events are
+      observed and their call_id fields are distinct.
+    state:
+      fields:
+        first_response:
+          type: record
+          default: null
+        second_response:
+          type: record
+          default: null
+    entry: embed_first
+    nodes:
+      embed_first:
+        calls_embed:
+          input: ["first"]
+          stores_response_in: first_response
+      embed_second:
+        calls_embed:
+          input: ["second"]
+          stores_response_in: second_response
+    edges:
+      - {from: embed_first, to: embed_second}
+      - {from: embed_second, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2]}
+          usage: {prompt_tokens: 1, total_tokens: 1}
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.3, 0.4]}
+          usage: {prompt_tokens: 1, total_tokens: 1}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          event_count:
+            event_type: EmbeddingEvent
+            count: 2
+      invariants:
+        call_ids_distinct_across_embedding_events: true
+        all_call_ids_non_null: true
