@@ -89,8 +89,8 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 Proposals currently in flight. Status is Draft; contracts may change before
 they are Accepted.
 
-| Proposal | Status | Targets | Summary |
-|---|---|---|---|
+_No Draft proposals currently in flight._
+
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
 ---
