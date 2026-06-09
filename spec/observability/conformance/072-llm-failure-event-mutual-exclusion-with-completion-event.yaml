@@ -1,0 +1,46 @@
+# graph-engine §6 LlmFailedEvent / LlmCompletionEvent mutual-exclusion
+# rule: implementations MUST NOT emit both variants for the same
+# provider.complete() call. Locks down the rule explicitly via a
+# dedicated fixture — implementations emitting both events for the
+# same failed call MUST fail this fixture.
+
+cases:
+  - name: failed_call_emits_only_llm_failed_event_never_completion
+    description: |
+      Single LLM-calling node; mocked provider raises
+      provider_unavailable. The harness asserts EXACTLY one
+      LlmFailedEvent AND EXACTLY zero LlmCompletionEvent — the
+      mutual-exclusion rule is the load-bearing contract.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "summarize"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          event_counts:
+            - {event_type: LlmFailedEvent, count: 1}
+            - {event_type: LlmCompletionEvent, count: 0}
+      invariants:
+        exactly_one_llm_failed_event_per_failed_call: true
+        zero_llm_completion_events_per_failed_call: true

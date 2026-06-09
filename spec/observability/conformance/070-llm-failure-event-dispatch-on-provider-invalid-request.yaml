@@ -1,0 +1,56 @@
+# graph-engine §6 LlmFailedEvent dispatch on provider_invalid_request.
+# Verifies proposal 0058's dispatch contract on a different §7
+# category (pre-send validation failure raised by the impl's
+# request-validation layer before contacting the provider). Asserts
+# error_category populated correctly across category values.
+
+cases:
+  - name: llm_failure_event_dispatched_on_provider_invalid_request
+    description: |
+      Graph node sends a malformed message (tool-role message
+      without the required tool_call_id field, per llm-provider §3
+      message-shape rules). The impl's pre-send validation raises
+      provider_invalid_request before contacting the provider. The
+      typed event MUST fire with error_category set accordingly.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          # Malformed: tool-role message MUST carry tool_call_id per
+          # llm-provider §3; the impl's pre-send validation raises
+          # provider_invalid_request before any wire contact.
+          messages:
+            - {role: tool, content: "result from earlier call"}
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_invalid_request
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: provider_invalid_request
+              node_name: ask
+              namespace: [ask]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+          event_count:
+            event_type: LlmCompletionEvent
+            count: 0
+      invariants:
+        exactly_one_llm_failed_event_observed: true
+        error_category_matches_raised_exception_category: true

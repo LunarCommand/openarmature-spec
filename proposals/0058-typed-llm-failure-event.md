@@ -1,9 +1,9 @@
 # 0058: Typed LLM Failure Event
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-08
-- **Accepted:**
+- **Accepted:** 2026-06-08
 - **Targets:** spec/graph-engine/spec.md (§6 — adds `LlmFailedEvent` as a second spec-normatively-typed event variant on the observer event union, alongside `LlmCompletionEvent` from proposal 0049 and `NodeEvent`); spec/observability/spec.md (§5.5.7 — extends the typed-event framing paragraph to acknowledge the failure-path event variant; existing success-only framing for `LlmCompletionEvent` preserved); plus new conformance fixtures under `spec/observability/conformance/` covering the failure event's dispatch contract + field-set population from llm-provider §7 errors.
 - **Related:** 0049 (typed LLM completion event — anticipated this follow-on by name in *Out of scope*: *"`LlmCallFailedEvent` typed variant... warrants a follow-on proposal if demand emerges"*; this proposal lands that follow-on), 0057 (LlmCompletionEvent field-set extension — the request-side / prompt-identity / per-call disambiguator fields this proposal mirrors onto the failure variant)
 - **Supersedes:**
