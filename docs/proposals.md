@@ -64,6 +64,7 @@ lifecycle and the proposal template.
 | [0055](proposals/0055-conformance-adapter-capability.md) | Conformance adapter capability | conformance-adapter | Accepted | Textual (0.13.0)| —          |
 | [0056](proposals/0056-harness-chat.md) | Chat harness sub-spec | harness-chat | Accepted | Pending         | —          |
 | [0057](proposals/0057-llm-completion-event-field-set-extension.md) | LlmCompletionEvent field-set extension | graph-engine | Accepted | Shipped (0.13.0)| —          |
+| [0058](proposals/0058-typed-llm-failure-event.md) | Typed LLM failure event                                  | graph-engine        | Draft    | —               | —          |
 
 Click any column header to sort.
 

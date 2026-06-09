@@ -91,6 +91,8 @@ they are Accepted.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
+| [0058](proposals/0058-typed-llm-failure-event.md) | Draft | graph-engine §6 | Typed LLM failure event — new `LlmFailedEvent` typed variant on the observer event union (alongside `LlmCompletionEvent`) carrying `error_category` / `error_type` / `error_message` plus the identity / scoping / request-side field set from `LlmCompletionEvent`. Lets implementations fully retire the sentinel-namespace `NodeEvent` pattern for LLM observability |
+
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
 ---
