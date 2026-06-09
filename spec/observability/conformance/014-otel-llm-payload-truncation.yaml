@@ -8,7 +8,7 @@ cases:
     description: |
       Single LLM call with a user message containing a payload large enough
       that the JSON-encoded openarmature.llm.input.messages exceeds the
-      default 64 KiB cap. Observer has disable_llm_payload=False and the
+      default 64 KiB cap. Observer has disable_provider_payload=False and the
       default cap. The truncation algorithm produces an attribute whose
       byte length is ≤ 64 KiB, ending with the marker
       "…[truncated, M bytes total]" where M is the pre-truncation byte
@@ -41,7 +41,7 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
           usage: {prompt_tokens: 25600, completion_tokens: 1, total_tokens: 25601}
-    disable_llm_payload: false
+    disable_provider_payload: false
     expected:
       span_tree:
         - name: "openarmature.invocation"

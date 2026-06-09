@@ -1,0 +1,76 @@
+# graph-engine §6 — EmbeddingEvent.active_prompt is a snapshot of
+# the active Prompt identity at embed() time, sourced from the
+# impl's prompt-context binding mechanism (same mechanism that
+# drives the openarmature.prompt.* span attributes per
+# prompt-management §12). Mirrors fixture 064 for the LLM-side
+# variant.
+#
+# Per-fixture-suite harness directive extension (per
+# conformance-adapter §3.2):
+#
+# - input_from_rendered_prompt: true (on a calls_embed: block) —
+#   the node uses the text from the most recently rendered prompt
+#   (per the renders_prompt: directive immediately above it) as
+#   the embed() input list (wrapped as a one-element list).
+#   Lets a RAG retrieval-template scenario be expressed without
+#   threading the rendered text through a state field.
+
+cases:
+  - name: active_prompt_populated_when_embed_inside_prompt_context
+    description: |
+      Graph with one embedding-calling node that renders a prompt
+      first (RAG retrieval scenario — render the query template,
+      then embed the rendered text) and then calls embed() with
+      that prompt active. The typed event's active_prompt carries
+      the 5-field identity record matching the rendered prompt.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_query
+    nodes:
+      embed_query:
+        renders_prompt: rag_query
+        calls_embed:
+          input_from_rendered_prompt: true
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_query, to: END}
+    initial_state: {}
+    prompt_backend:
+      type: filesystem
+      prompts:
+        rag_query:
+          name: rag_query
+          version: "v3"
+          label: production
+          template: "search query: {{topic}}"
+          template_hash: "xyz789"
+    render_variables:
+      topic: "embeddings"
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3]}
+          usage: {prompt_tokens: 5, total_tokens: 5}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              active_prompt:
+                name: "rag_query"
+                version: "v3"
+                label: "production"
+                template_hash: "xyz789"
+                rendered_hash: "<any-string>"
+      invariants:
+        active_prompt_snapshot_matches_prompt_management_section_12_identity_attrs: true

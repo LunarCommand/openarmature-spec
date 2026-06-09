@@ -66,6 +66,15 @@ OA's adoption pattern:
   `openarmature.llm.cache_creation.input_tokens`) until they stabilize
   upstream; a follow-up OA proposal will migrate to the upstream
   `gen_ai.usage.*` names once they reach Stable.
+- **`gen_ai.operation.name`** (with documented well-known values
+  including `"chat"`, `"embeddings"`, etc.) is at Development status
+  as of 2026-05-31. Per the policy above, OA does NOT normatively
+  adopt this attribute in v1; operation discrimination is via span
+  name + provider (observability §5.5 `openarmature.llm.complete` for
+  LLM completion and §5.5.8 `openarmature.embedding.complete` for
+  embedding). A follow-on proposal will add `gen_ai.operation.name`
+  to the attribute surface once upstream reaches Stable, per the
+  §5.5.3.1 / 0047 mirror pattern.
 
 ### LLM provider APIs (OpenAI / Anthropic / Google Gemini)
 

@@ -19,6 +19,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 *Observer hooks* gained a per-invocation `drain_events_for(invocation_id, *, timeout)` primitive as a sibling to the existing process-wide `drain`; reuses the snapshot semantic and summary return shape (`undelivered_count`, `timeout_reached`), scopes the wait to events tagged with a single `invocation_id` (per observability §5.1), and diverges from `drain` on worker cancellation (per-invocation drain MUST NOT cancel workers on timeout because the graph remains active). Resolves the synchronization race for the queryable observer pattern (proposal 0048) when a terminal node reads accumulator state mid-invocation by [proposal 0054](../../proposals/0054-per-invocation-event-drain.md)
   - §3 *Execution model* gained an *Invocation outcomes* paragraph classifying `invoke()`'s three return categories (completed, errored, suspended); the *Invocation entry surface* paragraph's `invocation_id` clause split into two cases — fresh id on checkpoint-resume per pipeline-utilities §10.4 (existing rule); reused id on suspension-resume per suspension §7 (new rule). §6 *Node event shape* `phase` field extended with `"suspended"`; new `descriptor` field populated only on `suspended` events carrying the signal descriptor per suspension §4; per-attempt terminal-shape paragraph extended to make `completed` and `suspended` mutually exclusive at the terminal slot (each attempt produces exactly one `started` event followed by exactly one terminal `completed` OR `suspended`). The suspension capability itself defines the suspend operation, signal descriptors, suspended outcome, signal payload merge, resume API, composition with other capabilities, and error categories by [proposal 0021](../../proposals/0021-graph-suspension.md)
   - §3 *Execution model* gained a *Deployment-runtime wrapping* paragraph noting that `invoke()` is the per-call surface the harness capability wraps when an OpenArmature graph runs inside a deployment runtime (HTTP server, event bus, queue worker, CLI repl, etc.); cross-references the abstract contract for inbound dispatch classification, turn-level outcome handling, signal coordination, error categorization at the turn boundary, and the sessioned vs stateless mode distinction by [proposal 0022](../../proposals/0022-harness-contract.md)
+  - §6 observer event union extended with two new typed event variants — `EmbeddingEvent` (success) and `EmbeddingFailedEvent` (failure) — paired from launch per the 0049 → 0058 success+failure pairing precedent. Both variants carry the identity / scoping / request-side field set established by `LlmCompletionEvent` post-0057 (with `input_strings` in place of `input_messages` and the embedding-specific runtime-config shape), with capability-appropriate success-side fields (`response_id`, `response_model`, `usage`, `dimensions`, `input_count`) on the success variant and the three failure-specific fields (`error_category`, `error_type`, `error_message`) on the failure variant per the 0058 pattern. Mutual exclusion + exception-flow + dispatch-timing rules mirror the LLM-side pair; the observer-side `disable_provider_payload` privacy flag (renamed by this proposal) gates the rendering boundary identically to its LLM-side counterpart. Existing LlmCompletionEvent / LlmFailedEvent privacy paragraphs updated to reference the renamed flag by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -767,13 +768,13 @@ mapping concern lives in observability §5.5.
 **Privacy and observer-side gating.** The `input_messages`, `output_content`, and `request_extras`
 fields carry potentially sensitive payload data. Implementations MUST populate these fields on the
 typed event by default; observer-side privacy gating applies at the rendering boundary, matching the
-observability §5.5.4 `disable_llm_payload` opt-out flag semantics for the equivalent observability
+observability §5.5.4 `disable_provider_payload` opt-out flag semantics for the equivalent observability
 §5.5.1 span attributes. The OTel observer (per observability §5.5) and the Langfuse observer (per
-observability §8) honor their existing `disable_llm_payload` flag on the typed-event rendering path
+observability §8) honor their existing `disable_provider_payload` flag on the typed-event rendering path
 identically to the §5.5.1 span attribute path.
 
 Custom queryable observers (per observability §9) consuming the typed event are responsible for
-their own redaction posture — the §5.5.4 `disable_llm_payload` flag gates OTel + Langfuse
+their own redaction posture — the §5.5.4 `disable_provider_payload` flag gates OTel + Langfuse
 rendering; the typed-event field surface is uniform across observer types. Accumulator authors with
 payload-redaction requirements MUST gate at their own rendering / persistence boundary.
 
@@ -840,11 +841,102 @@ subject to the `phases` subscription filter. Observers filter via type discrimin
 
 The privacy posture for `input_messages` / `request_extras` is identical to
 `LlmCompletionEvent`'s — observer-side gating at the rendering boundary per observability §5.5.4
-(implementations populate the fields unconditionally; observers honor `disable_llm_payload`).
+(implementations populate the fields unconditionally; observers honor `disable_provider_payload`).
 Inline image bytes in `input_messages` MUST be redacted per the observability §5.5.5 inline-image
 redaction rule before population. Custom queryable observers (per observability §9) consuming the
 failure variant are responsible for their own redaction posture, identical to the
 `LlmCompletionEvent` posture.
+
+**Typed embedding event.** The observer delivery queue also carries a typed `EmbeddingEvent` on
+every successful `EmbeddingProvider.embed()` call per the retrieval-provider §3 contract. A third spec-normatively-typed event variant on the observer event union — observers
+filter via type discrimination (`isinstance(event, EmbeddingEvent)` or per-language idiomatic
+equivalent) rather than via a sentinel-namespace string match. The class name `EmbeddingEvent` is
+normative as an identifier shape; implementations MAY use a per-language idiomatic name provided
+the field set + dispatch contract are preserved.
+
+The event mirrors `LlmCompletionEvent`'s identity / scoping / request-side field set with
+capability-appropriate substitutions (`input_strings` in place of `input_messages`; the
+embedding-specific runtime-config in place of the LLM `RuntimeConfig`):
+
+| Field | Type | Description |
+|---|---|---|
+| `invocation_id` | string | The outer invocation's identifier, per observability §5.1. |
+| `correlation_id` | string \| null | Cross-backend correlation ID, per observability §3.1. |
+| `node_name` | string | The user-defined node that issued the call. |
+| `namespace` | sequence of strings | The calling node's namespace, per the *Node event shape* above. |
+| `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
+| `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. |
+| `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11, with the resolved `branch_names` per proposal 0044 governing the value space). Null otherwise. |
+| `provider` | string | The embedding provider identifier (matches `gen_ai.system` per observability §5.5.3). |
+| `model` | string | The model identifier the request was made against. |
+| `response_model` | string \| null | The model identifier the provider returned in the response (matches `gen_ai.response.model`). May be more specific than requested; null when the provider doesn't return a response model. |
+| `response_id` | string \| null | The provider-returned response identifier when present. |
+| `usage` | record \| null | `EmbeddingUsage` record per retrieval-provider §4. May be null when the provider does not report usage. |
+| `latency_ms` | float \| null | Wall-clock latency of the embedding call measured at the adapter boundary, in milliseconds. May be null when latency is not measured. Implementations MAY use a provider-reported latency value when the provider surfaces one, documenting which source is in use. |
+| `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `LlmCompletionEvent` (per observability §3.4). Default absent / null. |
+| `input_strings` | list of string | The input strings the embedding call was made with, in the typed-event-native form. Populated unconditionally on every typed event; observer-side privacy gating applies at the rendering boundary per the privacy paragraph below. |
+| `request_params` | mapping | Embedding-specific runtime-config fields the caller supplied (initially `dimensions` per retrieval-provider §2). Absence-is-meaningful semantics per the equivalent field on `LlmCompletionEvent`. Empty mapping when no parameters were supplied. |
+| `request_extras` | mapping | The embedding runtime config's extras pass-through bag — vendor-specific knobs. Same shape and privacy posture as on `LlmCompletionEvent`. Empty mapping when no extras were supplied. |
+| `active_prompt` | record \| null | Snapshot of the active `Prompt` identity at embedding-call time (RAG pipelines often render a prompt template before embedding for chat-shaped search). Same field set and nullability as on `LlmCompletionEvent`. |
+| `active_prompt_group` | record \| null | Snapshot of the active `PromptGroup` identity. Same shape as on `LlmCompletionEvent`. |
+| `call_id` | string | A per-call disambiguator minted by the implementation. **Always present** (never null); freshly minted per `embed()` call. |
+| `input_count` | int | The number of input strings the call was made with (equals `len(input_strings)`). Derivable but kept for ergonomics + cross-vendor consistency. |
+| `dimensions` | int \| null | The dimensionality of the returned vectors (equals the inner-vector length from the response). May be null when the response does not surface a determinate dimensionality. |
+
+The event MUST be dispatched on the observer delivery queue at the point of `embed()` completion
+(after the response is parsed and validated per retrieval-provider §4, before `embed()` returns
+to the caller). Delivery semantics follow the *Event delivery* rules above — strict-serial across
+the invocation, async-delivered concurrently with graph execution, not blocking the engine's
+execution loop. Like the other typed event variants, `EmbeddingEvent` carries no `phase`
+discriminator and is NOT subject to the `phases` subscription filter.
+
+**Typed embedding failure event.** The observer delivery queue also carries a typed
+`EmbeddingFailedEvent` on every `embed()` call that raises one of the llm-provider §7 error
+categories (per retrieval-provider §5's embedding-applicable subset). A fourth spec-normatively-
+typed event variant on the observer event union, paired with `EmbeddingEvent` per the 0049 → 0058
+success+failure pairing precedent — observers filter via type discrimination
+(`isinstance(event, EmbeddingFailedEvent)` or per-language idiomatic equivalent) rather than via
+a sentinel-namespace string match.
+
+The event mirrors `EmbeddingEvent`'s identity / scoping / request-side field set 1:1, carries
+failure-specific fields in place of the success-only response-side fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `invocation_id` | string | The outer invocation's identifier, per observability §5.1. |
+| `correlation_id` | string \| null | Cross-backend correlation ID, per observability §3.1. |
+| `node_name` | string | The user-defined node that issued the call. |
+| `namespace` | sequence of strings | The calling node's namespace, per the *Node event shape* above. |
+| `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
+| `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. |
+| `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11). Null otherwise. |
+| `provider` | string | The embedding provider identifier. |
+| `model` | string | The model identifier the request was made against. |
+| `latency_ms` | float \| null | Wall-clock latency from `embed()` entry to the point the failure was raised, in milliseconds. May be null when latency is not measured. |
+| `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `EmbeddingEvent`. |
+| `input_strings` | list of string | The input strings the embedding call was made with. Populated unconditionally on every typed event; same observer-side privacy-gating posture as on `EmbeddingEvent`. |
+| `request_params` | mapping | Embedding-specific config fields the caller supplied. Same shape as on `EmbeddingEvent`. |
+| `request_extras` | mapping | The embedding runtime config's extras pass-through bag. Same shape and privacy posture as on `EmbeddingEvent`. |
+| `active_prompt` | record \| null | Snapshot of the active `Prompt` identity at embedding-call time. Same shape as on `EmbeddingEvent`. |
+| `active_prompt_group` | record \| null | Snapshot of the active `PromptGroup` identity. Same shape as on `EmbeddingEvent`. |
+| `call_id` | string | A per-call disambiguator minted by the implementation. **Always present**; freshly minted per `embed()` call. A failed call gets its own `call_id`, distinct from any retry-attempt sibling. |
+| `error_category` | string | One of the llm-provider §7 normative categories applicable to embedding (per retrieval-provider §5). Always present. |
+| `error_type` | string \| null | OPTIONAL impl-level / vendor-specific error type or code. Two acceptable styles (vendor error code, upstream exception class name). Null when no impl-side type is available. |
+| `error_message` | string | Human-readable message from the raised exception. Always present (empty string when the exception carried no message). |
+
+The event MUST be dispatched on the observer delivery queue at the point of `embed()` failure
+(after the §7 category exception is raised — whether by the provider or by the implementation's
+pre-send validation layer per llm-provider §7 — and before the exception propagates to the
+caller). The §7 category exception still raises out of `embed()`; the typed event is dispatched
+alongside the exception, not in place of it.
+
+`EmbeddingEvent` and `EmbeddingFailedEvent` are mutually exclusive on a given `embed()` call.
+Implementations MUST NOT emit both for the same call. The privacy posture for `input_strings` /
+`request_extras` is identical to `EmbeddingEvent`'s — observer-side gating at the rendering
+boundary per observability §5.5.4 (implementations populate the fields unconditionally; observers
+honor `disable_provider_payload`). Custom queryable observers (per observability §9) consuming
+either embedding-variant are responsible for their own redaction posture, identical to the
+`LlmCompletionEvent` / `LlmFailedEvent` posture.
 
 ## 7. Out of scope
 

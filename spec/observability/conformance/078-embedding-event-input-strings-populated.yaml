@@ -1,0 +1,46 @@
+# graph-engine §6 — EmbeddingEvent.input_strings is populated
+# verbatim from the embed() call's input list. Mirrors fixture 060
+# (input_messages on LlmCompletionEvent).
+
+cases:
+  - name: input_strings_populated_verbatim
+    description: |
+      Successful embed() call with a 3-element input list. The
+      harness asserts the EmbeddingEvent.input_strings field
+      matches the input list element-for-element.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha", "beta", "gamma"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2]}
+            - {object: embedding, index: 1, embedding: [0.3, 0.4]}
+            - {object: embedding, index: 2, embedding: [0.5, 0.6]}
+          usage: {prompt_tokens: 3, total_tokens: 3}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              input_strings: ["alpha", "beta", "gamma"]
+      invariants:
+        input_strings_match_input_list_verbatim: true

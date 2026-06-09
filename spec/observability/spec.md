@@ -24,6 +24,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §3.4 *Shared-parent boundary (MUST NOT)* paragraph rewritten from "all three are unconditional shared parents regardless of runtime cardinality" prose to a three-bullet structural classification — fan-out node always a shared parent, parallel-branches node always a shared parent, invocation span a shared parent **only when** at least one fan-out or parallel-branches dispatch is on the augmenter's call-stack path (predicate stated via the lineage chain having non-`null` `fan_out_index` or `branch_name` entries; pure-serial augmentations reach the invocation span via rule 2 of the boundary decision tree). The decision tree's rule 3 gains a short parenthetical pointing readers at the conditional invocation-span classification. Documentary tightening only — fixtures 034 (outermost-serial updates invocation span) and 039 (nested cases do not) already exercise the predicate-derived behavior; this proposal closes the spec-text-vs-fixture ambiguity that previously made the two fixtures' behavior unreconcilable from §3.4's text alone by [proposal 0053](../../proposals/0053-shared-parent-boundary-clarification.md)
   - §4.2 *Status mapping* table extended with a new row for the `SUSPENDED` logical status (applied to both the suspending node's span and the invocation root span when a node calls `suspend()` per the suspension capability §3); new *Suspended status mapping* paragraph defining the OTel physical mapping (status `OK` plus an `openarmature.outcome = "suspended"` span attribute, since OTel's native status code field lacks a third state) with backend-mapping freedom for non-OTel backends. §4.3 *Parent-child rules* gained a *Suspended-resume invocation spans* paragraph defining the cross-invocation-span correlation invariant for suspension-resume (per suspension §7) — the resume invocation span carries the same `openarmature.invocation_id` as the suspended one; OTel observers SHOULD additionally link via span-link or parent-of mechanisms; explicitly distinguishes from checkpoint-resume per pipeline-utilities §10.4 (fresh `invocation_id`, correlated only via shared `correlation_id`). New §5.8 *Suspension span attributes* defining `openarmature.suspension.signal_id` (string; always present on a `suspended` node span; carries the descriptor's `signal_id` per suspension §4) and `openarmature.suspension.metadata.*` (flattened descriptor metadata fields, OTel-attribute-compatible scalars per §3.4 value-type contract) with composition rules for detached trace mode (§4.4) by [proposal 0021](../../proposals/0021-graph-suspension.md)
   - §4 *Span hierarchy* gained a new §4.6 *Turn-level wrapper span (harness capability)* — the harness MAY open a turn-level wrapper span around `invoke()` when running inside a deployment runtime, with the invocation root span becoming its child. Wrapper is OPTIONAL (runtimes that already provide a transport-level parent span MAY skip it). Span name + attributes are harness-implementation-defined; turn-level attributes follow §5.6 (`openarmature.session_id` in sessioned mode) and §5.8 (suspension descriptor attributes on signal-resume turns). See the harness capability spec for the full contract by [proposal 0022](../../proposals/0022-harness-contract.md)
+  - §5.5.4 observer-level privacy flag renamed `disable_llm_payload` → `disable_provider_payload`; semantics broadened to cover payload from any provider call (LLM completion + embedding + rerank when it lands) rather than LLM-only — same default-conservative posture (default `True`); cross-references in §8 + graph-engine §6 updated. New §5.5.X *Embedding provider attributes* sub-subsection covering OTel mapping for `EmbeddingProvider.embed()` calls — span name `openarmature.embedding.complete`, Stable GenAI semconv attribute subset (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.response.id`, `gen_ai.usage.input_tokens`), OA-namespace `openarmature.embedding.*` attributes (`input_count`, `dimensions`, payload-gated `input.strings` + `request.extras`); the upstream `gen_ai.operation.name` attribute deferred per the stable-only adoption policy (operation discrimination via span name + provider). New §8.X *Embedding observation mapping* sub-subsection covering Langfuse mapping — embedding calls render as a dedicated `Embedding` observation type (created via the SDK's `asType: "embedding"`), NOT `Generation` with operation metadata; both `input` strings and `output` vectors are payload-bearing and gated by `disable_provider_payload` under the vec2text-aware privacy posture by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -678,7 +679,7 @@ following normative attribute keys; implementations MUST emit each on the spans 
 
 **Always-emit invariant.** `openarmature.implementation.name` and
 `openarmature.implementation.version` MUST be emitted on every invocation span regardless of
-the `disable_state_payload`, `disable_llm_payload`, or any other observer-level privacy knob.
+the `disable_state_payload`, `disable_provider_payload`, or any other observer-level privacy knob.
 These attributes describe the OA runtime itself — they are runtime-identity constants, not
 runtime data. The privacy-knob framing applies to runtime data (caller state, LLM messages,
 etc.), not to runtime identity. The pattern is parallel to `openarmature.graph.spec_version`
@@ -963,9 +964,15 @@ Implementations MUST support the following observer-level configuration flags (s
 ergonomics — constructor argument, builder method, etc. — are implementation-defined; flag names
 below are normative for cross-implementation consistency):
 
-- `disable_llm_payload: bool` — default `True`. When `True`, the §5.5.1 payload attributes
-  (`input.messages`, `output.content`, `request.extras`) are NOT emitted. When `False`, payload
-  attributes emit per §5.5.1, subject to the §5.5.5 truncation contract.
+- `disable_provider_payload: bool` — default `True`. When `True`, payload attributes from any
+  provider call are NOT emitted — the §5.5.1 LLM payload attributes (`input.messages`,
+  `output.content`, `request.extras`), the §5.5.X embedding payload attributes
+  (`embedding.input.strings`, `embedding.request.extras`), and the equivalent Langfuse payload
+  fields per §8. When `False`, payload attributes emit per the corresponding section, subject to
+  the §5.5.5 truncation contract for LLM payload and per the privacy posture documented in §8 for
+  Langfuse embedding observations. (Renamed from `disable_llm_payload` by proposal 0059; the
+  flag's scope broadened to cover payload from any provider operation rather than LLM-only. No
+  semantic change beyond the broadened scope; default-conservative posture preserved.)
 
 - `disable_genai_semconv: bool` — default `False`. When `True`, the §5.5.2 request-parameter
   attributes and the §5.5.3 response-attribute set are NOT emitted. When `False` (the default),
@@ -977,7 +984,7 @@ through §5.5.3 are emitted (they have no span to attach to).
 
 The three flags are independent. Typical configurations:
 
-| Configuration | `disable_llm_spans` | `disable_llm_payload` | `disable_genai_semconv` | Outcome |
+| Configuration | `disable_llm_spans` | `disable_provider_payload` | `disable_genai_semconv` | Outcome |
 |---|---|---|---|---|
 | Default (out of the box) | `False` | `True` | `False` | LLM span emits with OA + GenAI semconv attributes; no payload. |
 | Maximum visibility | `False` | `False` | `False` | LLM span emits with full payload and all attributes. |
@@ -1048,7 +1055,7 @@ where `<mt>` is the original `media_type` (preserved at the image-block level pe
 with the redacted variant. The placeholder preserves enough metadata for a reader to understand
 "an inline image of this type and approximate size was present" without inlining the bytes
 themselves. Implementations MUST NOT emit inline image bytes on the span under any
-configuration; this is a hard rule, not gated by `disable_llm_payload` or by the per-attribute
+configuration; this is a hard rule, not gated by `disable_provider_payload` or by the per-attribute
 cap.
 
 URL-form images are NOT redacted — the URL is a short string and is informative for trace
@@ -1079,7 +1086,7 @@ Implementations of §5.5.1 through §5.5.5 across languages (Python, TypeScript)
   `{type: "image", source: {type: "inline_redacted", byte_count}, media_type, detail?}` record —
   `media_type` at the image-block level per llm-provider §3.1.2, with `detail` preserved
   verbatim when present).
-- The default values: `disable_llm_payload = True`, `disable_genai_semconv = False`,
+- The default values: `disable_provider_payload = True`, `disable_genai_semconv = False`,
   `disable_llm_spans = False`.
 
 Per-language ergonomics (constructor argument naming, builder patterns, environment-variable
@@ -1102,11 +1109,11 @@ cross-cutting attributes (`openarmature.invocation_id`, `openarmature.node.name`
 structured form
 rather than as separate span attributes.
 
-The §5.5.4 `disable_llm_payload` opt-out flag continues to gate rendering of payload-bearing data
+The §5.5.4 `disable_provider_payload` opt-out flag continues to gate rendering of payload-bearing data
 (`openarmature.llm.input.messages`, `openarmature.llm.output.content`,
 `openarmature.llm.request.extras`) at the OTel observer's rendering boundary. The equivalent
 typed-event fields (`input_messages`, `output_content`, `request_extras`) are populated by the
-implementation unconditionally; observers respect their own `disable_llm_payload` flag on the
+implementation unconditionally; observers respect their own `disable_provider_payload` flag on the
 typed-event rendering path identically to the span attribute path.
 
 Observers consuming the typed event for backend-specific rendering (Langfuse generation per
@@ -1158,6 +1165,78 @@ With both `LlmCompletionEvent` and `LlmFailedEvent` defined, the impl-current se
 have spec-normative typed equivalents. The SHOULD-emit-both transition window's purpose is met
 across both outcome sides; implementations MAY conclude the transition once their backends filter
 both typed variants via type discrimination.
+
+#### 5.5.8 Embedding provider attributes
+
+OTel mapping for `EmbeddingProvider.embed()` calls per the retrieval-provider capability. Parallels
+the §5.5 *LLM provider attributes* block but covers the embedding operation. A new span emits per
+embedding call, parented under the calling node's span.
+
+**Span name.** `openarmature.embedding.complete` discriminates the operation type from the LLM
+completion span (`openarmature.llm.complete`) without requiring an explicit operation-name
+attribute.
+
+**Stable GenAI semconv attribute subset** (mapped where they apply directly to embedding):
+
+| Attribute | Source |
+|---|---|
+| `gen_ai.system` | The `EmbeddingProvider`'s configured provider identifier (e.g., `"openai"`, `"voyageai"`, `"cohere"`). |
+| `gen_ai.request.model` | The bound embedding model identifier. |
+| `gen_ai.response.model` | `EmbeddingResponse.model` (provider-echoed). |
+| `gen_ai.response.id` | `EmbeddingResponse.response_id` when present. |
+| `gen_ai.usage.input_tokens` | `EmbeddingResponse.usage.input_tokens`. |
+
+**OA-namespace attributes**:
+
+| Attribute | Type | Description |
+|---|---|---|
+| `openarmature.embedding.input_count` | int | The number of input strings the call was made with. |
+| `openarmature.embedding.dimensions` | int | The output vector dimensionality (equals the inner-vector length on `EmbeddingResponse.vectors`). |
+| `openarmature.embedding.input.strings` | string (JSON-encoded) | The input strings list. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract — parallel to `openarmature.llm.input.messages`. |
+| `openarmature.embedding.request.extras` | string (JSON-encoded) | The embedding runtime config's extras pass-through bag. Subject to `disable_provider_payload`. |
+
+**Stable-only upstream adoption — operation-name attribute deferred.** The upstream OTel GenAI
+semconv `gen_ai.operation.name` attribute (with `"embeddings"` as a documented well-known value)
+is at **Development** status as of v0.54.0 (verified at proposal draft time against the OTel GenAI
+spans semantic conventions). Per the `Stable-only upstream adoption` policy in `GOVERNANCE.md`
+(and tracked in `docs/compatibility.md`), OA does NOT normatively adopt this attribute. Operation
+discrimination is via the span name + provider; a follow-on proposal MAY add
+`gen_ai.operation.name = "embeddings"` to the attribute surface when the upstream attribute
+reaches **Stable** status, per the §5.5.3.1 / 0047 mirror pattern.
+
+**Opt-out flags.** The `disable_provider_payload` and `disable_genai_semconv` flags from §5.5.4
+apply analogously to embedding spans — `disable_provider_payload` gates the payload attributes
+(`openarmature.embedding.input.strings`, `openarmature.embedding.request.extras`);
+`disable_genai_semconv` gates the GenAI semconv attribute subset above.
+
+The §5.5.4 `disable_llm_spans` flag is **scoped to LLM completion spans only** despite the
+`_llm_` infix's continued accuracy on the LLM-completion path; the embedding span is NOT gated
+by `disable_llm_spans`. The asymmetry parallels the original LLM-only design and lacks a
+sibling-spans flag for the embedding path in v0.54.0. A future proposal MAY introduce a
+`disable_provider_spans` umbrella (or a per-operation flag family) covering embedding +
+forthcoming rerank; out of scope here per the privacy-flag-proliferation rejection in proposal
+0059 alternative 7.
+
+**Truncation.** The §5.5.5 truncation contract applies identically to the embedding payload
+attributes — 64 KiB default cap, UTF-8-boundary-safe algorithm, 256-byte minimum.
+
+#### 5.5.9 Typed embedding events
+
+The structured form of the embedding-span attribute surface as a typed observer event variant
+on the graph-engine §6 observer event union. Paralleling §5.5.7 *Typed LLM completion event*,
+two variants `EmbeddingEvent` (success) and `EmbeddingFailedEvent` (failure) are dispatched
+per `embed()` call — mutually exclusive on a given call, per the 0049 → 0058 success+failure
+pairing precedent.
+
+The typed events carry the structured field set defined in graph-engine §6.
+Observers consuming the typed events for backend-specific rendering (OTel embedding span
+enrichment per §5.5.8, Langfuse embedding observation rendering per §8, custom queryable
+observer accumulators per §9) filter via type discrimination
+(`isinstance(event, EmbeddingEvent)` / `isinstance(event, EmbeddingFailedEvent)`).
+
+The privacy posture mirrors §5.5.7's LLM-side typed events — `input_strings` and
+`request_extras` are populated by the implementation unconditionally on every typed event;
+observer-side gating at the rendering boundary honors `disable_provider_payload` per §5.5.4.
 
 ### 5.6 Cross-cutting attributes
 
@@ -1639,12 +1718,12 @@ collision per §3.4.)
 Langfuse-observer-level privacy knob and a three-lever decision tree.
 
 **`disable_state_payload: bool`** — Langfuse-observer-level opt-out for Trace-level `input` /
-`output` payload emission. Default ON, mirroring §5.5.4's `disable_llm_payload` privacy-safe
+`output` payload emission. Default ON, mirroring §5.5.4's `disable_provider_payload` privacy-safe
 posture. When ON, the observer does NOT serialize `initial_state` / final state directly onto
 `trace.input` / `trace.output`; the default-off minimal stub (below) applies unless a caller
 hook overrides. When OFF, the observer serializes `initial_state` → `trace.input` and final
 state → `trace.output`, subject to the existing payload-byte-cap truncation (§5.5.5). The two
-payload-privacy knobs (`disable_llm_payload` from §5.5.4 and the new `disable_state_payload`
+payload-privacy knobs (`disable_provider_payload` from §5.5.4 and the new `disable_state_payload`
 here) are independent: the former controls Generation-level input/output; the latter controls
 Trace-level input/output. Implementations MAY expose them as a single combined flag for
 convenience, but the spec defines them as two separate concerns so callers can opt one in
@@ -1819,6 +1898,54 @@ Generation observation for the group's LLM calls and any wrapping node/subgraph 
 carrying the group_name. Unlike the per-Generation prompt-identity fields above, this is an
 observation-level attribute and follows the §8.4.2 observation-level mapping pattern.
 
+#### 8.4.5 Embedding-specific mapping (sourced from embedding provider span attributes)
+
+`EmbeddingProvider.embed()` calls (per the retrieval-provider capability) map onto Langfuse's
+dedicated `Embedding` observation type — NOT `Generation` with an operation discriminator. The
+dedicated observation type carries embedding-specific semantics (`model`, `usageDetails.input`,
+`input` strings, `output` vectors) directly; Langfuse's cost-tracking machinery understands the
+`Embedding` type's `usageDetails` field natively. Implementations create the observation via the
+Langfuse SDK's `asType: "embedding"` parameter (or per-language idiomatic equivalent).
+
+The observation type is `Embedding` per Langfuse's data model (10 observation types currently:
+`Event`, `Span`, `Generation`, `Agent`, `Tool`, `Chain`, `Retriever`, `Evaluator`, `Embedding`,
+`Guardrail`).
+
+Field mappings:
+
+| Embedding observation field | Source |
+|---|---|
+| `embedding.model` | `EmbeddingResponse.model` (per retrieval-provider §4). |
+| `embedding.input` | The input strings list passed to `embed()`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), this field is NOT populated. |
+| `embedding.output` | `EmbeddingResponse.vectors` (the actual embedding vectors). Privacy-gated per `disable_provider_payload`. |
+| `embedding.usageDetails.input` | `EmbeddingResponse.usage.input_tokens`. |
+| `embedding.metadata.openarmature_input_count` | The length of `input_strings`. |
+| `embedding.metadata.openarmature_dimensions` | The output vector dimensionality. |
+| `embedding.metadata.openarmature_response_id` | `EmbeddingResponse.response_id` when present. |
+
+**Privacy posture for embedding observations.** Both `input` strings and `output` vectors are
+payload-bearing data on the same footing — both gated by `disable_provider_payload` (default
+`True` per §5.5.4). When the flag is `True`, the `Embedding` observation populates `model` +
+`usageDetails` + identity metadata only; both `input` and `output` are NOT populated. When
+`False`, both fields populate fully.
+
+Vectors are classified as payload-bearing because embedding-inversion research (e.g., the
+vec2text line of work, Morris et al., 2023) demonstrates that vectors MAY leak source-text
+information given the embedding model. The threat model for vectors is equivalent to the threat
+model for raw text from the spec's perspective; gating applies uniformly. RAG applications in
+particular have a corpus-leakage concern — the (text, vector) pairs accumulated in traces would
+let an attacker reconstruct the embedding index and query it offline. Default-suppression is the
+conservative posture.
+
+A future observability proposal MAY introduce a tiered preview mode (e.g., truncated `input`
+strings + first-N-dimensions vectors) for users wanting partial visibility without full payload
+exposure. Out of scope for the v0.54.0 mapping.
+
+**Trace-level cost rollup.** Langfuse's trace-level cost aggregation handles `Generation` +
+`Embedding` observations uniformly via the per-observation `usageDetails` field. No metadata
+discriminator is needed; the observation type itself discriminates. Costs from embedding calls
+roll into the same `trace.totalCost` aggregation as LLM completion costs.
+
 ### 8.5 Correlation ID realization
 
 The cross-backend correlation ID (§3) surfaces in Langfuse at two levels:
@@ -1863,12 +1990,12 @@ on the observer) at their discretion; the behavioral contract above is the minim
 ### 8.7 Generation rendering
 
 Generation observations render the LLM call's input/output content when the Langfuse observer's
-`disable_llm_payload` flag is `False`. The flag governs Langfuse-side emission only; it is
+`disable_provider_payload` flag is `False`. The flag governs Langfuse-side emission only; it is
 independent of the OTel observer's flag per §8.9. Both observers consume the same source data
 (per §5.5's definition of LLM-payload content) from the §6 LLM provider event, and each makes
 its own emission decision.
 
-The Langfuse observer MUST support its own `disable_llm_payload` flag independent of the OTel
+The Langfuse observer MUST support its own `disable_provider_payload` flag independent of the OTel
 observer's setting (per §8.9). When the flag is `False`, the observer:
 
 - Parses the §5.5.1 `openarmature.llm.input.messages` JSON string back to the native message-list
@@ -1899,7 +2026,7 @@ implementation upstream). The Langfuse observer:
 **Inline-image redaction.** The §5.5.5 inline-image redaction rule applies identically — inline
 image bytes never reach Langfuse, only the placeholder `{type: "image", source: {type:
 "inline_redacted", byte_count: N}, media_type, detail?}` record does. This is a hard rule,
-ungated by `disable_llm_payload`.
+ungated by `disable_provider_payload`.
 
 ### 8.8 Prompt linkage
 
@@ -1927,10 +2054,11 @@ Each observer's behavior is governed by its own configuration:
   observer (so OA doesn't duplicate the external library's spans) and leave it `False` on the
   Langfuse observer (so Generations still emit to Langfuse).
 
-- **`disable_llm_payload`** — each observer supports the flag independently. A user MAY emit full
+- **`disable_provider_payload`** — each observer supports the flag independently. A user MAY emit full
   payload to Langfuse (their canonical generation-rendering tool) while keeping OTel-side payload
   off (cost / size reasons). Defaults: `True` for OTel per §5.5.4, `True` for Langfuse for
-  symmetric privacy posture.
+  symmetric privacy posture. (Renamed from `disable_llm_payload` by proposal 0059; covers any
+  provider call's payload including embedding.)
 
 - **`disable_genai_semconv`** — only meaningful to the OTel observer per §5.5.4. The Langfuse
   observer does not emit GenAI semconv attributes (it uses Langfuse-native fields); the flag is

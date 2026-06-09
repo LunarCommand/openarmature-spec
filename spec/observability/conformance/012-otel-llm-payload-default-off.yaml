@@ -1,5 +1,5 @@
-# Default observer config (no disable_llm_payload override). Verifies the
-# §5.5.4 default of `disable_llm_payload = True` and `disable_genai_semconv
+# Default observer config (no disable_provider_payload override). Verifies the
+# §5.5.4 default of `disable_provider_payload = True` and `disable_genai_semconv
 # = False`: the LLM provider span carries the v0.7.0 baseline OA attributes
 # plus the §5.5.2 / §5.5.3 GenAI semconv attributes, and does NOT carry the
 # §5.5.1 payload attributes.

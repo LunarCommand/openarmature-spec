@@ -1,13 +1,13 @@
 # RuntimeConfig extras: a provider-specific pass-through field (repetition_penalty)
 # is supplied via RuntimeConfig's extra="allow" bag. Verifies §5.5.1
 # openarmature.llm.request.extras — emitted as a JSON-encoded object when
-# disable_llm_payload=False and the extras mapping is non-empty.
+# disable_provider_payload=False and the extras mapping is non-empty.
 
 cases:
   - name: extras_emitted
     description: |
       Single LLM call with RuntimeConfig carrying one provider-specific
-      extra (repetition_penalty: 1.05). disable_llm_payload=False on the
+      extra (repetition_penalty: 1.05). disable_provider_payload=False on the
       observer. The openarmature.llm.request.extras attribute carries a
       JSON-encoded object with the extras mapping.
     state:
@@ -37,7 +37,7 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
           usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
-    disable_llm_payload: false
+    disable_provider_payload: false
     expected:
       span_tree:
         - name: "openarmature.invocation"

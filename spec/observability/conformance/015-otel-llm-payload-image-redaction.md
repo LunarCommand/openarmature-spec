@@ -15,7 +15,7 @@ base64 bytes appear in the emitted attribute.
 **Cases:**
 
 1. `inline_image_redacted` — user message with one text block and one inline-image block
-   (`image/png`, ~4 KiB of synthesized base64 data). `disable_llm_payload = False`. The emitted
+   (`image/png`, ~4 KiB of synthesized base64 data). `disable_provider_payload = False`. The emitted
    `openarmature.llm.input.messages` parses to a message list where the image block has its
    `source` replaced with the redacted placeholder carrying `byte_count: 4096`, while
    `media_type` and `detail` are preserved at the image-block level.

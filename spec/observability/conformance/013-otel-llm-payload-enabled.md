@@ -1,6 +1,6 @@
 # 013 — LLM Payload Enabled
 
-Verifies §5.5.1 input/output payload attributes emit when `disable_llm_payload = False` on the
+Verifies §5.5.1 input/output payload attributes emit when `disable_provider_payload = False` on the
 observer. The `openarmature.llm.input.messages` attribute carries a JSON-encoded message list
 that parses to the §3 message structure originally sent to the provider; the
 `openarmature.llm.output.content` attribute carries the assistant content verbatim.
@@ -16,7 +16,7 @@ that parses to the §3 message structure originally sent to the provider; the
 
 **Cases:**
 
-1. `payload_enabled` — two-turn conversation (system + user). `disable_llm_payload = False`.
+1. `payload_enabled` — two-turn conversation (system + user). `disable_provider_payload = False`.
    Mock provider returns assistant content "hello back".
 
 **Harness extensions:**
@@ -36,7 +36,7 @@ that parses to the §3 message structure originally sent to the provider; the
 
 **What fails:**
 
-- The input.messages attribute is missing → payload gating logic ignores `disable_llm_payload`.
+- The input.messages attribute is missing → payload gating logic ignores `disable_provider_payload`.
 - The parsed JSON differs structurally from the expected message list (e.g., a message is
   dropped, role is wrong, content is reformatted).
 - `openarmature.llm.output.content` is re-serialized rather than verbatim (would surface if the

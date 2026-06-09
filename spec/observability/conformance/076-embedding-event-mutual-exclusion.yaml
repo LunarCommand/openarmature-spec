@@ -1,0 +1,85 @@
+# graph-engine §6 — EmbeddingEvent / EmbeddingFailedEvent mutual
+# exclusion. Verifies that a successful call emits exactly one
+# success event and zero failure events, and (symmetrically) a
+# failed call emits exactly one failure event and zero success
+# events — both within the same invocation.
+
+cases:
+  - name: successful_embed_emits_exactly_one_event_zero_failures
+    description: |
+      Single successful embed() call. Asserts exactly one
+      EmbeddingEvent and zero EmbeddingFailedEvent in the
+      observer's collected storage.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["hello"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3]}
+          usage:
+            prompt_tokens: 1
+            total_tokens: 1
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          event_counts:
+            - {event_type: EmbeddingEvent, count: 1}
+            - {event_type: EmbeddingFailedEvent, count: 0}
+      invariants:
+        success_emits_one_event_zero_failures: true
+
+  - name: failed_embed_emits_exactly_one_failure_zero_events
+    description: |
+      Single failed embed() call. Asserts exactly one
+      EmbeddingFailedEvent and zero EmbeddingEvent in the
+      observer's collected storage.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["hello"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: embed_node
+    expected:
+      observers:
+        collector:
+          event_counts:
+            - {event_type: EmbeddingFailedEvent, count: 1}
+            - {event_type: EmbeddingEvent, count: 0}
+      invariants:
+        failure_emits_one_event_zero_successes: true

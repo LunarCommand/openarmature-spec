@@ -1,0 +1,76 @@
+# graph-engine §6 + observability §5.5 — Typed EmbeddingEvent dispatch.
+# MUST fire on every successful EmbeddingProvider.embed() call,
+# carrying the identity / scoping / request-side field set plus
+# embedding-specific success-side fields (response_id,
+# response_model, usage, dimensions, input_count).
+#
+# Per-directory harness directives `calls_embed:` (node-level) and
+# `mock_embedding:` (suite-level) are defined for cross-directory
+# reuse in
+# `spec/retrieval-provider/conformance/001-embed-positive-control.yaml`'s
+# header comment block; observability fixtures 074-083 reuse the
+# same vocabulary unchanged. The shared vocabulary lives there
+# because retrieval-provider is the protocol's home capability;
+# observability's role is the cross-cutting mapping surface that
+# consumes it.
+
+cases:
+  - name: embedding_event_dispatched_with_populated_fields
+    description: |
+      Graph with one embedding-calling node. The mocked provider
+      returns a 2-vector / 3-dim response with usage. The harness
+      asserts an EmbeddingEvent is observed with fields matching
+      the response.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query one", "query two"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          id: emb-074-id
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3]}
+            - {object: embedding, index: 1, embedding: [0.4, 0.5, 0.6]}
+          usage:
+            prompt_tokens: 4
+            total_tokens: 4
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              provider: openai
+              model: text-embedding-test
+              response_model: text-embedding-test
+              response_id: emb-074-id
+              input_count: 2
+              dimensions: 3
+              usage:
+                input_tokens: 4
+              node_name: embed_node
+              namespace: [embed_node]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+              caller_invocation_metadata: null
+      invariants:
+        exactly_one_embedding_event_observed: true
+        event_typed_fields_match_provider_response: true
+        identity_scoping_fields_populated: true

@@ -1,0 +1,49 @@
+# graph-engine §6 — EmbeddingEvent convenience fields input_count
+# and dimensions are populated to match the input list length and
+# the inner-vector length from the response, respectively.
+
+cases:
+  - name: input_count_and_dimensions_populated_from_call
+    description: |
+      embed() called with 4 input strings; provider returns 4
+      vectors of dimension 5. The harness asserts the typed event
+      carries input_count=4 and dimensions=5.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["a", "b", "c", "d"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3, 0.4, 0.5]}
+            - {object: embedding, index: 1, embedding: [0.2, 0.3, 0.4, 0.5, 0.6]}
+            - {object: embedding, index: 2, embedding: [0.3, 0.4, 0.5, 0.6, 0.7]}
+            - {object: embedding, index: 3, embedding: [0.4, 0.5, 0.6, 0.7, 0.8]}
+          usage: {prompt_tokens: 4, total_tokens: 4}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              input_count: 4
+              dimensions: 5
+      invariants:
+        input_count_matches_input_list_length: true
+        dimensions_matches_inner_vector_length: true

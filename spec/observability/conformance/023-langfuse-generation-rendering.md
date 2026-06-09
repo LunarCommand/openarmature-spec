@@ -2,7 +2,7 @@
 
 Verifies §8.4.3 Generation-specific fields (model, modelParameters, usage, metadata.{system,
 response_model, response_id, finish_reason}) AND §8.7 input/output rendering when the Langfuse
-observer's `disable_llm_payload = False`. Includes a second case for §8.7's truncation-fallthrough
+observer's `disable_provider_payload = False`. Includes a second case for §8.7's truncation-fallthrough
 rule.
 
 **Spec sections exercised:**
@@ -59,7 +59,7 @@ rule.
 - `modelParameters` is missing temperature/max_tokens that were supplied on the request →
   §8.4.3 §5.5.2-by-inclusion rule not implemented.
 - `generation.input` is omitted in the rendering case → payload gating logic ignores the
-  observer's `disable_llm_payload = False`.
+  observer's `disable_provider_payload = False`.
 - `generation.input` is omitted in the truncated case → observer dropped on JSON parse failure
   instead of preserving the truncated string per §8.7.
 - The `modelParameters` set is hard-coded to only the four pre-0032 fields (temperature,

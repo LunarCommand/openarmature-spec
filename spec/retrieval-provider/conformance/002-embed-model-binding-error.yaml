@@ -1,0 +1,42 @@
+# retrieval-provider §3 + §5 — EmbeddingProvider model-binding error.
+# Verifies that an EmbeddingProvider instantiated with an unknown
+# embedding model identifier surfaces provider_invalid_model on
+# ready() per llm-provider §7.
+
+cases:
+  - name: embed_unknown_model_raises_provider_invalid_model
+    description: |
+      EmbeddingProvider instantiated with model identifier
+      "nonexistent-embedding-model". The bound provider's ready()
+      check surfaces provider_invalid_model — verified by issuing
+      embed() (which calls ready() implicitly per impl, or where
+      ready() is called explicitly first per the harness contract).
+      The §7 category exception MUST raise out of the call.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["hello"]
+          stores_response_in: embedding_response
+          model: nonexistent-embedding-model
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 404
+        body:
+          error:
+            message: "model 'nonexistent-embedding-model' not found"
+            type: invalid_request_error
+            code: model_not_found
+    expected_error:
+      category: provider_invalid_model
+      raised_from: embed_node
+    expected:
+      invariants:
+        exception_raised_out_of_embed_call: true

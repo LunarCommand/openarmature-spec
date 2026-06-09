@@ -1,0 +1,52 @@
+# retrieval-provider §3 — input order preservation.
+# Verifies that EmbeddingProvider preserves input order in the
+# response: the vector at output index i corresponds to input[i].
+# The mocked provider returns identifiable vectors keyed to the
+# input position; the harness asserts the output indices match.
+
+cases:
+  - name: embed_preserves_input_order_in_response
+    description: |
+      EmbeddingProvider called with 3 input strings. Mocked provider
+      returns 3 identifiable vectors — each vector's first dimension
+      encodes the input index it should correspond to (1.0 for index
+      0, 2.0 for index 1, 3.0 for index 2). The harness asserts the
+      response vectors land at output indices matching their encoded
+      input position.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["first", "second", "third"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [1.0, 0.0, 0.0]}
+            - {object: embedding, index: 1, embedding: [2.0, 0.0, 0.0]}
+            - {object: embedding, index: 2, embedding: [3.0, 0.0, 0.0]}
+          usage:
+            prompt_tokens: 3
+            total_tokens: 3
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [1.0, 0.0, 0.0]
+            - [2.0, 0.0, 0.0]
+            - [3.0, 0.0, 0.0]
+      invariants:
+        vector_at_index_zero_matches_first_input: true
+        vector_at_index_one_matches_second_input: true
+        vector_at_index_two_matches_third_input: true
