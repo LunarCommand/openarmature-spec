@@ -295,11 +295,11 @@ Same rules as 0058's `LlmCompletionEvent` / `LlmFailedEvent` pair:
 (RAG-pipeline indexing of user-supplied text). The privacy posture is identical to
 `LlmCompletionEvent`'s — observer-side gating at the rendering boundary per observability
 §5.5.4 (implementations populate the fields unconditionally; observers honor
-`disable_provider_payload`). The `disable_provider_payload` flag's semantics extend cover all
+`disable_provider_payload`). The `disable_provider_payload` flag's semantics extend to cover all
 LLM-adjacent provider operations (LLM completion + embedding + rerank when it ships)
 rather than proliferating per-operation flags.
 
-### Rename observability §5.5.4 `disable_provider_payload` → `disable_provider_payload`
+### Rename observability §5.5.4 `disable_llm_payload` → `disable_provider_payload`
 
 The observer-level flag defined at observability §5.5.4 currently gates LLM payload
 data — `input.messages`, `output.content`, `request.extras` per §5.5.1 — from being
@@ -307,7 +307,7 @@ populated on OTel spans and Langfuse `Generation` observations. With the additio
 embedding (this proposal) and forthcoming rerank as provider operations whose payload
 needs the same gating, the flag's `_llm_` infix is too narrow.
 
-Rename the flag from `disable_provider_payload` to `disable_provider_payload`. Semantics
+Rename the flag from `disable_llm_payload` to `disable_provider_payload`. Semantics
 broaden to cover payload data from any provider call (LLM completion + embedding +
 rerank when it lands), under a single observer-level flag with default `True`
 (suppressed by default) — same default-conservative posture as today. No semantic
@@ -321,7 +321,7 @@ Spec text edits at Accept time:
 - observability §8 / §8.4 references update to the new name
 - graph-engine §6's `LlmCompletionEvent` + `LlmFailedEvent` privacy paragraphs update
   references
-- Existing fixtures using the flag rename in their YAML (the OTel `disable_provider_payload`
+- Existing fixtures using the flag rename in their YAML (the OTel `disable_llm_payload`
   toggle is exercised by fixtures 013 + 018; both swap the key)
 
 Pre-1.0 SemVer convention permits the hard-swap rename in a MINOR bump; same precedent
