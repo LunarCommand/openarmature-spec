@@ -1139,6 +1139,26 @@ into the typed event SHOULD stop subscribing to the sentinel NodeEvent for LLM c
 two-variant emission is for impl-level transition consumption, not parallel consumption by the
 same backend.
 
+**Typed LLM failure event.** Implementations MUST emit the `LlmFailedEvent` typed variant (per
+graph-engine §6) on every LLM call failure that raises one of the llm-provider §7 error
+categories. The typed event carries the same identity / scoping / request-side field surface
+`LlmCompletionEvent` carries, plus the failure-specific `error_category` / `error_type` /
+`error_message` fields sourced from the raised exception. Response-side fields (`response_id`,
+`response_model`, `usage`, `output_content`, `finish_reason`) are absent from the failure variant
+— no response was received.
+
+Observers consuming the typed event for backend-specific rendering (Langfuse generation error per
+§8.7, OTel span error status per §5.5, custom queryable observer accumulators per §9) MAY filter
+via type discrimination (`isinstance(event, LlmFailedEvent)` or per-language idiomatic equivalent).
+The success and failure variants are mutually exclusive on a given LLM call; observers needing
+both outcome sides handle them as two separate type-discrimination branches.
+
+With both `LlmCompletionEvent` and `LlmFailedEvent` defined, the impl-current sentinel-namespace
+`NodeEvent` convention for LLM observability can retire fully — success and failure paths both
+have spec-normative typed equivalents. The SHOULD-emit-both transition window's purpose is met
+across both outcome sides; implementations MAY conclude the transition once their backends filter
+both typed variants via type discrimination.
+
 ### 5.6 Cross-cutting attributes
 
 These attributes appear on EVERY span emitted during an invocation, regardless of span type

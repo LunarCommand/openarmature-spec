@@ -1,0 +1,62 @@
+# graph-engine §6 LlmFailedEvent dispatch on provider_unavailable.
+# Verifies proposal 0058's dispatch contract: the typed event MUST
+# fire on the observer delivery queue when provider.complete()
+# raises a §7 category exception, AND the exception MUST still
+# raise out of the call (exception-flow contract preserved).
+
+cases:
+  - name: llm_failure_event_dispatched_on_provider_unavailable
+    description: |
+      Sessioned graph with one LLM-calling node. Mocked provider
+      raises provider_unavailable. The harness asserts:
+      - exactly one LlmFailedEvent is observed
+      - exactly zero LlmCompletionEvent observed (mutual-exclusion)
+      - the exception propagates out of provider.complete()
+      - the typed event carries error_category="provider_unavailable"
+        plus the mirrored identity / scoping / request-side fields.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "summarize"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              error_category: provider_unavailable
+              node_name: ask
+              namespace: [ask]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+              caller_invocation_metadata: null
+          event_count:
+            event_type: LlmCompletionEvent
+            count: 0
+      invariants:
+        exactly_one_llm_failed_event_observed: true
+        zero_llm_completion_events_on_failed_call: true
+        exception_propagates_alongside_typed_event: true

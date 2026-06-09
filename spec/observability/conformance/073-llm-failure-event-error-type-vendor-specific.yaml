@@ -1,0 +1,130 @@
+# graph-engine §6 LlmFailedEvent.error_type — OPTIONAL impl-level /
+# vendor-specific error type or code. Spec text describes two
+# acceptable styles: a vendor error code (e.g., "rate_limit_exceeded")
+# and an upstream exception class name (e.g., "RateLimitError").
+# Either style satisfies the field contract; null is valid when no
+# impl-side type is available.
+
+cases:
+  - name: error_type_populated_with_vendor_code_style
+    description: |
+      Mocked provider raises provider_rate_limit with a vendor error
+      code surfaced as error_type ("rate_limit_exceeded"). Typed
+      event carries both the normative error_category and the
+      vendor-specific error_type.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 429
+        body:
+          error:
+            type: rate_limit_exceeded
+            message: "rate limit exceeded; retry after 60s"
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_rate_limit
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: provider_rate_limit
+              error_type: rate_limit_exceeded
+
+  - name: error_type_populated_with_exception_class_name_style
+    description: |
+      Mocked provider raises provider_rate_limit but the impl surfaces
+      error_type as the upstream exception class name
+      ("RateLimitError"). The field accepts either style — vendor code
+      or exception class — per the spec text.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 429
+        body:
+          error:
+            type: RateLimitError
+            message: "rate limit exceeded"
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_rate_limit
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: provider_rate_limit
+              error_type: RateLimitError
+
+  - name: error_type_null_when_no_impl_side_type_available
+    description: |
+      Provider raises a §7 category exception with no impl-side type
+      to surface. The typed event carries error_category populated
+      (always required) and error_type=null. Spec text mandates
+      error_type is OPTIONAL — null is valid when no vendor or
+      class-level detail is available.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 503
+        body:
+          # No `error.type` field — the impl surfaces error_type=null.
+          error: {message: "service unavailable"}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: provider_unavailable
+              error_type: null

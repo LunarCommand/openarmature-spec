@@ -1,0 +1,72 @@
+# graph-engine §6 LlmFailedEvent.call_id — each call gets its own
+# fresh identifier, distinct from any sibling LlmCompletionEvent's
+# call_id (same per-call slot contract as on LlmCompletionEvent).
+# Verifies proposal 0058's call_id contract by sequencing one
+# successful call and one failed call in the same invocation.
+#
+# Per-suite directive (per conformance-adapter §3.2):
+# `event_counts: [{event_type, count}, ...]` — list form of the
+# existing scalar `event_count` directive (per fixture 067) for
+# fixtures asserting on multiple event-type counts in the same
+# observer block. Adapters MUST verify each item in the list
+# against the named event type's count in the observer's
+# collected storage.
+
+cases:
+  - name: call_id_distinct_across_success_and_failure_calls
+    description: |
+      Graph chains two LLM-calling nodes. First call succeeds and
+      emits LlmCompletionEvent; second call fails (provider_unavailable)
+      and emits LlmFailedEvent. The two events MUST carry distinct
+      non-null call_id values — each call gets its own freshly minted
+      identifier per the always-present contract.
+    state:
+      fields:
+        a:
+          type: string
+          default: ""
+        b:
+          type: string
+          default: ""
+    entry: call1
+    nodes:
+      call1:
+        calls_llm:
+          messages: [{role: user, content: "first"}]
+          stores_response_in: a
+      call2:
+        calls_llm:
+          messages: [{role: user, content: "second"}]
+          stores_response_in: b
+    edges:
+      - {from: call1, to: call2}
+      - {from: call2, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-071a
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2}
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: call2
+    expected:
+      observers:
+        collector:
+          event_counts:
+            - {event_type: LlmCompletionEvent, count: 1}
+            - {event_type: LlmFailedEvent, count: 1}
+      invariants:
+        completion_event_call_id_present_and_non_empty: true
+        failed_event_call_id_present_and_non_empty: true
+        completion_and_failed_event_call_ids_distinct: true

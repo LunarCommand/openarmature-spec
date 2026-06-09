@@ -782,6 +782,68 @@ redaction rule before the field is populated, identically to how the observabili
 `openarmature.llm.input.messages` attribute treats inline images. The hard-rule prohibition on
 emitting inline image bytes applies to the typed event field identically.
 
+**Typed LLM failure event.** The observer delivery queue also carries a typed `LlmFailedEvent`
+on every LLM provider call that raises one of the llm-provider §7 error categories. A second
+spec-normatively-typed event variant on the observer event union, alongside `LlmCompletionEvent` —
+observers filter via type discrimination (`isinstance(event, LlmFailedEvent)` or per-language
+idiomatic equivalent) rather than via a sentinel-namespace string match. The class name
+`LlmFailedEvent` is normative as an identifier shape; implementations MAY use a per-language
+idiomatic name provided the field set + dispatch contract are preserved.
+
+The event mirrors `LlmCompletionEvent`'s identity / scoping / request-side field set 1:1, carries
+failure-specific fields in place of the success-only response-side fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `invocation_id` | string | The outer invocation's identifier, per observability §5.1. |
+| `correlation_id` | string \| null | Cross-backend correlation ID, per observability §3.1. |
+| `node_name` | string | The user-defined node that issued the call. |
+| `namespace` | sequence of strings | The calling node's namespace, per the *Node event shape* above. |
+| `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
+| `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling fan-out instances. |
+| `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11, with the resolved `branch_names` per proposal 0044 governing the value space). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling parallel branches. |
+| `provider` | string | The LLM provider identifier (matches `gen_ai.system` per observability §5.5.3). |
+| `model` | string | The model identifier the request was made against (matches `gen_ai.request.model` / `openarmature.llm.model` per observability §5.5 / §5.5.3). |
+| `latency_ms` | float \| null | Wall-clock latency from `provider.complete()` entry to the point the failure was raised, in milliseconds. May be null when latency is not measured. Per-attempt under call-level retry. Provider-reported latency rarely applies on failure (no full response received), but MAY be used when the provider surfaces partial timing on error responses (e.g., a `Retry-After` header on a rate-limit response); implementations document which source is in use. |
+| `caller_invocation_metadata` | mapping \| null | OPTIONAL field — same opt-in semantics as on `LlmCompletionEvent` (per observability §3.4). Default absent / null. |
+| `input_messages` | list of message records | The §3 message list of llm-provider that the call was made with, in the typed-event-native form. Populated unconditionally on every typed event; the empty-history case is represented as an empty list, not null. Inline image bytes follow the observability §5.5.5 redaction rule before population. Same observer-side privacy-gating posture as the equivalent field on `LlmCompletionEvent`. |
+| `request_params` | mapping | The observability §5.5.2 GenAI request-parameter family. Keys are the GenAI semconv attribute names without the `gen_ai.request.` prefix. Absence-is-meaningful semantics per the equivalent field on `LlmCompletionEvent`. Empty mapping when no observability §5.5.2 parameters were supplied. |
+| `request_extras` | mapping | The `RuntimeConfig` extras pass-through bag per llm-provider §6. Same shape and privacy posture as on `LlmCompletionEvent`. Empty mapping when no extras were supplied. |
+| `active_prompt` | record \| null | A snapshot of the active `Prompt` identity at LLM-call time, sourced from the implementation's prompt-context binding mechanism. Same fields and nullability as on `LlmCompletionEvent`. |
+| `active_prompt_group` | record \| null | A snapshot of the active `PromptGroup` identity at LLM-call time. Same fields and nullability as on `LlmCompletionEvent`. |
+| `call_id` | string | A per-call disambiguator minted by the implementation. **Always present** (never null); freshly minted per `provider.complete()` call. Same contract as on `LlmCompletionEvent` — a failed call gets its own `call_id`, distinct from any retry-attempt sibling. |
+| `error_category` | string | The llm-provider §7 normative error category the provider call raised. One of `provider_authentication`, `provider_unavailable`, `provider_invalid_model`, `provider_model_not_loaded`, `provider_rate_limit`, `provider_invalid_response`, `provider_invalid_request`, `provider_unsupported_content_block`, `structured_output_invalid` per the §7 enumeration; new categories added by future llm-provider proposals extend the enum naturally. Always present. |
+| `error_type` | string \| null | OPTIONAL impl-level / vendor-specific error type or code (e.g., the upstream exception class name, or a vendor error code like OpenAI's `rate_limit_exceeded` before normalization to `provider_rate_limit`). Provides per-error-source detail beyond the normative category. Null when no impl-side type is available. |
+| `error_message` | string | The human-readable error message from the raised exception. Always present (the empty string when the exception carried no message). |
+
+The event MUST be dispatched on the observer delivery queue at the point of LLM call failure (after
+the adapter catches the provider exception and before the call re-raises to the caller). Delivery
+semantics follow the *Event delivery* rules above — strict-serial across the invocation,
+async-delivered concurrently with graph execution, not blocking the engine's execution loop.
+
+The event is dispatched ONLY for LLM call failures that raise one of the llm-provider §7 error
+categories above. Successful completions emit `LlmCompletionEvent` per the contract above; the two
+variants are mutually exclusive on a given `provider.complete()` call. Implementations MUST NOT
+emit both `LlmCompletionEvent` and `LlmFailedEvent` for the same call.
+
+**Provider exception-flow contract preserved.** The §7 error category exception still raises out of
+`provider.complete()` per llm-provider §7; the typed event is dispatched alongside the exception,
+not in place of it. Callers handling exceptions see the exception path unchanged; observers
+consuming typed events see the failure event on the observer delivery queue. The two surfaces
+compose without conflict.
+
+Like the other typed event variants, `LlmFailedEvent` carries no `phase` discriminator and is NOT
+subject to the `phases` subscription filter. Observers filter via type discrimination
+(`isinstance` or per-language idiomatic equivalent).
+
+The privacy posture for `input_messages` / `request_extras` is identical to
+`LlmCompletionEvent`'s — observer-side gating at the rendering boundary per observability §5.5.4
+(implementations populate the fields unconditionally; observers honor `disable_llm_payload`).
+Inline image bytes in `input_messages` MUST be redacted per the observability §5.5.5 inline-image
+redaction rule before population. Custom queryable observers (per observability §9) consuming the
+failure variant are responsible for their own redaction posture, identical to the
+`LlmCompletionEvent` posture.
+
 ## 7. Out of scope
 
 Not covered by this specification; deferred to follow-on capabilities or proposals:
