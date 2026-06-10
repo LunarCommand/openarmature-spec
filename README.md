@@ -90,7 +90,9 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 Proposals currently in flight. Status is Draft; contracts may change before
 they are Accepted.
 
-_No Draft proposals currently in flight._
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0060](proposals/0060-retrieval-provider-rerank.md) | Draft | spec/retrieval-provider/spec.md (extends — adds §5 / §6 RerankProvider + RerankResponse sections, renumbers existing §5–§8 to §7–§10); spec/graph-engine/spec.md (§6 typed `RerankEvent` + `RerankFailedEvent`); spec/observability/spec.md (§5.5 OTel rerank attributes, §8.4 Langfuse `Retriever` observation mapping) | Second protocol surface on the retrieval-provider capability (sibling to embedding from proposal 0059). `RerankProvider` takes a query + documents list and returns documents sorted by query-relevance with provider-specific scores; paired typed events `RerankEvent` + `RerankFailedEvent` follow the 0049 → 0058 → 0059 success+failure pairing precedent. OTel mapping uses OA-namespace attributes only (no GenAI semconv coverage upstream for rerank as of v0.54.0); Langfuse mapping proposes the dedicated `Retriever` observation type, verification-required at Accept against current Langfuse docs (fallback to generic `Span`). Privacy posture inherits the cross-spec `disable_provider_payload` flag from proposal 0059 — no further rename needed. |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
