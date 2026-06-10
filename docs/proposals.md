@@ -68,6 +68,7 @@ lifecycle and the proposal template.
 | [0059](proposals/0059-retrieval-provider-embedding.md) | Retrieval-provider capability (embedding protocol)        | retrieval-provider  | Accepted | Pending         | —          |
 | [0060](proposals/0060-retrieval-provider-rerank.md) | Retrieval-provider rerank protocol                        | retrieval-provider  | Draft    | —               | —          |
 | [0061](proposals/0061-detached-trace-invocation-span.md) | Detached-trace invocation span                            | observability       | Draft    | —               | —          |
+| [0062](proposals/0062-llm-completion-streaming.md) | LLM completion streaming                                  | llm-provider        | Draft    | —               | —          |
 
 Click any column header to sort.
 
