@@ -265,10 +265,9 @@ response-side clause.
   exposes 10 observation types: `Event`, `Span`, `Generation`, `Agent`,
   `Tool`, `Chain`, `Retriever`, `Evaluator`, `Embedding`, `Guardrail`.
   The existing `spec/observability/spec.md` §8 mapping uses `Trace`,
-  `Generation`, `Span`, `Event`; proposal 0059 adds `Embedding`; the
-  forthcoming retrieval-provider rerank proposal will add `Retriever`.
-  The other four types (`Agent`, `Tool`, `Chain`, `Evaluator`,
-  `Guardrail`) are unmapped.
+  `Generation`, `Span`, `Event`; proposal 0059 adds `Embedding`;
+  proposal 0060 (Draft) adds `Retriever`. The other five types
+  (`Agent`, `Tool`, `Chain`, `Evaluator`, `Guardrail`) are unmapped.
 
   Worth a small dedicated proposal to audit each unmapped type and
   decide: is there a natural OA construct that should map onto this

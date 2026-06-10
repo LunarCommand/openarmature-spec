@@ -53,7 +53,7 @@ lifecycle and the proposal template.
 | [0044](proposals/0044-parallel-branches-dispatch-span.md) | Parallel-branches dispatch span synthesis | graph-engine  | Accepted | Shipped (0.11.0)| —          |
 | [0045](proposals/0045-observability-nested-lineage-augmentation.md) | Nested-lineage augmentation containment scope | observability | Accepted | Shipped (0.11.0)| —          |
 | [0046](proposals/0046-prompt-management-multi-message-rendering.md) | Multi-message / chat prompt rendering | prompt-management | Accepted | Shipped (0.11.0)| —          |
-| [0047](proposals/0047-implicit-prefix-cache-wire-stability.md) | Implicit prefix-cache wire-byte stability | llm-provider | Accepted | Pending         | —          |
+| [0047](proposals/0047-implicit-prefix-cache-wire-stability.md) | Implicit prefix-cache wire-byte stability | llm-provider | Accepted | Shipped (0.13.0)| —          |
 | [0048](proposals/0048-read-symmetric-invocation-metadata-queryable-observer.md) | Read-symmetric invocation metadata + queryable observer pattern | observability | Accepted | Shipped (0.12.0)| —          |
 | [0049](proposals/0049-typed-llm-completion-event.md) | Typed LLM completion event | observability | Accepted | Shipped (0.13.0)| —          |
 | [0050](proposals/0050-retry-and-degradation-primitives.md) | Retry & degradation primitives (failure-isolation middleware + call-level retry) | pipeline-utilities | Accepted | Pending         | —          |
@@ -66,6 +66,7 @@ lifecycle and the proposal template.
 | [0057](proposals/0057-llm-completion-event-field-set-extension.md) | LlmCompletionEvent field-set extension | graph-engine | Accepted | Shipped (0.13.0)| —          |
 | [0058](proposals/0058-typed-llm-failure-event.md) | Typed LLM failure event                                  | graph-engine        | Accepted | Shipped (0.13.0)| —          |
 | [0059](proposals/0059-retrieval-provider-embedding.md) | Retrieval-provider capability (embedding protocol)        | retrieval-provider  | Accepted | Pending         | —          |
+| [0060](proposals/0060-retrieval-provider-rerank.md) | Retrieval-provider rerank protocol                        | retrieval-provider  | Draft    | —               | —          |
 
 Click any column header to sort.
 
