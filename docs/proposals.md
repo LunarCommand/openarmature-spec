@@ -67,6 +67,7 @@ lifecycle and the proposal template.
 | [0058](proposals/0058-typed-llm-failure-event.md) | Typed LLM failure event                                  | graph-engine        | Accepted | Shipped (0.13.0)| —          |
 | [0059](proposals/0059-retrieval-provider-embedding.md) | Retrieval-provider capability (embedding protocol)        | retrieval-provider  | Accepted | Pending         | —          |
 | [0060](proposals/0060-retrieval-provider-rerank.md) | Retrieval-provider rerank protocol                        | retrieval-provider  | Draft    | —               | —          |
+| [0061](proposals/0061-detached-trace-invocation-span.md) | Detached-trace invocation span                            | observability       | Draft    | —               | —          |
 
 Click any column header to sort.
 
