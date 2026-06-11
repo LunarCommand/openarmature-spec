@@ -259,26 +259,48 @@ response-side clause.
 
 ### Cross-cutting — Langfuse observation-type coverage
 
-- **§8 currently maps onto a narrow subset of Langfuse's observation
-  types.** [candidate-for-new-proposal] — surfaced during proposal 0059
-  drafting via verification against current Langfuse docs. Langfuse
-  exposes 10 observation types: `Event`, `Span`, `Generation`, `Agent`,
-  `Tool`, `Chain`, `Retriever`, `Evaluator`, `Embedding`, `Guardrail`.
-  The existing `spec/observability/spec.md` §8 mapping uses `Trace`,
+- **§8 maps onto a subset of Langfuse's observation types; the
+  remaining types are each gated on an OA construct that doesn't yet
+  exist.** [still-relevant] — surfaced during proposal 0059 drafting via
+  verification against current Langfuse docs. Langfuse exposes 10
+  observation types: `Event`, `Span`, `Generation`, `Agent`, `Tool`,
+  `Chain`, `Retriever`, `Evaluator`, `Embedding`, `Guardrail`. The
+  existing `spec/observability/spec.md` §8 mapping uses `Trace`,
   `Generation`, `Span`, `Event`; proposal 0059 adds `Embedding`;
-  proposal 0060 (Draft) adds `Retriever`. The other five types
+  proposal 0060 (Draft) adds `Retriever`. The other five
   (`Agent`, `Tool`, `Chain`, `Evaluator`, `Guardrail`) are unmapped.
 
-  Worth a small dedicated proposal to audit each unmapped type and
-  decide: is there a natural OA construct that should map onto this
-  Langfuse type, or is the type genuinely orthogonal to OA's surface?
-  Likely candidates: `LlmCompletionEvent.tool_calls` → `Tool`
-  observations (today: metadata on the `Generation`); multi-step
-  graph subtrees → `Chain` observations (today: nested `Span`
-  observations); harness-chat sessions → `Agent` observations
-  (today: nested spans). `Evaluator` and `Guardrail` likely need
-  new OA capabilities to back them and are out of scope until those
-  capabilities surface.
+  **"Full coverage" is not a single mapping proposal.** The structural
+  reason: OA's observability types its spans by *execution role*
+  (invocation / node / subgraph / fan-out / LLM / embedding / rerank),
+  while these five Langfuse types are typed by *application semantics*
+  (this is an agent step / a tool call / a guardrail). OA has no
+  semantic-role layer, so each unmapped type needs an OA construct that
+  doesn't exist — it can't be conjured by a Langfuse mapping alone. Per-type
+  verdict (after verifying each type's Langfuse semantics against current docs):
+
+  - **Tool** ("a tool call, e.g. to a weather API") — **addressed by
+    proposal 0063 (tool-execution observability, Draft).** 0063 adds the
+    `ToolCallEvent` / `ToolCallFailedEvent` typed variants (graph-engine
+    §6) + a node-body instrumentation scope, and maps tool execution onto
+    Langfuse's dedicated `Tool` observation type. OA supplies the
+    observability primitive; the tool-loop itself stays a user-authored
+    graph (orchestration is not an OA primitive). Closes the `Tool`-type
+    gap on 0063's acceptance.
+  - **Evaluator** ("assess relevance/correctness/helpfulness") — needs
+    an OA **evaluation capability** that doesn't exist. Out of scope until
+    such a capability is proposed on its own merits (its Langfuse mapping
+    rides on it).
+  - **Guardrail** ("protects against malicious content or jailbreaks") —
+    needs an OA **guardrail capability** that doesn't exist. Same posture
+    as Evaluator.
+  - **Agent / Chain** — **declined.** OA's structural span typing is
+    deliberate; an OA agent *is* a graph (already `Trace` + spans) and an
+    OA subgraph *is* a `Span`. Mapping these semantic-role types would
+    require a user-facing annotation surface ("mark this subgraph as an
+    agent / chain") that OA does not have and does not want. The dedicated
+    Langfuse types add no semantic precision over the existing `Trace` /
+    `Span` mapping for OA's model.
 
 ## Forward-looking provider capabilities
 

@@ -69,6 +69,7 @@ lifecycle and the proposal template.
 | [0060](proposals/0060-retrieval-provider-rerank.md) | Retrieval-provider rerank protocol                        | retrieval-provider  | Draft    | —               | —          |
 | [0061](proposals/0061-detached-trace-invocation-span.md) | Detached-trace invocation span                            | observability       | Draft    | —               | —          |
 | [0062](proposals/0062-llm-completion-streaming.md) | LLM completion streaming                                  | llm-provider        | Draft    | —               | —          |
+| [0063](proposals/0063-tool-execution-observability.md) | Tool-execution observability                              | graph-engine        | Draft    | —               | —          |
 
 Click any column header to sort.
 
