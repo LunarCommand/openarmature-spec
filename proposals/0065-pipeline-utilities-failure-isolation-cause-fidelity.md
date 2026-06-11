@@ -1,4 +1,4 @@
-# 0065: Pipeline-utilities — FailureIsolatedEvent cause-fidelity at non-node wrapping sites
+# 0065: Pipeline Utilities — Failure-Isolation Event Cause-Fidelity at Non-Node Wrapping Sites
 
 - **Status:** Draft
 - **Author:** Chris Colinsky
