@@ -200,7 +200,7 @@ span-name convention migrates per the §5.5.3.1 / 0047 mirror pattern.
 | `openarmature.tool.name` | string | The tool name. Mirrors `gen_ai.tool.name`. |
 | `openarmature.tool.call.id` | string | The `tool_call_id` (model-request linkage) when present; omitted otherwise. Mirrors `gen_ai.tool.call.id`. |
 | `openarmature.tool.call.arguments` | string (JSON-encoded) | The tool arguments. Mirrors `gen_ai.tool.call.arguments`. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract. |
-| `openarmature.tool.call.result` | string (JSON-encoded or raw) | The tool result. Mirrors `gen_ai.tool.call.result`. Subject to `disable_provider_payload`. |
+| `openarmature.tool.call.result` | string (JSON-encoded) | The tool result. Mirrors `gen_ai.tool.call.result`. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract. |
 | `error.type` | string | On failure only — the exception type. Uses the **standard OTel `error.type`** attribute (not an OA-namespace name) since OTel models span errors with `error.type` generally, not via a `gen_ai.tool.*` attribute. Span status is `ERROR` (§4.2) with an OTel exception event carrying the `error_message`. |
 
 **Stable-only upstream adoption — mirror now, adopt at Stable.** The upstream OTel GenAI
