@@ -14,6 +14,13 @@ on:
       - "scripts/validate_markdown_links.py"
       - "scripts/regenerate_proposals_impl_tracking.py"
       - ".github/workflows/validate-markdown.yaml"
+  # Weekly run on main. The push/PR triggers above only fire on spec-repo
+  # changes, but the impl-tracking columns regenerate from the live
+  # openarmature-python conformance.toml — so a python release can drift them
+  # with no spec-repo commit, leaving main green-but-stale until an unrelated
+  # PR trips --check. This scheduled run surfaces that drift proactively.
+  schedule:
+    - cron: "0 12 * * 1"
 
 jobs:
   validate:
