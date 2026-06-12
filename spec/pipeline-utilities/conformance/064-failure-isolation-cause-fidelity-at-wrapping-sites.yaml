@@ -1,0 +1,199 @@
+# §6.3 cause fidelity at carrier-wrapper sites (proposal 0065). When
+# FailureIsolationMiddleware runs at a non-node placement, the engine has
+# already wrapped the originating error as a graph-engine §4 node_exception
+# before the isolation middleware catches it. caught_exception.category MUST
+# resolve THROUGH that carrier wrapper to the originating cause — it MUST NOT
+# report the masking node_exception.
+#
+# The category assertion is the MUST (0065's core). The wrapped-instance/
+# branch lineage and message coherence are SHOULDs (best-effort; the lineage
+# may reflect the wrapping node), so they are not strictly asserted here — see
+# the companion .md. Node-level placement (already faithful) is covered by
+# fixture 061.
+#
+# Fixture conventions: this is the first fixture asserting a failure-isolation
+# event from a non-node placement, so it establishes the adapter contract for
+# surfacing that event inside a fan-out instance / branch. Each case uses a
+# single unit (items: [1] / one branch) so exactly one event fires, asserted via
+# the §6.3 `expected_failure_isolation_event` shape (per fixture 061). The
+# `flaky` failure_sequence mock follows fixture 036's branch+retry precedent; the
+# single-instance fan-out avoids the multi-instance sequence-sharing that fixture
+# 021's `flaky_instance_only` mock addresses.
+
+subgraphs:
+  flaky_unit:
+    state:
+      fields:
+        input:
+          type: int
+          default: 0
+        out:
+          type: string
+          default: ""
+    entry: work
+    nodes:
+      work:
+        flaky:
+          # Categorized transient error on every attempt. The engine wraps each
+          # raise as a §4 node_exception whose __cause__ carries this category.
+          failure_sequence:
+            - {transient: true, category: provider_unavailable, message: "provider down"}
+            - {transient: true, category: provider_unavailable, message: "provider down"}
+    edges:
+      - {from: work, to: END}
+
+  uncategorized_unit:
+    state:
+      fields:
+        input:
+          type: int
+          default: 0
+        out:
+          type: string
+          default: ""
+    entry: work
+    nodes:
+      work:
+        flaky:
+          # Originating cause carries NO category (a bare exception).
+          failure_sequence:
+            - {transient: false, category: null, message: "boom"}
+    edges:
+      - {from: work, to: END}
+
+cases:
+  # ---- Case 1: §9.7 instance middleware ----
+  - name: instance_site_resolves_to_originating_category
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [1]
+        results:
+          type: list<string>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: flaky_unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          # Outer-to-inner: FailureIsolation wraps Retry (§6.3).
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update: {out: "(degraded)"}
+              event_name: "unit_isolated"
+            - type: retry
+              max_attempts: 2
+              backoff: {type: deterministic, seconds: 0}
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      # Retry exhausts (2 attempts, both provider_unavailable); FailureIsolation
+      # catches the instance's node_exception and degrades; the batch completes.
+      final_state:
+        items: [1]
+        results: ["(degraded)"]
+      execution_order: [process]
+      # THE 0065 ASSERTION (MUST): category is the originating
+      # provider_unavailable, resolved through the §4 node_exception carrier
+      # wrapper — NOT the masking node_exception.
+      expected_failure_isolation_event:
+        event_name: "unit_isolated"
+        post_state: {out: "(degraded)"}
+        caught_exception:
+          category: provider_unavailable
+      invariants:
+        category_resolves_through_node_exception_wrapper: true
+        category_not_masked_as_node_exception: true
+
+  # ---- Case 2: §11.7 branch middleware ----
+  - name: branch_site_resolves_to_originating_category
+    state:
+      fields:
+        result:
+          type: string
+          default: ""
+    entry: dispatcher
+    nodes:
+      dispatcher:
+        parallel_branches:
+          branches:
+            only:
+              subgraph: flaky_unit
+              outputs:
+                result: out
+              # Outer-to-inner: FailureIsolation wraps Retry (§6.3).
+              middleware:
+                - type: failure_isolation
+                  degraded_update: {out: "(degraded)"}
+                  event_name: "branch_isolated"
+                - type: retry
+                  max_attempts: 2
+                  backoff: {type: deterministic, seconds: 0}
+          error_policy: fail_fast
+    edges:
+      - {from: dispatcher, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        result: "(degraded)"
+      execution_order: [dispatcher]
+      # Branch middleware catches the branch's inner node_exception (a single
+      # carrier wrapper whose __cause__ is the originating failure); category
+      # resolves to provider_unavailable. parallel_branches_branch_failed is NOT
+      # involved here — it is the parent-node site's wrapper (§11.6 / §11.9).
+      expected_failure_isolation_event:
+        event_name: "branch_isolated"
+        post_state: {out: "(degraded)"}
+        caught_exception:
+          category: provider_unavailable
+
+  # ---- Case 3: uncategorized originating cause at a wrapping site ----
+  - name: instance_site_uncategorized_cause_is_null
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [1]
+        results:
+          type: list<string>
+          reducer: append
+          default: []
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: uncategorized_unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          instance_middleware:
+            # No retry — the bare error is non-transient; FailureIsolation
+            # catches the instance's node_exception directly.
+            - type: failure_isolation
+              degraded_update: {out: "(degraded)"}
+              event_name: "unit_isolated"
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: [1]
+        results: ["(degraded)"]
+      execution_order: [process]
+      # Resolving through the §4 node_exception wrapper reaches a cause with no
+      # category, so caught_exception.category is null (per the existing rule).
+      expected_failure_isolation_event:
+        event_name: "unit_isolated"
+        post_state: {out: "(degraded)"}
+        caught_exception:
+          category: null

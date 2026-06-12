@@ -439,6 +439,30 @@ event variant carrying its own field set:
   caught exception does not carry a category (e.g., a bare `ValueError`), the category field is
   `null` and the message captures the exception's `str(exc)` form.
 
+**Cause fidelity at carrier-wrapper sites.** `caught_exception.category` MUST reflect the
+**originating** failure. When the caught exception is a graph-engine §4 `node_exception` carrier
+wrapper — which it is at any non-node placement where the engine has wrapped the originating error
+before the isolation middleware catches it (§9.7 instance middleware, §11.7 branch middleware, or
+parent-node middleware on a fan-out / parallel-branches node per §9.6 / §11.6) — the middleware
+MUST resolve through the carrier wrapper to the originating cause (`__cause__`) and report that
+category. This is the same carrier-wrapper resolution §6.1's default classifier mandates (a
+`node_exception` whose `__cause__` is a transient category MUST be classified as transient).
+Resolution walks nested carrier wrappers to the originating cause. When the originating cause
+carries no category (e.g., a bare `ValueError`), the category is `null` per the rule above. At
+node-level placement no carrier wrapper is present — the middleware catches the raw error — so no
+resolution applies and the category is the raw error's. `caught_exception.message` SHOULD describe
+the same originating cause the category resolves from, so the event's `category` and `message`
+refer to one exception rather than pairing a resolved category with the wrapper's message.
+
+**Wrapped-instance / branch lineage.** At the non-node wrapping sites above, the isolation
+middleware runs outside the engine's per-instance / per-branch scope, so the lineage tuple can
+resolve to the wrapping node's identity rather than the isolated instance's / branch's. Where the
+per-instance / per-branch identity is recoverable, the event's lineage (`namespace`,
+`fan_out_index`, `branch_name`) SHOULD resolve to the wrapped instance / branch. This is a SHOULD,
+not a MUST: recovering the identity may require the engine to surface it to the wrapping-site
+middleware, whereas the category fidelity above needs only inspection of the already-caught
+exception.
+
 This pattern parallels graph-engine §6's RECOMMENDED metadata-augmentation event mechanism (from
 proposal 0040) — a distinct framework-emitted event kind on the observer delivery queue, with
 the typed shape per-language idiom. The spec mandates the event mechanism + field set;

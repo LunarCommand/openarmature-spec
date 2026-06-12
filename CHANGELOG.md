@@ -4,6 +4,21 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.55.0] — 2026-06-11
+
+**Changed**
+
+- **§6.3 failure-isolation event — cause fidelity at carrier-wrapper sites.** `caught_exception.category` MUST now reflect the **originating** failure when `FailureIsolationMiddleware` runs at a non-node placement (§9.7 instance middleware, §11.7 branch middleware, or parent-node middleware on a fan-out / parallel-branches node per §9.6 / §11.6). At those sites the engine has already wrapped the originating error as a graph-engine §4 `node_exception` before the isolation middleware catches it; the middleware MUST resolve through the carrier wrapper to the originating cause (`__cause__`) and report that category — the same carrier-wrapper resolution §6.1's default classifier already mandates. Previously the event surfaced the masking `node_exception` at those sites, hiding the real cause (e.g. `provider_unavailable`). Node-level placement is already faithful and is unchanged; the catch/degrade behavior is unchanged at every site — only the event's reported cause changes. `caught_exception.message` SHOULD track the resolved cause (category/message coherence), and the event's wrapped-instance/branch lineage SHOULD resolve to the isolated instance/branch where recoverable. ([proposal 0065](proposals/0065-pipeline-utilities-failure-isolation-cause-fidelity.md))
+
+**Added**
+
+- One new conformance fixture under `spec/pipeline-utilities/conformance/`: `064-failure-isolation-cause-fidelity-at-wrapping-sites` — three cases asserting the carrier-wrapper unwrap MUST at the §9.7 instance site (category resolves to `provider_unavailable`, not `node_exception`), the §11.7 branch site (resolves through the branch's `node_exception`), and an uncategorized originating cause (`category == null`). Node-level placement remains covered by fixture 061. Message coherence and wrapped lineage are SHOULDs, not strictly asserted.
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** The change tightens the emitted `caught_exception` contract at the non-node wrapping sites (a change to conformance expectations), so it is classified MINOR rather than a textual PATCH. No graph execution outcome changes — the middleware still catches and degrades identically; only the event's reported cause is corrected.
+- **Accept-phase correction to the proposal's §11.7 framing.** The proposal's draft text characterized the §11.7 branch-middleware site as catching the engine's `parallel_branches_branch_failed` wrapper. Verified against §11 at acceptance: branch middleware wraps the branch's subgraph invocation and catches the inner node's plain `node_exception` (a single carrier wrapper); `parallel_branches_branch_failed` is raised at the parallel-branches *node* level (§11.9) and is the parent-node-middleware (§11.6) site's concern. The spec text and the proposal's clause were generalized to "any `node_exception` carrier wrapper at any non-node placement" so the rule covers all sites uniformly.
+
 ## [0.54.0] — 2026-06-09
 
 **Added**

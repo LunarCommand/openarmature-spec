@@ -1,9 +1,10 @@
 # 0065: Pipeline Utilities — Failure-Isolation Event Cause-Fidelity at Non-Node Wrapping Sites
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-11
-- **Targets:** spec/pipeline-utilities/spec.md (§6.3 — the `caught_exception` field definition gains a carrier-wrapper unwrap clause: where the engine has wrapped the originating error as a graph-engine §4 `node_exception` before the isolation middleware catches it — the §9.7 instance-middleware and §11.7 branch-middleware sites — `caught_exception.category` MUST reflect the originating `__cause__` category, mirroring §6.1's existing classifier unwrap; plus a SHOULD-clause for resolving the wrapped instance/branch lineage)
+- **Accepted:** 2026-06-11
+- **Targets:** spec/pipeline-utilities/spec.md (§6.3 — the `caught_exception` field definition gains a carrier-wrapper unwrap clause: at any non-node placement where the engine has wrapped the originating error as a graph-engine §4 `node_exception` before the isolation middleware catches it — §9.7 instance middleware, §11.7 branch middleware, or parent-node middleware on a fan-out / parallel-branches node (§9.6 / §11.6) — `caught_exception.category` MUST reflect the originating `__cause__` category, mirroring §6.1's existing classifier unwrap; plus message-coherence and wrapped-instance/branch lineage SHOULD-clauses)
 - **Related:** 0050 (introduced §6.3 `FailureIsolationMiddleware` + the failure-isolation event whose fidelity this tightens, and §6.1's default classifier whose carrier-wrapper unwrap this mirrors), 0009 / 0036 (fan-out — the §9.7 instance-middleware site), 0011 (parallel branches — the §11.7 branch-middleware site), graph-engine §4 (`node_exception` carrier wrapper + `__cause__`)
 - **Supersedes:**
 
@@ -18,12 +19,14 @@ so a node-level isolation middleware catches the **raw** error (e.g.
 `ProviderUnavailable`, category `provider_unavailable`) and the reported
 category is correct.
 
-But §6.3 also blesses two non-node wrapping sites — **§9.7 instance middleware**
-and **§11.7 branch middleware**. At those subgraph boundaries the engine has
+But §6.3 also blesses non-node placements — **§9.7 instance middleware** and
+**§11.7 branch middleware** (and parent-node middleware on a fan-out /
+parallel-branches node, §9.6 / §11.6). At those sites the engine has
 **already** wrapped the originating error as a §4 `node_exception` *before* the
-outer isolation middleware catches it, so `caught_exception.category` is
-literally `node_exception` and the originating cause (`provider_unavailable`,
-etc.) is masked.
+isolation middleware catches it, so `caught_exception.category` is literally
+`node_exception` and the originating cause (`provider_unavailable`, etc.) is
+masked. §9.7 and §11.7 are where this was reported; the rule below covers them
+all uniformly.
 
 This proposal tightens §6.3: `caught_exception.category` MUST reflect the
 **originating** failure — unwrapping a graph-engine §4 `node_exception` carrier
@@ -74,17 +77,19 @@ It gains a **cause-fidelity clause**:
 
 > **Cause fidelity at wrapping sites.** `caught_exception.category` MUST reflect
 > the **originating** failure. When the caught exception is a graph-engine §4
-> `node_exception` carrier wrapper — as it is when `FailureIsolationMiddleware`
-> is placed at the **§9.7 instance-middleware** or **§11.7 branch-middleware**
-> site, where the engine wraps the originating error at the subgraph boundary
-> before the outer isolation middleware catches it — the middleware MUST resolve
-> through the carrier wrapper to the originating cause (`__cause__`) and report
-> *that* category. This is the same carrier-wrapper resolution §6.1's default
-> classifier mandates ("a `node_exception` whose `__cause__` is a transient
-> category MUST be classified as transient"). Resolution walks nested carrier
-> wrappers to the originating cause — e.g. at §11.7 a `parallel_branches_branch_failed`
-> wrapper (a §4 `node_exception` subtype) whose `__cause__` is the branch's
-> failure resolves to that failure's category. When the originating cause itself
+> `node_exception` carrier wrapper — as it is at any non-node placement where
+> the engine has wrapped the originating error before the isolation middleware
+> catches it (**§9.7 instance middleware**, **§11.7 branch middleware**, or
+> **parent-node middleware on a fan-out / parallel-branches node** per §9.6 /
+> §11.6) — the middleware MUST resolve through the carrier wrapper to the
+> originating cause (`__cause__`) and report *that* category. This is the same
+> carrier-wrapper resolution §6.1's default classifier mandates ("a
+> `node_exception` whose `__cause__` is a transient category MUST be classified
+> as transient"). Resolution walks nested carrier wrappers to the originating
+> cause — e.g. a parent-node middleware on a parallel-branches node catches the
+> engine's `parallel_branches_branch_failed` wrapper (a §4 `node_exception`
+> subtype, §11.9), whose `__cause__` chain leads to the branch's originating
+> failure. When the originating cause itself
 > carries no category (e.g., a bare `ValueError`), the category field is `null`
 > per the existing rule. At **node-level** placement no carrier wrapper is
 > present (the middleware catches the raw error), so no unwrap applies and
@@ -138,12 +143,13 @@ acceptance), exercising `FailureIsolationMiddleware` at the wrapping sites:
   completes with the degraded placeholder).
 - **Case 2 — §11.7 branch site.** `FailureIsolationMiddleware` as branch
   middleware over a branch whose inner node raises a categorized error; assert
-  the event's `caught_exception.category` resolves through the
-  `parallel_branches_branch_failed` wrapper to the originating category. The
-  exact branch-site wrapping depth (a single wrapper around the raw error vs a
-  nested wrapper around an inner `node_exception`) MUST be verified against
-  §11's branch-failure wrapping behavior at acceptance and pinned by this
-  fixture; the resolve-to-originating-cause rule holds regardless of depth.
+  the event's `caught_exception.category` resolves through the branch's
+  `node_exception` to the originating category. (Verified at acceptance against
+  §11: branch middleware wraps the branch's subgraph invocation and catches the
+  inner node's `node_exception` — a single carrier wrapper whose `__cause__` is
+  the originating failure. The engine's `parallel_branches_branch_failed`
+  wrapper is raised at the parallel-branches *node* level per §11.9, so it is
+  caught by parent-node middleware (§11.6), not branch middleware.)
 - **Case 3 — node-level placement unchanged.** A node-level isolation
   middleware catching a raw `ProviderUnavailable`; assert
   `caught_exception.category == "provider_unavailable"` with no behavioral
