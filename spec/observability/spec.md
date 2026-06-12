@@ -2231,10 +2231,10 @@ spec:
   is trace-only.
 - **Baggage and context propagation** — OTel baggage for request-ID-style propagation across
   service boundaries. Defer until a concrete cross-service use case surfaces.
-- **Span links beyond the cases this spec already defines.** OTel span links between traces are
-  used where this spec specifies them — §4.4 detached-trace mode (the parent's dispatch span
-  carries a `Link` to each detached child trace) and §4.3 suspend-resume (observers SHOULD link
-  the resume invocation span to the suspended one). Span links for *other* patterns — e.g., batch
-  operations that accumulate inputs from many traces (many-to-one fan-in) — are out of scope;
-  defer until needed.
+- **Span links beyond detached-trace / suspend-resume** — OTel span links between traces are used
+  where this spec specifies them: §4.4 detached-trace mode (the parent's dispatch span carries a
+  `Link` to each detached child trace) and §4.3 suspend-resume (observers SHOULD link the resume
+  invocation span to the suspended one). Span links for *other* patterns — e.g., batch operations
+  that accumulate inputs from many traces (many-to-one fan-in) — are out of scope; defer until
+  needed.
 
