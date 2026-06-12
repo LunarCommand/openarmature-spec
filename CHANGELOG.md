@@ -4,6 +4,12 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.55.1] — 2026-06-11
+
+**Fixed**
+
+- **observability §11 — span-links *Out of scope* bullet reconciled with §4.3 / §4.4.** The bullet stated "OTel span links between traces … defer until needed," which contradicted the spec body: §4.4 detached-trace mode already has the parent's dispatch span carry an OTel `Link` to each detached child trace, and §4.3 suspend-resume SHOULDs an observer span-link from the resume invocation span to the suspended one. The bullet is narrowed to scope out only span-link patterns the spec does *not* model (e.g., many-to-one fan-in accumulation across many traces). Clarification only — no behavior, type, or conformance change; PATCH with no proposal per GOVERNANCE's *When a proposal is required*.
+
 ## [0.55.0] — 2026-06-11
 
 **Changed**
