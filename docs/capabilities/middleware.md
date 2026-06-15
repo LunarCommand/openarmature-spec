@@ -113,7 +113,7 @@ fan-out; buffer-then-merge for branches). Two behaviors specific to these placem
 a graph-engine `node_exception` carrier before the isolation middleware catches it. The
 framework-emitted failure-isolation event's `caught_exception.category` MUST resolve *through* that
 wrapper to the originating cause rather than report the masking `node_exception` — the same
-carrier-wrapper unwrap the default retry classifier performs ([pipeline-utilities
+carrier-wrapper resolution the default retry classifier performs ([pipeline-utilities
 §6.3](pipeline-utilities.md#63-failure-isolation), [§6.1](pipeline-utilities.md#61-retry)). At
 node-level placement no wrapper is present, so the category is already faithful.
 
