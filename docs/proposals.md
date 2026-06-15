@@ -72,7 +72,7 @@ lifecycle and the proposal template.
 | [0063](proposals/0063-tool-execution-observability.md) | Tool-execution observability                              | graph-engine        | Draft    | —               | —          |
 | [0064](proposals/0064-observability-langfuse-session-user-promotion.md) | Langfuse session / user trace-field population            | observability       | Draft    | —               | —          |
 | [0065](proposals/0065-pipeline-utilities-failure-isolation-cause-fidelity.md) | Failure-isolation cause-fidelity at wrapping sites        | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
-| [0066](proposals/0066-pipeline-utilities-fan-out-degrade-contribution.md) | Fan-out failure-isolation degrade contribution           | pipeline-utilities  | Draft    | —               | —          |
+| [0066](proposals/0066-pipeline-utilities-fan-out-degrade-contribution.md) | Fan-out failure-isolation degrade contribution           | pipeline-utilities  | Accepted | Pending         | —          |
 
 Click any column header to sort.
 

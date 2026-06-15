@@ -720,6 +720,22 @@ instance 1's, …), independent of completion order. In `items_field` mode, inst
 input list index, so this is also input list order. In `count` mode, instance indices run
 `0..count-1`.
 
+**Degraded instances.** A fan-out instance whose `instance_middleware` chain includes a
+`FailureIsolationMiddleware` (§6.3) that catches and returns a `degraded_update` **completes
+successfully** from the fan-out's perspective — the middleware returns the `degraded_update` where
+§9.7 expects the subgraph's projected partial update, so the engine sees a normal instance
+completion, not a failure (slot omission, §9.5, applies only to genuinely-failed, uncaught
+instances; a degraded instance is never dropped). The instance's projected contribution **is the `degraded_update`**: this fan-in step
+reads `collect_field`'s value, and each `extra_outputs` `subgraph_field`'s value, **from the
+`degraded_update` mapping**, by subgraph field name (`degraded_update` is a subgraph-space partial,
+§9.7). The `degraded_update` is NOT merged onto the instance's pre-failure subgraph state for
+projection — failure isolation substitutes a clean result for the failed computation. When the
+`degraded_update` does not supply `collect_field`, the instance's slot is **null** (its positional
+slot is preserved); the static-mapping form of this omission is rejected at compile time (§9.8).
+When the `degraded_update` does not supply an `extra_outputs` `subgraph_field`, that field is simply
+not contributed by this instance — the same partial-contribution shape as a skipped heterogeneous
+branch field (§11.7).
+
 ### 9.4 Item ordering and fan-in determinism
 
 A fan-out node MUST produce the same final state on identical input regardless of per-instance
@@ -841,6 +857,26 @@ observer events from retry middleware inside `instance_middleware` carry both `a
 The `instance_middleware` chain MUST be the same for every instance in a single fan-out — there
 is no per-item middleware variation. Heterogeneous per-item behavior remains out of scope (see
 §8 Out of scope for the deferred-feature list at the capability level).
+
+### 9.8 Fan-out degrade slot coverage
+
+When a fan-out node's `instance_middleware` includes a `FailureIsolationMiddleware` whose
+`degraded_update` is a **static mapping**, the graph MUST be rejected at compile time if that
+mapping does not include `collect_field`. Because the `degraded_update` is the instance's
+contribution (§9.3) and the collection is homogeneous (one positional slot per instance), a static
+`degraded_update` omitting `collect_field` would leave that slot null — a misconfiguration caught
+at construction rather than surfacing a silent null in the collection. The compile-time error
+category is `fan_out_degraded_update_missing_collect_field`, reported per the graph-engine §2
+compile-time error contract and defined here, as §11.9 defines `parallel_branches_no_branches`. The check covers
+`collect_field` only — the homogeneous slot; `extra_outputs` fields are secondary, reducer-merged
+contributions with no compile requirement (an omitted one is simply not contributed, §9.3).
+
+When `degraded_update` is the **callable** form (`(state) -> partial_update`, §6.3), its output is
+not knowable at compile time, so no compile-time check applies. At runtime, a callable that omits
+`collect_field` yields a null slot per §9.3; the degrade path MUST remain graceful — it MUST NOT
+raise on an omitted `collect_field`, because a degrade-time raise would convert the isolation into
+a graph-stopping failure (§9.5). Callable `degraded_update`s that degrade fan-out instances SHOULD
+set `collect_field`.
 
 ## 10. Checkpointing
 
@@ -1718,6 +1754,15 @@ branch's subgraph.
 
 Branch middleware composition is heterogeneous. Branch A may have `[retry, timing]`; branch
 B may have `[]`; branch C may have `[custom_breaker]`. Each branch's chain is independent.
+
+**Branch-middleware degrade.** A `FailureIsolationMiddleware` running as branch middleware that
+returns a `degraded_update` not covering a projected `outputs` field contributes nothing for that
+field — the parent retains its prior / sibling-branch value, per §11.4's buffer-then-merge model.
+Parallel branches are heterogeneous (each branch contributes its own distinct parent fields), so a
+partial contribution is first-class; there is no per-branch slot the way fan-out has one per
+instance. This is the deliberate counterpart to the fan-out degrade slot-coverage rule (§9.8):
+heterogeneous → partial contributions skip; homogeneous → the slot (`collect_field`) is required
+(compile-checked for the static `degraded_update` form).
 
 ### 11.8 Determinism
 
