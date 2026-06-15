@@ -1,0 +1,1 @@
+../../proposals/0066-pipeline-utilities-fan-out-degrade-contribution.md
