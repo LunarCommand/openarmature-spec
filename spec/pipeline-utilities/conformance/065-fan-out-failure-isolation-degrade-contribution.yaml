@@ -99,7 +99,7 @@ cases:
     state:
       fields:
         items: {type: list<int>, default: [1]}
-        results: {type: list<string | null>, reducer: append, default: []}
+        results: {type: list<any>, reducer: append, default: []}
         notes: {type: list<string>, reducer: append, default: []}
     entry: process
     nodes:
