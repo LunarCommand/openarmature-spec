@@ -1,0 +1,164 @@
+# §9.3 / §9.8 fan-out failure-isolation degrade contribution (proposal 0066).
+# A degraded fan-out instance is a §9.3 success whose contribution IS its
+# degraded_update (model ii): collect_field and each extra_outputs
+# subgraph_field are read FROM the degraded_update by subgraph field name, not
+# merged onto pre-failure state. A static degraded_update omitting collect_field
+# is a compile error (§9.8); a callable that omits it yields a null slot
+# gracefully (never a raise). The parallel-branches counterpart skips an
+# uncovered projected field (§11.7, heterogeneous).
+#
+# Fixture conventions: single-unit fan-outs (items: [1]) so exactly one
+# collection slot. expected_compile_error per graph-engine fixture 007; callable
+# degraded_update per fixture 059; fan-out instance_middleware per fixture 021;
+# parallel-branches branch middleware per fixture 036.
+
+subgraphs:
+  unit:
+    state:
+      fields:
+        input: {type: int, default: 0}
+        out: {type: string, default: ""}
+        note: {type: string, default: ""}
+    entry: work
+    nodes:
+      work:
+        flaky:
+          failure_sequence:
+            - {transient: false, category: provider_unavailable, message: "down"}
+    edges:
+      - {from: work, to: END}
+
+cases:
+  # Case 1 — §9.7 instance site: degraded_update supplies collect_field AND an
+  # extra_outputs subgraph_field; both are read FROM the degraded_update by
+  # subgraph field name (the keying that distinguishes model ii).
+  - name: instance_degrade_fills_slot_and_extra_output
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list<string>, reducer: append, default: []}
+        notes: {type: list<string>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          extra_outputs: {notes: note}
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update: {out: "(degraded)", note: "fellback"}
+              event_name: "unit_isolated"
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: [1]
+        results: ["(degraded)"]   # collect_field `out`, read from the degraded_update
+        notes: ["fellback"]       # extra_outputs subgraph field `note`, read from the degraded_update
+      execution_order: [process]
+      invariants:
+        contribution_is_the_degraded_update: true
+        extra_outputs_read_by_subgraph_field_name: true
+
+  # Case 2 — static degraded_update omits collect_field -> compile error (§9.8).
+  - name: static_degraded_update_missing_collect_field_compile_error
+    graph:
+      state:
+        fields:
+          items: {type: list<int>, default: [1]}
+          results: {type: list<string>, reducer: append, default: []}
+      entry: process
+      nodes:
+        process:
+          fan_out:
+            subgraph: unit
+            items_field: items
+            item_field: input
+            collect_field: out
+            target_field: results
+            instance_middleware:
+              - type: failure_isolation
+                degraded_update: {note: "fellback"}   # omits collect_field `out`
+                event_name: "unit_isolated"
+            error_policy: fail_fast
+      edges:
+        - {from: process, to: END}
+    expected_compile_error: fan_out_degraded_update_missing_collect_field
+
+  # Case 3 — callable degraded_update omits collect_field -> null slot, no stop.
+  # The callable sets `note` only (target_field: note), so collect_field `out`
+  # is absent from the contribution and the results slot is null. Not
+  # compile-checkable (callable output unknown at build); MUST NOT raise.
+  - name: callable_degrade_omits_collect_field_null_slot
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list<string | null>, reducer: append, default: []}
+        notes: {type: list<string>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          extra_outputs: {notes: note}
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update:
+                callable: state_derived
+                template: "fellback for {{ state.input }}"
+                target_field: note
+              event_name: "unit_isolated"
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: [1]
+        results: [null]            # collect_field omitted -> null slot (positional slot preserved)
+        notes: ["fellback for 1"]
+      execution_order: [process]
+      invariants:
+        omitted_collect_field_yields_null_slot: true
+        degrade_path_does_not_raise: true
+
+  # Case 4 — parallel-branches branch middleware degrade skips an uncovered
+  # projected `outputs` field (heterogeneous, §11.7): the parent keeps its prior
+  # value. The deliberate counterpart to the fan-out slot-coverage rule.
+  - name: branch_degrade_skips_uncovered_projected_field
+    state:
+      fields:
+        alpha: {type: string, default: "prior"}
+    entry: dispatcher
+    nodes:
+      dispatcher:
+        parallel_branches:
+          branches:
+            only:
+              subgraph: unit
+              outputs: {alpha: out}   # projects subgraph `out` -> parent `alpha`
+              middleware:
+                - type: failure_isolation
+                  degraded_update: {note: "fellback"}   # does NOT cover `out`
+                  event_name: "branch_isolated"
+          error_policy: fail_fast
+    edges:
+      - {from: dispatcher, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        alpha: "prior"   # `out` absent from the degraded_update -> no contribution -> parent keeps prior
+      execution_order: [dispatcher]
+      invariants:
+        uncovered_projected_field_skipped: true
+        parent_keeps_prior_value: true

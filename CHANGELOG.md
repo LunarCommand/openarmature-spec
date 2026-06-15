@@ -4,6 +4,22 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.56.0] — 2026-06-15
+
+**Added**
+
+- **pipeline-utilities §9.8 *Fan-out degrade slot coverage* — compile-time `collect_field` check.** A new compile-time error category `fan_out_degraded_update_missing_collect_field` (reported per the graph-engine §2 compile-time error contract): when a fan-out node's `instance_middleware` includes a `FailureIsolationMiddleware` whose `degraded_update` is a **static** mapping, the graph is rejected at compile time if that mapping omits `collect_field`. Because a degraded instance's contribution is the `degraded_update` (§9.3), a static omission would otherwise leave a silent null in the homogeneous collection; the check catches it at construction. The category is defined in §9.8 (as `parallel_branches_no_branches` is defined in §11.9). The callable `degraded_update` form is not compile-checkable; at runtime an omitted `collect_field` yields a null slot gracefully — the degrade path never raises (a runtime raise would convert the isolation into a graph-stopping failure under `fail_fast`). ([proposal 0066](proposals/0066-pipeline-utilities-fan-out-degrade-contribution.md))
+- One new conformance fixture `pipeline-utilities/conformance/065-fan-out-failure-isolation-degrade-contribution` — four cases: instance degrade fills the slot + reads `extra_outputs` by subgraph field name; static `collect_field` omission → compile error; callable omission → null slot (no stop); parallel-branches branch degrade skips an uncovered projected field.
+
+**Changed**
+
+- **pipeline-utilities §9.3 — a `FailureIsolation`-degraded fan-out instance's contribution is its `degraded_update`.** A degraded instance completes as a §9.3 success (slot omission, §9.5, is for genuinely-failed instances only), and its projected contribution **is** the `degraded_update`: `collect_field` and each `extra_outputs` `subgraph_field` are read from the `degraded_update` mapping by subgraph field name, not merged onto the instance's pre-failure subgraph state. Resolves an interaction §9.3 left implicit (the `degraded_update`-is-the-contribution model vs a merge-onto-pre-failure-state model). ([proposal 0066](proposals/0066-pipeline-utilities-fan-out-degrade-contribution.md))
+- **pipeline-utilities §11.7 — branch-middleware degrade skip confirmed.** A `FailureIsolation` branch middleware whose `degraded_update` omits a projected `outputs` field contributes nothing for it (the parent keeps its prior / sibling value), per §11.4's heterogeneous buffer-then-merge — the deliberate counterpart to the homogeneous fan-out slot-coverage rule (§9.8).
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** The new behavior is the compile-time `collect_field`-coverage error for static `degraded_update`s on fan-out instance middleware. The §9.3 / §11.7 changes pin previously-implicit contribution semantics (degrade = success → the `degraded_update` is the contribution; heterogeneous branch skip); runtime behavior for correctly-configured graphs is unchanged, and the degrade path never raises.
+
 ## [0.55.1] — 2026-06-11
 
 **Fixed**
