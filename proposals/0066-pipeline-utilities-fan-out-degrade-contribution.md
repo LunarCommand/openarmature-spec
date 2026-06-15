@@ -3,7 +3,7 @@
 - **Status:** Draft
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-14
-- **Targets:** spec/pipeline-utilities/spec.md (§9.3 — specify that a `FailureIsolation`-degraded fan-out instance is a §9.3 *success* whose contribution **is its `degraded_update`**, with `collect_field` and each `extra_outputs` `subgraph_field` read from the `degraded_update` by subgraph field name; §9 — a new compile-time validation that a **static** `degraded_update` on a fan-out `instance_middleware` `FailureIsolation` covers `collect_field`, with the **callable** form contributing a null slot gracefully at runtime if it omits it (never a raise); §11.4 / §11.7 — confirm the heterogeneous parallel-branches *skip*; a new compile-time error category `fan_out_degraded_update_missing_collect_field`, defined in §9 as `parallel_branches_no_branches` is in §11.9); plus a new conformance fixture
+- **Targets:** spec/pipeline-utilities/spec.md (§9.3 — specify that a `FailureIsolation`-degraded fan-out instance is a §9.3 *success* whose contribution **is its `degraded_update`**, with `collect_field` and each `extra_outputs` `subgraph_field` read from the `degraded_update` by subgraph field name; §9 — a new compile-time validation that a **static** `degraded_update` on a fan-out `instance_middleware` `FailureIsolation` covers `collect_field`, with the **callable** form contributing a null slot gracefully at runtime if it omits it (never a raise); §11.4 / §11.7 — confirm the heterogeneous parallel-branches *skip*; a new compile-time error category `fan_out_degraded_update_missing_collect_field`, defined in §9 the same way §11.9 defines `parallel_branches_no_branches`); plus a new conformance fixture
 - **Related:** 0050 (`FailureIsolationMiddleware` + `degraded_update`, pipeline-utilities §6.3), 0065 (cause fidelity at non-node placements — wiring its fixture 064 surfaced this), 0009 / 0036 (fan-out collection + `instance_middleware`, §9.3 / §9.7), 0011 (parallel branches — §11.4 / §11.7), graph-engine §2 (compile-time validation / error categories)
 - **Supersedes:**
 
@@ -102,7 +102,7 @@ spec version is assigned at acceptance.
 ### pipeline-utilities §9 — compile-time `collect_field` coverage for static `degraded_update`
 
 A new compile-time validation (a graph-engine §2 compile-time check, with its error category
-defined here in §9 — as `parallel_branches_no_branches` is defined in §11.9):
+defined here in §9, mirroring `parallel_branches_no_branches` in §11.9):
 
 > **Fan-out degrade slot coverage.** When a fan-out node's `instance_middleware` includes a
 > `FailureIsolationMiddleware` whose `degraded_update` is a **static mapping**, the graph MUST be
