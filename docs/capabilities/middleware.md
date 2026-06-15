@@ -94,6 +94,51 @@ Reversing the order would let the inner isolation catch transients before retry 
 defeating retry's purpose entirely. This is why §6.3's composition framing names outer-to-inner
 ordering as a load-bearing rule, not a preference.
 
+### Failure isolation beyond the node
+
+The three-piece pattern above places `FailureIsolationMiddleware` at the node level, but the
+primitive also composes at two **non-node placements** that wrap a whole subgraph invocation as a
+unit:
+
+- **Fan-out instance middleware** ([pipeline-utilities
+  §9.7](pipeline-utilities.md#97-instance-middleware)) — wraps each instance's subgraph invocation.
+- **Parallel-branch middleware** ([pipeline-utilities
+  §11.7](pipeline-utilities.md#117-branch-middleware)) — wraps each branch's subgraph invocation.
+
+At both, the middleware operates in **subgraph space**: the `degraded_update` it returns is a
+subgraph-space partial, and the engine projects it to the parent *after* the chain (fan-in for
+fan-out; buffer-then-merge for branches). Two behaviors specific to these placements follow.
+
+**Cause fidelity.** At a non-node placement the engine has already wrapped the originating error as
+a graph-engine `node_exception` carrier before the isolation middleware catches it. The
+framework-emitted failure-isolation event's `caught_exception.category` MUST resolve *through* that
+wrapper to the originating cause rather than report the masking `node_exception` — the same
+carrier-wrapper unwrap the default retry classifier performs ([pipeline-utilities
+§6.3](pipeline-utilities.md#63-failure-isolation), [§6.1](pipeline-utilities.md#61-retry)). At
+node-level placement no wrapper is present, so the category is already faithful.
+
+**Degrade contribution.** A degraded instance or branch is a *success* whose contribution **is**
+its `degraded_update` — the parent reads projected fields from it by subgraph field name
+([§9.3](pipeline-utilities.md#93-per-instance-fan-in) for fan-out,
+[§11.7](pipeline-utilities.md#117-branch-middleware) for branches), not from a merge onto the
+pre-failure state. What an *incomplete* `degraded_update` does then depends on the collection's
+shape:
+
+- **Fan-out is homogeneous** — N instances fill N positional slots in one collection. A degraded
+  instance still occupies its slot (it is never dropped), so a `degraded_update` omitting
+  `collect_field` would leave a null in the collection. A **static** `degraded_update` that omits it
+  is therefore a **compile-time error**
+  ([§9.8](pipeline-utilities.md#98-fan-out-degrade-slot-coverage)); a **callable** one (not
+  checkable at compile time) yields a graceful null slot at runtime and never raises.
+- **Parallel branches are heterogeneous** — each branch contributes its own distinct parent fields,
+  with no per-branch slot. A `degraded_update` omitting a projected `outputs` field simply **skips**
+  it; the parent keeps its prior / sibling value
+  ([§11.7](pipeline-utilities.md#117-branch-middleware)).
+
+The asymmetry is deliberate: a missing contribution is first-class for heterogeneous branches but a
+footgun for a homogeneous collection, so the homogeneous slot is the one the spec guards — at
+compile time where it can.
+
 ### Timing's measurement scope
 
 Timing middleware ([pipeline-utilities §6.2](pipeline-utilities.md#62-timing)) raises a
