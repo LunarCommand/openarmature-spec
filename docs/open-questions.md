@@ -105,6 +105,26 @@ is just "keep it not-too-stale."
   [still-relevant] — deferred at acceptance; users wrap with their own
   middleware or wait for a future timeout-middleware proposal.
 
+### 0068 — failure-isolation event structured cause chain
+
+- **§6.1 retry classification stays single-level while §6.3 cause resolution
+  walks the full chain.** [still-relevant] — 0068's §6.3 cause chain walks the
+  entire cause chain (skipping all `node_exception` carriers) to derive the
+  reported category, while §6.1's default retry classifier checks only the
+  exception and its direct cause (single-level). The asymmetry is deliberate,
+  not an oversight: retry's usual placement is the inner node body (≤1 wrap), so
+  single-level suffices there, and having an *outer* retry (e.g. at an instance /
+  branch placement) re-run an entire subgraph because of a deeply-nested
+  transient is the wrong grain. After 0068, the failure-isolation *event* can
+  report a nested originating cause that an outer retry at the same placement
+  would not itself have retried — the event and the retry decision answer
+  different questions. Revisit only if retry-at-a-non-node-placement-over-
+  deeply-nested-carriers becomes a real workload need; the fix would be a shared
+  "resolve actionable category through carriers" primitive used by both §6.1 and
+  §6.3 (a §6.1 behavior change, its own proposal). 0065's acceptance already
+  flagged the §6.1 nested-wrapper wording as a separate §6.1 concern; this
+  records the post-0068 shape.
+
 ## llm-provider
 
 ### 0019 — multi-provider wire-format extension

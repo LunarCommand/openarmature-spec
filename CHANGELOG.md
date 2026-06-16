@@ -4,6 +4,21 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.57.0] — 2026-06-15
+
+**Added**
+
+- **pipeline-utilities §6.3 — structured cause chain on the failure-isolation event.** `caught_exception` gains a **`chain`**: an ordered list of cause links `{category, message, carrier}` from the caught exception (outermost) down to the originating raise (innermost), with graph-engine §4 `node_exception` carriers flagged `carrier: true`. The full provenance is preserved rather than collapsed to a single value. ([proposal 0068](proposals/0068-pipeline-utilities-failure-isolation-cause-chain.md))
+- One new conformance fixture `pipeline-utilities/conformance/066-failure-isolation-cause-chain` — an instance-site single-carrier chain, a node-level single-non-carrier link, and an uncategorized-cause null derivation.
+
+**Changed**
+
+- **pipeline-utilities §6.3 — `caught_exception.category` / `message` are now a derivation over the chain.** The derived `category` is the outermost non-carrier link whose category is a non-empty string (else `null`); the derived `message` is that link's message (else the outermost non-carrier link's). This supersedes 0065's "resolve through the carrier wrapper to the originating cause" prose — the derived `category` reproduces 0065's single-carrier values (fixture 064 is unchanged) and resolves the previously-ambiguous multi-non-carrier case (the outermost categorized link wins, so a deliberate surface re-categorization is reported). 0065's wrapped-instance / branch lineage SHOULD is unaffected; §6.1 retry classification is unchanged. ([proposal 0068](proposals/0068-pipeline-utilities-failure-isolation-cause-chain.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** The `caught_exception` shape gains `chain` (additive); the derived `category` / `message` are unchanged for the single-carrier chains 0065 fixtured. 0065's `caught_exception.message` coherence SHOULD is replaced by a definitional derivation — the derived `message` is the same chain link the `category` is taken from — which the chain makes unambiguous. Supersedes only 0065's `caught_exception` cause-representation clause. The deliberate §6.1 / §6.3 resolution asymmetry is recorded in `docs/open-questions.md`.
+
 ## [0.56.0] — 2026-06-15
 
 **Added**

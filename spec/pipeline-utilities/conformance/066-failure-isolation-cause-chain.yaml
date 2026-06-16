@@ -1,0 +1,171 @@
+# §6.3 failure-isolation event structured cause chain (proposal 0068).
+# caught_exception carries a `chain` of cause links ({category, message,
+# carrier}, outermost->innermost) plus a derived `category` / `message`. The
+# derived category is the OUTERMOST NON-CARRIER link whose category is a
+# non-empty string (else null); the derived message is that link's message
+# (else the outermost non-carrier link's). A carrier link is a graph-engine §4
+# node_exception wrapper (carrier: true) and carries its own `node_exception`
+# category; consumers skip on the `carrier` flag. This supersedes 0065's
+# single-"originating cause" representation — the derived category reproduces
+# 0065's values (so fixture 064 stays valid), and the chain adds the full
+# provenance.
+#
+# Fixture conventions: extends fixture 064's non-node setup (single-instance
+# fan-out, the `flaky` mock per fixture 036) to assert `chain` alongside the
+# derived `category`. Carrier links assert {carrier, category} only — their
+# engine-internal `message` is not pinned (subset-match). Node-level FI follows
+# fixture 061.
+
+subgraphs:
+  flaky_unit:
+    state:
+      fields:
+        input: {type: int, default: 0}
+        out: {type: string, default: ""}
+    entry: work
+    nodes:
+      work:
+        flaky:
+          # Categorized error on every attempt; the engine wraps each raise as a
+          # §4 node_exception whose cause carries this category.
+          failure_sequence:
+            - {transient: false, category: provider_unavailable, message: "provider down"}
+    edges:
+      - {from: work, to: END}
+
+  uncategorized_unit:
+    state:
+      fields:
+        input: {type: int, default: 0}
+        out: {type: string, default: ""}
+    entry: work
+    nodes:
+      work:
+        flaky:
+          # Originating cause carries NO category (a bare exception).
+          failure_sequence:
+            - {transient: false, category: null, message: "boom"}
+    edges:
+      - {from: work, to: END}
+
+cases:
+  # Case 1 — non-node (instance) placement: one engine carrier over the
+  # originating cause. chain = [carrier node_exception, non-carrier
+  # provider_unavailable]; derived category is the originating (the outermost
+  # non-carrier with a category), NOT the masking carrier.
+  - name: instance_site_chain_resolves_to_originating
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list<string>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: flaky_unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update: {out: "(degraded)"}
+              event_name: "unit_isolated"
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: [1]
+        results: ["(degraded)"]
+      execution_order: [process]
+      expected_failure_isolation_event:
+        event_name: "unit_isolated"
+        post_state: {out: "(degraded)"}
+        caught_exception:
+          category: provider_unavailable          # derived: outermost non-carrier with a category
+          message: "provider down"                 # derived: that same link's message
+          chain:
+            - {carrier: true, category: node_exception}   # engine carrier (message not pinned)
+            - {carrier: false, category: provider_unavailable, message: "provider down"}
+      invariants:
+        derived_category_is_outermost_non_carrier_with_category: true
+        chain_includes_carrier_and_originating: true
+
+  # Case 2 — node-level placement: FI catches the RAW error (no carrier wrapper
+  # is present inside the node's own middleware chain), so the chain is a single
+  # non-carrier link.
+  - name: node_level_chain_single_non_carrier_link
+    state:
+      fields:
+        result: {type: string, default: ""}
+    entry: work
+    nodes:
+      work:
+        flaky:
+          failure_sequence:
+            - {transient: false, category: provider_unavailable, message: "provider down"}
+        middleware:
+          - type: failure_isolation
+            degraded_update: {result: "(degraded)"}
+            event_name: "node_isolated"
+    edges:
+      - {from: work, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        result: "(degraded)"
+      execution_order: [work]
+      expected_failure_isolation_event:
+        event_name: "node_isolated"
+        post_state: {result: "(degraded)"}
+        caught_exception:
+          category: provider_unavailable
+          message: "provider down"
+          chain:
+            - {carrier: false, category: provider_unavailable, message: "provider down"}
+      invariants:
+        node_level_chain_is_single_non_carrier_link: true
+
+  # Case 3 — uncategorized originating cause at a wrapping site: the outermost
+  # (only) non-carrier link has no category, so the derived category is null and
+  # the derived message is that link's message.
+  - name: uncategorized_cause_chain_null_derived_category
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list<string>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: uncategorized_unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update: {out: "(degraded)"}
+              event_name: "unit_isolated"
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: [1]
+        results: ["(degraded)"]
+      execution_order: [process]
+      expected_failure_isolation_event:
+        event_name: "unit_isolated"
+        post_state: {out: "(degraded)"}
+        caught_exception:
+          category: null                           # no non-carrier link carries a category
+          message: "boom"                           # derived: the outermost non-carrier link's message
+          chain:
+            - {carrier: true, category: node_exception}
+            - {carrier: false, category: null, message: "boom"}
+      invariants:
+        uncategorized_cause_yields_null_derived_category: true
