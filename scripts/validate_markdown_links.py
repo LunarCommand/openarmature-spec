@@ -50,10 +50,26 @@ def slugify(heading: str) -> str:
 
 
 def anchor_ids(md_text: str) -> set[str]:
-    """Heading slugs plus explicit attr_list `{#id}` anchors."""
+    """Anchor targets in a markdown file.
+
+    A heading's id is its explicit attr_list ``{#id}`` when present,
+    otherwise the slug of its visible text with any attr_list block
+    (``{#id}``, ``{.class}``, ``{key=val}``) removed — matching MkDocs.
+    Inline ``{#id}`` anchors on non-heading lines (e.g. ``**Term**{#term}``)
+    count too; a ``{#id}`` shown inside inline code is ignored so a code
+    sample is not mistaken for a real anchor.
+    """
     body = FENCED_CODE_RE.sub("", md_text)
-    anchors = {slugify(m.group("text")) for m in HEADING_RE.finditer(body)}
-    for block in ATTR_BLOCK_RE.finditer(body):
+    anchors: set[str] = set()
+    for m in HEADING_RE.finditer(body):
+        text = m.group("text")
+        block = ATTR_BLOCK_RE.search(text)
+        explicit = ATTR_ID_RE.findall(block.group(0)) if block else []
+        if explicit:
+            anchors.update(explicit)
+        else:
+            anchors.add(slugify(ATTR_BLOCK_RE.sub("", text)))
+    for block in ATTR_BLOCK_RE.finditer(INLINE_CODE_RE.sub("", body)):
         anchors.update(ATTR_ID_RE.findall(block.group(0)))
     return anchors
 
