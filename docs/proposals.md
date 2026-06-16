@@ -74,6 +74,7 @@ lifecycle and the proposal template.
 | [0065](proposals/0065-pipeline-utilities-failure-isolation-cause-fidelity.md) | Failure-isolation cause-fidelity at wrapping sites        | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0066](proposals/0066-pipeline-utilities-fan-out-degrade-contribution.md) | Fan-out failure-isolation degrade contribution           | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0068](proposals/0068-pipeline-utilities-failure-isolation-cause-chain.md) | Failure-isolation event structured cause chain | pipeline-utilities  | Draft    | —               | —          |
+| [0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md) | Fan-out degrade contribution refinements | pipeline-utilities  | Draft    | —               | —          |
 
 Click any column header to sort.
 
