@@ -22,7 +22,7 @@ points 0066 left imprecise or unpinned. This proposal resolves all three:
    skipped heterogeneous branch field." That analogy is wrong for fan-out: a
    degraded instance contributes its value in instance-index order like any
    other (§9.4), so an omission should be a **null value** (matching
-   `collect_field`'s null), not absence. For an extending reducer that keeps the
+   `collect_field`'s null), not absence. For an extending reducer, this keeps the
    field aligned with `target_field`; under other reducers a null and an absent
    contribution merge alike — so `null` is the uniform, safe rule. A "skip"
    would shorten an extending-reducer field and misalign it.
