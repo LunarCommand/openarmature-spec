@@ -8,8 +8,11 @@ Run locally or in CI.
 
 Checks per link:
 - Relative file paths exist (resolved against the linking file's directory).
-- `#anchor` fragments correspond to a heading in the target .md file (or
-  in the linking file itself for bare-anchor links like `(#section)`).
+- `#anchor` fragments correspond to an anchor in the target .md file (or
+  in the linking file itself for bare-anchor links like `(#section)`). An
+  anchor is either a heading's slug or an explicit attr_list id (`{#id}`,
+  whether on a heading or an inline span like `**Term**{#term}`) —
+  `attr_list` is enabled in mkdocs.yml, so authored ids are valid targets.
 
 Heading-to-anchor slugification follows GitHub's rule for ASCII content:
 lowercase, drop characters not in [a-z0-9_-] or whitespace, replace
@@ -31,6 +34,11 @@ LINK_RE = re.compile(r"\[(?P<text>[^\]]*)\]\((?P<url>[^)]+)\)")
 HEADING_RE = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<text>.+?)\s*$", re.MULTILINE)
 FENCED_CODE_RE = re.compile(r"^```.*?^```", re.DOTALL | re.MULTILINE)
 INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
+# attr_list anchors: an explicit id inside a `{ ... }` attribute block, e.g.
+# `## Heading {#custom}` or inline `**Term**{#term}`. A block may carry classes
+# or key=values alongside the id; capture every `#id` token within a block.
+ATTR_BLOCK_RE = re.compile(r"\{[^}\n]*\}")
+ATTR_ID_RE = re.compile(r"#([A-Za-z0-9_-]+)")
 EXTERNAL_PREFIXES = ("http://", "https://", "mailto:", "ftp://", "git://", "ssh://")
 
 
@@ -41,9 +49,29 @@ def slugify(heading: str) -> str:
     return s
 
 
-def heading_anchors(md_text: str) -> set[str]:
+def anchor_ids(md_text: str) -> set[str]:
+    """Anchor targets in a markdown file.
+
+    A heading's id is its explicit attr_list ``{#id}`` when present,
+    otherwise the slug of its visible text with any attr_list block
+    (``{#id}``, ``{.class}``, ``{key=val}``) removed — matching MkDocs.
+    Inline ``{#id}`` anchors on non-heading lines (e.g. ``**Term**{#term}``)
+    count too; a ``{#id}`` shown inside inline code is ignored so a code
+    sample is not mistaken for a real anchor.
+    """
     body = FENCED_CODE_RE.sub("", md_text)
-    return {slugify(m.group("text")) for m in HEADING_RE.finditer(body)}
+    anchors: set[str] = set()
+    for m in HEADING_RE.finditer(body):
+        text = m.group("text")
+        block = ATTR_BLOCK_RE.search(text)
+        explicit = ATTR_ID_RE.findall(block.group(0)) if block else []
+        if explicit:
+            anchors.update(explicit)
+        else:
+            anchors.add(slugify(ATTR_BLOCK_RE.sub("", text)))
+    for block in ATTR_BLOCK_RE.finditer(INLINE_CODE_RE.sub("", body)):
+        anchors.update(ATTR_ID_RE.findall(block.group(0)))
+    return anchors
 
 
 def extract_links(md_text: str) -> list[str]:
@@ -87,7 +115,7 @@ def main() -> int:
             else:
                 target = src
             if anchor and target.suffix == ".md":
-                anchors = heading_anchors(target.read_text())
+                anchors = anchor_ids(target.read_text())
                 if anchor not in anchors:
                     rel = target.relative_to(ROOT) if ROOT in target.parents or target == src else target
                     failures.append((src, url, f"anchor #{anchor} not found in {rel}"))

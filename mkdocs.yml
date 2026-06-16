@@ -65,6 +65,8 @@ plugins:
           - releasing.md
         Capabilities:
           - capabilities/*.md
+        Glossary:
+          - glossary.md
         Proposals:
           - proposals/*.md
         Open questions:
@@ -110,9 +112,11 @@ nav:
     - Prompt Management: capabilities/prompt-management.md
     - Sessions: capabilities/sessions.md
     - Suspension: capabilities/suspension.md
-    - Harness: capabilities/harness.md
-    - Harness — Chat: capabilities/harness-chat.md
+    - Harness:
+      - capabilities/harness.md
+      - Chat: capabilities/harness-chat.md
     - Conformance Adapter: capabilities/conformance-adapter.md
+  - Glossary: glossary.md
   - Proposals: proposals.md
   - Open questions: open-questions.md
   - Compatibility: compatibility.md
