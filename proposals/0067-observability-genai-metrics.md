@@ -9,7 +9,7 @@
 
 ## Summary
 
-OpenArmature observability is span-based (§4–§6) and log-correlated (§7); §11 *Out of scope* records that the spec is "trace-only" and that OTel **metrics** are deferred. This proposal adds the metrics signal as a new **§11**, scoped to **provider-call metrics**: two histogram instruments — token usage and operation duration — recorded once per LLM completion and per embedding call, from the data the framework already surfaces on the §5.5.7 typed LLM completion event and the §5.5.9 typed embedding event. No new data source; metrics are an aggregatable projection of the existing event stream.
+OpenArmature observability is span-based (§4–§6) and log-correlated (§7); §11 *Out of scope* records that the spec is "trace-only" and that OTel **metrics** are deferred. This proposal adds the metrics signal as a new **§11**, scoped to **provider-call metrics**: two histogram instruments — token usage and operation duration — recorded per LLM completion and per embedding call (per attempt under call-level retry), from the data the framework already surfaces on the §5.5.7 typed LLM completion event and the §5.5.9 typed embedding event. No new data source; metrics are an aggregatable projection of the existing event stream.
 
 The upstream OTel GenAI metric instruments (`gen_ai.client.token.usage`, `gen_ai.client.operation.duration`) and their `gen_ai.*` dimension attributes are at **Development** status (verified 2026-06-16 against `open-telemetry/semantic-conventions-genai`). Per the *Stable-only upstream adoption* policy, OA therefore emits **OA-namespaced** instruments — `openarmature.gen_ai.client.token.usage` and `openarmature.gen_ai.client.operation.duration` — mirroring the upstream instrument type, unit, and explicit bucket advisory so that a future cutover to the `gen_ai.client.*` names is mechanical (strip the `openarmature.` prefix). This is the same move §5.5.3.1 made for the Development-status cache attributes.
 
@@ -84,7 +84,8 @@ Anticipated bump: **MINOR** (pre-1.0); concrete version assigned at acceptance. 
 > sample, and a failed attempt carries `error.type` (§11.3) — matching the per-attempt span model.
 > The token-usage histogram records **only for an attempt that returned a usage record**; failed
 > attempts have no response and contribute nothing. The attempt index is deliberately NOT a
-> dimension (it would unbound cardinality); attempts are disambiguated on the spans, not the metrics.
+> dimension (it would create unbounded cardinality); attempts are disambiguated on the spans, not the
+> metrics.
 >
 > The instruments use an `openarmature.gen_ai.*` namespace (not `openarmature.llm.*`) because they
 > are operation-generic — one instrument per signal, dimensioned by operation, covering LLM
@@ -94,37 +95,36 @@ Anticipated bump: **MINOR** (pre-1.0); concrete version assigned at acceptance. 
 >
 > #### 11.3 Dimensions
 >
-> Measurements carry the following dimensions, reusing the keys §5.5.3 already established for the
-> provider span where they apply. Per the Stable-only policy, `error.type` (Stable) is the only
-> `gen_ai.*`-adjacent key used on its own merits; `gen_ai.system` is reused for span/metric
-> consistency (matching §5.5.3's existing direct emission); everything else uses the
-> `openarmature.*` parallel until the upstream `gen_ai.*` name stabilizes. Implementations MUST keep
+> Measurements carry the following dimensions, reusing the keys the provider (§5.5.3) and embedding
+> (§5.5.8) spans already emit. `gen_ai.system`, `gen_ai.request.model`, and `error.type` are Stable
+> upstream attributes (`docs/compatibility.md`), used directly; the Development-status
+> `gen_ai.operation.name` and `gen_ai.token.type` use their `openarmature.*` mirrors until they
+> stabilize — the same split §5.5.2 / §5.5.3 apply to the span attributes. Implementations MUST keep
 > dimensions low-cardinality (no free-form per-request values).
 >
 > | Dimension key | On | Source | Notes |
 > |---|---|---|---|
-> | `openarmature.gen_ai.operation` | both | the operation kind | `"chat"` for LLM completion, `"embeddings"` for embedding. Mirrors upstream `gen_ai.operation.name` (Development). |
-> | `openarmature.llm.model` | both | §5.5.3 request model | The OA-namespaced model parallel §5.5.3 already emits on the span. The upstream `gen_ai.request.model` is **Development**, so the OA name is used until it stabilizes. Cardinality is bounded by the set of models in use. |
-> | `gen_ai.system` | both | §5.5.3 system identifier | The value OA already emits on the provider span (§5.5.3), reused for span/metric consistency. Diverges from the upstream metric key `gen_ai.provider.name` (**Development**, renamed from `gen_ai.system`); reconciled at the stable cutover. |
-> | `openarmature.gen_ai.token.type` | token.usage only | `"input"` / `"output"` | Mirrors upstream `gen_ai.token.type` (Development). |
-> | `error.type` | duration only, when the call errored | the call's error class (graph-engine §4 category, carried on the graph-engine §6 typed LLM / embedding failure event) | The **one** upstream metric dimension that is Stable; used directly. Absent on a successful call. |
+> | `openarmature.gen_ai.operation` | both | the operation kind | `"chat"` for LLM completion, `"embeddings"` for embedding. Mirrors the Development `gen_ai.operation.name` (deferred per §5.5.8 / `docs/compatibility.md`). |
+> | `gen_ai.request.model` | both | §5.5.3 / §5.5.8 request model | Stable per `docs/compatibility.md`; the model key both the LLM (§5.5.3) and embedding (§5.5.8) spans already emit. Cardinality is bounded by the set of models in use. |
+> | `gen_ai.system` | both | §5.5.3 / §5.5.8 system identifier | Stable; the provider identifier both spans already emit. |
+> | `openarmature.gen_ai.token.type` | token.usage only | `"input"` / `"output"` | Mirrors the Development `gen_ai.token.type`. |
+> | `error.type` | duration only, when the call errored | the llm-provider §7 error category (per retrieval-provider §5 for embedding), carried as `error_category` on the graph-engine §6 typed LLM / embedding failure event | Stable; used directly. Absent on a successful call. |
 >
-> Apart from `error.type` (Stable), every GenAI dimension above is at upstream **Development**
-> status — `gen_ai.operation.name`, `gen_ai.token.type`, `gen_ai.request.model`, and the
-> `gen_ai.system` → `gen_ai.provider.name` rename — so OA uses the `openarmature.*` mirrors (and its
-> existing `openarmature.llm.model` / `gen_ai.system` span attributes) until those stabilize, when a
-> stable-cutover follow-on reconciles the names (tracked in `docs/compatibility.md`). The Stable
-> upstream `server.address` / `server.port` dimensions (the provider endpoint) are out of scope for
-> v1 (endpoint cardinality).
+> The two `openarmature.*`-mirrored dimensions track the upstream `gen_ai.operation.name` /
+> `gen_ai.token.type` attributes, which are at Development status; a stable-cutover follow-on adds
+> the `gen_ai.*` names when they stabilize (the §5.5.8 / 0047 mirror pattern, tracked in
+> `docs/compatibility.md`). The Stable upstream `server.address` / `server.port` dimensions (the
+> provider endpoint) are out of scope for v1 (endpoint cardinality).
 >
 > #### 11.4 Determinism
 >
-> A metric observation is a function of (a) the §6 event stream — deterministic per graph-engine §5:
-> the same input yields the same token counts and the same dimensions — and (b) implementation-
-> specific timing (the duration value). Per §10, the conformance suite asserts the **deterministic**
-> portion (that the expected observations are recorded, with the expected token counts and
-> dimensions) and does NOT assert duration values, histogram bucket assignment of durations, or
-> timestamps.
+> graph-engine §5 determinism covers the *structure* of the §6 event stream — which events fire, in
+> what order — but NOT the values a node's external call returns: a real provider's token counts and
+> latencies vary run to run (graph-engine §5 explicitly excludes node-implementation / external-I/O
+> nondeterminism). Per §10, the conformance suite asserts only the deterministic portion under its
+> mocked provider — that the expected observations are recorded with the expected dimensions (and,
+> for the suite's fixed-usage mock, token counts) — and does NOT assert duration values, histogram
+> bucket assignment, or timestamps.
 >
 > #### 11.5 Conformance support
 >
