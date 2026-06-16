@@ -76,6 +76,7 @@ lifecycle and the proposal template.
 | [0068](proposals/0068-pipeline-utilities-failure-isolation-cause-chain.md) | Failure-isolation event structured cause chain | pipeline-utilities  | Accepted | Pending         | —          |
 | [0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md) | Fan-out degrade contribution refinements | pipeline-utilities  | Draft    | —               | —          |
 | [0070](proposals/0070-conformance-adapter-crash-injection-and-cause-chaining.md) | Crash-injection + cause-chaining adapter directives | conformance-adapter | Draft    | —               | —          |
+| [0071](proposals/0071-conformance-adapter-failure-mock-catalog.md) | Failure-mock directive catalog | conformance-adapter | Draft    | —               | —          |
 
 Click any column header to sort.
 

@@ -1,0 +1,1 @@
+../../proposals/0071-conformance-adapter-failure-mock-catalog.md
