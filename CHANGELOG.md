@@ -17,7 +17,7 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 **Notes**
 
-- **MINOR bump (pre-1.0).** The `caught_exception` shape gains `chain` (additive); the derived `category` / `message` are unchanged for the single-carrier chains 0065 fixtured. 0065's `caught_exception.message` SHOULD is tightened to a MUST (the chain makes the derivation unambiguous). Supersedes only 0065's `caught_exception` cause-representation clause. The deliberate §6.1 / §6.3 resolution asymmetry is recorded in `docs/open-questions.md`.
+- **MINOR bump (pre-1.0).** The `caught_exception` shape gains `chain` (additive); the derived `category` / `message` are unchanged for the single-carrier chains 0065 fixtured. 0065's `caught_exception.message` coherence SHOULD is replaced by a definitional derivation — the derived `message` is the same chain link the `category` is taken from — which the chain makes unambiguous. Supersedes only 0065's `caught_exception` cause-representation clause. The deliberate §6.1 / §6.3 resolution asymmetry is recorded in `docs/open-questions.md`.
 
 ## [0.56.0] — 2026-06-15
 
