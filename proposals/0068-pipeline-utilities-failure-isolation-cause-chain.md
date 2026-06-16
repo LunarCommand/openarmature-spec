@@ -1,8 +1,9 @@
 # 0068: Pipeline Utilities — Failure-Isolation Event Structured Cause Chain
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-15
+- **Accepted:** 2026-06-15
 - **Targets:** spec/pipeline-utilities/spec.md (§6.3 — the failure-isolation event's `caught_exception` record gains a structured **`chain`** field: an ordered list of cause links `{category, message, carrier}` from the caught exception down to the originating raise, outermost→innermost, carriers included and flagged; the existing `category` / `message` fields are **retained and redefined** as a derivation over the chain — the outermost non-carrier link carrying a category (else `category` is `null` and `message` is the outermost non-carrier link's). Supersedes 0065's "resolve through the carrier wrapper to the originating cause" prose, which is ambiguous when the post-carrier chain has multiple non-carrier links; plus a conformance fixture covering a nested-carrier chain. §6.1 retry classification is explicitly unchanged.)
 - **Related:** 0050 (introduced §6.3 `FailureIsolationMiddleware` + the failure-isolation event and its `caught_exception` record), 0065 (the cause-fidelity carrier-unwrap clause this extends/supersedes), 0009 / 0036 (fan-out — the §9.7 instance-middleware site), 0011 (parallel branches — the §11.7 branch-middleware site), graph-engine §4 (`node_exception` carrier wrapper + `__cause__`), graph-engine §6 (observer delivery queue the event rides)
 - **Supersedes:** 0065 (the §6.3 `caught_exception` cause-representation clause only; 0065's wrapped-instance/branch **lineage** SHOULD is unaffected and stands)
