@@ -48,10 +48,12 @@ Document, alongside `raises:`:
 >   - **Compact form:** `{fail_first_invocation_only: <bool>, on_success: {<field>: <value>}}` —
 >     fails the **first whole invocation** only (raised as `node_exception`), succeeding (returning
 >     `on_success`) on any resume.
-> - **`flaky_by_index`** — fan-out mock with `category` + `success_compute`, in one of two forms:
->   `{fail_when_idx: <int>}` — the instance whose **item value** equals `<int>` fails
->   **deterministically** (no retry; a collect-mode seam) — or `{fail_count_per_idx: <int>}` — every
->   instance fails its first `<int>` **attempts**, then succeeds (retry).
+> - **`flaky_by_index`** — fan-out mock with `success_compute` and an **optional** `category`
+>   (defaults to `provider_unavailable`; meaningful only for the retrying form, where it drives
+>   retry classification), in one of two forms: `{fail_when_idx: <int>}` — the instance whose **item
+>   value** equals `<int>` fails **deterministically** (no retry; a collect-mode seam, `category`
+>   typically omitted) — or `{fail_count_per_idx: <int>}` — every instance fails its first `<int>`
+>   **attempts**, then succeeds (retry).
 > - **`flaky_per_index`** — fan-out mock, **invocation**-keyed, with `success_compute`, in one of two
 >   forms: `{fail_first_run_indices: [<int>, …]}` (those indices fail the **first invocation** only,
 >   then succeed on resume) or `{always_fail_indices: [<int>, …]}` (those indices fail **every**
