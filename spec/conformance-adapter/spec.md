@@ -818,7 +818,7 @@ asserts on the error category, not on any successful suspension.
 Prompt-management fixtures that exercise the per-fetch `cache_ttl_seconds` control (prompt-management
 §5 / §6) rely on a **caching prompt-backend** primitive: an in-memory `PromptBackend` that caches
 fetched templates by `(name, label)`, counts **source reads** (fetches that reach its backing store
-rather than the cache), and honors `cache_ttl_seconds` per the §5 contract:
+rather than the cache), and honors `cache_ttl_seconds` per the prompt-management §5 contract:
 
 - **`None` (default)** — serve a cached entry when present; read the source only on a miss.
 - **`0`** — bypass the cache: every fetch is a source read.
@@ -831,14 +831,14 @@ The primitive exposes the per-`(name, label)` source-read count for assertion (t
 controllable clock by a fixed number of seconds between `calls`). The adapter MUST ship this caching
 backend in addition to the non-caching (preloaded in-memory mock) prompt backend the existing
 prompt-management fixtures use — which reads its source on every fetch and therefore treats
-`cache_ttl_seconds` as a no-op, as do the filesystem / in-memory backends §5 describes.
+`cache_ttl_seconds` as a no-op, as do the filesystem / in-memory backends prompt-management §5 describes.
 
 **Fixture shapes.** The caching backend and its assertions are spelled in the prompt-management
 fixture schema as:
 
 - `backends[].caching: true` — marks a backend as the caching prompt backend (vs. the default
   preloaded mock backend that reads its source on every fetch).
-- `cache_ttl_seconds: <int>` on a `fetch` `call` — passed to that backend's `fetch` per the §5
+- `cache_ttl_seconds: <int>` on a `fetch` `call` — passed to that backend's `fetch` per the prompt-management §5
   contract.
 - a `calls` entry `{target: {backend: <name>}, operation: advance_clock, seconds: <int>}` —
   advances the named caching backend's controllable clock by `<int>` seconds; it is a `calls` entry
