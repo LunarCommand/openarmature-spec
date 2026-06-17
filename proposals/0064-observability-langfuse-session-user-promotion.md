@@ -1,8 +1,9 @@
 # 0064: Observability — Langfuse `trace.sessionId` / `trace.userId` Population
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-10
+- **Accepted:** 2026-06-17
 - **Targets:** spec/observability/spec.md (§8.4.1 — adds `trace.sessionId` and `trace.userId` mapping rows with a follow-on *Session / user trace-field sourcing* paragraph defining the `session_id` promotion, the recognized-`userId`-key promotion, the OTel data-model asymmetry, and multi-invocation grouping / detached-trace semantics; §8.10 — the *Langfuse Sessions* out-of-scope bullet is realized and removed)
 - **Related:** 0031 (Langfuse backend mapping — introduced §8), 0020 (sessions capability — established `openarmature.session_id`, the `trace.sessionId` source, and the §8.10 deferral this realizes), 0034 (caller-supplied invocation metadata — established the `trace.metadata` top-level surface the `userId` promotion reads from, and `openarmature.user.*` on OTel spans), 0043 (sibling Langfuse trace-field population proposal — the observer-side sourcing-paragraph pattern and the OTel-has-no-trace-level-equivalent framing this reuses)
 - **Supersedes:**

@@ -4,6 +4,21 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.62.0] — 2026-06-17
+
+**Added**
+
+- **observability §8.4.1 — Langfuse `trace.sessionId` / `trace.userId` population.** The Langfuse mapping now populates Langfuse's two dedicated cross-trace grouping fields from data OA already carries: `trace.sessionId` is sourced from `openarmature.session_id` (set when the invocation is session-bound per the sessions capability), so a multi-turn agent's per-turn invocations group into one Langfuse Session; `trace.userId` is promoted automatically by the Langfuse observer from a recognized `userId` key in the caller-supplied invocation metadata (§3.4) — **additive**, the key also remains at `trace.metadata.userId`, and `userId` is *recognized, not reserved*. Both fields are unset when their source is absent. A new *Session / user trace-field sourcing* paragraph defines the MUST-set / unset rules, the multi-invocation / detached / suspend-resume grouping semantics, and the OTel data-model asymmetry (no OTel trace-level session/user field; no OTel-side change). The asymmetry in where the two sources live is principled: `session_id` is a first-class OA concept with state semantics, while a user id has no runtime semantics and is promoted observer-side from caller metadata rather than added to the engine's invoke surface. ([proposal 0064](proposals/0064-observability-langfuse-session-user-promotion.md))
+- One new conformance fixture `observability/conformance/084-langfuse-session-user-promotion` (five cases: session-bound / not, `userId` present / absent, multi-invocation grouping under one session id).
+
+**Changed**
+
+- **observability §8.10 — the *Langfuse Sessions* out-of-scope bullet is removed** (realized; the sessions capability, proposal 0020, is Accepted). §8.1 and the §8.4 *Distinction from Langfuse Sessions / Users* note are updated to record that Sessions / Users grouping is now realized rather than deferred. Langfuse Scoring and Cost remain deferred. ([proposal 0064](proposals/0064-observability-langfuse-session-user-promotion.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Behavior change for one path: a caller already supplying `userId` as invocation metadata (landing only in `trace.metadata.userId` today) will, after this, also see it populate the first-class `trace.userId` field — almost always the desired outcome, and the reason `userId` is recognized rather than reserved. Callers working around the gap via direct Langfuse SDK trace-update calls will see OA-observer values appear on the same fields (write order determines the final value, as for `trace.input` / `trace.output`); the migration is to drop the direct calls. No OTel-side change, no graph-engine or public-type change. ([proposal 0064](proposals/0064-observability-langfuse-session-user-promotion.md))
+
 ## [0.61.0] — 2026-06-17
 
 **Changed**

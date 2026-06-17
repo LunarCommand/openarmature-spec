@@ -26,6 +26,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §4 *Span hierarchy* gained a new §4.6 *Turn-level wrapper span (harness capability)* — the harness MAY open a turn-level wrapper span around `invoke()` when running inside a deployment runtime, with the invocation root span becoming its child. Wrapper is OPTIONAL (runtimes that already provide a transport-level parent span MAY skip it). Span name + attributes are harness-implementation-defined; turn-level attributes follow §5.6 (`openarmature.session_id` in sessioned mode) and §5.8 (suspension descriptor attributes on signal-resume turns). See the harness capability spec for the full contract by [proposal 0022](../../proposals/0022-harness-contract.md)
   - §5.5.4 observer-level privacy flag renamed `disable_llm_payload` → `disable_provider_payload`; semantics broadened to cover payload from any provider call (LLM completion + embedding + rerank when it lands) rather than LLM-only — same default-conservative posture (default `True`); cross-references in §8 + graph-engine §6 updated. New §5.5.8 *Embedding provider attributes* sub-subsection covering OTel mapping for `EmbeddingProvider.embed()` calls — span name `openarmature.embedding.complete`, Stable GenAI semconv attribute subset (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.response.id`, `gen_ai.usage.input_tokens`), OA-namespace `openarmature.embedding.*` attributes (`input_count`, `dimensions`, payload-gated `input.strings` + `request.extras`); the upstream `gen_ai.operation.name` attribute deferred per the stable-only adoption policy (operation discrimination via span name + provider). New §5.5.9 *Typed embedding events* sub-subsection framing the `EmbeddingEvent` + `EmbeddingFailedEvent` typed-event surface as the structured form of the embedding-span attribute surface (paralleling §5.5.7 for LLM completion). New §8.4.5 *Embedding-specific mapping* sub-subsection covering Langfuse mapping — embedding calls render as a dedicated `Embedding` observation type (created via the SDK's `asType: "embedding"`), NOT `Generation` with operation metadata; both `input` strings and `output` vectors are payload-bearing and gated by `disable_provider_payload` under the vec2text-aware privacy posture by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
   - §4.4 *Detached trace mode* updated so a detached OTel trace roots in its own `openarmature.invocation` span carrying the **same** `invocation_id` as the parent invocation (detached mode is an observer-side trace-rendering choice, not an engine-level sub-invocation, so the run identity is unchanged), with the detached unit's spans nested under it — replacing the prior "spans use the new `trace_id` as their root, not children of any invocation span" shape; §4.1 *Span timing* gained a detached-invocation-span window paragraph (the detached-unit window, not the outer `invoke()` window); §4.2 *Status mapping* gained a *Detached invocation span status* note (the detached unit's own outcome — a raising detached subgraph surfaces `ERROR` on both the parent dispatch span and the detached invocation span); §4.3 gained a *Detached-dispatch invocation spans* paragraph pinning the shared-`invocation_id` correlation (`trace_id` = per-backend rendering identity, `invocation_id` = shared engine-level run identity, distinct from checkpoint-resume's fresh `invocation_id`); §5.1 + §4.5 gained multiple-invocation-spans-per-run notes (the always-emit attribution invariant applies to each invocation span); §8.4.1 gained a detached-trace attribution-sourcing note (no normative Langfuse change). Reconciles the contradicting expected span trees in conformance fixtures `008-otel-detached-trace-mode` and `058-implementation-attribution-otel`; no graph-engine change by [proposal 0061](../../proposals/0061-detached-trace-invocation-span.md)
+  - §8.4.1 Trace-level mapping gained two rows — `openarmature.session_id` → `trace.sessionId` (groups every trace sharing a session id into one Langfuse Session) and a recognized `userId` caller-metadata key → `trace.userId` (Langfuse's Users dimension; additive — the key also remains at `trace.metadata.userId`; recognized, not reserved) — plus a *Session / user trace-field sourcing* paragraph (the MUST-set / unset rules, the OTel-has-no-trace-level-equivalent asymmetry, and multi-invocation / detached / suspend-resume grouping semantics). §8.1 and the §8.4 *Distinction from Langfuse Sessions / Users* note updated to record that Sessions / Users grouping is now realized; §8.10's *Langfuse Sessions* out-of-scope bullet removed (realized — the sessions capability, proposal 0020, is Accepted). New conformance fixture `084-langfuse-session-user-promotion`; no OTel-side change by [proposal 0064](../../proposals/0064-observability-langfuse-session-user-promotion.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1669,8 +1670,9 @@ fidelity of Langfuse's native shape (first-class Generation rendering, true Prom
 Langfuse-shaped metadata) where OTLP-then-ingest produces lossy translation through string-valued
 OTel attributes.
 
-This mapping covers the Trace + Observation surface. Langfuse Sessions, Scoring, and Cost
-surfaces are deferred (§8.10).
+This mapping covers the Trace + Observation surface, including Langfuse Sessions / Users grouping
+via `trace.sessionId` / `trace.userId` (§8.4.1). Langfuse Scoring and Cost surfaces are deferred
+(§8.10).
 
 ### 8.2 Langfuse data model
 
@@ -1737,13 +1739,16 @@ Arize, Honeycomb, Datadog APM, HyperDX) do NOT need this per-backend propagation
 the §5.6 `openarmature.user.*` cross-cutting attributes from the OTel observer's span
 emission.
 
-**Distinction from Langfuse Sessions.** Langfuse's `trace.metadata` field (the target of
-§3.4's caller-supplied metadata propagation) is distinct from Langfuse's Sessions feature.
-Sessions group multiple traces under a single `sessionId` for cross-invocation conversation
-replay; they are deferred to a future sessions capability (see §10 *Out of scope*). §3.4's
-caller-supplied metadata is per-invocation arbitrary key/value enrichment used for filtering
-and search; metadata entries are NOT promoted to Langfuse's `userId` / `sessionId` Trace
-fields by these propagation rules. The two surfaces are complementary and orthogonal.
+**Distinction from Langfuse Sessions / Users.** Langfuse's `trace.metadata` field (the target of
+§3.4's caller-supplied metadata propagation) is distinct from Langfuse's dedicated cross-trace
+grouping fields `trace.sessionId` and `trace.userId`. Arbitrary caller metadata is per-invocation
+key/value enrichment used for filtering and search; it lands as top-level `trace.metadata.<key>`
+and is NOT, in general, promoted to the dedicated grouping fields. Two specific exceptions are
+defined in §8.4.1: `openarmature.session_id` sources `trace.sessionId` (grouping traces sharing a
+session id into one Langfuse Session), and the recognized `userId` caller-metadata key is
+additionally promoted to `trace.userId` (the Users dimension) while also remaining at
+`trace.metadata.userId`. Outside those two, metadata and the grouping fields are complementary and
+orthogonal surfaces.
 
 **Langfuse-specific constraints on caller-supplied metadata.** Langfuse's documentation
 states that propagated metadata keys are limited to alphanumeric characters, and that
@@ -1774,6 +1779,46 @@ to also catch Langfuse-specific constraints early, per §3.4's MAY-expand allowa
 | Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at trace emission time (per §3.4, including any mid-invocation augmentations applied before trace closure) | `trace.metadata.<key>` (top level, sibling to `correlation_id` / `entry_node` / `spec_version`; NOT nested under a `user` sub-object so Langfuse UI filtering on `metadata.<key>` matches what callers supplied; implementations SHOULD use Langfuse SDK's `trace.update(metadata=...)` to apply mid-invocation augmentations to the open Trace) |
 | `initial_state` at invocation entry — sourced via the *Trace input/output sourcing* paragraph below | `trace.input` |
 | Final state at invocation exit — sourced via the *Trace input/output sourcing* paragraph below | `trace.output` |
+| `openarmature.session_id` (per §5.6; present when the invocation is session-bound per the sessions capability / proposal 0020) | `trace.sessionId` — groups every trace sharing the session id under one Langfuse Session. Absent when the invocation is not session-bound. See *Session / user trace-field sourcing* below. |
+| The recognized `userId` key in the in-scope caller-supplied invocation metadata (per §3.4), promoted by the Langfuse observer | `trace.userId` — populates Langfuse's first-class user dimension (Users dashboard, per-user filtering); additive (the value also remains at `trace.metadata.userId`). Absent when no `userId` key is in scope. See *Session / user trace-field sourcing* below. |
+
+**Session / user trace-field sourcing.** Langfuse exposes two dedicated cross-trace grouping
+fields on the Trace object — `sessionId` and `userId` — distinct from `trace.metadata`. They are
+sourced as follows.
+
+*`trace.sessionId`.* When the invocation is session-bound (the caller supplied a `session_id` at
+`invoke()`, surfaced as `openarmature.session_id` per §5.6), the Langfuse observer MUST set
+`trace.sessionId` to that value; when the invocation is not session-bound, `trace.sessionId` is
+unset. Because `session_id` spans many invocations by design (sessions capability §3) and is
+unchanged across detached / parent traces (§4.4), every trace produced under one session id —
+whether from a separate per-turn `invoke()` or a detached child — carries the same
+`trace.sessionId`, and Langfuse groups them into one Session. A session-bound invocation that
+suspends and resumes remains the same session-bound invocation; its trace(s) carry the session id
+unchanged, so grouping follows the session id the sessions capability holds across the session's
+invocations, not the resume mechanics.
+
+*`trace.userId`.* OA has no first-class user concept; the user identity is an observability
+dimension carried in caller-supplied invocation metadata (§3.4). The Langfuse observer recognizes
+the `userId` key in the in-scope caller metadata (per §3.4, including any mid-invocation
+augmentation applied before trace closure) and MUST promote it: when a `userId` key is in scope
+the observer sets `trace.userId` to its value **automatically** (promotion is not gated behind an
+opt-in); when absent, `trace.userId` is unset. Promotion is **additive** — the `userId` entry also
+remains a top-level `trace.metadata.userId` key per the caller-metadata row above; the observer
+does not remove it. The recognized key is `userId`, not `user_id`: it is a caller-supplied *read*
+key, matching both its target field (`trace.userId`) and §3.4's caller-metadata examples (`userId`,
+`tenantId`) with zero translation — snake_case is OA's convention for keys it *emits* (the §3.4 /
+§8.4 reserved set), not for a key it recognizes. `userId` is **not** a reserved key (§3.4): unlike
+the OA-emitted keys reserved against collision, it is a caller key OA reads and promotes, so it is
+recognized, not rejected. A caller using `userId` to mean something other than an end-user identity
+will see it surface in the Users dimension; this is rare, and a configurable promotion-key name is
+a future tightening.
+
+*OTel data-model asymmetry.* `sessionId` and `userId` are Langfuse Trace-level fields with no
+OpenTelemetry trace-level equivalent (an OTel trace is a set of spans sharing a `trace_id`, with no
+trace-level session or user field). The OTel side already carries the same data as span attributes
+— `openarmature.session_id` (§5.6) in sessioned mode and the `openarmature.user.*` caller-metadata
+family (§3.4) — so this mapping adds no OTel attribute and is Langfuse-specific by data-model
+construction.
 
 **Detached-trace attribution sourcing (per §4.4).** A detached child trace's
 `trace.metadata.implementation_name` / `implementation_version` rows source from the detached
@@ -2170,9 +2215,6 @@ credentials once and all Langfuse-consuming surfaces use them.
 
 Not covered by this section; deferred to follow-on proposals:
 
-- **Langfuse Sessions.** Langfuse's `userId` / `sessionId` Trace fields support cross-trace
-  grouping. Cross-invocation session identity is proposal 0020's concern; once that lands,
-  `trace.sessionId` realization follows.
 - **Langfuse Scoring.** Quality scoring of Generations / Traces is a separate surface that the
   OA spec does not currently address. A future `openarmature.score.*` attribute family and
   corresponding Langfuse `score` API call would land via a separate proposal.
