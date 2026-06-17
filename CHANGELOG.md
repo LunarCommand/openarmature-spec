@@ -12,7 +12,7 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 **Added**
 
-- **pipeline-utilities §9.3 — an absent `collect_field` is graceful on every fan-in path.** A non-degrade `instance_middleware` return SHOULD cover `collect_field`; an absent `collect_field` (by any route) yields a null slot and the fan-in MUST NOT raise — generalizing §9.8's degrade-never-raises so a non-conformant return surfaces as a visible null in `target_field` rather than stopping the graph under `fail_fast`. ([proposal 0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md))
+- **pipeline-utilities §9.3 — an absent `collect_field` is graceful on every fan-in path.** A non-degrade `instance_middleware` return SHOULD cover `collect_field`; an absent `collect_field` (by any route) yields a null slot and the fan-in MUST NOT raise — generalizing §9.8's degrade-never-raises so a non-conformant return surfaces as a visible null in `target_field` rather than stopping the graph under `fail_fast` (for null-tolerant reducers such as `append`; strict-element reducers like `concat_flatten` / `merge_all` require the field be supplied). ([proposal 0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md))
 - One new conformance fixture `pipeline-utilities/conformance/069-fan-out-degrade-refinements` — the `extra_outputs` null slot, the absent-`collect_field` no-raise, and a degrade-survives-resume round-trip (via the `crash_injection` directive from 0070).
 
 **Notes**

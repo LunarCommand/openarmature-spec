@@ -764,7 +764,11 @@ distinct parent fields with no per-instance value, §11.7.)
 non-conformant middleware return — yields a **null slot**; the fan-in MUST NOT raise on an absent
 `collect_field`. A runtime raise here would stop the graph under `fail_fast`, defeating isolation
 exactly as a degrade-time raise would (§9.8). The null is visible in `target_field`, so a
-non-conformant return surfaces without halting the run.
+non-conformant return surfaces without halting the run. This null-slot fallback assumes the field's
+reducer accepts a null element (e.g. `append`, the default); a strict-element reducer
+(`concat_flatten` requires every element be a list, `merge_all` requires every element be a mapping —
+graph-engine §2) raises `ReducerError` on a null, so a degrade collecting into such a field MUST
+supply the value (per the SHOULD above), or the field MUST use a null-tolerant reducer.
 
 ### 9.4 Item ordering and fan-in determinism
 
