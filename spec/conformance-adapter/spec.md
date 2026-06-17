@@ -351,6 +351,62 @@ These directives appear under `nodes.<node_name>:` and define what the node does
   (graph-engine §4 `node_exception`) are independent of this mock-authored chain. Exercises
   pipeline-utilities §6.3 (failure-isolation cause chain).
 
+**Failure-mock directives.** Beyond `raises:`, the retry (pipeline-utilities §6.1), failure-isolation
+(§6.3), checkpoint-resume (§10), and collect-mode (§9.5) fixtures inject failure through a family of
+node mocks (each under `nodes.<node_name>:`), keyed on the failure axis each models:
+
+- **`failure_sequence` entry** — each entry is `{transient: <bool>, category: <category|null>,
+  message: <str|null>}`; a `null` entry denotes a non-failing attempt at that position.
+  `transient: true` + a `category` raises a transient (retry-classifier-friendly) error;
+  `transient: false` raises a non-transient one.
+- **`flaky`** — a node mock with two sub-forms:
+  - **Sequence form:** `{failure_sequence: [<entry|null>, ...], success_update: {<field>: <value>}}`
+    — raises once per entry across successive **attempts**; on an exhausted sequence (or a `null`
+    entry) returns `success_update`.
+  - **Compact form:** `{fail_first_invocation_only: <bool>, on_success: {<field>: <value>}}` — fails
+    the **first whole invocation** only (raised as `node_exception`), succeeding (returning
+    `on_success`) on any resume.
+- **`flaky_by_index`** — fan-out mock with `success_compute` and an **optional** `category` (defaults
+  to `provider_unavailable`; meaningful only for the retrying form, where it drives retry
+  classification), in one of two forms: `{fail_when_idx: <int>}` — the instance whose **item value**
+  equals `<int>` fails **deterministically** (no retry; a collect-mode seam, `category` typically
+  omitted) — or `{fail_count_per_idx: <int>}` — every instance fails its first `<int>` **attempts**,
+  then succeeds (retry).
+- **`flaky_per_index`** — fan-out mock, **invocation**-keyed, with `success_compute`, in one of two
+  forms: `{fail_first_run_indices: [<int>, ...]}` (those indices fail the **first invocation** only,
+  then succeed on resume) or `{always_fail_indices: [<int>, ...]}` (those indices fail **every**
+  invocation — a deterministic failure, e.g. for collect-mode error-contribution resume).
+- **`flaky_instance_only`** — `{fail_count_per_instance: <int>, category: <category>,
+  success_compute: {...}}` — each fan-out instance fails its first `fail_count_per_instance`
+  **whole-instance invocations** (the subgraph re-runs from scratch on retry), then succeeds.
+- **`flaky_resume_aware`** — `{fail_first_invocation_count: <int>, fail_resumed_invocation_count:
+  <int>, category: <category>, on_success: {...}}` — fails N attempts on the first invocation, then
+  M attempts on any resumed invocation before succeeding; used to verify `attempt_index` resets on
+  resume.
+
+Any failure these mocks raise MAY carry a `cause` (the `cause` directive above, proposal 0070) to
+chain an originating cause. In any of the success-state mappings (`success_update` / `on_success` /
+`success_compute`), a `<value>` that is a string naming a declared state field is read from that
+field; any other value is taken as a literal.
+
+**`flaky_per_index` vs `flaky_by_index`.** Both select fan-out instances by index, but for different
+purposes — the shared `_index` suffix invites confusion:
+
+- **`flaky_by_index`** has no checkpoint/resume semantics: `fail_count_per_idx` fails the first N
+  *attempts* of each instance (retry); `fail_when_idx` fails the instance with that *item value*
+  deterministically (a collect-mode seam). Use it for fan-out + retry / collect-mode fixtures.
+- **`flaky_per_index`** is **invocation**-keyed (checkpoint/resume): `fail_first_run_indices` fail the
+  *first invocation* then succeed on resume; `always_fail_indices` fail *every* invocation. Use it
+  for fan-out + checkpoint fixtures.
+
+**Success-state field naming (flagged, not changed).** The family names the success-path state
+update three ways — `success_update` (`flaky` sequence form), `on_success` (`flaky` compact form,
+`flaky_resume_aware`), and `success_compute` (`flaky_by_index`, `flaky_per_index`,
+`flaky_instance_only`). This is organic drift, not a semantic distinction — all three are the partial
+update the mock returns on the success path. They are documented as-is (renaming would churn the
+accepted fixtures and adapters for no behavioral gain); unifying the name is a candidate future
+cleanup.
+
 ### 5.2 State / schema directives
 
 These directives appear under `state:` and define the typed-state schema.

@@ -1,8 +1,9 @@
 # 0071: Conformance Adapter — Failure-Mock Directive Catalog
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-16
+- **Accepted:** 2026-06-17
 - **Targets:** spec/conformance-adapter/spec.md (§5.1 — formalize the **failure-mock node-behavior directives** the fixtures use but §5.1 never documented: `flaky` (sequence + compact forms), `flaky_by_index`, `flaky_per_index`, `flaky_instance_only`, `flaky_resume_aware`, and the `failure_sequence` entry shape; document each by its failure-keying **axis**; sharpen the `flaky_per_index` (invocation-keyed) vs `flaky_by_index` (attempt-keyed) distinction so they aren't confused; flag — without changing — the inconsistent success-state field naming across variants)
 - **Related:** 0055 (conformance-adapter capability — this fills the §5.1 mock-vocabulary gap it left), 0070 (formalized the crash/resume directives + added the §5.1 `cause` field, and deferred this mock catalog here), 0008 / 0009 / 0010 (checkpointing — what `flaky_per_index` / `flaky_resume_aware` exercise), 0050 / 0065 (retry + failure isolation — what `flaky` / `flaky_by_index` / `flaky_instance_only` exercise)
 - **Supersedes:**
