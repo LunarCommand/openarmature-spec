@@ -762,7 +762,13 @@ trace and one at the root of each detached trace — all carrying the same
 `openarmature.invocation_id`. The always-emit invariant above applies to **each** invocation span:
 every invocation span, in the parent trace or a detached trace, carries the §5.1 attribute set
 (`openarmature.implementation.name` / `.version`, `openarmature.graph.spec_version`,
-`openarmature.invocation_id`, `openarmature.graph.entry_node`). `openarmature.correlation_id` also
+`openarmature.invocation_id`, `openarmature.graph.entry_node`). Of these,
+`openarmature.invocation_id`, `openarmature.graph.spec_version`, and
+`openarmature.implementation.name` / `.version` are identical across all of an invocation's
+invocation spans (they are run-identity constants); `openarmature.graph.entry_node` is the
+exception, evaluated **per trace** (§4.4) — the parent invocation span carries the outermost
+graph's entry node, while each detached invocation span carries its detached unit's entry node.
+`openarmature.correlation_id` also
 appears on every detached invocation span, but as a §5.6 cross-cutting attribute (on every span of
 the invocation per §3.1 / §5.6), not as a member of the §5.1 set. No per-context caveat is needed
 on the §5.1 invariant because a detached trace always has an invocation span at its root.
