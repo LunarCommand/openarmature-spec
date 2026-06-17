@@ -16,8 +16,9 @@ which exercises the same null slot under null-tolerant `append` (graceful null, 
 
 **Case `degrade_null_slot_under_concat_flatten_raises_reducer_error`:**
 
-- Single-instance fan-out; the instance fails and the `failure_isolation` degrade sets only
-  `marker`, omitting the collect_field `out` → null slot.
+- Single-instance fan-out; the instance fails and the `failure_isolation` *callable* degrade sets
+  only `note`, omitting the collect_field `out` → null slot (a static degraded_update omitting the
+  collect_field would be a §9.8 compile error, so the omission uses the callable form).
 - `target_field` `results` uses `concat_flatten` → the null slot is not a list → the fan-in raises
   `ReducerError` from the fan-out node `process`.
 

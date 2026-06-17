@@ -13,8 +13,8 @@ subgraphs:
     state:
       fields:
         input: {type: int, default: 0}
-        out: {type: list<string>, default: []}   # collect_field; list-typed (concat_flatten flattens lists)
-        marker: {type: string, default: ""}       # a settable non-collect field
+        out: {type: list, default: []}           # collect_field; bare `list` so concat_flatten enforces element shape (gE fixture 026)
+        note: {type: string, default: ""}         # set by the callable degrade; collect_field `out` omitted
     entry: work
     nodes:
       work:
@@ -28,8 +28,10 @@ cases:
   - name: degrade_null_slot_under_concat_flatten_raises_reducer_error
     description: |
       Single-instance fan-out (items: [1]); the instance fails and the
-      failure_isolation degrade sets only `marker`, OMITTING the collect_field
-      `out` — so the instance's positional slot is NULL (per 0069). target_field
+      failure_isolation *callable* degrade sets only `note`, OMITTING the
+      collect_field `out` — so the instance's positional slot is NULL (per 0069;
+      a static degraded_update omitting collect_field would be a §9.8 compile
+      error, so the omission is done via the callable form). target_field
       `results` uses the strict-element reducer `concat_flatten`, which requires
       each update element to be a list; the null slot violates that, so the
       fan-in raises ReducerError (graph-engine §2). The degrade-never-raises
@@ -39,7 +41,7 @@ cases:
     state:
       fields:
         items: {type: list<int>, default: [1]}
-        results: {type: list<string>, reducer: concat_flatten, default: []}
+        results: {type: list, reducer: concat_flatten, default: []}   # bare `list` (gE fixture 026): concat_flatten is the enforcing layer
     entry: process
     nodes:
       process:
@@ -51,7 +53,13 @@ cases:
           target_field: results
           instance_middleware:
             - type: failure_isolation
-              degraded_update: {marker: "degraded"}   # sets `marker`, OMITS collect_field `out` -> null slot
+              # Callable degrade (069 Case 2's form): a STATIC degraded_update omitting
+              # collect_field is a compile error (§9.8 / fixture 065); a callable is exempt
+              # (output unknown at compile) and omits `out` at runtime -> null slot.
+              degraded_update:
+                callable: state_derived
+                template: "fellback for {{ state.input }}"
+                target_field: note      # sets `note`, OMITS collect_field `out` -> null slot
               event_name: "unit_isolated"
           error_policy: fail_fast
     edges:
