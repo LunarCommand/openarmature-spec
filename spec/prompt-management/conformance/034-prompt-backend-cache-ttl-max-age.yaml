@@ -24,7 +24,8 @@ calls:
     expected:
       prompt: {version: v1, template_hash: "sha256:abc123"}
   # advance to t=30 (< 60): entry still young enough → served from cache.
-  - operation: advance_clock
+  - target: {backend: cached_maxage}
+    operation: advance_clock
     seconds: 30
   - target: {backend: cached_maxage}
     operation: fetch
@@ -34,7 +35,8 @@ calls:
     expected:
       prompt: {version: v1, template_hash: "sha256:abc123"}
   # advance to t=90 (> 60): entry too old → fresh source read.
-  - operation: advance_clock
+  - target: {backend: cached_maxage}
+    operation: advance_clock
     seconds: 60
   - target: {backend: cached_maxage}
     operation: fetch

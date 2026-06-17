@@ -833,6 +833,19 @@ backend in addition to the non-caching (preloaded in-memory mock) prompt backend
 prompt-management fixtures use — which reads its source on every fetch and therefore treats
 `cache_ttl_seconds` as a no-op, as do the filesystem / in-memory backends §5 describes.
 
+**Fixture shapes.** The caching backend and its assertions are spelled in the prompt-management
+fixture schema as:
+
+- `backends[].caching: true` — marks a backend as the caching prompt backend (vs. the default
+  preloaded mock backend that reads its source on every fetch).
+- `cache_ttl_seconds: <int>` on a `fetch` `call` — passed to that backend's `fetch` per the §5
+  contract.
+- a `calls` entry `{target: {backend: <name>}, operation: advance_clock, seconds: <int>}` —
+  advances the named caching backend's controllable clock by `<int>` seconds; it is a `calls` entry
+  like any other and carries a `target`.
+- fixture-level `expected_backend_state: {<backend>: {source_read_count: <int>}}` — asserts the
+  named backend's cumulative source-read count after all `calls` have run.
+
 ## 7. Nondeterminism handling
 
 Several execution-ordering aspects are observable but not uniquely determined by the spec.
