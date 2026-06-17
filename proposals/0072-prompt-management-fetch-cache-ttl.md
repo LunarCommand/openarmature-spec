@@ -38,17 +38,20 @@ Extend the `fetch` contract with an optional parameter:
 >   - **`N > 0`** — the backend MUST NOT serve a cached entry older than `N` seconds; an entry
 >     younger than `N` seconds MAY be served, otherwise the backend fetches fresh.
 >
->   Negative values are invalid; implementations MUST reject them (an argument / value error).
+>   Negative values are invalid; implementations MUST reject a negative `cache_ttl_seconds` (raised
+>   per the language's idiom for an invalid argument).
 >
 >   `cache_ttl_seconds` governs only which cached entry MAY be served for *this* fetch; whether the
 >   fetched result is then written to the backend's cache, and for how long, remains the backend's
 >   implementation-defined cache management (below). A `0` fetch therefore guarantees a fresh
 >   *read* — not that subsequent default-TTL fetches observe the new version.
 >
-> Backends that maintain **no** client-side cache — filesystem backends, in-memory backends, and
-> any backend that reads its source on every fetch — treat `cache_ttl_seconds` as a no-op: they
-> already return a fresh read each call. The parameter is part of the contract so caching and
-> non-caching backends share one signature; cacheless backends accept and ignore it.
+> The condition is behavioral, not a backend type: a backend that reads its source on every fetch —
+> i.e., maintains no client-side cache (typical of filesystem and in-memory backends) — treats
+> `cache_ttl_seconds` as a no-op, since it already returns a fresh read each call. A backend that
+> *does* maintain a client-side cache honors the parameter regardless of its storage. The parameter
+> is part of the contract so all backends share one signature; cacheless backends accept and
+> ignore it.
 
 Amend the existing backend-caching paragraph (§5) so the TTL is a defined caller lever rather than
 wholly implementation-defined:
