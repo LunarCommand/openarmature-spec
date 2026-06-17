@@ -444,9 +444,10 @@ invocation span is the OTel parent for all top-level node spans within that invo
 A detached invocation span (per §4.4) is the exception to the rule above and MUST NOT be read as
 sharing the parent invocation span's window. It opens when its detached subgraph or fan-out
 instance is entered and closes when that unit completes — the detached-unit window, coterminous
-with the detached subgraph span nested directly beneath it, NOT the outer `invoke()` window. (It
-opens and closes in the same window as the parent's subgraph-dispatch span that carries the Link
-to the detached trace.)
+with the detached subgraph span nested directly beneath it, NOT the outer `invoke()` window. (For a detached subgraph, this window coincides with the parent's
+subgraph-dispatch span that carries the Link to the detached trace; for a detached fan-out, each
+per-instance detached invocation span matches its own instance's window — a sub-window of the
+parent's fan-out node span, which spans the whole fan-out and carries one Link per instance.)
 
 Implementations drive span lifecycle by registering an observer with the default phase
 subscription (both `started` and `completed`); the OTel observer maintains a stack of open spans
