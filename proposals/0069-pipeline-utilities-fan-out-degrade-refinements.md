@@ -1,8 +1,9 @@
 # 0069: Pipeline Utilities — Fan-Out Degrade Contribution Refinements
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-15
+- **Accepted:** 2026-06-16
 - **Targets:** spec/pipeline-utilities/spec.md (§9.3 — three refinements to the fan-out degrade-contribution rules 0066 introduced: (1) correct the omitted-`extra_outputs` rule from "not contributed / like a skipped heterogeneous branch field" to **null at the instance's positional slot**, mirroring `collect_field`'s null slot and preserving index-alignment with `target_field`; (2) add a SHOULD that a non-degrade `instance_middleware` return covers `collect_field`, with an absent `collect_field` on **any** fan-in path yielding a **null slot** and the fan-in MUST NOT raise on it — generalizing §9.8's degrade-never-raises to all paths; (3) a new conformance fixture pinning a degraded instance's slot across a checkpoint + resume round-trip)
 - **Related:** 0066 (the §9.3 degrade-contribution model + §9.8 compile check these refine), 0050 (`FailureIsolationMiddleware`, §6.3), 0009 / 0036 (fan-out collection + `instance_middleware`, §9.3 / §9.7), 0008 (checkpointing — the resume path the new fixture exercises), graph-engine §2 (reducers — `extra_outputs` merge in instance-index order)
 - **Supersedes:** 0066 (the §9.3 omitted-`extra_outputs` "not contributed" clause only; the rest of 0066 — the degrade-*is*-the-contribution model, the §9.8 `collect_field` compile check, and the §11.7 branch skip — stands unchanged)

@@ -750,9 +750,25 @@ reads `collect_field`'s value, and each `extra_outputs` `subgraph_field`'s value
 projection — failure isolation substitutes a clean result for the failed computation. When the
 `degraded_update` does not supply `collect_field`, the instance's slot is **null** (its positional
 slot is preserved); the static-mapping form of this omission is rejected at compile time (§9.8).
-When the `degraded_update` does not supply an `extra_outputs` `subgraph_field`, that field is simply
-not contributed by this instance — the same partial-contribution shape as a skipped heterogeneous
-branch field (§11.7).
+When the `degraded_update` does not supply an `extra_outputs` `subgraph_field`, that instance
+contributes **null** as its value for the mapped parent field — rather than being absent — merged in
+instance-index order like any other instance's value (§9.4), the same null treatment as an omitted
+`collect_field` (above). For an extending reducer (e.g. `append`) this keeps the field index-aligned
+with `target_field`; `null` is the uniform rule across reducers — a degrade omission contributes a
+positional value (`null`), never an absence, so the instance's slot is always present. (This is **not** a heterogeneous branch skip: parallel-branch `outputs` are
+distinct parent fields with no per-instance value, §11.7.)
+
+**Absent `collect_field`.** A non-degrade `instance_middleware` return SHOULD cover `collect_field`
+(it is the homogeneous collection slot; the §9.7 success contribution carries it). The fan-in reads
+`collect_field` such that an absent value — whether from a callable degrade that omits it (§9.8) or a
+non-conformant middleware return — yields a **null slot**; the fan-in MUST NOT raise on an absent
+`collect_field`. A runtime raise here would stop the graph under `fail_fast`, defeating isolation
+exactly as a degrade-time raise would (§9.8). The null is visible in `target_field`, so a
+non-conformant return surfaces without halting the run. This null-slot fallback assumes the field's
+reducer accepts a null element (e.g. `append`, the default); a strict-element reducer
+(`concat_flatten` requires every element be a list, `merge_all` requires every element be a mapping —
+graph-engine §2) raises `ReducerError` on a null, so a degrade collecting into such a field MUST
+supply the value (per the SHOULD above), or the field MUST use a null-tolerant reducer.
 
 ### 9.4 Item ordering and fan-in determinism
 
@@ -887,7 +903,8 @@ at construction rather than surfacing a silent null in the collection. The compi
 category is `fan_out_degraded_update_missing_collect_field`, reported per the graph-engine §2
 compile-time error contract and defined here, as §11.9 defines `parallel_branches_no_branches`. The check covers
 `collect_field` only — the homogeneous slot; `extra_outputs` fields are secondary, reducer-merged
-contributions with no compile requirement (an omitted one is simply not contributed, §9.3).
+contributions with no compile requirement (an omitted one contributes null at the instance's slot,
+§9.3).
 
 When `degraded_update` is the **callable** form (`(state) -> partial_update`, §6.3), its output is
 not knowable at compile time, so no compile-time check applies. At runtime, a callable that omits

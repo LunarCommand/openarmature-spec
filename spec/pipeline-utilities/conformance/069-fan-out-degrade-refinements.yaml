@@ -1,0 +1,153 @@
+# §9.3 fan-out degrade contribution refinements (proposal 0069). Refines 0066:
+# (1) an omitted extra_outputs source contributes NULL at the instance's
+# positional slot (not "not contributed"), index-aligned with target_field;
+# (2) an absent collect_field on any fan-in path is a null slot and the fan-in
+# MUST NOT raise; (3) a degraded slot survives a checkpoint + resume round-trip
+# (via crash_injection, proposal 0070).
+#
+# Fixture conventions: single-instance fan-outs (items: [1]); flaky unit +
+# instance failure_isolation per fixture 065; crash_injection + resume per
+# fixture 067.
+
+subgraphs:
+  unit:
+    state:
+      fields:
+        input: {type: int, default: 0}
+        out: {type: string, default: ""}
+        note: {type: string, default: ""}
+    entry: work
+    nodes:
+      work:
+        flaky:
+          failure_sequence:
+            - {transient: false, category: provider_unavailable, message: "down"}
+    edges:
+      - {from: work, to: END}
+
+cases:
+  # Case 1 — omitted extra_outputs source -> NULL at the instance's positional
+  # slot (refinement 1): index-aligned with target_field, NOT absent/shortened.
+  - name: extra_outputs_omission_is_null_slot
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list<string>, reducer: append, default: []}
+        notes: {type: list<any>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          extra_outputs: {notes: note}
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update: {out: "(degraded)"}   # supplies collect_field, OMITS extra_outputs `note`
+              event_name: "unit_isolated"
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: [1]
+        results: ["(degraded)"]
+        notes: [null]            # omitted extra_outputs `note` -> null at slot, not absent/shortened
+      execution_order: [process]
+      invariants:
+        extra_outputs_omission_is_null_slot: true
+
+  # Case 2 — absent collect_field on the (callable) degrade path -> null slot;
+  # the fan-in MUST NOT raise (refinement 2 — re-affirms §9.8 from the §9.3
+  # generalization angle: an absent collect_field on any path is a graceful null).
+  - name: absent_collect_field_yields_null_slot_no_raise
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list<any>, reducer: append, default: []}
+        notes: {type: list<string>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          extra_outputs: {notes: note}
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update:
+                callable: state_derived
+                template: "fellback for {{ state.input }}"
+                target_field: note      # sets `note` only; collect_field `out` is absent
+              event_name: "unit_isolated"
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: [1]
+        results: [null]          # collect_field absent -> null slot, no raise
+        notes: ["fellback for 1"]
+      execution_order: [process]
+      invariants:
+        absent_collect_field_yields_null_slot: true
+        fan_in_does_not_raise: true
+
+  # Case 3 — a degraded instance's slot (including the null extra_outputs slot)
+  # survives a checkpoint + resume round-trip. crash_injection (0070) ends the
+  # first run after the degraded instance's completion save; on resume the slot
+  # rolls forward unchanged — not recomputed or dropped.
+  - name: degrade_slot_survives_resume
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list<string>, reducer: append, default: []}
+        notes: {type: list<any>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          extra_outputs: {notes: note}
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update: {out: "(degraded)"}   # omits extra_outputs `note` -> null slot
+              event_name: "unit_isolated"
+          error_policy: fail_fast
+          concurrent_mode: serial
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    crash_injection:
+      after_fan_out_instance: {node: process, index: 0}
+    saved_record_assertions:
+      fan_out_progress:
+        process:
+          instance_count: 1
+          instances:
+            - {state: completed, result: "(degraded)", result_is_error: false}
+      fan_out_node_in_completed_positions: false
+    resume:
+      from_first_run: true
+      expected:
+        final_state:
+          items: [1]
+          results: ["(degraded)"]
+          notes: [null]
+        instances_executed_during_resume: []
+        instances_skipped_during_resume: [0]
+      invariants:
+        degrade_slot_rolled_forward_unchanged: true

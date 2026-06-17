@@ -4,6 +4,21 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.59.0] — 2026-06-16
+
+**Changed**
+
+- **pipeline-utilities §9.3 — an omitted `extra_outputs` source is a positional null slot.** A `FailureIsolation`-degraded fan-out instance whose `degraded_update` omits an `extra_outputs` `subgraph_field` now contributes **null** at that instance's slot (merged in instance-index order, mirroring an omitted `collect_field`), rather than "not contributed." This keeps the field index-aligned with `target_field` under extending reducers. Supersedes 0066's "not contributed / like a skipped heterogeneous branch field" clause for this case only; §9.8's cross-reference to the rule is updated to agree. ([proposal 0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md))
+
+**Added**
+
+- **pipeline-utilities §9.3 — an absent `collect_field` is graceful on every fan-in path.** A non-degrade `instance_middleware` return SHOULD cover `collect_field`; an absent `collect_field` (by any route) yields a null slot and the fan-in MUST NOT raise — generalizing §9.8's degrade-never-raises so a non-conformant return surfaces as a visible null in `target_field` rather than stopping the graph under `fail_fast` (for null-tolerant reducers such as `append`; strict-element reducers like `concat_flatten` / `merge_all` require the field be supplied). ([proposal 0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md))
+- One new conformance fixture `pipeline-utilities/conformance/069-fan-out-degrade-refinements` — the `extra_outputs` null slot, the absent-`collect_field` no-raise, and a degrade-survives-resume round-trip (via the `crash_injection` directive from 0070).
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Correctly-configured graphs (degrades that supply their mapped fields) are unchanged. Supersedes only 0066's §9.3 `extra_outputs`-omission clause; the 0066 degrade-is-the-contribution model, the §9.8 `collect_field` compile check, and the §11.7 branch skip stand. ([proposal 0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md))
+
 ## [0.58.0] — 2026-06-16
 
 **Added**
