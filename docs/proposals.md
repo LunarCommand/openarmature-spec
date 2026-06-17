@@ -18,7 +18,7 @@ lifecycle and the proposal template.
 | [0064](proposals/0064-observability-langfuse-session-user-promotion.md) | Langfuse session / user trace-field population            | observability       | Draft    | —               | —          |
 | [0063](proposals/0063-tool-execution-observability.md) | Tool-execution observability                              | graph-engine        | Draft    | —               | —          |
 | [0062](proposals/0062-llm-completion-streaming.md) | LLM completion streaming                                  | llm-provider        | Draft    | —               | —          |
-| [0061](proposals/0061-detached-trace-invocation-span.md) | Detached-trace invocation span                            | observability       | Draft    | —               | —          |
+| [0061](proposals/0061-detached-trace-invocation-span.md) | Detached-trace invocation span                            | observability       | Accepted | Pending         | —          |
 | [0060](proposals/0060-retrieval-provider-rerank.md) | Retrieval-provider rerank protocol                        | retrieval-provider  | Draft    | —               | —          |
 | [0059](proposals/0059-retrieval-provider-embedding.md) | Retrieval-provider capability (embedding protocol)        | retrieval-provider  | Accepted | Pending         | —          |
 | [0058](proposals/0058-typed-llm-failure-event.md) | Typed LLM failure event                                  | graph-engine        | Accepted | Shipped (0.13.0)| —          |

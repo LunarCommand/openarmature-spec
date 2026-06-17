@@ -25,6 +25,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §4.2 *Status mapping* table extended with a new row for the `SUSPENDED` logical status (applied to both the suspending node's span and the invocation root span when a node calls `suspend()` per the suspension capability §3); new *Suspended status mapping* paragraph defining the OTel physical mapping (status `OK` plus an `openarmature.outcome = "suspended"` span attribute, since OTel's native status code field lacks a third state) with backend-mapping freedom for non-OTel backends. §4.3 *Parent-child rules* gained a *Suspended-resume invocation spans* paragraph defining the cross-invocation-span correlation invariant for suspension-resume (per suspension §7) — the resume invocation span carries the same `openarmature.invocation_id` as the suspended one; OTel observers SHOULD additionally link via span-link or parent-of mechanisms; explicitly distinguishes from checkpoint-resume per pipeline-utilities §10.4 (fresh `invocation_id`, correlated only via shared `correlation_id`). New §5.8 *Suspension span attributes* defining `openarmature.suspension.signal_id` (string; always present on a `suspended` node span; carries the descriptor's `signal_id` per suspension §4) and `openarmature.suspension.metadata.*` (flattened descriptor metadata fields, OTel-attribute-compatible scalars per §3.4 value-type contract) with composition rules for detached trace mode (§4.4) by [proposal 0021](../../proposals/0021-graph-suspension.md)
   - §4 *Span hierarchy* gained a new §4.6 *Turn-level wrapper span (harness capability)* — the harness MAY open a turn-level wrapper span around `invoke()` when running inside a deployment runtime, with the invocation root span becoming its child. Wrapper is OPTIONAL (runtimes that already provide a transport-level parent span MAY skip it). Span name + attributes are harness-implementation-defined; turn-level attributes follow §5.6 (`openarmature.session_id` in sessioned mode) and §5.8 (suspension descriptor attributes on signal-resume turns). See the harness capability spec for the full contract by [proposal 0022](../../proposals/0022-harness-contract.md)
   - §5.5.4 observer-level privacy flag renamed `disable_llm_payload` → `disable_provider_payload`; semantics broadened to cover payload from any provider call (LLM completion + embedding + rerank when it lands) rather than LLM-only — same default-conservative posture (default `True`); cross-references in §8 + graph-engine §6 updated. New §5.5.8 *Embedding provider attributes* sub-subsection covering OTel mapping for `EmbeddingProvider.embed()` calls — span name `openarmature.embedding.complete`, Stable GenAI semconv attribute subset (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.response.id`, `gen_ai.usage.input_tokens`), OA-namespace `openarmature.embedding.*` attributes (`input_count`, `dimensions`, payload-gated `input.strings` + `request.extras`); the upstream `gen_ai.operation.name` attribute deferred per the stable-only adoption policy (operation discrimination via span name + provider). New §5.5.9 *Typed embedding events* sub-subsection framing the `EmbeddingEvent` + `EmbeddingFailedEvent` typed-event surface as the structured form of the embedding-span attribute surface (paralleling §5.5.7 for LLM completion). New §8.4.5 *Embedding-specific mapping* sub-subsection covering Langfuse mapping — embedding calls render as a dedicated `Embedding` observation type (created via the SDK's `asType: "embedding"`), NOT `Generation` with operation metadata; both `input` strings and `output` vectors are payload-bearing and gated by `disable_provider_payload` under the vec2text-aware privacy posture by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
+  - §4.4 *Detached trace mode* updated so a detached OTel trace roots in its own `openarmature.invocation` span carrying the **same** `invocation_id` as the parent invocation (detached mode is an observer-side trace-rendering choice, not an engine-level sub-invocation, so the run identity is unchanged), with the detached unit's spans nested under it — replacing the prior "spans use the new `trace_id` as their root, not children of any invocation span" shape; §4.1 *Span timing* gained a detached-invocation-span window paragraph (the detached-unit window, not the outer `invoke()` window); §4.2 *Status mapping* gained a *Detached invocation span status* note (the detached unit's own outcome — a raising detached subgraph surfaces `ERROR` on both the parent dispatch span and the detached invocation span); §4.3 gained a *Detached-dispatch invocation spans* paragraph pinning the shared-`invocation_id` correlation (`trace_id` = per-backend rendering identity, `invocation_id` = shared engine-level run identity, distinct from checkpoint-resume's fresh `invocation_id`); §5.1 + §4.5 gained multiple-invocation-spans-per-run notes (the always-emit attribution invariant applies to each invocation span); §8.4.1 gained a detached-trace attribution-sourcing note (no normative Langfuse change). Reconciles the contradicting expected span trees in conformance fixtures `008-otel-detached-trace-mode` and `058-implementation-attribution-otel`; no graph-engine change by [proposal 0061](../../proposals/0061-detached-trace-invocation-span.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -440,6 +441,13 @@ Its end time is the moment the same `SubgraphNode`'s `completed` event fires.
 The invocation span's start time is the entry of `invoke()`; its end time is the return. The
 invocation span is the OTel parent for all top-level node spans within that invocation.
 
+A detached invocation span (per §4.4) is the exception to the rule above and MUST NOT be read as
+sharing the parent invocation span's window. It opens when its detached subgraph or fan-out
+instance is entered and closes when that unit completes — the detached-unit window, coterminous
+with the detached subgraph span nested directly beneath it, NOT the outer `invoke()` window. (It
+opens and closes in the same window as the parent's subgraph-dispatch span that carries the Link
+to the detached trace.)
+
 Implementations drive span lifecycle by registering an observer with the default phase
 subscription (both `started` and `completed`); the OTel observer maintains a stack of open spans
 keyed by `(namespace, attempt_index, fan_out_index, branch_name)` and pairs each `completed`
@@ -485,6 +493,17 @@ specific span where the validation occurred. The invocation span inherits `ERROR
 OTel parent-status-from-failed-children propagation when any of these fail, but the spec does
 NOT explicitly mark the invocation span ERROR for the node-boundary case (the inheritance is
 sufficient — explicit duplicate attribution would create noise without adding diagnostic value).
+
+**Detached invocation span status.** A detached invocation span (per §4.4) carries the **detached
+unit's** outcome status per the §4.2 table — `OK` when the detached subgraph / fan-out instance
+completes successfully, `ERROR` (with the §4 category and an OTel exception event) when it raises.
+This is distinct from the parent invocation span's status, which reflects the whole `invoke()`
+outcome. When a detached subgraph raises, the failure surfaces on **two** spans — the parent's
+subgraph-dispatch span (per §4.4's "reflects the subgraph's outcome via §4.2" rule) and the
+detached invocation span (per this note). This is correct, not double-attribution noise: the two
+spans live in different traces and each is the authoritative status carrier for its own trace's
+view of the dispatch — the parent trace records "the dispatch failed," the detached trace records
+"this invocation errored."
 
 ### 4.3 Parent-child rules
 
@@ -533,6 +552,19 @@ suspension §7; checkpoint-resume per pipeline-utilities §10.4 mints a fresh `i
 therefore opens an unrelated invocation span (correlated to the original via shared
 `correlation_id` per §3.1, not via shared `invocation_id`).
 
+**Detached-dispatch invocation spans.** A detached subgraph or fan-out (per §4.4) renders its
+spans into a separate trace rooted in its own `openarmature.invocation` span. That detached
+invocation span carries the **same** `openarmature.invocation_id` as the parent invocation —
+detached mode is an observer-side trace-rendering choice, not an engine-level invocation boundary,
+so the run's identity is unchanged. The parent and detached invocation spans are correlated by
+shared `openarmature.invocation_id` (per §5.1), the same correlation mechanism as *Suspended-resume
+invocation spans* above; they additionally carry the OTel `Link` from the parent's dispatch span to
+the detached trace (per §4.4). The detached trace's **distinct** identity is its `trace_id` (a
+per-backend rendering identifier — a fresh OTel `trace_id`, a distinct Langfuse `trace.id`); the
+`invocation_id` is the shared engine-level run identity. This distinguishes detached dispatch from
+checkpoint-resume (pipeline-utilities §10.4), which mints a fresh `invocation_id` because it is a
+genuinely separate `invoke()` call.
+
 ### 4.4 Detached trace mode (opt-in)
 
 The default behavior described in §4.1–§4.3 puts every span produced during a single `invoke()`
@@ -551,22 +583,46 @@ opt-in.
 When a subgraph or fan-out is configured as **detached**:
 
 - The implementation creates a new OTel `SpanContext` (new `trace_id`) at the subgraph's or
-  fan-out's entry — distinct from the parent's invocation `trace_id`.
+  fan-out's entry — distinct from the parent's invocation `trace_id` — and opens an
+  `openarmature.invocation` span as the **root span of that new trace**.
+- The detached invocation span carries the §5.1 invocation-span attribute set:
+  `openarmature.invocation_id` set to the **same value** as the parent invocation (it is the same
+  `invoke()` call — see §4.3 *Detached-dispatch invocation spans*); `openarmature.graph.entry_node`
+  set to the detached unit's entry node (the subgraph's entry node, or the fan-out instance
+  subgraph's entry node) — §5.1's "entry node name of the outermost graph" resolves **per trace**
+  under detached mode, and the outermost graph of a detached trace is the detached subgraph itself;
+  `openarmature.graph.spec_version`, `openarmature.implementation.name`, and
+  `openarmature.implementation.version` per §5.1, identical to the parent's (they are
+  runtime-identity constants for the same run).
 - The parent's subgraph-dispatch span (or fan-out node span) is opened in the parent's
   invocation trace as usual, BUT carries an OTel `Link` whose target is the new detached
-  `trace_id`. The link associates the parent's record of "this subgraph dispatched" with the
-  detached trace's full record of "this is what happened inside" without parent-child semantics.
-- All spans inside the detached subgraph or fan-out — node spans, nested subgraph spans, retry
-  attempt spans, LLM provider spans — use the new `trace_id` as their root. They are NOT
-  children of the parent's invocation span.
+  `trace_id` (now rooted in the detached invocation span). The link associates the parent's record
+  of "this subgraph dispatched" with the detached trace's full record of "this is what happened
+  inside" without parent-child semantics.
+- The detached unit's spans — the subgraph span, its inner-node spans, nested subgraph spans, retry
+  attempt spans, LLM provider spans — nest **under** the detached invocation span, following the
+  normal §4.3 parent-child rules within the detached trace. They are NOT children of the parent's
+  invocation span.
 - The parent's subgraph-dispatch span ends when the subgraph completes (per §4.1 timing rules)
   and reflects the subgraph's outcome via §4.2 status mapping. Status propagation across the
   trace boundary uses OTel's standard link semantics — the parent's status reflects the
-  parent's view of the dispatch outcome.
-- For detached **fan-out**: each instance gets its OWN trace (one trace per instance). The
-  fan-out node's span carries one Link per instance trace. Detaching at the fan-out level
-  effectively turns N concurrent instances into N concurrent traces with N links from the
-  fan-out node.
+  parent's view of the dispatch outcome. (The detached invocation span carries the detached unit's
+  own status per §4.2's *Detached invocation span status* note.)
+- For detached **fan-out**: each instance gets its OWN trace (one trace per instance), and each
+  instance trace roots in its own detached invocation span carrying the same shared `invocation_id`
+  and the instance subgraph's entry node. The fan-out instance span (named after the fan-out node,
+  carrying `openarmature.node.fan_out_index` per §4.5 / §5.4) nests directly under the per-instance
+  detached invocation span; the instance's inner-node spans nest under that. The fan-out node's span
+  in the parent trace carries one Link per instance trace. Detaching at the fan-out level
+  effectively turns N concurrent instances into N concurrent traces with N links from the fan-out
+  node. The per-instance trace shape:
+
+  ```
+  <instance trace i>
+    openarmature.invocation          ← detached root; shared invocation_id; entry = instance subgraph entry
+      per_document_scoring           ← fan-out instance span; openarmature.node.fan_out_index = i
+        score
+  ```
 
 When a subgraph or fan-out is **NOT** configured as detached (the default), §4.1–§4.3 nested
 behavior applies — everything in one trace.
@@ -620,6 +676,10 @@ framework emissions without colliding with user-chosen names. Cardinality concer
 typically not a problem for LLM workflows (10–50 nodes per pipeline, not thousands); backends
 needing low-cardinality aggregations build them from the `openarmature.node.name` attribute
 (per §5.2) instead.
+
+The constant span name `openarmature.invocation` applies to **every** invocation span, including
+detached-trace roots (§4.4); multiple `openarmature.invocation`-named spans MAY coexist across the
+traces of a single invocation, disambiguated by `trace_id`.
 
 ### 4.6 Turn-level wrapper span (harness capability)
 
@@ -695,6 +755,17 @@ operators can copy the name directly into the registry's search box without tran
 | openarmature-python | `"openarmature-python"` | `openarmature.__version__` |
 | openarmature-typescript | `"openarmature-typescript"` | `package.json` `version` field |
 | Future language ports | `"openarmature-<language>"` (matches PyPI / npm / cargo / etc. naming for that ecosystem) | language-idiomatic package-metadata source |
+
+**Multiple invocation spans per run (detached mode).** A single invocation MAY produce more than
+one `openarmature.invocation` span when detached trace mode (§4.4) is in use — one in the parent
+trace and one at the root of each detached trace — all carrying the same
+`openarmature.invocation_id`. The always-emit invariant above applies to **each** invocation span:
+every invocation span, in the parent trace or a detached trace, carries the §5.1 attribute set
+(`openarmature.implementation.name` / `.version`, `openarmature.graph.spec_version`,
+`openarmature.invocation_id`, `openarmature.graph.entry_node`). `openarmature.correlation_id` also
+appears on every detached invocation span, but as a §5.6 cross-cutting attribute (on every span of
+the invocation per §3.1 / §5.6), not as a member of the §5.1 set. No per-context caveat is needed
+on the §5.1 invariant because a detached trace always has an invocation span at its root.
 
 ### 5.2 Node span attributes
 
@@ -1696,6 +1767,17 @@ to also catch Langfuse-specific constraints early, per §3.4's MAY-expand allowa
 | Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at trace emission time (per §3.4, including any mid-invocation augmentations applied before trace closure) | `trace.metadata.<key>` (top level, sibling to `correlation_id` / `entry_node` / `spec_version`; NOT nested under a `user` sub-object so Langfuse UI filtering on `metadata.<key>` matches what callers supplied; implementations SHOULD use Langfuse SDK's `trace.update(metadata=...)` to apply mid-invocation augmentations to the open Trace) |
 | `initial_state` at invocation entry — sourced via the *Trace input/output sourcing* paragraph below | `trace.input` |
 | Final state at invocation exit — sourced via the *Trace input/output sourcing* paragraph below | `trace.output` |
+
+**Detached-trace attribution sourcing (per §4.4).** A detached child trace's
+`trace.metadata.implementation_name` / `implementation_version` rows source from the detached
+invocation span's §5.1 attributes — now normatively present at every detached trace root per §4.4
+— so the OTel and Langfuse sides share one canonical attribution source. The
+`trace.metadata.detached_from_invocation_id` row (above) points to the **shared** `invocation_id`
+(the engine-level run identity carried identically on both the parent and detached invocation
+spans); it is a back-pointer recording which invocation the separately-rendered trace belongs to,
+not a pointer from a fresh child id to a distinct parent id. Langfuse has no per-trace "invocation
+span" concept (the Trace entity is the invocation-level container), so the OTel
+invocation-span-at-root change has no direct Langfuse analog — the Trace already plays that role.
 
 **`trace.id` derivation (caller-supplied `invocation_id`).** Langfuse (OTel-based) requires
 `trace.id` to be a 128-bit value rendered as 32 lowercase hex characters. Per §5.1 the

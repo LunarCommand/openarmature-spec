@@ -277,6 +277,24 @@ response-side clause.
   follow-on proposal 0042 extended the set with `branch_name`,
   `detached`, `detached_from_invocation_id` per the maintenance rule.
 
+### 0061 — detached-trace invocation span
+
+- **Detached-trace subgraph-wrapper span naming vs §4.5.**
+  [still-relevant] — surfaced during the 0061 acceptance review. §4.5's
+  span-names table names a subgraph span after *the SubgraphNode's name in
+  the parent graph* (e.g. `dispatch`), but the detached-trace fixtures name
+  the subgraph-wrapper span at the detached trace's root after the *compiled
+  subgraph* (`long_running_workflow` in fixture 008, `detached_workflow` in
+  fixture 058), not the dispatching node. This is pre-existing in fixture 008
+  and is now pinned for 058 by 0061's acceptance; 0061 deliberately did not
+  touch it (its charter was the invocation-span root, not subgraph-span
+  naming). A future observability proposal could clarify §4.5 to state the
+  naming rule *per trace* — the detached trace's outermost subgraph renders
+  under its own compiled name while the parent trace's dispatch span keeps the
+  SubgraphNode name — or reconcile the fixtures the other way. Low-stakes (a
+  cosmetic span label, no identity or correlation impact), so it defers
+  cleanly until a related observability proposal is in flight.
+
 ### Cross-cutting — Langfuse observation-type coverage
 
 - **§8 maps onto a subset of Langfuse's observation types; the

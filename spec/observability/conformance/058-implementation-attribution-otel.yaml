@@ -120,11 +120,20 @@ cases:
                 "openarmature.implementation.version":
                   non_empty_string: true
               children:
-                - name: "step"
+                # NEW (proposal 0061): the detached subgraph-wrapper span nests
+                # between the detached invocation span and the inner node, per
+                # the normal §4.3 parent-child rules within the detached trace.
+                - name: "detached_workflow"
                   status: OK
                   attributes_absent:
                     - "openarmature.implementation.name"
                     - "openarmature.implementation.version"
+                  children:
+                    - name: "step"
+                      status: OK
+                      attributes_absent:
+                        - "openarmature.implementation.name"
+                        - "openarmature.implementation.version"
       invariants:
         attribution_attrs_on_parent_invocation_span: true
         attribution_attrs_on_detached_child_invocation_span: true
