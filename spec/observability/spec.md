@@ -1790,7 +1790,7 @@ sourced as follows.
 `invoke()`, surfaced as `openarmature.session_id` per §5.6), the Langfuse observer MUST set
 `trace.sessionId` to that value; when the invocation is not session-bound, `trace.sessionId` is
 unset. Because `session_id` spans many invocations by design (sessions capability §3) and is
-unchanged across detached / parent traces (§4.4), every trace produced under one session id —
+unchanged across detached / parent traces (§5.6), every trace produced under one session id —
 whether from a separate per-turn `invoke()` or a detached child — carries the same
 `trace.sessionId`, and Langfuse groups them into one Session. A session-bound invocation that
 suspends and resumes remains the same session-bound invocation; its trace(s) carry the session id
