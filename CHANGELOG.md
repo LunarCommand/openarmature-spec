@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.60.0] — 2026-06-17
+
+**Added**
+
+- **conformance-adapter §5.1 — failure-mock directive catalog.** Documents the five failure-injecting node mocks the retry / failure-isolation / checkpoint-resume fixtures already use — `flaky` (sequence + compact forms) and the `failure_sequence` entry, `flaky_by_index`, `flaky_per_index`, `flaky_instance_only`, `flaky_resume_aware` — each by the failure axis it keys on (per-attempt / per-invocation / deterministic), plus the `flaky_per_index` (invocation-keyed) vs `flaky_by_index` (attempt / deterministic) disambiguation, and a flag (not a change) on the `success_update` / `on_success` / `success_compute` success-state field-naming drift. ([proposal 0071](proposals/0071-conformance-adapter-failure-mock-catalog.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Descriptive only — the directives the adapter already implements and ~40 existing fixtures exercise; no behavior change, no new or changed fixtures, no new conformance expectation. A PATCH classification is defensible (purely documentary); MINOR is the maintainer's call. ([proposal 0071](proposals/0071-conformance-adapter-failure-mock-catalog.md))
+
 ## [0.59.0] — 2026-06-16
 
 **Changed**
