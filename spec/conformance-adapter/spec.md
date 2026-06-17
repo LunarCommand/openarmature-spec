@@ -6,6 +6,7 @@ Canonical behavioral specification for the OpenArmature conformance-adapter capa
 - **Introduced:** spec version 0.48.0
 - **History:**
   - created by [proposal 0055](../../proposals/0055-conformance-adapter-capability.md)
+  - §6 *Harness primitives* gains §6.8 *Caching prompt backend* — an in-memory `PromptBackend` that caches by `(name, label)`, counts source reads, and honors prompt-management `cache_ttl_seconds` (`0` bypasses the cache; `None` serves cached; `N > 0` serves within a controllable-clock max-age) — plus the `source_read_count` and `advance_clock` fixture shapes it exposes, supporting the prompt-management per-fetch cache-TTL fixtures by [proposal 0072](../../proposals/0072-prompt-management-fetch-cache-ttl.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) ships a thin **adapter**
 that ingests the language-agnostic YAML fixtures under `spec/<capability>/conformance/` and executes them
@@ -811,6 +812,39 @@ The `pre_next_calls_suspend_with_descriptor` middleware-config variant MUST caus
 pre-`next()` block to call `suspend()` from within itself (rather than the wrapped node doing so).
 This intentionally triggers `suspension_in_unsupported_context` per suspension §8.4; the fixture
 asserts on the error category, not on any successful suspension.
+
+### 6.8 Caching prompt backend
+
+Prompt-management fixtures that exercise the per-fetch `cache_ttl_seconds` control (prompt-management
+§5 / §6) rely on a **caching prompt-backend** primitive: an in-memory `PromptBackend` that caches
+fetched templates by `(name, label)`, counts **source reads** (fetches that reach its backing store
+rather than the cache), and honors `cache_ttl_seconds` per the prompt-management §5 contract:
+
+- **`None` (default)** — serve a cached entry when present; read the source only on a miss.
+- **`0`** — bypass the cache: every fetch is a source read.
+- **`N > 0`** — serve a cached entry younger than `N` seconds; otherwise read the source. Age is
+  measured against a **controllable clock** the adapter exposes, so a fixture can advance time
+  deterministically (no wall-clock dependence).
+
+The primitive exposes the per-`(name, label)` source-read count for assertion (the
+`source_read_count` expected-outcome shape) and an `advance_clock` operation (advance the
+controllable clock by a fixed number of seconds between `calls`). The adapter MUST ship this caching
+backend in addition to the non-caching (preloaded in-memory mock) prompt backend the existing
+prompt-management fixtures use — which reads its source on every fetch and therefore treats
+`cache_ttl_seconds` as a no-op, as do the filesystem / in-memory backends prompt-management §5 describes.
+
+**Fixture shapes.** The caching backend and its assertions are spelled in the prompt-management
+fixture schema as:
+
+- `backends[].caching: true` — marks a backend as the caching prompt backend (vs. the default
+  preloaded mock backend that reads its source on every fetch).
+- `cache_ttl_seconds: <int>` on a `fetch` `call` — passed to that backend's `fetch` per the prompt-management §5
+  contract.
+- a `calls` entry `{target: {backend: <name>}, operation: advance_clock, seconds: <int>}` —
+  advances the named caching backend's controllable clock by `<int>` seconds; it is a `calls` entry
+  like any other and carries a `target`.
+- fixture-level `expected_backend_state: {<backend>: {source_read_count: <int>}}` — asserts the
+  named backend's cumulative source-read count after all `calls` have run.
 
 ## 7. Nondeterminism handling
 

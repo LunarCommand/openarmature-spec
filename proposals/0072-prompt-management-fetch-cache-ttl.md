@@ -1,8 +1,9 @@
 # 0072: Prompt Management — Per-Fetch Cache-TTL Control
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-16
+- **Accepted:** 2026-06-17
 - **Targets:** spec/prompt-management/spec.md (add an optional `cache_ttl_seconds` parameter to the §5 `PromptBackend.fetch` contract and to the §6 `PromptManager.fetch` / `get` operations; amend the §5 backend-caching paragraph so the per-fetch TTL is a defined caller lever; add a clarifying note to §15). spec/conformance-adapter/spec.md (add a caching prompt-backend harness primitive to §6 so a fixture can assert the force-fresh behavior).
 - **Related:** 0047 (last prompt-management change — prefix-cache authoring guidance in §13 / §14; note this proposal concerns the *backend template-fetch* cache, a different cache from the user-level result cache §15 defers), 0055 (conformance-adapter capability — the harness-primitive touchpoint).
 - **Supersedes:**

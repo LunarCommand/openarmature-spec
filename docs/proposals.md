@@ -7,10 +7,10 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
-| [0072](proposals/0072-prompt-management-fetch-cache-ttl.md) | Per-fetch cache-TTL control | prompt-management   | Draft    | —               | —          |
-| [0071](proposals/0071-conformance-adapter-failure-mock-catalog.md) | Failure-mock directive catalog | conformance-adapter | Accepted | Pending         | —          |
+| [0072](proposals/0072-prompt-management-fetch-cache-ttl.md) | Per-fetch cache-TTL control | prompt-management   | Accepted | Pending         | —          |
+| [0071](proposals/0071-conformance-adapter-failure-mock-catalog.md) | Failure-mock directive catalog | conformance-adapter | Accepted | Textual (0.14.0)| —          |
 | [0070](proposals/0070-conformance-adapter-crash-injection-and-cause-chaining.md) | Crash-injection + cause-chaining adapter directives | conformance-adapter | Accepted | Shipped (0.14.0)| —          |
-| [0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md) | Fan-out degrade contribution refinements | pipeline-utilities  | Accepted | Pending         | —          |
+| [0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md) | Fan-out degrade contribution refinements | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0068](proposals/0068-pipeline-utilities-failure-isolation-cause-chain.md) | Failure-isolation event structured cause chain | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0067](proposals/0067-observability-genai-metrics.md) | OTel GenAI metrics | observability       | Draft    | —               | —          |
 | [0066](proposals/0066-pipeline-utilities-fan-out-degrade-contribution.md) | Fan-out failure-isolation degrade contribution           | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |

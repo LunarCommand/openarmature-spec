@@ -9,6 +9,7 @@ Canonical behavioral specification for the OpenArmature prompt-management capabi
   - §3 *Prompt shape* extended with two new optional typed fields (`sampling` — sub-record mirroring llm-provider §6 `RuntimeConfig`'s declared-fields-plus-extras shape for per-prompt sampling configuration; `observability_entities` — backend-keyed mapping for first-class entity references, with spec-normative key `langfuse_prompt` for the Langfuse Prompt entity). §4 *PromptResult shape* propagates both new fields. §5 *PromptBackend protocol* gains an informative filesystem sidecar convention (per-prompt `<root>/<name>.config.json` and unified `<root>/prompt_configs.json` shapes) for sourcing `sampling`. §6 *PromptManager interface* gains optional `LabelResolver` integration on `fetch()`; the default label parameter shifts from `"production"` to `None`/sentinel with a fallback chain (explicit > resolver > spec-fallback `"production"`). New §7 *LabelResolver* primitive added (renumbers existing §7-§13 → §8-§14). §12 (was §11) *Cross-spec touchpoints* gains two new touchpoints: `Prompt.sampling` → llm-provider §6 `RuntimeConfig` wiring at the LLM call site, and `Prompt.observability_entities['langfuse_prompt']` → observability §8.4.4 Langfuse Generation linkage lookup by [proposal 0033](../../proposals/0033-prompt-management-surface-refinements.md)
   - §3 *Prompt shape* gains a new §3.1 *Chat-prompt variant* subsection introducing a Chat-prompt variant alongside the existing Text-prompt variant (Chat-prompt carries `chat_template: list[ChatSegment]` in place of `template`; ChatSegments are either content segments — text-template or content-blocks-template `content`, with content-blocks mirroring llm-provider §3.1 text + image-URL + image-inline block shapes for multimodal user-message authoring, image blocks user-only per §3.1.2 — or placeholder segments naming a slot filled at render time with a `list[Message]`; Chat-prompt `template_hash` covers the canonical chat_template serialization). §6.render gains a `placeholders` parameter, a per-segment / per-block render rule for Chat prompts (text-template segments render to a text Message; content-blocks segments render to a Message with a rendered block sequence; placeholder segments inject the caller-supplied message list, empty injected lists valid), and a narrowing of the Text-prompt render clause to "exactly one Message with text content; multi-message and multimodal MUST use chat_template" (replaces the prior vague "MAY produce multiple messages" line). §8 *Variable injection* gains a per-segment / per-block strict-undefined paragraph. §11 *Errors* extends `prompt_render_error` with five new Chat-prompt triggers (empty content segment, empty content-blocks list, unfilled placeholder, duplicate placeholder name, role-block compatibility violation). §5 *PromptBackend protocol* gains a paragraph noting returned Prompts MAY be either variant. §12 cross-spec touchpoints confirms the §8.4.4 Langfuse Prompt-entity linkage is unaffected by Prompt variant or message count by [proposal 0046](../../proposals/0046-prompt-management-multi-message-rendering.md)
   - §13 *Determinism* tightened with a *Cross-variable substring stability* paragraph (variable substitution MUST be in-place and MUST NOT introduce position-dependent transformations — variable-index numbering, per-variable salts, whole-template-state-dependent normalization — that would shift bytes earlier in the rendered output based on later content; substring-replacing-substring semantics MUST NOT be defeated by template-engine post-processing that reflows the text). New §14 *APC-friendly authoring guidance* added (non-normative): pin high-cardinality stable region at the prompt start; avoid front-loading per-call variables in shared regions; keep substitution in-place (mirroring §13); stabilize multi-value formatting (sorted-key JSON, source-order iteration); prefer the `messages` shape's natural turn boundaries. Existing §14 *Out of scope* renumbered to §15 by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
+  - §5 *PromptBackend protocol* `fetch` and §6 *PromptManager* `fetch` / `get` gain an optional `cache_ttl_seconds` parameter (absent / `None` = current behavior; `0` = force a fresh read past any client-side cache; `N > 0` = bound a served entry's staleness to N seconds; negative rejected). A read-side contract — `cache_ttl_seconds` governs only which cached entry MAY be served for *this* fetch, not whether / how the result is cached (those stay implementation-defined); cacheless backends (filesystem, in-memory) no-op it; the manager threads it through the §9 fallback chain; `render` is unchanged (local, no I/O). §5's backend-caching paragraph is amended so the per-fetch TTL is a defined caller lever, and §15's *Cache invalidation policies* bullet now distinguishes the (now-controllable) backend-template cache from the still-out-of-scope user-level result cache. New conformance fixtures `033-prompt-backend-cache-ttl-force-fresh` and `034-prompt-backend-cache-ttl-max-age` (exercising a caching prompt-backend harness primitive, conformance-adapter §6.8) by [proposal 0072](../../proposals/0072-prompt-management-fetch-cache-ttl.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -219,7 +220,7 @@ which is exactly the equivalence relation a memoization layer wants.
 
 A `PromptBackend` exposes one operation:
 
-### `fetch(name, label="production")`
+### `fetch(name, label="production", cache_ttl_seconds=None)`
 
 Async. Retrieves a `Prompt` by name and label. Returns a `Prompt` record (§3) on success.
 
@@ -227,6 +228,24 @@ Async. Retrieves a `Prompt` by name and label. Returns a `Prompt` record (§3) o
 - `label` — string. The label under which to fetch. Default `"production"`. Backends MAY
   support backend-specific label conventions (e.g., Langfuse's labels are user-defined;
   filesystem backends MAY interpret label as a subdirectory or filename suffix).
+- `cache_ttl_seconds` — optional non-negative integer, default absent / `None`. Bounds the
+  staleness of a cached template the backend MAY serve for *this* fetch, for backends that
+  maintain a client-side cache:
+  - **absent / `None`** — the backend's own caching behavior governs (current behavior; fully
+    backward-compatible).
+  - **`0`** — the backend MUST NOT serve a cached entry; it fetches fresh from the source.
+  - **`N > 0`** — the backend MUST NOT serve a cached entry older than `N` seconds; an entry
+    younger than `N` seconds MAY be served, otherwise the backend fetches fresh.
+
+  Negative values are invalid; implementations MUST reject a negative `cache_ttl_seconds`
+  (raised per the language's idiom for an invalid argument). `cache_ttl_seconds` governs only
+  which cached entry MAY be served for *this* fetch; whether the fetched result is then written
+  to the backend's cache, and for how long, remains the backend's implementation-defined cache
+  management (below). A `0` fetch therefore guarantees a fresh *read* — not that subsequent
+  default-TTL fetches observe the new version. A backend that reads its source on every fetch —
+  i.e., maintains no client-side cache, typical of filesystem and in-memory backends — treats
+  `cache_ttl_seconds` as a no-op, since it already returns a fresh read each call; the parameter
+  is part of the contract so all backends share one signature.
 
 Operation semantics:
 
@@ -238,9 +257,12 @@ Operation semantics:
   (network failure, filesystem I/O error, vendor API timeout).
 
 Backends MAY cache their own results internally (e.g., a Langfuse backend caching by
-`(name, label)` for some TTL); cache invalidation is implementation-defined. When a
-backend serves a cached result, the returned `Prompt`'s `template_hash` MUST still be
-correct for the served template (caching MUST NOT break content-addressing).
+`(name, label)` for some TTL). When a caller supplies `cache_ttl_seconds` (above), it bounds the
+staleness of any cached entry the backend MAY serve for that fetch; **other** aspects of cache
+management — whether a fetched result is written to the cache, eviction, sizing, cross-process
+invalidation — remain implementation-defined. When a backend serves a cached result, the returned
+`Prompt`'s `template_hash` MUST still be correct for the served template, and `fetched_at` MUST
+reflect the original fetch time, not the cache-hit time (caching MUST NOT break content-addressing).
 
 The protocol is deliberately small — backends are fetchers, nothing more. Composition,
 fallback, and rendering are the manager's concern.
@@ -291,7 +313,7 @@ the file convention that produces it.
 A `PromptManager` is constructed with one or more `PromptBackend`s and (optionally) a
 `LabelResolver` (per §7). It exposes:
 
-### `fetch(name, label=None)`
+### `fetch(name, label=None, cache_ttl_seconds=None)`
 
 Async. Fetches a `Prompt` by name and label, consulting backends in order per §9
 fallback semantics. Label resolution:
@@ -308,6 +330,11 @@ The default value for the `label` parameter is `None` (or the language's idiomat
 sentinel) rather than the string `"production"`. This makes the resolver / default chain
 explicit: callers who want to force-pass `"production"` continue to do so; callers who
 want the resolver to decide simply omit the argument.
+
+`cache_ttl_seconds` (default absent / `None`) is passed verbatim to every backend
+`fetch(name, label, cache_ttl_seconds)` call the manager makes while walking the §9 fallback
+chain, so a `0` (force-fresh) applies to whichever backend ultimately serves the prompt. Its
+per-fetch semantics are defined in §5.
 
 Returns a `Prompt`. Raises `prompt_not_found` if no backend produces the prompt; raises
 `prompt_store_unavailable` only when ALL backends are unavailable.
@@ -391,11 +418,12 @@ Render is synchronous because it is purely a transformation step over the in-mem
 template; no backend I/O is involved. Async render would surface no benefits and would
 needlessly couple the operation to the host's event loop.
 
-### `get(name, label=None, variables=None)`
+### `get(name, label=None, variables=None, cache_ttl_seconds=None)`
 
-Async. Convenience equivalent to `render(await fetch(name, label), variables)`. Same
-label-resolution rule as `fetch()` (per the three-step chain above): explicit label →
-resolver → spec-fallback `"production"`. Implementations SHOULD provide this as a
+Async. Convenience equivalent to `render(await fetch(name, label, cache_ttl_seconds), variables)`.
+Same label-resolution rule as `fetch()` (per the three-step chain above): explicit label →
+resolver → spec-fallback `"production"`. `cache_ttl_seconds` (default absent / `None`) governs the
+fetch leg only (per §5); `render` performs no I/O. Implementations SHOULD provide this as a
 convenience for the common single-shot path; users wanting fetch/render separation use
 `fetch` and `render` directly.
 
@@ -763,9 +791,12 @@ benefits flow naturally from author discipline rather than spec enforcement.
 - **Prompt versioning workflows** — how versions are assigned, incremented, pinned,
   promoted. Per project. The spec defines the `version` field; the discipline is the
   user's.
-- **Cache invalidation policies** — the spec defines `template_hash` and `rendered_hash`
-  that user code MAY use as cache keys; the cache itself is a separate capability
-  (potentially a future memoization proposal per pipeline-utilities).
+- **Cache invalidation policies** — the per-fetch backend-template cache is now controllable via
+  the §5 / §6 `cache_ttl_seconds` lever (force-fresh / bounded staleness). What remains out of
+  scope is user-level *result*-cache invalidation — the caller's own cache keyed by
+  `template_hash` / `rendered_hash` (which the spec defines for that use) — plus any cross-process
+  or eviction-policy machinery; that result cache is a separate capability (potentially a future
+  memoization proposal per pipeline-utilities).
 - **Prompt linting / static analysis** — quality checks on prompt content, variable
   coverage analysis, etc. Out of scope; implementations MAY ship as separate tools.
 - **Prompt evaluation** — running prompts against test cases and scoring outputs.

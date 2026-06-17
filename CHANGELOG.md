@@ -4,6 +4,18 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.63.0] — 2026-06-17
+
+**Added**
+
+- **prompt-management §5 / §6 — per-fetch `cache_ttl_seconds` control.** `PromptBackend.fetch` (§5) and `PromptManager.fetch` / `get` (§6) gain an optional `cache_ttl_seconds` parameter for backends that maintain a client-side template cache: absent / `None` preserves current behavior; `0` forces a fresh read past any cached entry; `N > 0` bounds a served entry's staleness to N seconds; a negative value MUST be rejected. It is a **read-side** control — it governs only which cached entry MAY be served for *this* fetch, not whether or how the fetched result is then cached (write, eviction, sizing, and cross-process invalidation stay implementation-defined). Cacheless backends (filesystem, in-memory) treat it as a no-op; the manager threads it verbatim through the §9 fallback chain; `render` is unchanged (local, no I/O). Turns §5's pre-existing "backends MAY cache … invalidation is implementation-defined" into a defined caller lever for on-demand prompt refresh without a process restart. §15's *Cache invalidation policies* bullet now distinguishes the (now-controllable) backend-template cache from the still-out-of-scope user-level result cache. ([proposal 0072](proposals/0072-prompt-management-fetch-cache-ttl.md))
+- **conformance-adapter §6.8 — caching prompt-backend harness primitive.** An in-memory `PromptBackend` that caches by `(name, label)`, counts source reads, and honors `cache_ttl_seconds` (`0` bypasses; `None` serves cached; `N > 0` via a controllable clock), exposing a `source_read_count` assertion shape and an `advance_clock` operation. ([proposal 0072](proposals/0072-prompt-management-fetch-cache-ttl.md))
+- Two new conformance fixtures `prompt-management/conformance/033-prompt-backend-cache-ttl-force-fresh` (default control coalesces a repeat fetch to one source read; `cache_ttl_seconds=0` reads the source on every fetch) and `034-prompt-backend-cache-ttl-max-age` (an entry served within N seconds, re-read once aged past N, via the controllable clock).
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Fully additive and backward-compatible — the parameter defaults to absent / `None`, which preserves current fetch / render / fallback behavior exactly; no existing caller changes. Touches the prompt-management and conformance-adapter specs only; no other capability, public type, or wire change. ([proposal 0072](proposals/0072-prompt-management-fetch-cache-ttl.md))
+
 ## [0.62.0] — 2026-06-17
 
 **Added**
