@@ -1,0 +1,140 @@
+# §8.4.1 Langfuse Sessions / Users (proposal 0064): the Langfuse observer
+# populates the two dedicated cross-trace grouping fields from data OA already
+# carries — trace.sessionId from openarmature.session_id (set when the
+# invocation is session-bound), and trace.userId promoted from a recognized
+# `userId` caller-metadata key (additive: the key also remains in
+# trace.metadata.userId). Both are unset when their source is absent. No store
+# is registered — session_id still propagates to observability (sessions §3).
+
+cases:
+  - name: session_bound_sets_trace_session_id
+    description: |
+      A session-bound invoke() (session_id supplied) sets trace.sessionId to
+      that value, grouping the trace under the Langfuse Session.
+    state:
+      fields:
+        x: {type: int, default: 0}
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    session_id: "sess-abc"
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        # sourced from openarmature.session_id (§8.4.1 Session/user sourcing)
+        sessionId: "sess-abc"
+      invariants:
+        trace_session_id_equals_supplied_session_id: true
+
+  - name: not_session_bound_leaves_session_id_unset
+    description: |
+      An invoke() with no session_id is not session-bound; trace.sessionId is
+      unset (the trace is not grouped into any Session).
+    state:
+      fields:
+        x: {type: int, default: 0}
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    # No session_id supplied — the invocation is not session-bound.
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+      invariants:
+        trace_session_id_unset: true
+
+  - name: userid_metadata_promotes_to_trace_user_id_additively
+    description: |
+      Caller metadata carries a `userId` key; the Langfuse observer promotes it
+      to the first-class trace.userId AND leaves it in trace.metadata.userId
+      (additive promotion). `userId` is recognized, not reserved.
+    state:
+      fields:
+        x: {type: int, default: 0}
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    caller_metadata:
+      userId: "user-42"
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        # promoted to the first-class Users dimension
+        userId: "user-42"
+        metadata:
+          correlation_id: "<uuid>"
+          entry_node: "a"
+          spec_version: "<any-string>"
+          # ADDITIVE: the key also remains as top-level metadata
+          userId: "user-42"
+      invariants:
+        trace_user_id_equals_metadata_userid: true
+        user_id_promotion_is_additive: true
+
+  - name: no_userid_key_leaves_trace_user_id_unset
+    description: |
+      Caller metadata without a `userId` key leaves trace.userId unset; other
+      metadata keys are unaffected (land as top-level trace.metadata.<key>).
+    state:
+      fields:
+        x: {type: int, default: 0}
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        metadata:
+          correlation_id: "<uuid>"
+          entry_node: "a"
+          spec_version: "<any-string>"
+          tenantId: "acme-corp"
+      invariants:
+        trace_user_id_unset: true
+        other_metadata_unaffected: true
+
+  - name: multi_invocation_shared_session_groups
+    description: |
+      Two separate session-bound invoke() calls share one session_id (no store
+      registered — session_id still propagates to observability, sessions §3).
+      Each invoke is a distinct invocation with its own invocation_id, hence its
+      own Langfuse trace (distinct trace.id); both carry the same
+      trace.sessionId, so Langfuse groups them into one Session.
+    state:
+      fields:
+        x: {type: int, default: 0}
+    entry: a
+    nodes:
+      a:
+        update_pure: {x: 1}
+    edges:
+      - {from: a, to: END}
+    invocations:
+      - {session_id: "sess-xyz", initial_state: {}}
+      - {session_id: "sess-xyz", initial_state: {}}
+    expected:
+      langfuse_traces:
+        - sessionId: "sess-xyz"
+        - sessionId: "sess-xyz"
+      invariants:
+        each_invocation_distinct_trace_id: true
+        all_traces_share_session_id: "sess-xyz"
+        traces_group_into_one_langfuse_session: true
