@@ -342,6 +342,14 @@ These directives appear under `nodes.<node_name>:` and define what the node does
   `get_invocation_metadata()` per observability §3.4 and writes the returned (immutable) mapping
   snapshot into the named state field for downstream assertion. Exercises observability §3.4 read
   API.
+- **`cause: {category: <category|null>, message: <str>, cause: {...}}`** — an optional field on the
+  error a failure mock raises (e.g. a `failure_sequence` entry, or one of the `flaky*` failure
+  mocks). When present, the raised error is chained to an originating cause via the host language's
+  exception-cause linkage; `cause` nests recursively for multi-link chains. The adapter MUST
+  construct the chain so a consumer walking it (e.g. the pipeline-utilities §6.3 failure-isolation
+  event's cause chain) observes each link's `category` / `message`. Carriers the engine adds
+  (graph-engine §4 `node_exception`) are independent of this mock-authored chain. Exercises
+  pipeline-utilities §6.3 (failure-isolation cause chain).
 
 ### 5.2 State / schema directives
 
@@ -498,6 +506,30 @@ These directives appear at top level and configure persistence backends.
   checkpointer with N completed invocation records. Used by fixtures that need to verify
   checkpoint resume behavior against a populated backend (e.g., "resume with a fake id when other
   records DO exist" — fixture 030). Exercises pipeline-utilities §10.
+- **`first_run_expected_error: {category: <category>, raised_from: <node_name>}`** — at the invocation level. The
+  error expected to end the **first** run before a resume: a failure mock fails, propagates under
+  `fail_fast`, and the engine surfaces this category from the named node. Pairs with `resume:`.
+  Exercises pipeline-utilities §10 (resume).
+- **`resume: {from_first_run: <bool>, expected: { ... }, invariants: { ... }}`** — at the invocation level. After
+  the first run ends (via `first_run_expected_error` or `crash_injection`), the adapter resumes the
+  invocation from the saved checkpoint (`from_first_run: true` resumes the same invocation id) and
+  asserts the resumed run's `expected` block plus any resume-specific `invariants`. Exercises
+  pipeline-utilities §10.4 (resume model).
+- **`crash_injection: {<boundary>}`** — at the invocation level; an alternative to `first_run_expected_error` for
+  triggering a resume **without** an instance failure. The adapter runs the graph until the named
+  checkpoint boundary's save has fired, then abandons the in-flight run, retaining only the
+  persisted checkpoint; the first run has **no** asserted outcome (it "crashed"), and `resume:`
+  loads from that checkpoint. `<boundary>` is one of:
+  - **`after_node: <node_name>`** — crash immediately after the node's checkpoint save on its
+    `completed` event (per pipeline-utilities §10.3).
+  - **`after_fan_out_instance: {node: <fan_out_node>, index: <int>}`** — crash immediately after the
+    given fan-out instance's `completed` save fires (per §10.11); the saved record reflects sibling
+    instance states as of that moment.
+
+  Lets a fixture checkpoint a fan-out where some instances **completed** (including
+  `FailureIsolation`-degraded instances, which complete rather than propagate) and assert, on
+  resume, that those slots roll forward unchanged while not-yet-run instances dispatch. Exercises
+  pipeline-utilities §10.11 (per-instance fan-out resume).
 
 ### 5.7 Invocation-shape directives
 
@@ -592,6 +624,23 @@ These directives appear under per-invocation or per-case `expected:` blocks and 
   — invariant predicates against the accumulator snapshot (for nondeterministic-ordering cases).
 - **`final_accumulator_state: {<observer_name>: [<event>, ...]}`** — exact accumulator state after
   the invocation completes (post-drain delivery).
+- **`saved_record_assertions: { ... }`** — a block of named assertions against the saved checkpoint
+  record at first-run end (e.g. before a `resume:`); the adapter checks each listed sub-assertion
+  against the persisted record. This proposal formalizes the `fan_out_progress` sub-assertion;
+  existing checkpoint-resume fixtures also carry `fan_out_node_in_completed_positions` (bool),
+  `completed_positions`, and `parent_states_present` / `parent_states_outermost_first` (subgraph /
+  parent-state resume), documented per those fixtures.
+  - **`fan_out_progress: {<node_name>: {instance_count: <int>, instances: [<instance_assertion>, ...]}}`**
+    — the saved per-instance fan-out progress. Each `<instance_assertion>` is
+    `{state: <not_started|in_flight|completed> | state_one_of: [<state>, ...], result: <value>,
+    result_is_error: <bool>, completed_inner_positions: [{node_name, attempt_index}, ...]}` (fields
+    optional; assert what the fixture cares about). `state_one_of` accommodates dispatch-timing
+    nondeterminism (e.g. a sibling `in_flight` vs `not_started` under concurrent execution). Exercises
+    pipeline-utilities §10.11.
+- **`instances_executed_during_resume: [<int>, ...]`** / **`instances_skipped_during_resume: [<int>, ...]`**
+  — appear under a `resume:` block. Assert which fan-out instances re-ran on resume (failed /
+  cancelled / not-yet-started) vs. were skipped (completed-and-rolled-forward, including degraded
+  instances). Exercises pipeline-utilities §10.11.
 
 ### 5.9 Invariant assertions
 

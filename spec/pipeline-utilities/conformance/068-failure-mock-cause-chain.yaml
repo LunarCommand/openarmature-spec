@@ -1,0 +1,71 @@
+# Failure-mock `cause` chain — outermost-wins derivation (proposal 0070
+# conformance-adapter §5.1 `cause`; pipeline-utilities §6.3 / proposal 0068).
+# A flaky mock raises a categorized error CAUSED BY another categorized error
+# (via the new `cause` field). At an instance (non-node) placement the engine
+# adds one node_exception carrier, so the chain has THREE links: the carrier,
+# the surface (re-categorized) non-carrier, and the originating non-carrier.
+# The derived `category` is the OUTERMOST non-carrier with a category — the
+# surface re-categorization — NOT the originating cause. This is the
+# two-non-carrier-link case fixture 066 left out for lack of mock chaining.
+
+subgraph:
+  name: chained_unit
+  state:
+    fields:
+      input: {type: int, default: 0}
+      out: {type: string, default: ""}
+  entry: work
+  nodes:
+    work:
+      flaky:
+        failure_sequence:
+          - transient: false
+            category: provider_invalid_response   # surface (re-categorized) error
+            message: "re-categorized at the surface"
+            cause:                                 # originating cause (proposal 0070 §5.1)
+              category: provider_unavailable
+              message: "originating upstream failure"
+  edges:
+    - {from: work, to: END}
+
+cases:
+  - name: outermost_non_carrier_wins_over_originating_cause
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list<string>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: chained_unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update: {out: "(degraded)"}
+              event_name: "unit_isolated"
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: [1]
+        results: ["(degraded)"]
+      execution_order: [process]
+      expected_failure_isolation_event:
+        event_name: "unit_isolated"
+        post_state: {out: "(degraded)"}
+        caught_exception:
+          category: provider_invalid_response   # derived: outermost non-carrier (surface re-categorization)
+          message: "re-categorized at the surface"
+          chain:
+            - {carrier: true, category: node_exception}
+            - {carrier: false, category: provider_invalid_response, message: "re-categorized at the surface"}
+            - {carrier: false, category: provider_unavailable, message: "originating upstream failure"}
+      invariants:
+        derived_category_is_outermost_non_carrier_with_category: true
+        chain_has_two_non_carrier_links: true

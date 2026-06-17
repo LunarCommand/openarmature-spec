@@ -4,6 +4,19 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.58.0] — 2026-06-16
+
+**Added**
+
+- **conformance-adapter §5.6 — `crash_injection` directive.** Simulates a crash at a checkpoint boundary independent of an instance failure (`after_node` or `after_fan_out_instance`), so resume is testable from any saved state — including a fan-out where instances *completed* (e.g. `FailureIsolation`-degraded instances, which complete rather than propagate). Pairs with `resume:` the same way `first_run_expected_error` does. ([proposal 0070](proposals/0070-conformance-adapter-crash-injection-and-cause-chaining.md))
+- **conformance-adapter §5.1 — `cause` on failure mocks.** An optional recursive `cause` on the error a failure mock raises, chaining it to an originating cause so a fixture can exercise a multi-link non-carrier cause chain (walked by pipeline-utilities §6.3's failure-isolation event). ([proposal 0070](proposals/0070-conformance-adapter-crash-injection-and-cause-chaining.md))
+- **conformance-adapter §5.6 / §5.8 — crash/resume vocabulary formalized** (descriptive of existing adapter behavior): `first_run_expected_error`, `resume` / `from_first_run`, `saved_record_assertions` / `fan_out_progress`, and `instances_executed_during_resume` / `instances_skipped_during_resume`. ([proposal 0070](proposals/0070-conformance-adapter-crash-injection-and-cause-chaining.md))
+- Two new conformance fixtures: `pipeline-utilities/conformance/067-crash-injection-fan-out-resume` (crash after a completed instance's save → resume rolls it forward, the remaining instance runs) and `068-failure-mock-cause-chain` (a `cause`-chained `flaky` failure → the outermost-non-carrier-wins derivation, the two-non-carrier-link case fixture 066 left open).
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Test-vocabulary only — no capability *behavior* changes. The formalized crash/resume directives codify what conformant adapters already implement (the existing checkpoint-resume fixtures exercise them); `crash_injection` and mock `cause` are new adapter capabilities a conformant adapter MUST add. ([proposal 0070](proposals/0070-conformance-adapter-crash-injection-and-cause-chaining.md))
+
 ## [0.57.0] — 2026-06-15
 
 **Added**
