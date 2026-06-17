@@ -1,8 +1,8 @@
 # OpenArmature Specification
 
-[![CI](https://img.shields.io/github/actions/workflow/status/LunarCommand/openarmature-spec/validate-markdown.yaml?label=CI)](https://github.com/LunarCommand/openarmature-spec/actions/workflows/validate-markdown.yaml)
+[![CI](https://github.com/LunarCommand/openarmature-spec/actions/workflows/validate-markdown.yaml/badge.svg)](https://github.com/LunarCommand/openarmature-spec/actions/workflows/validate-markdown.yaml)
 [![spec](https://img.shields.io/github/v/release/LunarCommand/openarmature-spec?label=spec&color=9D4EDD)](https://github.com/LunarCommand/openarmature-spec/releases)
-[![License](https://img.shields.io/github/license/LunarCommand/openarmature-spec)](https://github.com/LunarCommand/openarmature-spec/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/LunarCommand/openarmature-spec/blob/main/LICENSE)
 
 Language-agnostic behavioral specification for **OpenArmature**, a workflow
 framework for LLM pipelines and tool-calling agents. This repository holds the
