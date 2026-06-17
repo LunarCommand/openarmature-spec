@@ -1,0 +1,49 @@
+# prompt-management §5/§6 cache_ttl_seconds (proposal 0072): N>0 bounded
+# staleness via a controllable clock (conformance-adapter §6.8). A caching
+# PromptBackend serves a cached entry while it is younger than N seconds and
+# reads the source again once it ages past N. Time is advanced deterministically
+# via advance_clock — no wall-clock dependence.
+
+backends:
+  - name: cached_maxage
+    caching: true                      # caching backend (§6.8) with a controllable clock
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc123"
+
+calls:
+  # t=0: first fetch reads the source and caches the entry.
+  - target: {backend: cached_maxage}
+    operation: fetch
+    name: greeting
+    label: production
+    cache_ttl_seconds: 60
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+  # advance to t=30 (< 60): entry still young enough → served from cache.
+  - operation: advance_clock
+    seconds: 30
+  - target: {backend: cached_maxage}
+    operation: fetch
+    name: greeting
+    label: production
+    cache_ttl_seconds: 60
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+  # advance to t=90 (> 60): entry too old → fresh source read.
+  - operation: advance_clock
+    seconds: 60
+  - target: {backend: cached_maxage}
+    operation: fetch
+    name: greeting
+    label: production
+    cache_ttl_seconds: 60
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+
+expected_backend_state:
+  # Source read at t=0 and t=90; the t=30 fetch was served from cache.
+  cached_maxage: {source_read_count: 2}

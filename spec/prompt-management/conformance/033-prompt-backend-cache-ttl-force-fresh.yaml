@@ -1,0 +1,59 @@
+# prompt-management §5/§6 cache_ttl_seconds (proposal 0072): force-fresh
+# read-count. A caching PromptBackend (conformance-adapter §6.8) caches by
+# (name, label) and counts source reads. Two fetches with default cache
+# control (absent / None) perform ONE source read (the second is served from
+# cache); two fetches with cache_ttl_seconds=0 perform TWO source reads (each
+# bypasses the cache). The assertion is on the source-read count, not on timing
+# or contents.
+
+backends:
+  - name: cached_default
+    caching: true                      # in-memory caching backend (§6.8); counts source reads
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc123"
+  - name: cached_force_fresh
+    caching: true
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc123"
+
+calls:
+  # Default cache control: the second fetch is served from the cache.
+  - target: {backend: cached_default}
+    operation: fetch
+    name: greeting
+    label: production
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+  - target: {backend: cached_default}
+    operation: fetch
+    name: greeting
+    label: production
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+  # cache_ttl_seconds=0: each fetch bypasses the cache (fresh read).
+  - target: {backend: cached_force_fresh}
+    operation: fetch
+    name: greeting
+    label: production
+    cache_ttl_seconds: 0
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+  - target: {backend: cached_force_fresh}
+    operation: fetch
+    name: greeting
+    label: production
+    cache_ttl_seconds: 0
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+
+expected_backend_state:
+  cached_default:     {source_read_count: 1}   # 2nd fetch served from cache
+  cached_force_fresh: {source_read_count: 2}   # each fetch bypassed the cache
