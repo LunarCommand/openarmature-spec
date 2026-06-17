@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.63.1] — 2026-06-17
+
+**Added**
+
+- **pipeline-utilities conformance — two coverage fixtures (no behavior change).** Pin two already-normative behaviors that lacked a cross-impl conformance fixture. `070-crash-injection-after-node-resume` exercises the `crash_injection.after_node` crash boundary ([proposal 0070](proposals/0070-conformance-adapter-crash-injection-and-cause-chaining.md), conformance-adapter §5.6 — fixture 067 covered only `after_fan_out_instance`): the node rolls forward on resume (in `completed_positions`, not re-run). `071-fan-out-degrade-strict-reducer-raise` pins the scope boundary of [proposal 0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md)'s degrade-never-raises guarantee — a `FailureIsolation`-degraded instance's null slot under a strict-element reducer (`concat_flatten`) raises `ReducerError` (graph-engine §2), the guarantee being scoped to null-tolerant reducers only (fixture 069 Case 2 is the null-tolerant `append` counterpart).
+
+**Notes**
+
+- **PATCH bump.** Conformance coverage only — no behavior change, no new or changed normative text, and no new proposal (the pinned behaviors are already normative per proposals 0069 / 0070 + graph-engine §2). Fills two cross-impl coverage gaps left by fixtures 067 (`after_fan_out_instance` only) and 069 (null-tolerant `append` only).
+
 ## [0.63.0] — 2026-06-17
 
 **Added**
