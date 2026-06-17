@@ -52,22 +52,31 @@ cases:
                   children: []
         - trace_id: "<trace_id_detached>"
           span_tree:
-            # Detached subgraph's spans root in their own trace; NOT children
-            # of the parent's invocation span.
-            - name: "long_running_workflow"
+            # Detached trace roots in its own openarmature.invocation span
+            # carrying the SAME invocation_id as the parent (§4.4 / §4.3 —
+            # detached mode is observer-side rendering, not a new invocation);
+            # the subgraph span nests under it, NOT under the parent's
+            # invocation span.
+            - name: "openarmature.invocation"
               status: OK
               children:
-                - name: "step"
+                - name: "long_running_workflow"
                   status: OK
-                  children: []
+                  children:
+                    - name: "step"
+                      status: OK
+                      children: []
       invariants:
-        # Parent invocation span and detached subgraph span have DIFFERENT trace_ids.
+        # Parent invocation span and detached invocation span have DIFFERENT trace_ids.
         distinct_trace_ids: true
         # Parent's `dispatch` span has exactly one Link, targeting the detached trace.
         dispatch_span_link_count: 1
         # The §3 correlation_id is the SAME on both traces (correlation_id flows
         # across the trace boundary unchanged).
         correlation_id_consistent_across_traces: true
+        # The detached invocation span carries the SAME invocation_id as the
+        # parent invocation span (§4.3 detached-dispatch correlation).
+        detached_invocation_id_equals_parent: true
 
   - name: detached_fan_out_one_trace_per_instance
     subgraph:
@@ -130,3 +139,92 @@ cases:
         # No openarmature spans from inside the per-instance subgraphs leaked
         # into the parent trace.
         no_instance_spans_in_parent_trace: true
+        # Each instance trace roots in its own openarmature.invocation span
+        # carrying the same invocation_id as the parent (§4.4 detached fan-out).
+        each_instance_trace_roots_in_invocation_span_sharing_parent_invocation_id: true
+
+  - name: detached_subgraph_raises_error_status_on_both_spans
+    # §4.2 Detached invocation span status (proposal 0061): when a detached
+    # subgraph's inner node raises, ERROR surfaces on BOTH the parent's dispatch
+    # span (parent trace) and the detached invocation span (detached trace) —
+    # distinct traces, each the authoritative status carrier for its own view of
+    # the dispatch; each carries the §4 category + an OTel exception event.
+    subgraphs:
+      long_running_workflow:
+        state:
+          fields:
+            x:
+              type: int
+              default: 0
+        entry: step
+        nodes:
+          step:
+            raises: "boom"
+        edges:
+          - {from: step, to: END}
+    state:
+      fields:
+        ran:
+          type: bool
+          default: false
+    entry: dispatch
+    nodes:
+      dispatch:
+        subgraph: long_running_workflow
+      after:
+        update: {ran: true}
+    edges:
+      - {from: dispatch, to: after}
+      - {from: after,    to: END}
+    initial_state: {}
+    detached_subgraphs: ["long_running_workflow"]
+    expected:
+      traces:
+        - trace_id: "<trace_id_parent>"
+          span_tree:
+            # Parent trace: the `dispatch` span reflects the subgraph's failure
+            # (§4.4); the parent invocation span inherits ERROR.
+            - name: "openarmature.invocation"
+              status: ERROR
+              children:
+                - name: "dispatch"
+                  status: ERROR
+                  status_description: "node_exception"
+                  exception_recorded: true
+                  attributes:
+                    openarmature.error.category: "node_exception"
+                  links:
+                    - target_trace_id: "<trace_id_detached>"
+                  children: []   # detached — no nested children in parent trace
+        - trace_id: "<trace_id_detached>"
+          span_tree:
+            # Detached trace: the detached invocation span carries the detached
+            # unit's own ERROR status + §4 category + exception event (§4.2
+            # *Detached invocation span status*); the raising node carries the
+            # category as usual.
+            - name: "openarmature.invocation"
+              status: ERROR
+              status_description: "node_exception"
+              exception_recorded: true
+              attributes:
+                openarmature.error.category: "node_exception"
+              children:
+                - name: "long_running_workflow"
+                  status: ERROR
+                  children:
+                    - name: "step"
+                      status: ERROR
+                      status_description: "node_exception"
+                      exception_recorded: true
+                      attributes:
+                        openarmature.error.category: "node_exception"
+                      children: []
+      invariants:
+        # ERROR on BOTH the parent's dispatch span and the detached invocation span.
+        error_status_on_parent_dispatch_span: true
+        error_status_on_detached_invocation_span: true
+        # Both ERROR spans carry an OTel exception event with the §4 category.
+        exception_event_on_both_error_spans: true
+        # The two status-carrier spans live in DISTINCT traces but share invocation_id.
+        distinct_trace_ids: true
+        detached_invocation_id_equals_parent: true

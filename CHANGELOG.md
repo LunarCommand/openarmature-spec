@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.61.0] — 2026-06-17
+
+**Changed**
+
+- **observability §4.4 — a detached OTel trace now roots in an `openarmature.invocation` span.** A detached subgraph or fan-out (§4.4 detached trace mode) renders its separate trace rooted in its own `openarmature.invocation` span carrying the **same** `invocation_id` as the parent invocation, with the detached unit's spans nested under it — replacing the prior "spans use the new `trace_id` as their root, not children of any invocation span" shape. The detached invocation span opens / closes on the detached-unit window (§4.1) and carries the detached unit's own status (§4.2 — a raising detached subgraph surfaces `ERROR` on both the parent dispatch span and the detached invocation span, each with the §4 category + an exception event). `invocation_id` is the shared engine-level run identity (detached mode is observer-side trace rendering, not an engine-level sub-invocation); `trace_id` is the per-backend rendering identity (§4.3 *Detached-dispatch invocation spans*). This lets the §5.1 always-emit attribution invariant apply to every detached trace with no per-context caveat (§5.1 / §4.5 multiple-invocation-spans-per-run notes), and reconciles the contradicting expected span trees in conformance fixtures `008-otel-detached-trace-mode` and `058-implementation-attribution-otel`. ([proposal 0061](proposals/0061-detached-trace-invocation-span.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Operator-visible: anything snapshotting detached-trace OTel output sees a new invocation-span layer at the detached trace root after upgrade. The reference implementation's OTel observer synthesizes the detached invocation span at each detached trace root from the `invocation_id` it already sees on every event — no graph-engine change, no public type or interface change. The Langfuse side is unchanged (the Trace entity already plays the invocation-level-container role; §8.4.1 gains a clarifying note only). ([proposal 0061](proposals/0061-detached-trace-invocation-span.md))
+
 ## [0.60.0] — 2026-06-17
 
 **Added**

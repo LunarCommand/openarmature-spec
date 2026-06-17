@@ -73,7 +73,8 @@ cases:
             # correlation_id is the SAME as the parent Trace per §8.5.
             correlation_id: "<corr_id_1>"
             # detached_from_invocation_id points back to the parent
-            # invocation per §8.4.1 (proposal 0042).
+            # invocation per §8.4.1 (proposal 0042). Per proposal 0061 this is
+            # the SHARED run invocation_id, not a distinct child invocation_id.
             detached_from_invocation_id: "<invocation_id_parent>"
           observations:
             - type: span
