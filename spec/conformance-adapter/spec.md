@@ -624,13 +624,19 @@ These directives appear under per-invocation or per-case `expected:` blocks and 
   — invariant predicates against the accumulator snapshot (for nondeterministic-ordering cases).
 - **`final_accumulator_state: {<observer_name>: [<event>, ...]}`** — exact accumulator state after
   the invocation completes (post-drain delivery).
-- **`saved_record_assertions: {fan_out_progress: {<node_name>: {instance_count: <int>, instances: [<instance_assertion>, ...]}}}`**
-  — asserts the checkpoint record's saved fan-out progress at first-run end. Each
-  `<instance_assertion>` is `{state: <not_started|in_flight|completed> | state_one_of: [<state>, ...],
-  result: <value>, result_is_error: <bool>, completed_inner_positions: [{node_name, attempt_index}, ...]}`
-  (fields optional; assert what the fixture cares about). `state_one_of` accommodates dispatch-timing
-  nondeterminism (e.g. a sibling `in_flight` vs `not_started` under concurrent execution). Exercises
-  pipeline-utilities §10.11.
+- **`saved_record_assertions: { ... }`** — a block of named assertions against the saved checkpoint
+  record at first-run end (e.g. before a `resume:`); the adapter checks each listed sub-assertion
+  against the persisted record. This proposal formalizes the `fan_out_progress` sub-assertion;
+  existing checkpoint-resume fixtures also carry `fan_out_node_in_completed_positions` (bool),
+  `completed_positions`, and `parent_states_present` / `parent_states_outermost_first` (subgraph /
+  parent-state resume), documented per those fixtures.
+  - **`fan_out_progress: {<node_name>: {instance_count: <int>, instances: [<instance_assertion>, ...]}}`**
+    — the saved per-instance fan-out progress. Each `<instance_assertion>` is
+    `{state: <not_started|in_flight|completed> | state_one_of: [<state>, ...], result: <value>,
+    result_is_error: <bool>, completed_inner_positions: [{node_name, attempt_index}, ...]}` (fields
+    optional; assert what the fixture cares about). `state_one_of` accommodates dispatch-timing
+    nondeterminism (e.g. a sibling `in_flight` vs `not_started` under concurrent execution). Exercises
+    pipeline-utilities §10.11.
 - **`instances_executed_during_resume: [<int>, ...]`** / **`instances_skipped_during_resume: [<int>, ...]`**
   — appear under a `resume:` block. Assert which fan-out instances re-ran on resume (failed /
   cancelled / not-yet-started) vs. were skipped (completed-and-rolled-forward, including degraded
