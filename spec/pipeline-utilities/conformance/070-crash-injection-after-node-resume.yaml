@@ -1,0 +1,57 @@
+# crash_injection after_node resume (proposal 0070, conformance-adapter §5.6).
+# Pins the `after_node` crash boundary — fixture 067 covered only
+# `after_fan_out_instance`. crash_injection ends the first run AFTER a regular
+# node's checkpoint save fires (no node failure involved); on resume that node
+# rolls forward (it is in completed_positions, NOT re-run) and the downstream
+# nodes run. Mirrors fixture 025's resume-from-completed-position assertions but
+# triggered by crash_injection rather than a node failure.
+
+cases:
+  - name: crash_after_node_a_resume_skips_a
+    description: |
+      Three nodes A → B → C under a checkpointer. crash_injection fires
+      immediately after node_a's `completed` save: the in-flight run is
+      abandoned, only the checkpoint survives — the first run has NO asserted
+      outcome (it "crashed"). The saved record shows node_a in
+      completed_positions. On resume, node_a is skipped (rolled forward) and
+      node_b + node_c run; final state matches an uninterrupted run.
+    state:
+      fields:
+        a_ran: {type: bool, default: false}
+        b_ran: {type: bool, default: false}
+        c_ran: {type: bool, default: false}
+    entry: node_a
+    nodes:
+      node_a:
+        update_pure: {a_ran: true}
+      node_b:
+        update_pure: {b_ran: true}
+      node_c:
+        update_pure: {c_ran: true}
+    edges:
+      - {from: node_a, to: node_b}
+      - {from: node_b, to: node_c}
+      - {from: node_c, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    # Crash immediately after node_a's completion save — no failure involved.
+    crash_injection:
+      after_node: node_a
+    # Saved record at the crash boundary: node_a completed + persisted.
+    saved_record_assertions:
+      state: {a_ran: true, b_ran: false, c_ran: false}
+      completed_positions:
+        - {namespace: [], node_name: node_a, step: 0, attempt_index: 0}
+    resume:
+      from_first_run: true
+      expected:
+        final_state: {a_ran: true, b_ran: true, c_ran: true}
+        # node_a is NOT re-run (it is in completed_positions); resume starts at node_b.
+        nodes_executed_during_resume: [node_b, node_c]
+        nodes_skipped_during_resume: [node_a]
+      invariants:
+        # The after_node crash boundary rolled node_a forward across the resume.
+        after_node_crash_rolls_node_forward: true
+        # Checkpoint-resume mints a fresh invocation_id (§10.4); correlation_id preserved.
+        resumed_invocation_id_differs_from_original: true
+        resumed_correlation_id_matches_original: true

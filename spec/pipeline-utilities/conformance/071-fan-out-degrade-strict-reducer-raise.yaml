@@ -1,0 +1,77 @@
+# §9.3 strict-element-reducer degrade raise (proposal 0069's 2b caveat;
+# graph-engine §2). 0069's "absent collect_field -> null slot, fan-in MUST NOT
+# raise" guarantee is scoped to NULL-TOLERANT reducers (append). A
+# FailureIsolation-degraded instance that omits its collect_field contributes a
+# NULL slot; under a STRICT-element reducer (concat_flatten requires each update
+# element to be a list — graph-engine §2) that null is not a list, so the fan-in
+# MUST raise ReducerError. The degrade-never-raises guarantee does NOT suppress
+# it. Counterpart to fixture 069 Case 2 (same null slot, but null-tolerant
+# `append` -> graceful null, no raise).
+
+subgraphs:
+  unit:
+    state:
+      fields:
+        input: {type: int, default: 0}
+        out: {type: list, default: []}           # collect_field; bare `list` so concat_flatten enforces element shape (gE fixture 026)
+        note: {type: string, default: ""}         # set by the callable degrade; collect_field `out` omitted
+    entry: work
+    nodes:
+      work:
+        flaky:
+          failure_sequence:
+            - {transient: false, category: provider_unavailable, message: "down"}
+    edges:
+      - {from: work, to: END}
+
+cases:
+  - name: degrade_null_slot_under_concat_flatten_raises_reducer_error
+    description: |
+      Single-instance fan-out (items: [1]); the instance fails and the
+      failure_isolation *callable* degrade sets only `note`, OMITTING the
+      collect_field `out` — so the instance's positional slot is NULL (per 0069;
+      a static degraded_update omitting collect_field would be a §9.8 compile
+      error, so the omission is done via the callable form). target_field
+      `results` uses the strict-element reducer `concat_flatten`, which requires
+      each update element to be a list; the null slot violates that, so the
+      fan-in raises ReducerError (graph-engine §2). The degrade-never-raises
+      guarantee (0069) does NOT extend to strict reducers — the ReducerError is
+      surfaced, not suppressed. (Fixture 069 Case 2 is the null-tolerant `append`
+      counterpart, where the same null slot is a graceful null with no raise.)
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list, reducer: concat_flatten, default: []}   # bare `list` (gE fixture 026): concat_flatten is the enforcing layer
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          instance_middleware:
+            - type: failure_isolation
+              # Callable degrade (069 Case 2's form): a STATIC degraded_update omitting
+              # collect_field is a compile error (§9.8 / fixture 065); a callable is exempt
+              # (output unknown at compile) and omits `out` at runtime -> null slot.
+              degraded_update:
+                callable: state_derived
+                template: "fellback for {{ state.input }}"
+                target_field: note      # sets `note`, OMITS collect_field `out` -> null slot
+              event_name: "unit_isolated"
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected_error:
+      # The fan-in reduces the null slot into `results` via concat_flatten,
+      # which requires list elements -> ReducerError surfaced from the fan-out node.
+      category: reducer_error
+      raised_from: process
+    invariants:
+      # The null slot under a strict-element reducer raises (graph-engine §2)...
+      strict_reducer_null_slot_raises: true
+      # ...and the FailureIsolation degrade does NOT suppress that ReducerError.
+      degrade_does_not_suppress_reducer_error: true
