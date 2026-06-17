@@ -1,8 +1,9 @@
 # 0070: Conformance Adapter — Crash/Resume Vocabulary, Crash-Injection, and Cause-Chaining
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-16
+- **Accepted:** 2026-06-16
 - **Targets:** spec/conformance-adapter/spec.md (§5.6 — formalize the **crash/resume directives** [`first_run_expected_error`, `resume` / `from_first_run`] and add a **`crash_injection`** directive that simulates a crash at a checkpoint boundary independent of an instance failure; §5.8 — formalize the **saved-record + resume-outcome assertions** [`saved_record_assertions` / `fan_out_progress`, `instances_executed_during_resume` / `instances_skipped_during_resume`]; §5.1 — add an optional **`cause`** [exception-chaining] to the failure-mock directives, with the failure-mock family itself formalized in a follow-on); plus demonstrating fixtures
 - **Related:** 0055 (conformance-adapter capability — this fills the §5 vocabulary gap it left), 0008 / 0009 / 0010 (checkpointing + resume — what the crash/resume directives exercise), 0050 / 0065 / 0068 (failure isolation + the cause chain — what `cause`-chaining exercises), 0069 (the degrade+resume fixture `crash_injection` unblocks)
 - **Supersedes:**

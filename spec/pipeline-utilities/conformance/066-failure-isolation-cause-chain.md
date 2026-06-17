@@ -58,6 +58,6 @@ messages are implementation detail.
   middleware on a parallel-branches node being expressible in the adapter.
 - **Outermost-wins discrimination** (two *non-carrier* links with different
   categories, where the derivation picks the outermost). Producing two
-  categorized non-carrier links requires mock exception-chaining beyond the
-  current `flaky` vocabulary; this behavior is carried by §6.3 text and
-  implementation unit tests until the adapter can express it.
+  categorized non-carrier links requires mock exception-chaining beyond this
+  fixture's `flaky` vocabulary; **now covered by fixture 068** via proposal
+  0070's mock `cause` directive (068 postdates this fixture).

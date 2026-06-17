@@ -1,0 +1,74 @@
+# crash_injection fan-out resume (proposal 0070, conformance-adapter §5.6).
+# A fan-out under a checkpointer where instance 0 completes normally (no
+# failure); crash_injection ends the first run AFTER instance 0's completion
+# save fires, retaining only the checkpoint. On resume, instance 0 rolls
+# forward (skipped) and instance 1 runs. Exercises crash_injection
+# (after_fan_out_instance), saved_record_assertions (fan_out_progress), and
+# the resume instances_executed/skipped assertions — the resume-from-any-state
+# path that needs no instance failure (vs. fixture 048's fail_fast trigger).
+
+subgraph:
+  name: scorer
+  state:
+    fields:
+      input: {type: int, default: 0}
+      out: {type: int, default: 0}
+  entry: score
+  nodes:
+    score:
+      update_from_field: {out: input}
+  edges:
+    - {from: score, to: END}
+
+cases:
+  - name: crash_after_instance_0_resume_rolls_forward
+    description: |
+      Fan-out with 2 instances [10, 20] under serial execution. Instance 0
+      (item 10) completes and records its contribution. crash_injection fires
+      immediately after instance 0's completion save: the in-flight run is
+      abandoned, only the checkpoint survives — the first run has no asserted
+      outcome (it "crashed"). The saved record's fan_out_progress shows
+      instance 0 `completed` and instance 1 `not_started`.
+
+      On resume, instance 0 is skipped (its accumulator entry rolls forward
+      unchanged) and instance 1 executes. Final state matches an
+      uninterrupted run: results [10, 20].
+    state:
+      fields:
+        items: {type: list<int>, default: [10, 20]}
+        results: {type: list<int>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: scorer
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+          concurrent_mode: serial
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    crash_injection:
+      after_fan_out_instance: {node: process, index: 0}
+    saved_record_assertions:
+      fan_out_progress:
+        process:
+          instance_count: 2
+          instances:
+            - {state: completed, result: 10, result_is_error: false}
+            - {state: not_started, result_is_error: false}
+      fan_out_node_in_completed_positions: false
+    resume:
+      from_first_run: true
+      expected:
+        final_state:
+          items: [10, 20]
+          results: [10, 20]
+        instances_executed_during_resume: [1]
+        instances_skipped_during_resume: [0]
+      invariants:
+        no_duplicate_results: true
