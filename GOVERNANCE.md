@@ -206,6 +206,29 @@ freely editable per the carve-out below (small re-verification updates do not re
 changes that flow from a re-verification (e.g., adopting a newly-Stable upstream attribute) DO require a proposal
 per the standard discipline.
 
+**De-facto interoperability standard (narrow carve-out).** Where an upstream attribute set is the de-facto
+cross-ecosystem interoperability standard for its domain — recognized by the broad installed base of tools that
+consume the signal — OA MAY adopt the recognized **core** names directly even while the upstream marks them
+Development, when mirroring those names to `openarmature.*` would defeat the interoperability the names exist to
+provide. This carve-out is currently scoped to the **OpenTelemetry GenAI semantic conventions** (`gen_ai.*`): every
+GenAI-aware observability backend keys on the `gen_ai.*` names, so an `openarmature.*` mirror of the core attributes
+would render OA's spans unrecognizable to precisely the tools the semconv targets. Newer or peripheral attributes
+within the same convention that the installed base does not broadly recognize are still mirrored to `openarmature.*`
+per the stable-only rule above, until they are Stable or demonstrably ubiquitous. Each use of this carve-out MUST be
+recorded in `docs/compatibility.md` with the adopted names, their upstream status, and the interoperability
+rationale. The carve-out does NOT extend to other dependencies without a proposal that makes the same
+de-facto-standard showing.
+
+**Post-adoption upstream change (retention).** Once OA has adopted an upstream name — whether at upstream Stable or
+under the de-facto-standard carve-out above — a later upstream **rename, removal, restructure, or status change** does
+NOT automatically change what OA emits. OA **retains** the adopted name, keeping its emitted surface stable for the
+consumers and conformance fixtures that depend on it, and migrates to a successor name only through a deliberate
+follow-on proposal, when the successor is itself worth adopting (it reaches Stable, or the ecosystem has demonstrably
+moved to it). `docs/compatibility.md` records the divergence — the adopted name, the upstream successor, and that
+migration is deferred. *Rationale:* spec text and conformance fixtures are durable; chasing upstream churn —
+especially within a pre-stable convention that renames freely — would thrash every implementation for no consumer
+benefit, which is the same volatility the stable-only rule guards against.
+
 ---
 
 ## Conformance tests

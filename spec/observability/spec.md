@@ -27,6 +27,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.5.4 observer-level privacy flag renamed `disable_llm_payload` → `disable_provider_payload`; semantics broadened to cover payload from any provider call (LLM completion + embedding + rerank when it lands) rather than LLM-only — same default-conservative posture (default `True`); cross-references in §8 + graph-engine §6 updated. New §5.5.8 *Embedding provider attributes* sub-subsection covering OTel mapping for `EmbeddingProvider.embed()` calls — span name `openarmature.embedding.complete`, Stable GenAI semconv attribute subset (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.response.id`, `gen_ai.usage.input_tokens`), OA-namespace `openarmature.embedding.*` attributes (`input_count`, `dimensions`, payload-gated `input.strings` + `request.extras`); the upstream `gen_ai.operation.name` attribute deferred per the stable-only adoption policy (operation discrimination via span name + provider). New §5.5.9 *Typed embedding events* sub-subsection framing the `EmbeddingEvent` + `EmbeddingFailedEvent` typed-event surface as the structured form of the embedding-span attribute surface (paralleling §5.5.7 for LLM completion). New §8.4.5 *Embedding-specific mapping* sub-subsection covering Langfuse mapping — embedding calls render as a dedicated `Embedding` observation type (created via the SDK's `asType: "embedding"`), NOT `Generation` with operation metadata; both `input` strings and `output` vectors are payload-bearing and gated by `disable_provider_payload` under the vec2text-aware privacy posture by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
   - §4.4 *Detached trace mode* updated so a detached OTel trace roots in its own `openarmature.invocation` span carrying the **same** `invocation_id` as the parent invocation (detached mode is an observer-side trace-rendering choice, not an engine-level sub-invocation, so the run identity is unchanged), with the detached unit's spans nested under it — replacing the prior "spans use the new `trace_id` as their root, not children of any invocation span" shape; §4.1 *Span timing* gained a detached-invocation-span window paragraph (the detached-unit window, not the outer `invoke()` window); §4.2 *Status mapping* gained a *Detached invocation span status* note (the detached unit's own outcome — a raising detached subgraph surfaces `ERROR` on both the parent dispatch span and the detached invocation span); §4.3 gained a *Detached-dispatch invocation spans* paragraph pinning the shared-`invocation_id` correlation (`trace_id` = per-backend rendering identity, `invocation_id` = shared engine-level run identity, distinct from checkpoint-resume's fresh `invocation_id`); §5.1 + §4.5 gained multiple-invocation-spans-per-run notes (the always-emit attribution invariant applies to each invocation span); §8.4.1 gained a detached-trace attribution-sourcing note (no normative Langfuse change). Reconciles the contradicting expected span trees in conformance fixtures `008-otel-detached-trace-mode` and `058-implementation-attribution-otel`; no graph-engine change by [proposal 0061](../../proposals/0061-detached-trace-invocation-span.md)
   - §8.4.1 Trace-level mapping gained two rows — `openarmature.session_id` → `trace.sessionId` (groups every trace sharing a session id into one Langfuse Session) and a recognized `userId` caller-metadata key → `trace.userId` (Langfuse's Users dimension; additive — the key also remains at `trace.metadata.userId`; recognized, not reserved) — plus a *Session / user trace-field sourcing* paragraph (the MUST-set / unset rules, the OTel-has-no-trace-level-equivalent asymmetry, and multi-invocation / detached / suspend-resume grouping semantics). §8.1 and the §8.4 *Distinction from Langfuse Sessions / Users* note updated to record that Sessions / Users grouping is now realized; §8.10's *Langfuse Sessions* out-of-scope bullet removed (realized — the sessions capability, proposal 0020, is Accepted). New conformance fixture `084-langfuse-session-user-promotion`; no OTel-side change by [proposal 0064](../../proposals/0064-observability-langfuse-session-user-promotion.md)
+  - §5.5 gained a *GenAI semconv attribute adoption* framing note recording that the emitted `gen_ai.*` attributes are adopted under the new GenAI **de-facto-standard carve-out** (`GOVERNANCE.md` *External-dependency adoption*): recognized **core** names are emitted directly even though the upstream GenAI semantic conventions are wholly Development (they moved to the dedicated `semantic-conventions-genai` repo — 96 attributes Development, none Stable), while **peripheral** Development attributes are mirrored to `openarmature.*` (§5.5.3.1) until Stable or demonstrably ubiquitous — the deciding line being installed-base recognition, not the upstream maturity label. §5.5.3's `gen_ai.system` entry notes the attribute is **retained** per the new **post-adoption retention** rule even though upstream removed it in favor of `gen_ai.provider.name` (migration deferred); the §5.5.3.1 and §5.5.8 *until upstream Stable* wording is reconciled to *Stable or demonstrably ubiquitous*. Reframes adoption rationale only — no emitted attribute changes, existing `gen_ai.*` fixtures remain valid — and adds the de-facto-standard carve-out + retention rule to `GOVERNANCE.md`, correcting `docs/compatibility.md` accordingly by [proposal 0073](../../proposals/0073-genai-semconv-adoption-reconciliation.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -892,6 +893,16 @@ length (§5.5.5), cross-implementation consistency rules (§5.5.6), and the type
 event (§5.5.7, per proposal 0049) framing the same data surface in structured-event form. No
 existing attribute is renamed; all additions sit alongside the baseline list.
 
+**GenAI semconv attribute adoption (`gen_ai.*`).** The `gen_ai.*` attributes this section emits (the §5.5.2
+request parameters and the §5.5.3 / §5.5.8 response attributes) are adopted under the **GenAI de-facto-standard
+carve-out** in `GOVERNANCE.md` *External-dependency adoption*: the recognized **core** names — which every
+GenAI-aware backend keys on — are emitted directly even though the upstream GenAI semantic conventions are wholly
+at Development status (they now live in the dedicated `semantic-conventions-genai` repository), while **peripheral**
+Development attributes are mirrored to the `openarmature.*` namespace (§5.5.3.1) until they are Stable or
+demonstrably ubiquitous. The deciding line is recognition by the installed base, not the upstream maturity label.
+Per the **post-adoption retention** rule, an adopted name is kept even if upstream later renames or removes it — see
+`gen_ai.system` in §5.5.3, retained despite its upstream removal in favor of `gen_ai.provider.name`.
+
 #### 5.5.1 Input/output payload attributes (default-off)
 
 When the LLM payload-emission flag is enabled (per §5.5.4), implementations MUST emit the
@@ -976,6 +987,11 @@ semconv opt-out is enabled (per §5.5.4):
   argument, factory method, environment variable) is implementation-defined; the behavioral
   contract is that an override is available and effective.
 
+  Adopted as a core de-facto-standard name (§5.5 *GenAI semconv attribute adoption*); **retained** per the
+  `GOVERNANCE.md` *post-adoption retention* rule even though upstream has removed `gen_ai.system` in favor of
+  `gen_ai.provider.name` (the installed base still keys on `gen_ai.system`). Migration to `gen_ai.provider.name` is
+  deferred to a future proposal.
+
 - `gen_ai.request.model` — string. The model the request was made against — the model
   identifier bound to the provider. Mirrors `openarmature.llm.model`; both emit. Rationale: the
   GenAI semconv requires this name for backend recognition; the OA-namespaced version is
@@ -1031,7 +1047,9 @@ attributes for these values — `gen_ai.usage.cache_read.input_tokens` and
 `gen_ai.usage.cache_creation.input_tokens` — are at **Development** status as of OTel semconv
 v1.41.1 (verified 2026-06-01); per the *Stable-only upstream adoption* policy in
 `GOVERNANCE.md` (and tracked in `docs/compatibility.md`), OA emits the OA-namespaced parallels
-above until the upstream attributes reach **Stable**, at which point a follow-on proposal MAY
+above until the upstream attributes are **Stable or demonstrably ubiquitous** (they are *peripheral* Development
+attributes the installed base does not yet broadly key on — distinct from the core de-facto-standard `gen_ai.*`
+names §5.5 adopts directly per the carve-out), at which point a follow-on proposal MAY
 add the `gen_ai.*` parallels (or migrate to them outright per the policy's cutover guidance).
 Until that happens, OA-aware backends read the `openarmature.llm.cache_*.input_tokens`
 attributes; cross-vendor OTel backends will gain `gen_ai.*` attribute support only once the
@@ -1257,7 +1275,7 @@ embedding call, parented under the calling node's span.
 completion span (`openarmature.llm.complete`) without requiring an explicit operation-name
 attribute.
 
-**Stable GenAI semconv attribute subset** (mapped where they apply directly to embedding):
+**Core GenAI semconv attribute subset** (mapped where they apply directly to embedding; adopted directly per the §5.5 GenAI de-facto-standard carve-out):
 
 | Attribute | Source |
 |---|---|
@@ -1283,7 +1301,8 @@ spans semantic conventions). Per the `Stable-only upstream adoption` policy in `
 (and tracked in `docs/compatibility.md`), OA does NOT normatively adopt this attribute. Operation
 discrimination is via the span name + provider; a follow-on proposal MAY add
 `gen_ai.operation.name = "embeddings"` to the attribute surface when the upstream attribute
-reaches **Stable** status, per the §5.5.3.1 / 0047 mirror pattern.
+reaches **Stable or becomes demonstrably ubiquitous**, per the §5.5.3.1 / 0047 mirror pattern — it is a
+*peripheral* attribute under the §5.5 GenAI de-facto-standard carve-out, not a recognized core name.
 
 **Opt-out flags.** The `disable_provider_payload` and `disable_genai_semconv` flags from §5.5.4
 apply analogously to embedding spans — `disable_provider_payload` gates the payload attributes
