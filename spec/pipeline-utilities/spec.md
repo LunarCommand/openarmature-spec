@@ -288,7 +288,7 @@ failing call, whereas an outer full-chain match would coarsely re-run the entire
 one inner transient. A caller that genuinely needs full-chain retry classification (retry can only be
 placed at an outer scope) supplies a custom `classifier` that walks the chain via the §6.4 cause-chain
 classification primitive. §6.3's `catch`, by contrast, classifies full-chain because it **degrades**
-rather than re-runs — where the failure originated does not change whether it is degradeable.
+rather than re-runs — where the failure originated does not change whether it is degradable.
 
 **Cancellation signals MUST propagate.** Cancellation signals raised by the language runtime
 (Python's `CancelledError`, TypeScript's `AbortError`, equivalents in other languages) MUST NOT

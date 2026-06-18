@@ -116,7 +116,7 @@ to retry — placing retry there re-attempts only the failing call, whereas an o
 would coarsely re-run the whole subgraph / fan-out for one inner transient. A caller that genuinely
 needs outer full-chain retry classification supplies a custom `classifier` that walks the chain via the
 §6.4 primitive. §6.3's `catch`, by contrast, classifies full-chain because it **degrades** rather than
-re-runs — where the failure originated does not change whether it is degradeable.
+re-runs — where the failure originated does not change whether it is degradable.
 
 This is the principled resolution of the retry-vs-isolation classification question: the two share the
 **vocabulary** (the category enum, the §6.4 primitive) but match at the **depth** their semantics
