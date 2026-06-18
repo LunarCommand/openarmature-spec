@@ -1,0 +1,1 @@
+../../proposals/0073-genai-semconv-adoption-reconciliation.md
