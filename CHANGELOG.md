@@ -4,6 +4,22 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.65.0] — 2026-06-18
+
+**Added**
+
+- **pipeline-utilities §6.3 — `catch` gate on failure isolation.** `FailureIsolationMiddleware` gains an optional `catch` field: a set of error categories (llm-provider §7 / graph-engine §4 enum) matched against the caught exception's **cause chain** via the new §6.4 cause-chain classification primitive. At the §9.7 / §11.7 / §9.6 / §11.6 wrapping placements the engine wraps the failure in one or more `node_exception` carriers before isolation catches it, so the surface exception is a carrier — a surface category / type check misses the originating failure and re-raises, inverting an intended degrade into a crash. `catch` classifies *through* the carriers (matching the derived category — the same value reported as `caught_exception.category`), closing that footgun; it is the recommended gate for category-scoped degradation, mirroring §6.1's classifier. **Additive** — `catch` defaults unset (catch-all preserved); composes with `predicate` as a conjunction; `predicate` stays the escape hatch and is now documented as surface-only with the cause-aware alternatives. ([proposal 0074](proposals/0074-failure-isolation-catch-classification.md))
+- **pipeline-utilities §6.4 — Cause-chain classification primitive.** Promotes §6.3's carrier-skipping cause-fidelity walk to a public, named primitive (the ordered cause chain + the derived category) shared by §6.1 retry, §6.3 isolation, and consumers, so a carrier-wrapped failure classifies identically everywhere rather than each site re-deriving the walk. ([proposal 0074](proposals/0074-failure-isolation-catch-classification.md))
+- New conformance fixture `pipeline-utilities/conformance/072-failure-isolation-catch-cause-chain` (two cases: `catch` matches a carrier-wrapped category and degrades; a non-matching `catch` set propagates). ([proposal 0074](proposals/0074-failure-isolation-catch-classification.md))
+
+**Changed**
+
+- **pipeline-utilities §6.1 — default retry classifier depth documented as deliberately single-level.** The default transient classifier inspects the surface category and its immediate cause one level (not the full chain): retry re-runs, so it classifies at re-attempt granularity, leaving deeply-nested transients to the inner scope that can retry only the failing call. A caller needing outer full-chain retry classification supplies a custom classifier using the §6.4 primitive. **No behavior change** — documentation of the existing single-level rule and the contrast with §6.3's full-chain degrade classification. ([proposal 0074](proposals/0074-failure-isolation-catch-classification.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Additive: the `catch` field and the §6.4 primitive are new public surface; `catch` defaults preserve the current catch-all behavior, and retry behavior is unchanged (the §6.1 change is documentation). ([proposal 0074](proposals/0074-failure-isolation-catch-classification.md))
+
 ## [0.64.0] — 2026-06-18
 
 **Changed**

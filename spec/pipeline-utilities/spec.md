@@ -18,6 +18,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §10.14 *Composition with sessions* added — notes that the new sessions capability is an orthogonal cross-invoke persistence layer; checkpointing and sessions register independently, MAY share a backend, but resume / session-load and the respective error categories surface independently by [proposal 0020](../../proposals/0020-sessions-capability.md)
   - §6.3 *Failure isolation* middleware added as the third canonical primitive in the §6 bundled set (alongside §6.1 Retry and §6.2 Timing) — packages the §2 third-MAY-bullet catch-and-recover pattern with a four-field configuration record (`degraded_update` [static or callable], `event_name` [required, no default — naming decision at construction site], `predicate` [single-arg `(exception) -> bool`, defaults to always-true], `on_caught` [optional async callback]); catches `Exception` (not `BaseException`); on catch dispatches a framework-emitted failure-isolation event onto the observer delivery queue (parallels proposal 0040's metadata-augmentation event mechanism — distinct from `NodeEvent`, carries `event_name` + wrapped-node lineage tuple + `pre_state` / `post_state` + `caught_exception` record; not promoted to a typed variant on the observer event union for v1) and returns the configured degraded update so the engine continues edge resolution normally; documents the three-piece composition pattern with §6.1 retry (outer-to-inner: transient-aware node body + inner Retry + outer FailureIsolation) with outer-to-inner ordering load-bearing by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
   - §10.15 *Composition with suspension* added — notes that the new suspension capability uses the same persistence mechanism as checkpointing for paused-invocation records (single store with discriminator OR separate stores; implementation choice); paused-invocation records and checkpoint records are distinct shapes; resume operations load the correct record type per the resume API in use (`invoke(resume_invocation=...)` per §10.4 → checkpoint record; `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 → paused-invocation record); paused-record lifetime is NOT bound to invocation completion (unlike checkpoint records, persists until resume completes / cancellation / backend retention); error categories are distinct (`suspension_persistence_failed` per suspension §9 does not signal checkpoint failure and vice versa). Refer to the suspension capability spec for the full primitive contract by [proposal 0021](../../proposals/0021-graph-suspension.md)
+  - §6.3 *Failure isolation* gained a `catch` configuration field — a set of error categories matched against the caught exception's **cause chain** (via the new §6.4 primitive), so a carrier-wrapped failure at a §9.7 / §11.7 / §9.6 / §11.6 wrapping placement is caught correctly where a surface `predicate` check would miss it and invert an intended degrade into a crash; `catch` matches on the derived category (the outermost-non-carrier value reported as `caught_exception.category`, per the 0068 derivation), composes with `predicate` as a conjunction (both permissive by default), and `predicate` is documented as surface-only with the cause-aware alternatives. New §6.4 *Cause-chain classification* promotes §6.3's carrier-skipping cause-fidelity walk to a public, named classification primitive (cause chain + derived category) shared by §6.1 retry, §6.3 isolation, and consumers. §6.1's default-classifier depth is documented as deliberately single-level (retry re-runs → classifies at re-attempt granularity; the §6.4 primitive is the opt-in for full-chain retry), distinct from §6.3's full-chain degrade classification. New fixture 072; `catch` is additive (default catch-all preserved) and retry behavior is unchanged by [proposal 0074](../../proposals/0074-failure-isolation-catch-classification.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -277,6 +278,18 @@ Dependency on llm-provider §7: the categories above are normative as of llm-pro
 v0.4.0). If a §7 category is added, removed, or reclassified by a later proposal, the default
 classifier MUST be updated in lock-step (a clarification PATCH).
 
+**Classification depth (single-level, by design).** The default classifier inspects the surface
+exception's category and its immediate cause one level deep (a `node_exception` carrier whose direct
+cause is transient, per the rule above), NOT the full cause chain. This is deliberate and differs from
+§6.3's full-chain derivation: retry **re-runs** the wrapped target, so it classifies at the granularity
+it re-attempts. A transient buried two or more carriers deep (e.g., inside a subgraph's fan-out reached
+through a containing node) is the inner scope's to retry — placing retry there re-attempts only the
+failing call, whereas an outer full-chain match would coarsely re-run the entire subgraph / fan-out for
+one inner transient. A caller that genuinely needs full-chain retry classification (retry can only be
+placed at an outer scope) supplies a custom `classifier` that walks the chain via the §6.4 cause-chain
+classification primitive. §6.3's `catch`, by contrast, classifies full-chain because it **degrades**
+rather than re-runs — where the failure originated does not change whether it is degradable.
+
 **Cancellation signals MUST propagate.** Cancellation signals raised by the language runtime
 (Python's `CancelledError`, TypeScript's `AbortError`, equivalents in other languages) MUST NOT
 be classified as transient — cancellation is intentional, and retrying through it defeats the
@@ -383,7 +396,8 @@ The failure-isolation middleware configuration record:
 |---|---|
 | `degraded_update` | Required. The partial state update returned on caught exceptions. MAY be a static mapping OR a callable `(state) -> partial_update` for cases where the degraded shape depends on input state. Resolved at catch time; the callable form receives the same `state` argument the middleware received (pre-merge state on the failed inner chain). |
 | `event_name` | Required, no default. A stable identifier for this catch site. Surfaces on the framework-emitted failure-isolation event (see below). Required with no default because useful values are node-specific (e.g., `"segment_extraction_failure_isolated"`) — a generic `"failure_isolated"` default would make downstream telemetry strictly worse by hiding which specific path degraded. Forcing the name at the construction site puts the decision where the right context is available. |
-| `predicate` | Optional. A callable `(exception) -> bool`. When supplied, only exceptions where `predicate(exc) is True` are caught; others propagate. Defaults to "always True" (catch all `Exception`). Single-argument signature (compare §6.1's two-argument retry classifier) — state-dependent failure-isolation predicates are not a documented use case; the simpler signature is sufficient for v1. |
+| `catch` | Optional. A set of error categories (the llm-provider §7 / graph-engine §4 category enum). When supplied, an exception is caught only if the **derived category** of its cause chain (per §6.4 — the outermost non-carrier link's category, the same value §6.3 reports as `caught_exception.category`) is in the set. The derived category is resolved *through* carrier wrappers, so a carrier-wrapped failure at a §9.7 / §11.7 / §9.6 / §11.6 wrapping placement is classified correctly (a surface check sees only the `node_exception` carrier and misses it); when no non-carrier link carries a category (a bare uncategorized error), the derived category is `null` and `catch` does not match, so the exception propagates. The recommended gate for category-scoped degradation ("degrade on these failure categories"), mirroring §6.1's category-based classifier; `predicate` remains the escape hatch. A per-language form accepting a native exception type MAY be offered as sugar resolving to the categories that type represents (an implementation concern, not part of the normative category contract). |
+| `predicate` | Optional. A callable `(exception) -> bool` evaluated on the **surface** (caught) exception. When supplied, only exceptions where `predicate(exc) is True` are caught; others propagate. Defaults to "always True". Single-argument signature (compare §6.1's two-argument retry classifier) — state-dependent failure-isolation predicates are not a documented use case; the simpler signature is sufficient for v1. **Because it sees the surface exception, a `predicate` that inspects the exception directly will misclassify a carrier-wrapped failure at the wrapping placements above — use `catch`, or walk the chain via the §6.4 primitive, for cause-aware gating.** When both `catch` and `predicate` are supplied they compose as a conjunction (both gates must pass; each defaults to permissive — `catch` unset matches any category, `predicate` unset is always-true). |
 | `on_caught` | Optional. An async callable `(exception) -> Awaitable[None]`. Fires when the middleware catches an exception. Lets consumers pump caught exceptions to caller-specific telemetry (custom logger, metric counter, etc.) beyond the default observer event. |
 
 Behavior:
@@ -392,7 +406,7 @@ Behavior:
 try:
     return await next(state)
 except Exception as exc:
-    if not predicate(exc):
+    if not (catch_gate(exc) and predicate(exc)):   # catch_gate: cause-chain category match per the `catch` field (§6.4); both gates default permissive
         raise
     resolved_update = degraded_update(state) if callable(degraded_update) else degraded_update
     await emit_failure_isolation_event(           # see *Observability* below
@@ -511,6 +525,32 @@ Outer-to-inner ordering is load-bearing: retry MUST be inner (it sees raw transi
 failure isolation MUST be outer (it only sees what escapes retry). Reversing the order would let
 the inner isolation catch transients before retry sees them, defeating retry's purpose entirely.
 Implementations SHOULD document this composition explicitly in the middleware API documentation.
+
+### 6.4 Cause-chain classification
+
+§6.3's *Cause fidelity* walk — from the caught exception down its cause chain (the language's
+exception-cause linkage), one link per exception, skipping graph-engine §4 `node_exception` carrier
+wrappers, terminating on a repeated reference — is the canonical way OpenArmature classifies a failure
+*through* the carrier wrappers the engine adds at subgraph / fan-out / branch boundaries. Because the
+catch **decision** (§6.3 `catch`), the catch **report** (§6.3 `caught_exception`), and the retry
+decision (§6.1) all need the same classification, implementations MUST expose it as a **public, named
+classification primitive** — not a private helper of the failure-isolation module. Given an exception
+it returns:
+
+- the ordered **cause chain** — the list of links `{category, message, carrier}` defined in §6.3
+  (outermost to innermost); and
+- the **derived category** — the category of the outermost non-carrier link whose category is a
+  non-empty string, or `null` (the §6.3 derivation).
+
+Specific names and shapes are implementation-defined (a function, a static method, etc.); the
+behavioral contract is that the cause chain and derived category are reachable by any consumer — a §6.3
+`catch` set, a §6.1 retry classifier, a custom `predicate`, a router, a metric — so all classify a
+wrapped failure identically rather than each re-deriving the carrier-skipping walk subtly differently. A
+§6.3 `catch` set matches when the **derived category** is in the set — the same single value the
+failure-isolation event reports as `caught_exception.category`, so the catch *decision* and the catch
+*report* classify identically. A consumer needing to match a category buried below an intervening
+non-carrier re-categorization (which the derived category, being outermost-wins, does not surface)
+inspects the full cause chain (above) in a custom `predicate`.
 
 ## 7. Determinism
 
