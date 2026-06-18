@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0073](proposals/0073-genai-semconv-adoption-reconciliation.md) | GenAI semconv adoption reconciliation | observability | Draft | —               | —          |
 | [0072](proposals/0072-prompt-management-fetch-cache-ttl.md) | Per-fetch cache-TTL control | prompt-management   | Accepted | Pending         | —          |
 | [0071](proposals/0071-conformance-adapter-failure-mock-catalog.md) | Failure-mock directive catalog | conformance-adapter | Accepted | Textual (0.14.0)| —          |
 | [0070](proposals/0070-conformance-adapter-crash-injection-and-cause-chaining.md) | Crash-injection + cause-chaining adapter directives | conformance-adapter | Accepted | Shipped (0.14.0)| —          |
