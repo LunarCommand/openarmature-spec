@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.64.0] — 2026-06-18
+
+**Changed**
+
+- **GOVERNANCE — `gen_ai.*` adoption reconciled with upstream reality.** A re-verification against the dedicated `semantic-conventions-genai` repository (where the OpenTelemetry GenAI conventions now live) found the **entire `gen_ai.*` surface at Development status** (none Stable) and `gen_ai.system` **removed upstream in favor of `gen_ai.provider.name`** — contradicting the prior "Stable, adopted directly" framing. Two rules are added to `GOVERNANCE.md` *External-dependency adoption*: a narrow, GenAI-scoped **de-facto interoperability standard** carve-out (OA adopts the recognized *core* `gen_ai.*` names directly even at upstream Development, because every GenAI-aware backend keys on them and an `openarmature.*` mirror would defeat that recognition; *peripheral* Development attributes are still mirrored), and a **post-adoption retention** rule (an adopted name is retained through an upstream rename / removal / status change; migration is a deliberate follow-on decision). ([proposal 0073](proposals/0073-genai-semconv-adoption-reconciliation.md))
+- **observability §5.5 — adoption rationale reframed to core-vs-peripheral.** A new §5.5 framing note records that the emitted `gen_ai.*` attributes are adopted under the carve-out (core directly, peripheral mirrored via §5.5.3.1), the deciding line being installed-base recognition rather than the upstream maturity label (the whole GenAI convention is Development). The §5.5.3 `gen_ai.system` entry notes it is **retained** despite the upstream `gen_ai.system` → `gen_ai.provider.name` removal (migration deferred); the §5.5.3.1 and §5.5.8 "until upstream Stable" wording is reconciled to "Stable or demonstrably ubiquitous." `docs/compatibility.md` is corrected to record the repository move, the all-Development status, the rename, and the retention. ([proposal 0073](proposals/0073-genai-semconv-adoption-reconciliation.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Adds new normative adoption rules to governance and reframes the spec's adoption rationale; **no emitted attribute changes** and no conformance-expectation changes — existing `gen_ai.*` fixtures remain valid and serve as the retention regression coverage. Unblocks [proposal 0067](proposals/0067-observability-genai-metrics.md), whose metric dimensions reuse these keys. ([proposal 0073](proposals/0073-genai-semconv-adoption-reconciliation.md))
+
 ## [0.63.1] — 2026-06-17
 
 **Added**

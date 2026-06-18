@@ -295,6 +295,20 @@ response-side clause.
   cosmetic span label, no identity or correlation impact), so it defers
   cleanly until a related observability proposal is in flight.
 
+### 0073 — GenAI semconv adoption reconciliation
+
+- **Timing of the `gen_ai.system` → `gen_ai.provider.name` migration.**
+  [still-relevant] — 0073's post-adoption retention rule keeps OA emitting
+  `gen_ai.system` even though upstream removed it in favor of
+  `gen_ai.provider.name` (itself Development). A future proposal decides when to
+  migrate — when `gen_ai.provider.name` reaches Stable, or when the ecosystem
+  has demonstrably moved to it. Tracked in `docs/compatibility.md`.
+- **Whether the core-vs-peripheral `gen_ai.*` classification should be enumerated
+  normatively.** [still-relevant] — 0073 uses a descriptive criterion
+  ("recognized by the broad installed base") applied per attribute as proposals
+  add them, rather than a fixed list of "core" names. A future proposal MAY
+  enumerate the core set if the criterion proves ambiguous in practice.
+
 ### Cross-cutting — Langfuse observation-type coverage
 
 - **§8 maps onto a subset of Langfuse's observation types; the

@@ -1,6 +1,6 @@
 # External-dependency compatibility
 
-**Last refreshed:** 2026-05-31
+**Last refreshed:** 2026-06-17
 
 OpenArmature normatively references several external specifications and APIs.
 This page is the **operational tracking artifact** for those references:
@@ -30,7 +30,7 @@ publishes it.
 
 | Dependency | OA-tracked version / scope | Upstream status | Last verified | Notes |
 |---|---|---|---|---|
-| [OpenTelemetry semantic conventions](https://github.com/open-telemetry/semantic-conventions) | v1.41.1 (release) | Mixed (per attribute) | 2026-05-31 | Stable attributes adopted directly via `gen_ai.*` / `otel.*`. Development attributes (e.g., `gen_ai.usage.cache_read.input_tokens`) are NOT normatively adopted; OA mirrors them to `openarmature.*` until upstream stabilization per the governance rule. |
+| [OpenTelemetry semantic conventions](https://github.com/open-telemetry/semantic-conventions) | v1.41.1 (core); GenAI in [semantic-conventions-genai](https://github.com/open-telemetry/semantic-conventions-genai) | Mixed (core Stable; GenAI all Development) | 2026-06-17 | Core semconv (`otel.*`, `error.type`) adopted directly when Stable. The GenAI `gen_ai.*` conventions moved to a dedicated repo where the whole surface is Development (verified 2026-06-17); OA adopts the recognized **core** names directly per the GenAI de-facto-standard carve-out (governance), mirrors peripheral ones (`gen_ai.usage.cache_read.*`, `gen_ai.operation.name`) to `openarmature.*`, and **retains** `gen_ai.system` (upstream-removed → `gen_ai.provider.name`) per the post-adoption retention rule. See detail below. |
 | [OpenTelemetry trace + span core spec](https://opentelemetry.io/docs/specs/otel/trace/) | Tracking v1.41.x line | Stable | 2026-05-31 | Span / attribute / status semantics referenced in observability §3–§7. |
 | [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat) | URL-path `v1`; ChatCompletions shape | Stable (continuously updated) | 2026-05-31 | Wire shape per llm-provider §8.1. `usage.prompt_tokens_details.cached_tokens` confirmed present for prompt caching (≥1024-token threshold). |
 | [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) | URL-path `v1`; Responses shape | Stable (continuously updated) | 2026-05-31 | Newer companion API shape; `usage.input_tokens_details.cached_tokens` rather than `prompt_tokens_details`. Not currently referenced by llm-provider §8.X. |
@@ -51,30 +51,43 @@ per-attribute stability model — individual attributes carry their own
 status (Stable, Development, Experimental, Deprecated) independent of the
 release tag.
 
-OA's adoption pattern:
+**The GenAI semconv moved and is wholly Development.** As of 2026-06-17 the
+GenAI semantic conventions live in the dedicated
+[`semantic-conventions-genai`](https://github.com/open-telemetry/semantic-conventions-genai)
+repository, where the **entire `gen_ai.*` surface is Development** (registry
+`model/gen-ai/registry.yaml`: 96 attributes Development, none Stable), and
+`gen_ai.system` has been **removed upstream in favor of `gen_ai.provider.name`**
+(also Development). `error.type` is part of the core semconv, not the GenAI
+surface, and remains Stable.
 
-- **Stable attributes**: adopted directly via the `gen_ai.*` / `otel.*`
-  namespace (e.g., `gen_ai.system`, `gen_ai.request.model`,
-  `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`).
-- **Development / Experimental attributes**: mirrored to the
-  `openarmature.*` namespace until upstream stabilization. As of
-  2026-05-31, the cache-token attributes
-  (`gen_ai.usage.cache_read.input_tokens` /
-  `gen_ai.usage.cache_creation.input_tokens`) are marked Development.
-  OA uses the OA-namespaced equivalents
-  (`openarmature.llm.cache_read.input_tokens` /
-  `openarmature.llm.cache_creation.input_tokens`) until they stabilize
-  upstream; a follow-up OA proposal will migrate to the upstream
-  `gen_ai.usage.*` names once they reach Stable.
-- **`gen_ai.operation.name`** (with documented well-known values
-  including `"chat"`, `"embeddings"`, etc.) is at Development status
-  as of 2026-05-31. Per the policy above, OA does NOT normatively
-  adopt this attribute in v1; operation discrimination is via span
-  name + provider (observability §5.5 `openarmature.llm.complete` for
-  LLM completion and §5.5.8 `openarmature.embedding.complete` for
-  embedding). A follow-on proposal will add `gen_ai.operation.name`
-  to the attribute surface once upstream reaches Stable, per the
-  §5.5.3.1 / 0047 mirror pattern.
+OA's adoption pattern (per [Governance — External-dependency adoption](governance.md):
+the *de-facto-standard carve-out* + *post-adoption retention* rules):
+
+- **Core de-facto-standard `gen_ai.*` names — adopted directly** even at upstream
+  Development, because every GenAI-aware backend keys on them and an
+  `openarmature.*` mirror would defeat that recognition: `gen_ai.request.model`,
+  `gen_ai.response.model`, `gen_ai.usage.input_tokens`,
+  `gen_ai.usage.output_tokens`, `gen_ai.response.id`,
+  `gen_ai.response.finish_reasons`, the §5.5.2 request parameters, and
+  `gen_ai.system` (retained — see below). The deciding line is installed-base
+  recognition, not the upstream maturity label.
+- **`gen_ai.system` — retained.** Upstream removed it in favor of
+  `gen_ai.provider.name` (Development). Per the post-adoption retention rule OA
+  keeps emitting `gen_ai.system` (observability §5.5.3 / §5.5.8 + the §8.4.3
+  Langfuse mapping; the installed base still keys on it); migration to
+  `gen_ai.provider.name` is deferred to a future proposal.
+- **Peripheral Development attributes — mirrored** to the `openarmature.*`
+  namespace until they are Stable or demonstrably ubiquitous. The cache-token
+  attributes (`gen_ai.usage.cache_read.input_tokens` /
+  `gen_ai.usage.cache_creation.input_tokens`) use
+  `openarmature.llm.cache_read.input_tokens` /
+  `openarmature.llm.cache_creation.input_tokens` (observability §5.5.3.1).
+  `gen_ai.operation.name` (well-known values `"chat"`, `"embeddings"`, …) is not
+  adopted; operation discrimination is via span name + provider (observability
+  §5.5 `openarmature.llm.complete` for LLM completion and §5.5.8
+  `openarmature.embedding.complete` for embedding). A follow-on MAY adopt either
+  directly once it is Stable or demonstrably ubiquitous, per the §5.5.3.1 / 0047
+  mirror pattern.
 
 ### LLM provider APIs (OpenAI / Anthropic / Google Gemini)
 
