@@ -1,0 +1,119 @@
+# §6.3 `catch` gate — cause-chain category classification (proposal 0074).
+# At a §9.7 instance placement the engine wraps the instance failure in a
+# graph-engine §4 node_exception carrier before FailureIsolation catches it, so
+# the surface exception is the carrier, not the originating provider error.
+# `catch: [provider_unavailable]` matches the originating category THROUGH the
+# carrier via the §6.4 cause-chain classification primitive (the same
+# carrier-skipping walk §6.3 derives caught_exception.category from) — so the
+# instance is caught and degraded, where a surface category check (the carrier
+# is node_exception) would miss it and crash the run. Case 2: a catch set that
+# does NOT include the originating category rejects and the failure propagates.
+#
+# `catch` matches the derived category (outermost non-carrier link = caught_exception.category).
+# Models fixture 064 (instance-placement carrier wrapping) + fixture 060
+# (catch-vs-propagate two-case shape). The `catch: [...]` directive on the
+# failure_isolation middleware config parallels 060's `predicate:` directive.
+
+subgraphs:
+  flaky_unit:
+    state:
+      fields:
+        input: {type: int, default: 0}
+        out: {type: string, default: ""}
+    entry: work
+    nodes:
+      work:
+        flaky:
+          # Provider failure (provider_unavailable is a transient category per §6.1);
+          # the engine wraps the raise as a §4 node_exception carrier whose __cause__
+          # carries this category. No retry is configured here — the carrier comes from
+          # the §9.7 instance placement, isolating the `catch` classification behavior.
+          failure_sequence:
+            - {transient: true, category: provider_unavailable, message: "provider down"}
+    edges:
+      - {from: work, to: END}
+
+cases:
+  - name: catch_matches_carrier_wrapped_category_and_degrades
+    description: |
+      Single-instance fan-out; the instance raises provider_unavailable, which
+      the engine wraps as a node_exception carrier at the §9.7 instance
+      placement. FailureIsolation's catch=[provider_unavailable] matches the
+      originating category through the carrier (§6.4 walk), so the instance is
+      caught and degraded. A surface category check would see only the
+      node_exception carrier and miss it (the degrade->crash footgun this closes).
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list<string>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: flaky_unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update: {out: "(degraded)"}
+              event_name: "unit_isolated"
+              catch: [provider_unavailable]      # cause-chain category match (§6.3 / §6.4)
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        items: [1]
+        results: ["(degraded)"]
+      execution_order: [process]
+      # caught_exception.category resolves through the node_exception carrier to
+      # the originating provider_unavailable (the 0065/0068 derivation), the same
+      # category catch matched on.
+      expected_failure_isolation_event:
+        event_name: "unit_isolated"
+        post_state: {out: "(degraded)"}
+        caught_exception:
+          category: provider_unavailable
+      invariants:
+        catch_matches_through_node_exception_carrier: true
+
+  - name: catch_non_matching_category_propagates
+    description: |
+      Same instance placement and carrier-wrapped provider_unavailable failure,
+      but catch=[provider_rate_limit] does NOT include the originating category.
+      The derived category (provider_unavailable) is not in the catch set, so the gate rejects and the
+      exception propagates as node_exception from the fan-out node (fail_fast);
+      no failure-isolation event fires.
+    state:
+      fields:
+        items: {type: list<int>, default: [1]}
+        results: {type: list<string>, reducer: append, default: []}
+    entry: process
+    nodes:
+      process:
+        fan_out:
+          subgraph: flaky_unit
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          instance_middleware:
+            - type: failure_isolation
+              degraded_update: {out: "(degraded)"}
+              event_name: "unit_isolated"
+              catch: [provider_rate_limit]       # originating category NOT in set
+          error_policy: fail_fast
+    edges:
+      - {from: process, to: END}
+    initial_state: {}
+    expected_error:
+      category: node_exception
+      raised_from: process
+    expected:
+      no_failure_isolation_event: true
+      invariants:
+        catch_non_matching_propagates: true
+        no_event_when_catch_does_not_match: true
