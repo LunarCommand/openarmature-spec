@@ -1,0 +1,126 @@
+# §5.5.1 / §5.5.10 (proposal 0076): the ungated identity projections
+# openarmature.llm.output.tool_calls.{count,names,ids} render regardless of
+# disable_provider_payload, while the gated full serialization
+# openarmature.llm.output.tool_calls (carrying the arguments) is suppressed when
+# the payload flag is on. So "which tools were requested" survives the default
+# payload-off posture; the arguments do not.
+
+cases:
+  - name: identity_survives_payload_disabled
+    description: |
+      disable_provider_payload=True (the default). The identity projections
+      (count / names / ids) still render — they are identifiers, not payload —
+      while the gated openarmature.llm.output.tool_calls (the full
+      [{id, name, arguments}] serialization, which carries the arguments) is
+      suppressed.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "search please"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-087a
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - index: 0
+              message:
+                role: assistant
+                content: null
+                tool_calls:
+                  - {id: call_x, type: function, function: {name: search_db, arguments: '{"q": "secret query"}'}}
+              finish_reason: tool_calls
+          usage: {prompt_tokens: 6, completion_tokens: 5, total_tokens: 11}
+    disable_provider_payload: true
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.llm.output.tool_calls.count: 1
+                    openarmature.llm.output.tool_calls.names: ["search_db"]
+                    openarmature.llm.output.tool_calls.ids: ["call_x"]
+                  attributes_absent:
+                    - "openarmature.llm.output.tool_calls"
+                  children: []
+      invariants:
+        identity_projections_survive_payload_off: true
+        gated_output_tool_calls_suppressed_when_payload_off: true
+
+  - name: full_serialization_present_when_payload_enabled
+    description: |
+      disable_provider_payload=False. The same identity projections render
+      identically (flag-independent), and the gated
+      openarmature.llm.output.tool_calls (the full [{id, name, arguments}]
+      serialization) is additionally present.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "search please"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-087b
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - index: 0
+              message:
+                role: assistant
+                content: null
+                tool_calls:
+                  - {id: call_x, type: function, function: {name: search_db, arguments: '{"q": "secret query"}'}}
+              finish_reason: tool_calls
+          usage: {prompt_tokens: 6, completion_tokens: 5, total_tokens: 11}
+    disable_provider_payload: false
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.llm.output.tool_calls.count: 1
+                    openarmature.llm.output.tool_calls.names: ["search_db"]
+                    openarmature.llm.output.tool_calls.ids: ["call_x"]
+                  attributes_present:
+                    - "openarmature.llm.output.tool_calls"
+                  children: []
+      invariants:
+        identity_projections_present_regardless_of_flag: true
+        # The present openarmature.llm.output.tool_calls parses to
+        # [{id: "call_x", name: "search_db", arguments: {"q": "secret query"}}]
+        # per the §5.5.5 encoding (parsed structure, not bytewise).

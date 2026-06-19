@@ -1,0 +1,67 @@
+# §5.5.10 (proposal 0076): an LLM completion whose assistant message requests
+# tool calls emits the ungated identity projections
+# openarmature.llm.output.tool_calls.{count,names,ids} on the
+# openarmature.llm.complete span — index-aligned arrays, in request order,
+# count = length. The gated full serialization (openarmature.llm.output.tool_calls,
+# §5.5.1) is exercised by fixture 087.
+
+cases:
+  - name: two_requested_tool_calls_emit_count_names_ids
+    description: |
+      A completion whose assistant message requests two tool calls
+      (get_weather, get_time) emits openarmature.llm.output.tool_calls.count = 2,
+      .names = ["get_weather", "get_time"], .ids = ["call_a", "call_b"] on the
+      openarmature.llm.complete span. names[i] and ids[i] describe the same
+      requested call, in the order the model emitted them. These identity
+      projections are ungated; the default payload-off posture applies here and
+      the gated openarmature.llm.output.tool_calls is therefore absent.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "weather and time?"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-085
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - index: 0
+              message:
+                role: assistant
+                content: null
+                tool_calls:
+                  - {id: call_a, type: function, function: {name: get_weather, arguments: '{"city": "NYC"}'}}
+                  - {id: call_b, type: function, function: {name: get_time, arguments: '{"tz": "EST"}'}}
+              finish_reason: tool_calls
+          usage: {prompt_tokens: 8, completion_tokens: 12, total_tokens: 20}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.llm.output.tool_calls.count: 2
+                    openarmature.llm.output.tool_calls.names: ["get_weather", "get_time"]
+                    openarmature.llm.output.tool_calls.ids: ["call_a", "call_b"]
+                  children: []
+      invariants:
+        tool_call_names_and_ids_index_aligned: true
+        tool_call_arrays_in_request_order: true
+        count_equals_names_length: true

@@ -1,6 +1,6 @@
 # External-dependency compatibility
 
-**Last refreshed:** 2026-06-17
+**Last refreshed:** 2026-06-19
 
 OpenArmature normatively references several external specifications and APIs.
 This page is the **operational tracking artifact** for those references:
@@ -88,6 +88,17 @@ the *de-facto-standard carve-out* + *post-adoption retention* rules):
   `openarmature.embedding.complete` for embedding). A follow-on MAY adopt either
   directly once it is Stable or demonstrably ubiquitous, per the §5.5.3.1 / 0047
   mirror pattern.
+- **Tool-call request rendering — OA-namespace (verified for proposal 0076).** The model's
+  *requested* tool calls are surfaced as flat OA-namespace attributes
+  (the gated `openarmature.llm.output.tool_calls` serialization + the ungated
+  `openarmature.llm.output.tool_calls.count` / `.names` / `.ids` projections, observability
+  §5.5.1 / §5.5.10), with no
+  upstream `gen_ai.*` equivalent to adopt: the GenAI registry carries output tool calls as
+  `tool_call` *parts* inside the structured `gen_ai.output.messages` attribute (not a flat
+  per-request surface), and the `gen_ai.tool.*` family (`gen_ai.tool.name`,
+  `gen_ai.tool.call.{id,arguments,result}`, `gen_ai.tool.definitions`, …) is scoped to the separate
+  `execute_tool` span — the tool-*execution* side, not the chat-completion span. Verified against the
+  `semantic-conventions-genai` registry, 2026-06-19.
 
 ### LLM provider APIs (OpenAI / Anthropic / Google Gemini)
 
