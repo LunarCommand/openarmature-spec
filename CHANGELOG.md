@@ -8,7 +8,7 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 **Changed**
 
-- **observability §8.3 / §8.4.3 — call-level-retry Langfuse mapping clarified.** Under call-level retry (llm-provider §7.1), §5.5 emits N per-attempt OTel spans (`openarmature.llm.attempt_index`), but the Langfuse mapping renders **one terminal Generation per `complete()` call**, not one per attempt — it maps to the logical call's terminal outcome, so the per-attempt detail stays the OTel span surface only. Success → the terminal completion the typed `LlmCompletionEvent` reports (§5.5.7), carrying the response; retry exhaustion → the terminal failed Generation. Distinct from node-level retry (§5.2), which renders one observation per attempt (`metadata.attempt_index`). The §8.3 "LLM provider span → Generation" row is qualified accordingly.
+- **observability §8.3 / §8.4.3 — call-level-retry Langfuse mapping clarified.** Under call-level retry (llm-provider §7.1), §5.5 emits N per-attempt OTel spans (`openarmature.llm.attempt_index`), but the Langfuse mapping renders **one terminal Generation per `complete()` call**, not one per attempt — it maps to the logical call's terminal outcome, so the per-attempt detail stays the OTel span surface only. Success → the terminal completion the typed `LlmCompletionEvent` reports (§5.5.7), carrying the response; retry exhaustion → the terminal failed Generation. Distinct from node-level retry (pipeline-utilities §6.1), which renders one observation per attempt (`metadata.attempt_index`). The §8.3 "LLM provider span → Generation" row is qualified accordingly.
 
 **Notes**
 
