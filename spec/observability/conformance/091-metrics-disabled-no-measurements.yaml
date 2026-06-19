@@ -1,0 +1,38 @@
+# observability §11.1 (proposal 0067): metrics are opt-in. With enable_metrics
+# off (the default), an LLM completion records NO measurements — the opt-in gate.
+# The same call would record token + duration with enable_metrics on (fixture 088).
+
+cases:
+  - name: no_measurements_when_metrics_disabled
+    description: |
+      One LLM-calling node with enable_metrics=False (the default). The mock
+      returns usage {input 5, output 1}, but because metrics are disabled no
+      instrument is created and no observation is recorded — the metric-capture
+      primitive (§6.9) captures an empty set.
+    state:
+      fields:
+        msg: {type: string, default: ""}
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: false
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-091
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      metrics: []
+      invariants:
+        no_measurements_recorded_when_metrics_off: true

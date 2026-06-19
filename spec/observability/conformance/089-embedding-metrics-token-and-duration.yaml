@@ -1,0 +1,53 @@
+# observability §11 (proposal 0067): an embedding call with enable_metrics on
+# records ONE openarmature.gen_ai.client.token.usage observation (input only —
+# embeddings have no output tokens, §11.2) and one operation.duration observation,
+# both carrying operation "embeddings". The single instrument covers LLM + embedding
+# calls, dimensioned by operation.
+
+cases:
+  - name: embedding_records_input_token_and_duration
+    description: |
+      One embedding-calling node, enable_metrics=True. The mock returns
+      usage {prompt_tokens 4}. The metric-capture primitive records token.usage
+      input=4 (operation "embeddings", model, token.type "input") and one
+      operation.duration observation (dimensions only). No output-token
+      observation (embeddings have none).
+    state:
+      fields:
+        emb: {type: record, default: null}
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha", "beta"]
+          stores_response_in: emb
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    enable_metrics: true
+    mock_embedding:
+      - status: 200
+        body:
+          object: "list"
+          model: test-embed-model
+          data:
+            - {object: "embedding", index: 0, embedding: [0.1, 0.2]}
+            - {object: "embedding", index: 1, embedding: [0.3, 0.4]}
+          usage: {prompt_tokens: 4, total_tokens: 4}
+    expected:
+      metrics:
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 4
+          dimensions:
+            openarmature.gen_ai.operation: "embeddings"
+            openarmature.gen_ai.token.type: "input"
+            gen_ai.request.model: "test-embed-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "embeddings"
+            gen_ai.request.model: "test-embed-model"
+            gen_ai.system: "openai"
+      invariants:
+        embedding_records_input_token_only: true
+        no_output_token_observation_for_embedding: true

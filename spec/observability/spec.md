@@ -31,6 +31,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.7 *Parallel-branches span attributes* gained a note for proposal 0075's inline-callable branch form: a `call` branch (pipeline-utilities §11.1.1) renders a per-branch dispatch span under `openarmature.node.branch_name` (the branch is the single emitting unit, with no inner-node spans beneath it), and a `when`-skipped branch (§11.10) produces no span. No new attribute; reuses the §5.7 surface by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
   - §8.3 / §8.4.3 clarified the Langfuse mapping under **call-level retry**: §5.5's N per-attempt spans render as **one terminal Generation per `complete()` call** (the call's terminal outcome — the §5.5.7 completion on success, the terminal failure on exhaustion), not one Generation per attempt — the per-attempt surface is OTel-span-only (`openarmature.llm.attempt_index`); success → the terminal response Generation, retry exhaustion → the terminal failed Generation; distinct from node-level retry (pipeline-utilities §6.1), which renders one observation per attempt. The §8.3 "LLM provider span → Generation" row is qualified to match. Clarification of an already-implied consequence of the §5.5.7 terminal-event model; no behavior or fixture change — spec v0.66.1 (clarification PATCH, no proposal)
   - §5.5 gained an output-side home for the model's tool calls (proposal 0076): §5.5.1 adds the **gated** payload attribute `openarmature.llm.output.tool_calls` serializing the output tool calls `[{id, name, arguments}]` — the output-side counterpart to the input tool-call serialization (§5.5.5), since `output.content` is text only and omitted for tool-call-only completions; §5.5.10 adds the **ungated** identity projections `openarmature.llm.output.tool_calls.count` / `.names` / `.ids` so *which* tools were requested (and how many, and their ids) stays visible under the default payload-off posture and queryable without parsing the serialized calls. OA-namespace with no `gen_ai.*` mirror (verified the GenAI registry carries output tool calls as `tool_call` parts inside structured `gen_ai.output.messages`, and `gen_ai.tool.*` is the `execute_tool`/execution surface), the `openarmature.llm.attempt_index` (0050) precedent. The §5.5.5 *Tool-call serialization* forecast is retired. New fixtures 085–087 by [proposal 0076](../../proposals/0076-tool-call-request-observability-llm-spans.md)
+  - §11 *Metrics* added — the OTel metrics signal complementing the §4–§6 spans and §7 logs: two opt-in OA-namespaced histogram instruments over provider calls, `openarmature.gen_ai.client.token.usage` (`{token}`) and `openarmature.gen_ai.client.operation.duration` (`s`), mirroring the Development-status upstream `gen_ai.client.*` instruments (per *Stable-only upstream adoption*; instrument-name cutover deferred), opt-in via an `enable_metrics` observer flag, recorded from the §5.5.7 / §5.5.9 typed completion events (and the typed `LlmFailedEvent` / `EmbeddingFailedEvent` for an errored attempt's duration + `error.type`), dimensioned per the §5.5 GenAI de-facto-standard carve-out (recognized-core `gen_ai.request.model` / `gen_ai.system` used directly — `gen_ai.system` retained; peripheral `gen_ai.operation.name` / `gen_ai.token.type` mirrored to `openarmature.gen_ai.*`; Stable `error.type` used directly), recorded per-attempt under call-level retry. Existing §11 *Out of scope* renumbered → §12, its *Metrics* bullet narrowed to graph-level metrics (+ streaming/server + instrument-cutover deferrals). New fixtures 088–091 by [proposal 0067](../../proposals/0067-observability-genai-metrics.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -2444,7 +2445,114 @@ The conformance suite asserts determinism over the *deterministic* portion of sp
 content: hierarchy, names, attributes / metadata (excluding timing-derived ones), and status. It
 does NOT assert exact timestamps or IDs.
 
-## 11. Out of scope
+## 11. Metrics
+
+Observability so far has been span-based (§4–§6) and log-correlated (§7). This section adds the
+OpenTelemetry **metrics** signal: aggregatable histograms over provider calls, complementing the
+per-call spans. Metric observations are a projection of the same §6 observer event stream — the typed
+LLM completion event (§5.5.7) and typed embedding event (§5.5.9) for successful calls, and the typed
+`LlmFailedEvent` / `EmbeddingFailedEvent` (graph-engine §6, per proposals 0058 / 0059) for errored
+attempts (the source of an errored attempt's duration sample and its `error.type` dimension, §11.3) —
+and introduce no new data source.
+
+### 11.1 Emission and the Meter
+
+Metrics are **opt-in**. Implementations MUST provide an observer-level boolean flag `enable_metrics`
+(default `False`); specific ergonomics (constructor argument, builder method, etc.) are
+implementation-defined, but the flag name is normative for cross-implementation consistency. When
+`enable_metrics` is `False`, no metric instrument is created and no measurement is recorded.
+
+When `enable_metrics` is `True`, the implementation obtains a `Meter` from the configured OTel
+`MeterProvider` — parallel to how the span-emitting observer obtains a `Tracer` from the
+`TracerProvider`. When no `MeterProvider` is configured, recording MUST be a silent no-op (the OTel
+global / no-op meter); it MUST NOT raise.
+
+Metric emission is **independent of span emission**. The `disable_llm_spans` /
+`disable_provider_payload` / `disable_genai_semconv` flags (§5.5.4) govern spans only; metrics MAY be
+enabled with spans disabled, and vice versa. (Both draw from the §6 event stream, which exists
+regardless of span emission.) The implementation MAY package metric emission in the same observer that
+emits spans or in a dedicated metrics observer; the behavioral contract below is on which measurements
+are recorded, not on observer packaging.
+
+### 11.2 Instruments
+
+The upstream OTel GenAI metric instruments are at **Development** status (per `docs/compatibility.md`;
+re-verified at acceptance). Their instrument names are not among the recognized **core** `gen_ai.*`
+names the §5.5 *GenAI semconv attribute adoption* carve-out adopts directly, so OA emits the
+OA-namespaced instruments below — mirroring the upstream instrument type, unit, and explicit bucket
+advisory so a future cutover to the `gen_ai.client.*` names is mechanical (strip the `openarmature.`
+prefix). Recording cadence under call-level retry is covered in *Call-level retry* below.
+
+- **`openarmature.gen_ai.client.token.usage`** — **Histogram**, unit `{token}`. Mirrors upstream
+  `gen_ai.client.token.usage`. SHOULD be configured with explicit bucket boundaries
+  `[1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864]`. For
+  an LLM completion, the implementation records **two** observations: the input-token count with
+  dimension `openarmature.gen_ai.token.type` = `"input"`, and the output-token count with `"output"`,
+  sourced from the response usage record (§5.5.3 `gen_ai.usage.input_tokens` /
+  `gen_ai.usage.output_tokens`). For an embedding call, it records **one** observation — the
+  input-token count with `"input"` (embeddings have no output tokens, per retrieval-provider §2). When
+  a call's usage record is absent (the provider returned no usage), no observation is recorded for that
+  call.
+
+- **`openarmature.gen_ai.client.operation.duration`** — **Histogram**, unit `s`. Mirrors upstream
+  `gen_ai.client.operation.duration`. SHOULD be configured with explicit bucket boundaries
+  `[0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24, 20.48, 40.96, 81.92]`. Records
+  the wall-clock duration of the provider call — the same interval the §4.1 provider span covers —
+  **including** attempts that ended in error (carrying the `error.type` dimension; see §11.3).
+
+**Call-level retry.** Under call-level retry (llm-provider §7.1, surfaced as N attempt spans per §5.5),
+the duration histogram records **once per attempt** — each attempt is a real latency sample, and a
+failed attempt carries `error.type` (§11.3) — matching the per-attempt span model. The token-usage
+histogram records **only for an attempt that returned a usage record**; failed attempts have no
+response and contribute nothing. The attempt index is deliberately NOT a dimension (it would create
+unbounded cardinality); attempts are disambiguated on the spans, not the metrics.
+
+The instruments use an `openarmature.gen_ai.*` namespace (not `openarmature.llm.*`) because they are
+operation-generic — one instrument per signal, dimensioned by operation, covering LLM completions and
+embedding calls (and rerank calls when retrieval-provider rerank lands). This mirrors the upstream
+single-instrument model and differs deliberately from the LLM-specific `openarmature.llm.*` attribute
+names of §5.5.3.1, which sit on the LLM span.
+
+### 11.3 Dimensions
+
+Measurements carry the following dimensions, reusing the keys the provider (§5.5.3) and embedding
+(§5.5.8) spans already emit, under the same adoption split the §5.5 *GenAI semconv attribute adoption*
+carve-out applies to those span attributes. Implementations MUST keep dimensions low-cardinality (no
+free-form per-request values).
+
+| Dimension key | On | Source | Notes |
+|---|---|---|---|
+| `openarmature.gen_ai.operation` | both | the operation kind | `"chat"` for LLM completion, `"embeddings"` for embedding. Mirrors the **peripheral** Development `gen_ai.operation.name` (mirrored to `openarmature.*` per the §5.5 carve-out / §5.5.8). |
+| `gen_ai.request.model` | both | §5.5.3 / §5.5.8 request model | Adopted directly as a **recognized-core** de-facto-standard name (§5.5 carve-out) — the model key both the LLM (§5.5.3) and embedding (§5.5.8) spans already emit. Cardinality is bounded by the set of models in use. |
+| `gen_ai.system` | both | §5.5.3 / §5.5.8 system identifier | Adopted directly as a recognized-core name and **retained** per the *post-adoption retention* rule (upstream removed it in favor of `gen_ai.provider.name`; §5.5.3). The provider identifier both spans already emit. |
+| `openarmature.gen_ai.token.type` | token.usage only | `"input"` / `"output"` | Mirrors the **peripheral** Development `gen_ai.token.type`. |
+| `error.type` | duration only, when the call errored | the llm-provider §7 error category (per retrieval-provider §5 for embedding), carried as `error_category` on the graph-engine §6 typed `LlmFailedEvent` / `EmbeddingFailedEvent` | **Stable** core semantic-conventions attribute (not GenAI-scoped), used directly. Absent on a successful call. |
+
+The two `openarmature.*`-mirrored dimensions track the peripheral Development `gen_ai.operation.name` /
+`gen_ai.token.type` attributes; a follow-on adopts the `gen_ai.*` names if they reach Stable or become
+demonstrably ubiquitous (the §5.5.3.1 / 0047 mirror pattern, tracked in `docs/compatibility.md`). The
+Stable upstream `server.address` / `server.port` dimensions (the provider endpoint) are out of scope
+for v1 (endpoint cardinality).
+
+### 11.4 Determinism
+
+graph-engine §5 determinism covers the *structure* of the §6 event stream — which events fire, in what
+order — but NOT the values a node's external call returns: a real provider's token counts and latencies
+vary run to run (graph-engine §5 explicitly excludes node-implementation / external-I/O
+nondeterminism). Per §10, the conformance suite asserts only the deterministic portion under its mocked
+provider — that the expected observations are recorded with the expected dimensions (and, for the
+suite's fixed-usage mock, token counts) — and does NOT assert duration values, histogram bucket
+assignment, or timestamps.
+
+### 11.5 Conformance support
+
+Asserting metrics requires capturing recorded measurements in memory. Implementations MUST provide an
+in-memory **metric-capture** harness primitive (an in-memory `MetricReader`, sibling to the §6.3 OTel
+collector capture for spans), exposed to the conformance adapter per conformance-adapter §6. Fixtures
+assert the token-usage observations (value + dimensions) recorded for a completion or embedding call,
+and assert the duration instrument's presence + dimensions (not its value, per §11.4).
+
+## 12. Out of scope
 
 Not covered by this specification; deferred to follow-on proposals or sibling sections of this
 spec:
@@ -2454,8 +2562,14 @@ spec:
 - **Sampling** — OTel sampling is configured at the SDK level, outside the framework's contract.
   Implementations MAY hint via `record_exception` and span priority but the contract here is on
   the structure of emitted spans, not on whether to emit them.
-- **Metrics** — OTel metrics (counters, histograms) for graph-level operations. The current spec
-  is trace-only.
+- **Graph-level metrics** — counters / histograms for node and invocation operations (as opposed to
+  the provider-call metrics of §11). Deferred to a future proposal.
+- **Streaming and server GenAI metrics** — the upstream `gen_ai.client.*` streaming histograms
+  (time-to-first-chunk, time-per-output-chunk) and the `gen_ai.server.*` metrics. The streaming ones
+  are deferred until LLM streaming (proposal 0062) lands a streaming provider contract; the server
+  ones do not apply (OA is always the GenAI client).
+- **Adopting the upstream `gen_ai.client.*` instrument names and the Development `gen_ai.*` dimension
+  names** — deferred to a stable-cutover follow-on per the *Stable-only upstream adoption* policy.
 - **Baggage and context propagation** — OTel baggage for request-ID-style propagation across
   service boundaries. Defer until a concrete cross-service use case surfaces.
 - **Span links beyond detached-trace / suspend-resume** — OTel span links between traces are used

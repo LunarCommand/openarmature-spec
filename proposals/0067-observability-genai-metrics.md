@@ -1,19 +1,20 @@
 # 0067: Observability — OTel GenAI Metrics
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-16
-- **Targets:** spec/observability/spec.md (add a new **§11 Metrics** — the OTel *metrics* signal complementing the spans of §4–§6 and the logs of §7 — defining two OA-namespaced histogram instruments over provider calls: `openarmature.gen_ai.client.token.usage` and `openarmature.gen_ai.client.operation.duration`, opt-in via an `enable_metrics` observer flag, dimensioned per the existing Stable-only split, sourced from the §5.5.7 / §5.5.9 typed completion events; renumber the current §11 *Out of scope* → §12 and narrow its *Metrics* bullet to graph-level metrics only). spec/conformance-adapter/spec.md (add an in-memory **metric-capture** harness primitive to §6, sibling to §6.3 OTel collector capture, so fixtures can assert recorded measurements).
+- **Accepted:** 2026-06-19
+- **Targets:** spec/observability/spec.md (add a new **§11 Metrics** — the OTel *metrics* signal complementing the spans of §4–§6 and the logs of §7 — defining two OA-namespaced histogram instruments over provider calls: `openarmature.gen_ai.client.token.usage` and `openarmature.gen_ai.client.operation.duration`, opt-in via an `enable_metrics` observer flag, dimensioned per the §5.5 GenAI de-facto-standard carve-out, sourced from the §5.5.7 / §5.5.9 typed completion events (and the typed failure events for errored-call duration + `error.type`); renumber the current §11 *Out of scope* → §12 and narrow its *Metrics* bullet to graph-level metrics only). spec/conformance-adapter/spec.md (add an in-memory **metric-capture** harness primitive to §6, sibling to §6.3 OTel collector capture, so fixtures can assert recorded measurements).
 - **Related:** 0047 (§5.5.3.1 OA-namespaced *stable-only mirror* for cache attributes — the precedent this follows for instrument names), 0059 (embedding observability §5.5.8 / §5.5.9 — the embedding-call surface metrics extend to), 0050 (OA-namespace-when-no-stable-`gen_ai`-equivalent precedent), 0031 (observability §8 + the section-renumber precedent), 0062 (LLM completion streaming — streaming metrics deferred until it lands), 0060 (retrieval-provider rerank — rerank-call metrics fold in when it lands). Policy: *Stable-only upstream adoption* (`GOVERNANCE.md`; tracked in `docs/compatibility.md`).
 - **Supersedes:**
 
 ## Summary
 
-OpenArmature observability is span-based (§4–§6) and log-correlated (§7); §11 *Out of scope* records that the spec is "trace-only" and that OTel **metrics** are deferred. This proposal adds the metrics signal as a new **§11**, scoped to **provider-call metrics**: two histogram instruments — token usage and operation duration — recorded per LLM completion and per embedding call (per attempt under call-level retry), from the data the framework already surfaces on the §5.5.7 typed LLM completion event and the §5.5.9 typed embedding event. No new data source; metrics are an aggregatable projection of the existing event stream.
+OpenArmature observability is span-based (§4–§6) and log-correlated (§7); §11 *Out of scope* records that the spec is "trace-only" and that OTel **metrics** are deferred. This proposal adds the metrics signal as a new **§11**, scoped to **provider-call metrics**: two histogram instruments — token usage and operation duration — recorded per LLM completion and per embedding call (per attempt under call-level retry), from the data the framework already surfaces on the §5.5.7 / §5.5.9 typed completion events (and the typed `LlmFailedEvent` / `EmbeddingFailedEvent` for an errored attempt's duration + `error.type`). No new data source; metrics are an aggregatable projection of the existing event stream.
 
 The upstream OTel GenAI metric instruments (`gen_ai.client.token.usage`, `gen_ai.client.operation.duration`) and their `gen_ai.*` dimension attributes are at **Development** status (verified 2026-06-16 against `open-telemetry/semantic-conventions-genai`). Per the *Stable-only upstream adoption* policy, OA therefore emits **OA-namespaced** instruments — `openarmature.gen_ai.client.token.usage` and `openarmature.gen_ai.client.operation.duration` — mirroring the upstream instrument type, unit, and explicit bucket advisory so that a future cutover to the `gen_ai.client.*` names is mechanical (strip the `openarmature.` prefix). This is the same move §5.5.3.1 made for the Development-status cache attributes.
 
-Metrics are **opt-in** (default off), independent of span emission, and emitted to the configured OTel `MeterProvider` (a no-op when none is configured). Dimensions follow the same per-attribute Stable-only split the span attributes already use (§5.5.2 / §5.5.3 use stable `gen_ai.*` names directly; Development names mirror to `openarmature.*`).
+Metrics are **opt-in** (default off), independent of span emission, and emitted to the configured OTel `MeterProvider` (a no-op when none is configured). Dimensions follow the same adoption split the §5.5 *GenAI semconv attribute adoption* carve-out applies to the span attributes — recognized **core** `gen_ai.*` names used directly (even though the GenAI surface is Development), **peripheral** names mirrored to `openarmature.*`.
 
 ## Motivation
 
@@ -29,9 +30,10 @@ Anticipated bump: **MINOR** (pre-1.0); concrete version assigned at acceptance. 
 
 > Observability so far has been span-based (§4–§6) and log-correlated (§7). This section adds the
 > OpenTelemetry **metrics** signal: aggregatable histograms over provider calls, complementing the
-> per-call spans. Metric observations are a projection of the same §6 observer event stream —
-> specifically the typed LLM completion event (§5.5.7) and the typed embedding event (§5.5.9) — and
-> introduce no new data source.
+> per-call spans. Metric observations are a projection of the same §6 observer event stream — the
+> typed LLM completion event (§5.5.7) and typed embedding event (§5.5.9) for successful calls, and the
+> typed `LlmFailedEvent` / `EmbeddingFailedEvent` for an errored attempt's duration + `error.type` —
+> and introduce no new data source.
 >
 > #### 11.1 Emission and the Meter
 >
@@ -96,17 +98,18 @@ Anticipated bump: **MINOR** (pre-1.0); concrete version assigned at acceptance. 
 > #### 11.3 Dimensions
 >
 > Measurements carry the following dimensions, reusing the keys the provider (§5.5.3) and embedding
-> (§5.5.8) spans already emit. `gen_ai.system`, `gen_ai.request.model`, and `error.type` are Stable
-> upstream attributes (`docs/compatibility.md`), used directly; the Development-status
-> `gen_ai.operation.name` and `gen_ai.token.type` use their `openarmature.*` mirrors until they
-> stabilize — the same split §5.5.2 / §5.5.3 apply to the span attributes. Implementations MUST keep
+> (§5.5.8) spans already emit, under the §5.5 *GenAI semconv attribute adoption* carve-out. The
+> recognized **core** `gen_ai.request.model` and `gen_ai.system` are used directly (`gen_ai.system`
+> retained per the *post-adoption retention* rule despite its upstream removal), and the Stable core
+> `error.type` directly; the **peripheral** Development `gen_ai.operation.name` and `gen_ai.token.type`
+> use their `openarmature.*` mirrors — the same split §5.5.2 / §5.5.3 apply to the span attributes. Implementations MUST keep
 > dimensions low-cardinality (no free-form per-request values).
 >
 > | Dimension key | On | Source | Notes |
 > |---|---|---|---|
 > | `openarmature.gen_ai.operation` | both | the operation kind | `"chat"` for LLM completion, `"embeddings"` for embedding. Mirrors the Development `gen_ai.operation.name` (deferred per §5.5.8 / `docs/compatibility.md`). |
-> | `gen_ai.request.model` | both | §5.5.3 / §5.5.8 request model | Stable per `docs/compatibility.md`; the model key both the LLM (§5.5.3) and embedding (§5.5.8) spans already emit. Cardinality is bounded by the set of models in use. |
-> | `gen_ai.system` | both | §5.5.3 / §5.5.8 system identifier | Stable; the provider identifier both spans already emit. |
+> | `gen_ai.request.model` | both | §5.5.3 / §5.5.8 request model | Recognized-core de-facto-standard name (§5.5 carve-out); the model key both the LLM (§5.5.3) and embedding (§5.5.8) spans already emit. Cardinality is bounded by the set of models in use. |
+> | `gen_ai.system` | both | §5.5.3 / §5.5.8 system identifier | Recognized-core; retained per the *post-adoption retention* rule (upstream removed it in favor of `gen_ai.provider.name`). The provider identifier both spans already emit. |
 > | `openarmature.gen_ai.token.type` | token.usage only | `"input"` / `"output"` | Mirrors the Development `gen_ai.token.type`. |
 > | `error.type` | duration only, when the call errored | the llm-provider §7 error category (per retrieval-provider §5 for embedding), carried as `error_category` on the graph-engine §6 typed LLM / embedding failure event | Stable; used directly. Absent on a successful call. |
 >

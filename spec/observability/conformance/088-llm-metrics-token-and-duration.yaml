@@ -1,0 +1,62 @@
+# observability §11 (proposal 0067): with enable_metrics on, an LLM completion
+# records two openarmature.gen_ai.client.token.usage observations (input + output)
+# and one openarmature.gen_ai.client.operation.duration observation. Token values
+# come from the fixed-usage mock; the duration value is NOT asserted (§11.4).
+# Captured via the conformance-adapter §6.9 metric-capture primitive.
+
+cases:
+  - name: llm_completion_records_token_and_duration
+    description: |
+      One LLM-calling node, enable_metrics=True. The mock returns usage
+      {input 5, output 1}. The metric-capture primitive records token.usage
+      input=5 and output=1 (dimensions: operation "chat", model, token.type),
+      and one operation.duration observation (dimensions only — value not
+      asserted, per §11.4).
+    state:
+      fields:
+        msg: {type: string, default: ""}
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: true
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-088
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      metrics:
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 5
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "input"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 1
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+      invariants:
+        two_token_usage_observations_input_and_output: true
+        one_duration_observation_per_call: true
+        duration_value_not_asserted: true

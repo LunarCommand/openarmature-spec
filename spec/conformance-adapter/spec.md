@@ -7,6 +7,7 @@ Canonical behavioral specification for the OpenArmature conformance-adapter capa
 - **History:**
   - created by [proposal 0055](../../proposals/0055-conformance-adapter-capability.md)
   - §6 *Harness primitives* gains §6.8 *Caching prompt backend* — an in-memory `PromptBackend` that caches by `(name, label)`, counts source reads, and honors prompt-management `cache_ttl_seconds` (`0` bypasses the cache; `None` serves cached; `N > 0` serves within a controllable-clock max-age) — plus the `source_read_count` and `advance_clock` fixture shapes it exposes, supporting the prompt-management per-fetch cache-TTL fixtures by [proposal 0072](../../proposals/0072-prompt-management-fetch-cache-ttl.md)
+  - §5.8 *Expected-outcome directives* gains a `metrics:` assertion (recorded measurements — instrument + dimensions for every observation, recorded value for token-usage, presence-only for duration); §6 *Harness primitives* gains §6.9 *Metric capture* — an in-memory OTel `MetricReader` (sibling to §6.3 collector capture) recording every observation, gated by an `enable_metrics` observer flag — supporting the observability §11 metrics fixtures by [proposal 0067](../../proposals/0067-observability-genai-metrics.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) ships a thin **adapter**
 that ingests the language-agnostic YAML fixtures under `spec/<capability>/conformance/` and executes them
@@ -698,6 +699,14 @@ These directives appear under per-invocation or per-case `expected:` blocks and 
   — appear under a `resume:` block. Assert which fan-out instances re-ran on resume (failed /
   cancelled / not-yet-started) vs. were skipped (completed-and-rolled-forward, including degraded
   instances). Exercises pipeline-utilities §10.11.
+- **`metrics: [{instrument: <name>, dimensions: { ... }, value: <number>}, ...]`** — assertion on the
+  measurements captured by the §6.9 in-memory metric-capture primitive (observability §11.5). Each
+  entry asserts a recorded observation on the named instrument
+  (`openarmature.gen_ai.client.token.usage` / `.operation.duration`) carrying the given dimensions;
+  `value` asserts the recorded value (used for the fixed-usage mock's token counts) and is omitted for
+  duration observations (value not asserted, per observability §11.4). With the observer's
+  `enable_metrics` off, no measurements are recorded — a `metrics: []` assertion confirms the opt-in
+  gate. See §6.9 for the primitive and the `enable_metrics` configuration.
 
 ### 5.9 Invariant assertions
 
@@ -845,6 +854,23 @@ fixture schema as:
   like any other and carries a `target`.
 - fixture-level `expected_backend_state: {<backend>: {source_read_count: <int>}}` — asserts the
   named backend's cumulative source-read count after all `calls` have run.
+
+### 6.9 Metric capture
+
+observability §11 *Metrics* fixtures assert the measurements an observer records when `enable_metrics`
+is on. The adapter MUST provide an in-memory **metric-capture** primitive — an in-memory OTel
+`MetricReader` attached to the `MeterProvider` the metrics-emitting observer uses, sibling to the §6.3
+OTel collector capture for spans — that records every observation (instrument name, value, dimensions)
+for assertion.
+
+- A case enables metrics via an observer-level `enable_metrics: <bool>` flag (observability §11.1,
+  default off), configured on the in-memory observer (§6.1) the same way the span opt-out flags are.
+- After the case runs, the captured observations are asserted via the §5.8 `metrics:` expected-outcome
+  directive — instrument name + dimensions for every observation, plus the recorded value for the
+  token-usage instrument (the mock returns fixed usage); duration observations assert presence +
+  dimensions only, not the value (observability §11.4).
+- A case with `enable_metrics: false` (or absent) records no measurements; a `metrics: []` assertion
+  confirms the opt-in gate.
 
 ## 7. Nondeterminism handling
 

@@ -4,6 +4,22 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.68.0] — 2026-06-19
+
+**Added**
+
+- **observability §11 — Metrics.** The OTel metrics signal, complementing the §4–§6 spans and §7 logs: two opt-in OA-namespaced histogram instruments over provider calls — `openarmature.gen_ai.client.token.usage` (`{token}`) and `openarmature.gen_ai.client.operation.duration` (`s`) — recorded per LLM completion and per embedding call (per attempt under call-level retry), from the §5.5.7 / §5.5.9 typed completion events (and the typed `LlmFailedEvent` / `EmbeddingFailedEvent` for an errored attempt's duration + `error.type`). Opt-in via an `enable_metrics` observer flag (default off), independent of span emission. The instruments mirror the Development-status upstream `gen_ai.client.*` (type / unit / bucket advisory) for a mechanical future cutover (per *Stable-only upstream adoption*). Dimensions follow the §5.5 GenAI de-facto-standard carve-out — recognized-core `gen_ai.request.model` / `gen_ai.system` used directly (`gen_ai.system` retained), peripheral `gen_ai.operation.name` / `gen_ai.token.type` mirrored to `openarmature.gen_ai.*`, Stable `error.type` used directly. ([proposal 0067](proposals/0067-observability-genai-metrics.md))
+- **conformance-adapter §6.9 — Metric capture.** An in-memory `MetricReader` harness primitive (sibling to §6.3 OTel collector capture) recording every observation for assertion, gated by `enable_metrics`; plus a §5.8 `metrics:` expected-outcome directive. ([proposal 0067](proposals/0067-observability-genai-metrics.md))
+- Four new observability conformance fixtures (`088`–`091`): LLM token + duration, embedding token, errored-call duration + `error.type`, and metrics-off. (The call-level-retry recording cadence is specified normatively in §11.2; its fixture lands with the call-level-retry conformance infrastructure.) ([proposal 0067](proposals/0067-observability-genai-metrics.md))
+
+**Changed**
+
+- **observability §11 *Out of scope* → §12.** Renumbered (citation-safe); the blanket "metrics out of scope / trace-only" bullet narrowed to graph-level metrics, with streaming/server metrics and the upstream `gen_ai.client.*` instrument-name cutover folded in as explicit deferrals. ([proposal 0067](proposals/0067-observability-genai-metrics.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Additive and opt-in (default off): a new metrics signal (observability §11) plus a conformance-adapter harness primitive (§6.9). No change to span / log / Langfuse behavior or any existing attribute. ([proposal 0067](proposals/0067-observability-genai-metrics.md))
+
 ## [0.67.0] — 2026-06-19
 
 **Added**
