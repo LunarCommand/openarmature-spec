@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.66.1] — 2026-06-18
+
+**Changed**
+
+- **observability §8.3 / §8.4.3 — call-level-retry Langfuse mapping clarified.** Under call-level retry (llm-provider §7.1), §5.5 emits N per-attempt OTel spans (`openarmature.llm.attempt_index`), but the Langfuse mapping renders **one terminal Generation per `complete()` call**, not one per attempt — it maps to the logical call's terminal outcome, so the per-attempt detail stays the OTel span surface only. Success → the terminal completion the typed `LlmCompletionEvent` reports (§5.5.7), carrying the response; retry exhaustion → the terminal failed Generation. Distinct from node-level retry (§5.2), which renders one observation per attempt (`metadata.attempt_index`). The §8.3 "LLM provider span → Generation" row is qualified accordingly.
+
+**Notes**
+
+- **PATCH bump.** Clarification only — makes explicit an already-implied consequence of the §5.5.7 terminal-event model for the §8 Langfuse mapping under call-level retry; reconciles the §8 mapping (proposal 0031) with §5.5's per-attempt spans (proposal 0050). No behavior change, no new or changed normative contract, no new proposal, and no fixture change (no call-level-retry Langfuse fixture existed to change).
+
 ## [0.66.0] — 2026-06-18
 
 **Added**
