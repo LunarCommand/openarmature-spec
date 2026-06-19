@@ -1,0 +1,41 @@
+# observability §11.2 / §11.3 (proposal 0067): an errored provider call still
+# records a duration observation — carrying error.type (the §7 error category from
+# the typed LlmFailedEvent) — because a failed attempt is a real latency sample. No
+# token.usage observation (a failed call returned no usage record).
+
+cases:
+  - name: errored_call_records_duration_with_error_type
+    description: |
+      The mock provider returns 503 → provider_unavailable; the LLM call raises
+      (LlmFailedEvent dispatched per proposal 0058, exception propagates). With
+      enable_metrics on, the duration histogram records one observation carrying
+      error.type="provider_unavailable"; no token.usage observation is recorded.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "summarize"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    enable_metrics: true
+    mock_llm:
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask
+    expected:
+      metrics:
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            error.type: "provider_unavailable"
+      invariants:
+        errored_call_records_duration_with_error_type: true
+        no_token_usage_observation_on_failure: true

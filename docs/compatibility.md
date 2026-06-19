@@ -99,6 +99,14 @@ the *de-facto-standard carve-out* + *post-adoption retention* rules):
   `gen_ai.tool.call.{id,arguments,result}`, `gen_ai.tool.definitions`, …) is scoped to the separate
   `execute_tool` span — the tool-*execution* side, not the chat-completion span. Verified against the
   `semantic-conventions-genai` registry, 2026-06-19.
+- **GenAI metric instruments — mirrored (verified for proposal 0067).** The upstream GenAI metric
+  instruments `gen_ai.client.token.usage` (`{token}`) and `gen_ai.client.operation.duration` (`s`) are
+  Development (verified 2026-06-19); OA emits `openarmature.gen_ai.client.*` mirrors (instrument type /
+  unit / bucket advisory) per observability §11.2, the instrument-name cutover deferred to a Stable
+  follow-on. The metric dimensions follow the same core-vs-peripheral split as the §5.5 span
+  attributes (`gen_ai.request.model` / `gen_ai.system` core-direct, the latter retained;
+  `gen_ai.operation.name` / `gen_ai.token.type` peripheral → `openarmature.gen_ai.*`; `error.type`
+  Stable-direct).
 
 ### LLM provider APIs (OpenAI / Anthropic / Google Gemini)
 
