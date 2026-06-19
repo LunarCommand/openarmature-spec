@@ -42,10 +42,12 @@ cases:
             openarmature.gen_ai.operation: "embeddings"
             openarmature.gen_ai.token.type: "input"
             gen_ai.request.model: "test-embed-model"
+            gen_ai.system: "openai"
         - instrument: "openarmature.gen_ai.client.operation.duration"
           dimensions:
             openarmature.gen_ai.operation: "embeddings"
             gen_ai.request.model: "test-embed-model"
+            gen_ai.system: "openai"
       invariants:
         embedding_records_input_token_only: true
         no_output_token_observation_for_embedding: true

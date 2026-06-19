@@ -7,8 +7,9 @@ records no token-usage observation.
 ## Spec coverage
 
 - §11.2 — the duration histogram records **including** attempts that ended in error.
-- §11.3 — `error.type` (the llm-provider §7 category, from the typed `LlmFailedEvent`
-  per proposal 0058) is a dimension on the duration instrument only, on a failure.
+- §11.3 — `gen_ai.request.model` and `gen_ai.system` remain required on the duration
+  metric even on a failure; `error.type` (the llm-provider §7 category, from the typed
+  `LlmFailedEvent` per proposal 0058) is added — duration-only, present only on failure.
 - §11.2 — no token-usage observation when the call returned no usage (failure).
 
 ## Cases

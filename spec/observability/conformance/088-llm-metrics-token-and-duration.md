@@ -9,7 +9,8 @@ Verifies observability §11.2 / §11.3 (proposal 0067): an LLM completion with
   LLM completion (input + output), `openarmature.gen_ai.client.operation.duration`
   records one.
 - §11.3 — dimensions `openarmature.gen_ai.operation` (`"chat"`),
-  `gen_ai.request.model`, `openarmature.gen_ai.token.type` (`"input"` / `"output"`).
+  `gen_ai.request.model`, `gen_ai.system`, `openarmature.gen_ai.token.type`
+  (`"input"` / `"output"`).
 - §11.4 — token values are asserted (fixed-usage mock); the duration value is not.
 - conformance-adapter §6.9 / §5.8 — the metric-capture primitive + the `metrics:`
   assertion.

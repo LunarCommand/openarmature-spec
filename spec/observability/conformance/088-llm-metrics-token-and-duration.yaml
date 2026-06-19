@@ -43,16 +43,19 @@ cases:
             openarmature.gen_ai.operation: "chat"
             openarmature.gen_ai.token.type: "input"
             gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
         - instrument: "openarmature.gen_ai.client.token.usage"
           value: 1
           dimensions:
             openarmature.gen_ai.operation: "chat"
             openarmature.gen_ai.token.type: "output"
             gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
         - instrument: "openarmature.gen_ai.client.operation.duration"
           dimensions:
             openarmature.gen_ai.operation: "chat"
             gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
       invariants:
         two_token_usage_observations_input_and_output: true
         one_duration_observation_per_call: true

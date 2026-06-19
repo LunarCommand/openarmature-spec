@@ -10,7 +10,7 @@ only) and one duration observation, carrying operation `"embeddings"`.
   **one** observation (input only — embeddings have no output tokens);
   `operation.duration` records one.
 - §11.3 — `openarmature.gen_ai.operation` = `"embeddings"`; `gen_ai.request.model`;
-  `openarmature.gen_ai.token.type` = `"input"`.
+  `gen_ai.system`; `openarmature.gen_ai.token.type` = `"input"`.
 
 ## Cases
 

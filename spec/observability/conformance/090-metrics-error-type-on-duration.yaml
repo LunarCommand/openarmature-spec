@@ -35,6 +35,8 @@ cases:
         - instrument: "openarmature.gen_ai.client.operation.duration"
           dimensions:
             openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
             error.type: "provider_unavailable"
       invariants:
         errored_call_records_duration_with_error_type: true
