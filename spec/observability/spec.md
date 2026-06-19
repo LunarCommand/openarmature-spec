@@ -29,6 +29,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §8.4.1 Trace-level mapping gained two rows — `openarmature.session_id` → `trace.sessionId` (groups every trace sharing a session id into one Langfuse Session) and a recognized `userId` caller-metadata key → `trace.userId` (Langfuse's Users dimension; additive — the key also remains at `trace.metadata.userId`; recognized, not reserved) — plus a *Session / user trace-field sourcing* paragraph (the MUST-set / unset rules, the OTel-has-no-trace-level-equivalent asymmetry, and multi-invocation / detached / suspend-resume grouping semantics). §8.1 and the §8.4 *Distinction from Langfuse Sessions / Users* note updated to record that Sessions / Users grouping is now realized; §8.10's *Langfuse Sessions* out-of-scope bullet removed (realized — the sessions capability, proposal 0020, is Accepted). New conformance fixture `084-langfuse-session-user-promotion`; no OTel-side change by [proposal 0064](../../proposals/0064-observability-langfuse-session-user-promotion.md)
   - §5.5 gained a *GenAI semconv attribute adoption* framing note recording that the emitted `gen_ai.*` attributes are adopted under the new GenAI **de-facto-standard carve-out** (`GOVERNANCE.md` *External-dependency adoption*): recognized **core** names are emitted directly even though the upstream GenAI semantic conventions are wholly Development (they moved to the dedicated `semantic-conventions-genai` repo — 96 attributes Development, none Stable), while **peripheral** Development attributes are mirrored to `openarmature.*` (§5.5.3.1) until Stable or demonstrably ubiquitous — the deciding line being installed-base recognition, not the upstream maturity label. §5.5.3's `gen_ai.system` entry notes the attribute is **retained** per the new **post-adoption retention** rule even though upstream removed it in favor of `gen_ai.provider.name` (migration deferred); the §5.5.3.1 and §5.5.8 *until upstream Stable* wording is reconciled to *Stable or demonstrably ubiquitous*. Reframes adoption rationale only — no emitted attribute changes, existing `gen_ai.*` fixtures remain valid — and adds the de-facto-standard carve-out + retention rule to `GOVERNANCE.md`, correcting `docs/compatibility.md` accordingly by [proposal 0073](../../proposals/0073-genai-semconv-adoption-reconciliation.md)
   - §5.7 *Parallel-branches span attributes* gained a note for proposal 0075's inline-callable branch form: a `call` branch (pipeline-utilities §11.1.1) renders a per-branch dispatch span under `openarmature.node.branch_name` (the branch is the single emitting unit, with no inner-node spans beneath it), and a `when`-skipped branch (§11.10) produces no span. No new attribute; reuses the §5.7 surface by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
+  - §8.3 / §8.4.3 clarified the Langfuse mapping under **call-level retry**: §5.5's N per-attempt spans render as **one terminal Generation per `complete()` call** (the call's terminal outcome — the §5.5.7 completion on success, the terminal failure on exhaustion), not one Generation per attempt — the per-attempt surface is OTel-span-only (`openarmature.llm.attempt_index`); success → the terminal response Generation, retry exhaustion → the terminal failed Generation; distinct from node-level retry (pipeline-utilities §6.1), which renders one observation per attempt. The §8.3 "LLM provider span → Generation" row is qualified to match. Clarification of an already-implied consequence of the §5.5.7 terminal-event model; no behavior or fixture change — spec v0.66.1 (clarification PATCH, no proposal)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1733,8 +1734,8 @@ below.
 | Subgraph span (§4.3) | Span observation, child of the surrounding parent Span; contains the subgraph's nested node Span observations |
 | Fan-out node span (§4) | Span observation (the dispatch span; contains the per-instance Span observations) |
 | Fan-out instance span (§4.3) | Span observation, child of the fan-out node Span |
-| LLM provider span (§5.5) | Generation observation |
-| Retry attempt spans (§4) | Sibling Span / Generation observations (one per attempt) under the same parent; per-attempt attribution uses the metadata.attempt_index key (§8.4) |
+| LLM provider span (§5.5) | Generation observation — **one per `complete()` call**; under call-level retry (§5.5 / llm-provider §7.1) the N per-attempt spans collapse to this single terminal Generation (§8.4.3) |
+| Node-level retry attempt spans (§4 / pipeline-utilities §6.1) | Sibling Span / Generation observations (one per attempt) under the same parent; per-attempt attribution uses the metadata.attempt_index key (§8.4). Distinct from call-level LLM retry (row above), which renders one terminal Generation. |
 
 The invocation maps to the Trace (the container) rather than to a top-level Span observation.
 Rationale: Langfuse's Trace IS the root container; introducing an additional Span observation
@@ -2009,6 +2010,17 @@ vendor-specific), the implementation MAY also set `observation.level = "WARNING"
 condition in the Langfuse UI; this is RECOMMENDED but not MUST (different vendors carry
 different "soft error" semantics, and the OA error category mechanism in §4.2 covers hard
 failures via the `openarmature.error.category` mapping above).
+
+**Call-level retry — one terminal Generation per call.** §5.5 emits N per-attempt OTel spans under
+call-level retry (llm-provider §7.1, disambiguated by `openarmature.llm.attempt_index`), but the
+Langfuse mapping renders **exactly one Generation per `complete()` call**, not one per attempt — it
+maps to the logical call's terminal outcome, so the per-attempt detail stays the OTel span surface
+only. On a successful call (after any retries) the single Generation is the terminal completion the
+typed `LlmCompletionEvent` reports (§5.5.7, fired per completion), carrying the response (usage /
+output / finish_reason); on retry exhaustion it is the terminal failed Generation
+(`observation.level = "ERROR"` + the §4 category, per the §8.4.2 mapping). This differs from **node-level** retry (pipeline-utilities §6.1) —
+where each node attempt is its own logical run and §8.3 renders one observation per attempt, keyed
+by `observation.metadata.attempt_index`.
 
 #### 8.4.4 Prompt linkage mapping (sourced from prompt-management §11 attributes)
 
