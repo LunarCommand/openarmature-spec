@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0076](proposals/0076-tool-call-request-observability-llm-spans.md) | Tool-call request observability on LLM spans | observability | Draft | —               | —          |
 | [0075](proposals/0075-parallel-branches-lightweight-branches.md) | Parallel-branches lightweight callable + conditional branches | pipeline-utilities | Accepted | Pending         | —          |
 | [0074](proposals/0074-failure-isolation-catch-classification.md) | Failure-isolation cause-chain catch classification | pipeline-utilities | Accepted | Pending         | —          |
 | [0073](proposals/0073-genai-semconv-adoption-reconciliation.md) | GenAI semconv adoption reconciliation | observability | Accepted | Pending         | —          |
