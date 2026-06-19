@@ -950,7 +950,7 @@ following attributes on the LLM provider span:
   spec's structure, not the GenAI semconv's); it is grouped with payload because it MAY contain
   provider-specific parameters that warrant the same default-off treatment as messages.
   Implementations MAY choose to gate `request.extras` separately from `input.messages` /
-  `output.content`; the default is to gate all three under the same flag.
+  `output.content` / `output.tool_calls`; the default is to gate all four under the same flag.
 
 All four payload attributes are subject to the §5.5.5 truncation contract.
 
@@ -1175,7 +1175,7 @@ readers (it points to the actual image asset). The redaction rule applies only t
 `source.type == "inline"`.
 
 **Tool-call serialization.** Assistant `tool_calls` (per llm-provider §3) in
-`openarmature.llm.input.messages` are JSON-encoded as `[{"id", "name", "arguments"}, ...]` with
+`openarmature.llm.input.messages` are JSON-encoded as `[{id, name, arguments}, ...]` with
 `arguments` serialized verbatim from the parsed mapping. Tool-call argument content is subject
 only to the overall per-attribute byte cap; this specification does not specify a separate
 per-tool-call cap. The **output** side reuses this exact `[{id, name, arguments}]` encoding:

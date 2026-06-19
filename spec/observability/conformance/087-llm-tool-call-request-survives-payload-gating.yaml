@@ -116,10 +116,11 @@ cases:
                     openarmature.llm.output.tool_calls.count: 1
                     openarmature.llm.output.tool_calls.names: ["search_db"]
                     openarmature.llm.output.tool_calls.ids: ["call_x"]
+                  attributes_present:
+                    - "openarmature.llm.output.tool_calls"
                   children: []
       invariants:
         identity_projections_present_regardless_of_flag: true
-        gated_output_tool_calls_present_when_payload_enabled: true
-        # When present, openarmature.llm.output.tool_calls parses to
+        # The present openarmature.llm.output.tool_calls parses to
         # [{id: "call_x", name: "search_db", arguments: {"q": "secret query"}}]
-        # per the §5.5.5 encoding (asserted as parsed structure, not bytewise).
+        # per the §5.5.5 encoding (parsed structure, not bytewise).
