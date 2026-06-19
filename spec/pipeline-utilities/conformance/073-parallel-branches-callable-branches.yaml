@@ -1,0 +1,45 @@
+# §11.1.1 inline-callable branch form (proposal 0075). Two `call` branches —
+# async functions over the parent state, with NO compiled subgraph, state
+# schema, or inputs/outputs projection — run concurrently; each returns a
+# parent-shaped partial update that merges via the parent reducer (§11.4) into
+# disjoint parent fields. Contrast fixture 032 (subgraph branches): here a
+# branch IS just a function.
+#
+# Fixture directive (new in 0075): a branch carries `call: <node-behavior>`
+# (the inline function, returning parent-shaped fields directly) instead of
+# `subgraph:` + `outputs:`. The two forms are mutually exclusive per branch;
+# a node MAY mix them.
+
+state:
+  fields:
+    vector_result: {type: int, default: 0}
+    fts_result: {type: int, default: 0}
+
+entry: retrieve
+
+nodes:
+  retrieve:
+    parallel_branches:
+      branches:
+        vector:
+          call: {update: {vector_result: 1}}    # inline callable over parent state
+        fts:
+          call: {update: {fts_result: 2}}
+
+edges:
+  - {from: retrieve, to: END}
+
+initial_state: {}
+
+expected:
+  # Each callable branch's returned partial update merges into its parent field
+  # via the parent reducer (§11.4 buffer-then-merge, insertion order). No
+  # subgraph, no projection.
+  final_state:
+    vector_result: 1
+    fts_result: 2
+  # The parallel-branches node is a single dispatch at the outer level (§11.6).
+  execution_order: [retrieve]
+  invariants:
+    callable_branches_run_without_subgraph: true
+    contributions_merge_via_parent_reducer: true

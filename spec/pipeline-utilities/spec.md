@@ -19,6 +19,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §6.3 *Failure isolation* middleware added as the third canonical primitive in the §6 bundled set (alongside §6.1 Retry and §6.2 Timing) — packages the §2 third-MAY-bullet catch-and-recover pattern with a four-field configuration record (`degraded_update` [static or callable], `event_name` [required, no default — naming decision at construction site], `predicate` [single-arg `(exception) -> bool`, defaults to always-true], `on_caught` [optional async callback]); catches `Exception` (not `BaseException`); on catch dispatches a framework-emitted failure-isolation event onto the observer delivery queue (parallels proposal 0040's metadata-augmentation event mechanism — distinct from `NodeEvent`, carries `event_name` + wrapped-node lineage tuple + `pre_state` / `post_state` + `caught_exception` record; not promoted to a typed variant on the observer event union for v1) and returns the configured degraded update so the engine continues edge resolution normally; documents the three-piece composition pattern with §6.1 retry (outer-to-inner: transient-aware node body + inner Retry + outer FailureIsolation) with outer-to-inner ordering load-bearing by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
   - §10.15 *Composition with suspension* added — notes that the new suspension capability uses the same persistence mechanism as checkpointing for paused-invocation records (single store with discriminator OR separate stores; implementation choice); paused-invocation records and checkpoint records are distinct shapes; resume operations load the correct record type per the resume API in use (`invoke(resume_invocation=...)` per §10.4 → checkpoint record; `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 → paused-invocation record); paused-record lifetime is NOT bound to invocation completion (unlike checkpoint records, persists until resume completes / cancellation / backend retention); error categories are distinct (`suspension_persistence_failed` per suspension §9 does not signal checkpoint failure and vice versa). Refer to the suspension capability spec for the full primitive contract by [proposal 0021](../../proposals/0021-graph-suspension.md)
   - §6.3 *Failure isolation* gained a `catch` configuration field — a set of error categories matched against the caught exception's **cause chain** (via the new §6.4 primitive), so a carrier-wrapped failure at a §9.7 / §11.7 / §9.6 / §11.6 wrapping placement is caught correctly where a surface `predicate` check would miss it and invert an intended degrade into a crash; `catch` matches on the derived category (the outermost-non-carrier value reported as `caught_exception.category`, per the 0068 derivation), composes with `predicate` as a conjunction (both permissive by default), and `predicate` is documented as surface-only with the cause-aware alternatives. New §6.4 *Cause-chain classification* promotes §6.3's carrier-skipping cause-fidelity walk to a public, named classification primitive (cause chain + derived category) shared by §6.1 retry, §6.3 isolation, and consumers. §6.1's default-classifier depth is documented as deliberately single-level (retry re-runs → classifies at re-attempt granularity; the §6.4 primitive is the opt-in for full-chain retry), distinct from §6.3's full-chain degrade classification. New fixture 072; `catch` is additive (default catch-all preserved) and retry behavior is unchanged by [proposal 0074](../../proposals/0074-failure-isolation-catch-classification.md)
+  - §11 *Parallel branches* extended — §11.1.1 *Branch spec* gains an inline-callable branch form (`call`, an async function over the parent state returning a parent-shaped partial update, with no subgraph / state schema / `inputs` / `outputs`) as an alternative to the compiled-`subgraph` form (exactly one required, mixing allowed, `parallel_branches_invalid_branch_spec` compile error otherwise); §11.4 defines the callable branch's contribution (the returned partial update, merged via the parent reducer with no projection); new §11.10 *Conditional branches* adds an optional `when` predicate skipping a branch at dispatch (no work / contribution / events / span; all-skipped is a valid no-op distinct from `parallel_branches_no_branches`); §11.7 branch middleware (per-leg failure-isolation) and §11.5 cancellation apply to callable branches unchanged. New fixtures 073–075. Additive; existing subgraph branches unchanged by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1702,15 +1703,18 @@ parallel-branches / middleware, error categories), see the suspension capability
 ## 11. Parallel branches
 
 A **parallel branches** node holds a mapping from branch name to **branch spec** (§11.1.1).
-At dispatch time, the engine projects parent state into each branch's per-branch state via
-`inputs`, runs all branches concurrently (with optional per-branch middleware), and projects
-each branch's exit state back into parent state via `outputs`. Different branches MAY write
-different parent fields; when two branches write the same parent field, the parent's
-reducer for that field merges the contributions per its semantics.
+At dispatch time, the engine runs all branches concurrently (each optionally conditional per
+§11.10, with optional per-branch middleware) and merges each branch's **contribution** into
+parent state (§11.4). A branch is either a **compiled subgraph** — parent state projected in
+via `inputs` and the exit state projected back out via `outputs` — or an **inline callable**
+over the parent state that returns a parent-shaped partial update directly (§11.1.1). Different
+branches MAY write different parent fields; when two branches write the same parent field, the
+parent's reducer for that field merges the contributions per its semantics.
 
 Parallel branches complements §9 fan-out. Fan-out is **data-driven**: N items, one
 subgraph, instantiated N times. Parallel branches is **topology-driven**: M heterogeneous
-compiled subgraphs, declared statically, run concurrently within a single parent invocation.
+branches — compiled subgraphs or inline callables — declared statically (each optionally skipped
+at dispatch via §11.10), run concurrently within a single parent invocation.
 
 ### 11.1 Configuration
 
@@ -1726,22 +1730,39 @@ A parallel-branches node carries:
 
 #### 11.1.1 Branch spec
 
-Each branch spec carries:
+Each branch spec gives the branch's **work** via exactly one of `subgraph` or `call`, plus
+optional `middleware` and `when`:
 
 - `subgraph` — a compiled subgraph reference. Different branches MAY reference different
-  compiled subgraphs with different state schemas.
-- `inputs` — optional mapping `subgraph_field → parent_field` (same shape as the §4
-  subgraph `inputs`). At branch entry, each named subgraph field is initialized from the
-  named parent field. Subgraph fields not in `inputs` use the subgraph's declared defaults.
-- `outputs` — optional mapping `parent_field → subgraph_field` (same shape as the §4
-  subgraph `outputs`). At branch exit, each named parent field receives the named subgraph
-  field's exit value, merged via the parent's reducer for that field.
+  compiled subgraphs with different state schemas. Uses the optional `inputs` / `outputs`
+  projection below.
+- `call` — an **inline callable** over the parent state: an async function
+  `(parent_state) -> partial_update` returning a parent-shaped partial update. No subgraph, no
+  state schema, no `inputs` / `outputs` — the callable reads the parent state directly and its
+  returned update is the branch's contribution (§11.4). The lightweight analogue of a node body
+  for a heterogeneous parallel call (two SQL reads, hybrid recall, etc.).
+- `inputs` — optional, **`subgraph` form only**. Mapping `subgraph_field → parent_field` (same
+  shape as the §4 subgraph `inputs`). At branch entry, each named subgraph field is initialized
+  from the named parent field. Subgraph fields not in `inputs` use the subgraph's declared
+  defaults.
+- `outputs` — optional, **`subgraph` form only**. Mapping `parent_field → subgraph_field` (same
+  shape as the §4 subgraph `outputs`). At branch exit, each named parent field receives the
+  named subgraph field's exit value, merged via the parent's reducer for that field.
 - `middleware` — optional list of middlewares wrapping the whole branch invocation as a unit
-  (§11.7). Heterogeneous across branches — branch A's middleware MAY differ from branch B's.
+  (§11.7) — the subgraph for a `subgraph` branch, the callable for a `call` branch.
+  Heterogeneous across branches — branch A's middleware MAY differ from branch B's.
+- `when` — optional conditional predicate (§11.10).
+
+A branch spec MUST declare **exactly one** of `subgraph` or `call`; declaring both or neither is
+a compile-time `parallel_branches_invalid_branch_spec` error (§11.9). A parallel-branches node
+MAY mix `subgraph` and `call` branches freely.
 
 ### 11.2 Per-branch projection (in)
 
-At dispatch entry, each branch's initial subgraph state is constructed by:
+This projection applies to **`subgraph`** branches only; a **`call`** branch has no per-branch
+state and no `inputs` — its callable reads the parent state directly (§11.1.1).
+
+For a subgraph branch, at dispatch entry each branch's initial subgraph state is constructed by:
 
 1. Starting from the branch's subgraph schema's declared field defaults.
 2. Overlaying `inputs` mappings: each subgraph field named on the LHS is set to the value of
@@ -1765,10 +1786,13 @@ need.
 
 ### 11.4 Per-branch projection (out)
 
-When a branch's subgraph finishes (END node reached), the engine constructs a per-branch
+When a **`subgraph`** branch finishes (END node reached), the engine constructs a per-branch
 **contribution** — a mapping `parent_field → exit_value` built from the branch's `outputs`
 mapping (each named subgraph field is read from the branch's exit state). Subgraph fields
-not named in `outputs` are discarded (matching §4 outputs semantics).
+not named in `outputs` are discarded (matching §4 outputs semantics). A **`call`** branch's
+contribution is the **partial update it returns** — already parent-shaped, so no projection
+step; parent fields it does not return get no contribution from that branch (partial
+contributions are first-class, §11.7).
 
 Contributions are **buffered**; no parent-state merging happens incrementally on branch
 completion. When the parallel-branches node itself completes (all branches succeeded under
@@ -1815,17 +1839,19 @@ view, the parallel-branches node looks like any other node: one `started` event,
 retries the whole parallel-branches node (re-dispatching all M branches), not individual
 branches.
 
-Per-branch internal events (the branches' subgraph nodes' started/completed pairs) come
-from the branches' subgraph executions and carry the new `branch_name` field (§11.7,
-graph-engine §6).
+Per-branch internal events come from the branches' executions and carry the `branch_name` field
+(§11.7, graph-engine §6): for a `subgraph` branch, the branch's subgraph nodes' started /
+completed pairs; for a `call` branch, the branch's own single started / completed pair (the
+callable is the event-source unit — graph-engine §6).
 
 ### 11.7 Branch middleware
 
-Each branch's `middleware` (§11.1.1) wraps the branch's entire subgraph invocation as a
-unit — directly mirroring §9.7's `instance_middleware` contract. The branch's whole
-subgraph runs inside the middleware chain; failures in any inner node propagate up to the
-branch's middleware. Retry middleware applied at the branch level retries the whole
-branch's subgraph.
+Each branch's `middleware` (§11.1.1) wraps the branch's entire invocation as a unit — the
+subgraph for a `subgraph` branch, the callable for a `call` branch — directly mirroring §9.7's
+`instance_middleware` contract. The branch's whole invocation runs inside the middleware chain —
+for a `subgraph` branch, the subgraph (failures in any inner node propagate up to the branch's
+middleware); for a `call` branch, the callable. Retry middleware applied at the branch level
+retries the whole branch invocation (the subgraph, or the callable).
 
 Branch middleware composition is heterogeneous. Branch A may have `[retry, timing]`; branch
 B may have `[]`; branch C may have `[custom_breaker]`. Each branch's chain is independent.
@@ -1856,11 +1882,14 @@ the parallel-branches primitive: scheduler nondeterminism affects timing but not
 New canonical categories:
 
 - `parallel_branches_no_branches` — compile-time error. The `branches` mapping is empty.
-  Non-transient.
+  Non-transient. (Distinct from a runtime all-skipped node per §11.10, which is a valid no-op.)
+- `parallel_branches_invalid_branch_spec` — compile-time error. A branch spec declares both
+  `subgraph` and `call`, or neither (§11.1.1). Non-transient.
 - `parallel_branches_branch_failed` — runtime category. Raised by the engine when a
-  branch's subgraph raises under `error_policy: "fail_fast"`. Wraps the inner exception as
-  `__cause__`; carries the failing `branch_name` as a structured field. Non-transient by
-  default; inherits transient classification from the wrapped exception per §6.1.
+  branch raises under `error_policy: "fail_fast"` — a `subgraph` branch's inner node or a
+  `call` branch's callable. Wraps the inner exception as `__cause__`; carries the failing
+  `branch_name` as a structured field. Non-transient by default; inherits transient
+  classification from the wrapped exception per §6.1.
 
 Existing categories that compose:
 
@@ -1875,3 +1904,25 @@ apply to parallel branches: a crash mid-dispatch re-runs the whole parallel-bran
 on resume. Per-branch resume (the analogue to fan-out's per-instance resume in §10.7) is
 deferred to a follow-on; the parallel-branches primitive does not yet populate a per-branch
 progress field on the checkpoint record.
+
+### 11.10 Conditional branches
+
+Any branch spec (`subgraph` or `call`) MAY carry an optional **`when`** predicate
+`(parent_state) -> bool`, evaluated **once at dispatch** against the parent state the
+parallel-branches node received:
+
+- `when` absent (default) — the branch always dispatches (current behavior).
+- `when` returns `true` — the branch dispatches normally.
+- `when` returns `false` — the branch is **skipped**: not dispatched, runs no work, contributes
+  nothing to parent state, and emits no observer events and no span (observability §5.7). It
+  does not appear in the run.
+
+Skipping is a runtime decision over the **declared** `branches` set, not a change to the set:
+the mapping and its insertion order are unchanged, and §11.8's insertion-order determinism holds
+among the branches that dispatch. If **every** branch is skipped, the parallel-branches node
+completes as a no-op (contributes nothing) — valid, and distinct from the compile-time
+`parallel_branches_no_branches` error (§11.9), which fires only on an empty *declared* mapping.
+
+`when` is a deterministic function of dispatch-time parent state, so graph-engine §5 determinism
+holds — the same input yields the same skipped set. (A `when` that consults nondeterministic
+sources is the same caveat §7 documents for conditional middleware.)

@@ -1,0 +1,58 @@
+# §11.7 branch middleware on a callable branch (proposal 0075): a `call` branch
+# wrapped in FailureIsolationMiddleware degrades on failure and emits a
+# FailureIsolatedEvent, while the sibling branch completes normally. Per-leg
+# isolation reuses the existing §11.7 contract — no new per-leg config. The
+# degraded callable branch "succeeds" from the node's view (returns a degraded
+# update), so fail_fast is NOT triggered. Counterpart to fixture 064 case 2
+# (branch-middleware isolation on a subgraph branch), with a callable branch.
+
+state:
+  fields:
+    vector_result: {type: int, default: 0}
+    fts_result: {type: int, default: 0}
+
+entry: retrieve
+
+nodes:
+  retrieve:
+    parallel_branches:
+      branches:
+        vector:
+          call:
+            flaky:
+              # provider_unavailable is a transient category (§6.1); raised once,
+              # no retry here, so it propagates to the branch FailureIsolation.
+              failure_sequence:
+                - {transient: true, category: provider_unavailable, message: "vector store down"}
+          middleware:
+            - type: failure_isolation
+              degraded_update: {vector_result: -1}
+              event_name: "vector_isolated"
+        fts:
+          call: {update: {fts_result: 2}}
+      error_policy: fail_fast
+
+edges:
+  - {from: retrieve, to: END}
+
+initial_state: {}
+
+expected:
+  # vector callable raises -> its branch FailureIsolationMiddleware catches and
+  # degrades to vector_result: -1; fts completes normally. The degraded branch
+  # does not "fail", so fail_fast is not triggered and fts is not cancelled.
+  final_state:
+    vector_result: -1
+    fts_result: 2
+  execution_order: [retrieve]
+  # caught_exception.category resolves to the originating provider_unavailable
+  # through any engine carrier (§6.3 / proposal 0068), as for subgraph branches
+  # (fixture 064 case 2).
+  expected_failure_isolation_event:
+    event_name: "vector_isolated"
+    post_state: {vector_result: -1}
+    caught_exception:
+      category: provider_unavailable
+  invariants:
+    callable_branch_failure_isolated_and_degraded: true
+    sibling_branch_completed: true

@@ -1,0 +1,74 @@
+# §11.10 conditional branches (proposal 0075). A branch MAY carry an optional
+# `when` predicate (parent_state) -> bool, evaluated once at dispatch. false =>
+# the branch is skipped: not dispatched, no contribution, no events/span. true
+# (or absent) => dispatches normally. Models "skip the vector leg when there is
+# no embedding" without an always-run self-no-op branch.
+#
+# Fixture directive (new in 0075): `when: {field: <name>}` is a truthy check on
+# a parent-state field at dispatch time.
+
+cases:
+  - name: when_false_skips_branch
+    description: |
+      run_vector defaults false, so the vector branch's `when` is false: it is
+      skipped — not dispatched, no contribution (vector_result stays at its
+      default 0), no event. The fts branch has no `when` and runs normally.
+    state:
+      fields:
+        run_vector: {type: bool, default: false}
+        vector_result: {type: int, default: 0}
+        fts_result: {type: int, default: 0}
+    entry: retrieve
+    nodes:
+      retrieve:
+        parallel_branches:
+          branches:
+            vector:
+              call: {update: {vector_result: 1}}
+              when: {field: run_vector}        # skipped when run_vector is falsy
+            fts:
+              call: {update: {fts_result: 2}}
+    edges:
+      - {from: retrieve, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        run_vector: false
+        vector_result: 0          # skipped -> no contribution -> stays default
+        fts_result: 2
+      execution_order: [retrieve]
+      invariants:
+        when_false_branch_skipped: true
+        skipped_branch_no_contribution: true
+        skipped_branch_emits_no_event: true
+
+  - name: when_true_dispatches_branch
+    description: |
+      run_vector is true, so the vector branch's `when` is true and it dispatches
+      normally alongside fts; both contribute.
+    state:
+      fields:
+        run_vector: {type: bool, default: false}
+        vector_result: {type: int, default: 0}
+        fts_result: {type: int, default: 0}
+    entry: retrieve
+    nodes:
+      retrieve:
+        parallel_branches:
+          branches:
+            vector:
+              call: {update: {vector_result: 1}}
+              when: {field: run_vector}
+            fts:
+              call: {update: {fts_result: 2}}
+    edges:
+      - {from: retrieve, to: END}
+    initial_state: {run_vector: true}
+    expected:
+      final_state:
+        run_vector: true
+        vector_result: 1
+        fts_result: 2
+      execution_order: [retrieve]
+      invariants:
+        when_true_branch_dispatches: true

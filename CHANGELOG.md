@@ -4,6 +4,22 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.66.0] — 2026-06-18
+
+**Added**
+
+- **pipeline-utilities §11 — inline-callable parallel branches.** A parallel-branches branch spec may now give its work as `call` — an inline async function over the parent state returning a parent-shaped partial update — instead of a compiled `subgraph` with its own state schema + `inputs` / `outputs` projection (§11.1.1; exactly one of `subgraph` / `call`, mixing allowed, `parallel_branches_invalid_branch_spec` compile error otherwise). A callable branch's contribution is the partial update it returns, merged via the parent reducer with no projection (§11.4). Closes the gap for "M heterogeneous lightweight parallel calls over shared state, each independently failure-isolated" (hybrid recall, paired reads) — previously a hand-rolled concurrent gather — while reusing §11's concurrency, fail-fast cancellation (§11.5), per-branch failure-isolation + events (§11.7), and reducer fan-in (§11.4). ([proposal 0075](proposals/0075-parallel-branches-lightweight-branches.md))
+- **pipeline-utilities §11.10 — conditional branches.** A branch spec (subgraph or callable) may carry an optional `when` predicate `(parent_state) -> bool`, evaluated once at dispatch; `false` skips the branch entirely (no dispatch, contribution, events, or span). All-branches-skipped is a valid no-op, distinct from the compile-time `parallel_branches_no_branches`. ([proposal 0075](proposals/0075-parallel-branches-lightweight-branches.md))
+- Three new conformance fixtures: `pipeline-utilities/conformance/073-parallel-branches-callable-branches`, `074-parallel-branches-conditional-when`, and `075-parallel-branches-callable-failure-isolation`. ([proposal 0075](proposals/0075-parallel-branches-lightweight-branches.md))
+
+**Changed**
+
+- **graph-engine §6 / observability §5.7 — callable-branch observability.** A callable branch has no inner nodes, so the branch itself is the observer event-source unit: one `started` / `completed` pair keyed by `branch_name` (graph-engine §6), rendered as a per-branch dispatch span under `openarmature.node.branch_name` (observability §5.7). A `when`-skipped branch emits no events and no span. No new event variant or span attribute — the existing `branch_name` surface is reused. ([proposal 0075](proposals/0075-parallel-branches-lightweight-branches.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Additive: `call` is an alternative to `subgraph` (existing subgraph branches unchanged) and `when` is optional (absent ⇒ always dispatch). No change to existing parallel-branches, fan-out, or middleware behavior. ([proposal 0075](proposals/0075-parallel-branches-lightweight-branches.md))
+
 ## [0.65.0] — 2026-06-18
 
 **Added**
