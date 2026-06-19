@@ -4,6 +4,22 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.67.0] — 2026-06-19
+
+**Added**
+
+- **observability §5.5.1 / §5.5.10 — output tool-call attributes.** A model's tool-call request is part of its output, but the output payload had no home for it (`output.content` is the assistant's text, omitted for tool-call-only completions). This adds one: §5.5.1 gains the **gated** payload attribute `openarmature.llm.output.tool_calls`, serializing the output tool calls as `[{id, name, arguments}]` (the output-side counterpart to the input tool-call serialization, §5.5.5); §5.5.10 adds the **ungated** identity projections `openarmature.llm.output.tool_calls.count` / `.names` / `.ids` (index-aligned arrays in request order; `count` = length), so *which* tools were requested stays queryable in the default payload-off posture while the arguments stay in the gated full. OA-namespace with no `gen_ai.*` mirror — upstream carries output tool calls as `tool_call` parts inside the structured `gen_ai.output.messages` (no flat surface), and `gen_ai.tool.*` is the `execute_tool` span family, so there is nothing to adopt (the `openarmature.llm.attempt_index` precedent, proposal 0050). The `.ids` link a completion's requests to a downstream tool execution. ([proposal 0076](proposals/0076-tool-call-request-observability-llm-spans.md))
+- **graph-engine §6 — `LlmCompletionEvent.output_tool_calls`.** The typed LLM completion event gains an `output_tool_calls` field (the assistant message's output tool calls in typed-event-native form, complementary to `output_content`, which is null for tool-call-only responses) — the source the new §5.5.1 / §5.5.10 span attributes render from. Populated unconditionally; gated at the rendering boundary like the other payload fields. ([proposal 0076](proposals/0076-tool-call-request-observability-llm-spans.md))
+- Three new conformance fixtures: `observability/conformance/085-llm-tool-call-request-attributes`, `086-llm-tool-call-request-absent`, and `087-llm-tool-call-request-survives-payload-gating`. ([proposal 0076](proposals/0076-tool-call-request-observability-llm-spans.md))
+
+**Changed**
+
+- **observability §5.5.5** — the *Tool-call serialization* note's "first-class tool-call observability is a separate forthcoming proposal" forecast is retired, fulfilled for the request side by §5.5.10. ([proposal 0076](proposals/0076-tool-call-request-observability-llm-spans.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Additive: a new `output_tool_calls` field on the existing `LlmCompletionEvent` (graph-engine §6), one new gated payload attribute (§5.5.1), and three ungated identity attributes (§5.5.10) on the existing LLM span. The new event field and attributes are additive; no change to the LLM completion contract or any existing event field / attribute. ([proposal 0076](proposals/0076-tool-call-request-observability-llm-spans.md))
+
 ## [0.66.1] — 2026-06-18
 
 **Changed**
