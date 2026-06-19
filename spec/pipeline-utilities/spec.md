@@ -1848,10 +1848,10 @@ callable is the event-source unit — graph-engine §6).
 
 Each branch's `middleware` (§11.1.1) wraps the branch's entire invocation as a unit — the
 subgraph for a `subgraph` branch, the callable for a `call` branch — directly mirroring §9.7's
-`instance_middleware` contract. The branch's whole
-subgraph runs inside the middleware chain; failures in any inner node propagate up to the
-branch's middleware. Retry middleware applied at the branch level retries the whole
-branch's subgraph.
+`instance_middleware` contract. The branch's whole invocation runs inside the middleware chain —
+for a `subgraph` branch, the subgraph (failures in any inner node propagate up to the branch's
+middleware); for a `call` branch, the callable. Retry middleware applied at the branch level
+retries the whole branch invocation (the subgraph, or the callable).
 
 Branch middleware composition is heterogeneous. Branch A may have `[retry, timing]`; branch
 B may have `[]`; branch C may have `[custom_breaker]`. Each branch's chain is independent.

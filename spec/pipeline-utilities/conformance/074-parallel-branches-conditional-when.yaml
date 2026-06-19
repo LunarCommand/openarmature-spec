@@ -25,7 +25,7 @@ cases:
           branches:
             vector:
               call: {update: {vector_result: 1}}
-              when: {field: run_vector}        # skipped when run_vector is falsey
+              when: {field: run_vector}        # skipped when run_vector is falsy
             fts:
               call: {update: {fts_result: 2}}
     edges:
