@@ -1,0 +1,54 @@
+# §5.5.10 (proposal 0076): a completion that requests NO tool calls emits none of
+# the openarmature.llm.tool_calls.* attributes — absence means "no tools
+# requested", distinct from count = 0.
+
+cases:
+  - name: no_requested_tool_calls_omits_attributes
+    description: |
+      A plain completion (assistant message with content, no tool_calls) emits
+      none of openarmature.llm.tool_calls.count / .names / .ids on the
+      openarmature.llm.complete span. The family is omitted entirely, not set to
+      count = 0 / empty arrays.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-086
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.llm.finish_reason: "stop"
+                  attributes_absent:
+                    - "openarmature.llm.tool_calls.count"
+                    - "openarmature.llm.tool_calls.names"
+                    - "openarmature.llm.tool_calls.ids"
+                  children: []
+      invariants:
+        tool_call_attributes_omitted_when_none_requested: true

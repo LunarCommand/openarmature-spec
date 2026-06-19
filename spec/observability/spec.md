@@ -30,6 +30,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.5 gained a *GenAI semconv attribute adoption* framing note recording that the emitted `gen_ai.*` attributes are adopted under the new GenAI **de-facto-standard carve-out** (`GOVERNANCE.md` *External-dependency adoption*): recognized **core** names are emitted directly even though the upstream GenAI semantic conventions are wholly Development (they moved to the dedicated `semantic-conventions-genai` repo — 96 attributes Development, none Stable), while **peripheral** Development attributes are mirrored to `openarmature.*` (§5.5.3.1) until Stable or demonstrably ubiquitous — the deciding line being installed-base recognition, not the upstream maturity label. §5.5.3's `gen_ai.system` entry notes the attribute is **retained** per the new **post-adoption retention** rule even though upstream removed it in favor of `gen_ai.provider.name` (migration deferred); the §5.5.3.1 and §5.5.8 *until upstream Stable* wording is reconciled to *Stable or demonstrably ubiquitous*. Reframes adoption rationale only — no emitted attribute changes, existing `gen_ai.*` fixtures remain valid — and adds the de-facto-standard carve-out + retention rule to `GOVERNANCE.md`, correcting `docs/compatibility.md` accordingly by [proposal 0073](../../proposals/0073-genai-semconv-adoption-reconciliation.md)
   - §5.7 *Parallel-branches span attributes* gained a note for proposal 0075's inline-callable branch form: a `call` branch (pipeline-utilities §11.1.1) renders a per-branch dispatch span under `openarmature.node.branch_name` (the branch is the single emitting unit, with no inner-node spans beneath it), and a `when`-skipped branch (§11.10) produces no span. No new attribute; reuses the §5.7 surface by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
   - §8.3 / §8.4.3 clarified the Langfuse mapping under **call-level retry**: §5.5's N per-attempt spans render as **one terminal Generation per `complete()` call** (the call's terminal outcome — the §5.5.7 completion on success, the terminal failure on exhaustion), not one Generation per attempt — the per-attempt surface is OTel-span-only (`openarmature.llm.attempt_index`); success → the terminal response Generation, retry exhaustion → the terminal failed Generation; distinct from node-level retry (pipeline-utilities §6.1), which renders one observation per attempt. The §8.3 "LLM provider span → Generation" row is qualified to match. Clarification of an already-implied consequence of the §5.5.7 terminal-event model; no behavior or fixture change — spec v0.66.1 (clarification PATCH, no proposal)
+  - §5.5.10 *Tool-call request attributes* added — first-class, queryable `openarmature.llm.tool_calls.count` / `.names` / `.ids` on the `openarmature.llm.complete` span, surfacing the tool calls the model requested in its completion; ungated (identifiers, not payload — they render with `disable_provider_payload` on), with the arguments staying in §5.5.1 `output.content`. OA-namespace with no `gen_ai.*` mirror (verified the GenAI registry carries output tool calls as `tool_call` parts inside structured `gen_ai.output.messages`, and `gen_ai.tool.*` is the `execute_tool`/execution surface — no flat request-side equivalent), the `openarmature.llm.attempt_index` (0050) precedent. The §5.5.5 *Tool-call serialization* forecast is retired. New fixtures 085–087 by [proposal 0076](../../proposals/0076-tool-call-request-observability-llm-spans.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1167,7 +1168,8 @@ readers (it points to the actual image asset). The redaction rule applies only t
 `openarmature.llm.input.messages` are JSON-encoded as `[{"id", "name", "arguments"}, ...]` with
 `arguments` serialized verbatim from the parsed mapping. Tool-call argument content is subject
 only to the overall per-attribute byte cap; this specification does not specify a separate
-per-tool-call cap. (First-class tool-call observability is a separate forthcoming proposal.)
+per-tool-call cap. (The model's *requested* tool calls are additionally surfaced as first-class,
+queryable span attributes — `openarmature.llm.tool_calls.*`, §5.5.10 — beyond this payload serialization.)
 
 #### 5.5.6 Cross-implementation consistency
 
@@ -1339,6 +1341,47 @@ observer accumulators per §9) filter via type discrimination
 The privacy posture mirrors §5.5.7's LLM-side typed events — `input_strings` and
 `request_extras` are populated by the implementation unconditionally on every typed event;
 observer-side gating at the rendering boundary honors `disable_provider_payload` per §5.5.4.
+
+#### 5.5.10 Tool-call request attributes
+
+When an LLM completion's assistant message requests tool calls (llm-provider §3 — the ordered
+`tool_calls` list of `ToolCall` records), the `openarmature.llm.complete` span (§5.5) carries a
+first-class, queryable summary of the request:
+
+- `openarmature.llm.tool_calls.count` — int. The number of tool calls the model requested in this
+  completion. A convenience scalar for aggregation (equal to the length of `.names`). Emitted only
+  on a tool-calling completion (count ≥ 1); absent when the completion requested no tools.
+- `openarmature.llm.tool_calls.names` — string array. The requested tool names, in request order
+  (each the `Tool.name`, llm-provider §4, of a requested `ToolCall`). Absent when no tools were
+  requested.
+- `openarmature.llm.tool_calls.ids` — string array. The requested `ToolCall.id`s (llm-provider §3),
+  in the same order as `.names`: `names[i]` and `ids[i]` describe the same requested call. Absent
+  when no tools were requested.
+
+`.names` and `.ids` are equal-length and index-aligned in the order the model emitted the calls, and
+`.count` equals their length — mirroring the ordered `tool_calls` list (llm-provider §3), subject to
+the §5.5.6 determinism guarantee (same completion ⇒ same attribute values).
+
+**Identity, not payload — ungated.** These attributes are NOT gated by `disable_provider_payload`
+(§5.5.4): a tool name (from the caller's own tool schema) and a call id (a correlation token) are
+identifiers, not provider payload. They render even in the default payload-off posture, so "which
+tools did this completion request, and how many" stays queryable. The tool *arguments* are payload
+and are NOT surfaced here — they remain in `openarmature.llm.output.content` (§5.5.1), gated by
+`disable_provider_payload` and truncated per §5.5.5. (A malformed-request flag — for unparseable
+arguments under an error finish reason — is out of scope; these attributes reflect the `tool_calls`
+the provider returned.)
+
+**Cross-span linkage.** `.ids` are the `ToolCall.id`s a downstream tool-execution observation links
+back to via its `tool_call_id`, joining "the model requested call X" (this span) to "call X was
+executed" (the execution surface).
+
+**OA-namespace, no GenAI mirror.** These are OA-namespace (`openarmature.llm.*`) with no `gen_ai.*`
+counterpart, for the same reason `openarmature.llm.attempt_index` (proposal 0050) is: the upstream
+OTel GenAI semantic conventions carry the model's output tool calls as `tool_call` parts *inside* the
+structured `gen_ai.output.messages` attribute, not as a flat per-request count / names / ids surface
+(verified against the GenAI semantic-conventions registry; the `gen_ai.tool.*` family is scoped to the
+separate `execute_tool` span — the execution side — not the chat-completion span). There is no flat
+upstream attribute to adopt or mirror.
 
 ### 5.6 Cross-cutting attributes
 

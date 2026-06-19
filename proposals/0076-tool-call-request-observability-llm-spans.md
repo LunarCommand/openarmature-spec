@@ -1,10 +1,10 @@
 # 0076: Tool-Call Request Observability on LLM Spans
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-18
-- **Accepted:**
-- **Targets:** spec/observability/spec.md (§5.5 — a new first-class, queryable attribute family on the existing `openarmature.llm.complete` span surfacing the tool calls the model *requested* in its completion: `openarmature.llm.tool_calls.count`, `openarmature.llm.tool_calls.names`, `openarmature.llm.tool_calls.ids`; §5.5.1 — retire the "first-class tool-call observability is a separate forthcoming proposal" forecast in *Tool-call serialization*, which this proposal fulfills); plus new conformance fixtures under `spec/observability/conformance/`.
+- **Accepted:** 2026-06-19
+- **Targets:** spec/observability/spec.md (§5.5 — a new first-class, queryable attribute family on the existing `openarmature.llm.complete` span surfacing the tool calls the model *requested* in its completion: `openarmature.llm.tool_calls.count`, `openarmature.llm.tool_calls.names`, `openarmature.llm.tool_calls.ids`; §5.5.5 — retire the "first-class tool-call observability is a separate forthcoming proposal" forecast in *Tool-call serialization*, which this proposal fulfills); plus new conformance fixtures under `spec/observability/conformance/`.
 - **Related:** 0049 (typed `LlmCompletionEvent` — the model *requesting* tools via `tool_calls`; this proposal renders that request as first-class span attributes), 0057 (`LlmCompletionEvent` field-set extension), 0006 / 0025 (llm-provider — the `ToolCall` record shape and `tool_choice` request-side control), 0050 (the `openarmature.llm.attempt_index` precedent — an OA-namespace LLM-span attribute with no upstream GenAI semconv equivalent), 0063 (tool-**execution** observability — the *execution*-side complement this splits cleanly against; linked by the `ToolCall.id`)
 - **Supersedes:**
 
@@ -13,10 +13,10 @@
 Promotes the tool calls a model **requests** in its completion from buried free-form payload to
 **first-class, queryable span attributes** on the existing `openarmature.llm.complete` span.
 
-Today (observability §5.5.1, *Tool-call serialization*) an assistant message's `tool_calls` are
+Today (observability §5.5.5, *Tool-call serialization*) an assistant message's `tool_calls` are
 serialized *into* the output payload attribute (`openarmature.llm.output.content`, JSON-encoded,
 gated by `disable_provider_payload`). They are not independently queryable, and when payload is
-disabled (the default) they vanish from the span entirely. §5.5.1 already flags that "first-class
+disabled (the default) they vanish from the span entirely. §5.5.5 already flags that "first-class
 tool-call observability is a separate forthcoming proposal" — this is it.
 
 The proposal adds three attributes on the LLM completion span:
@@ -95,7 +95,7 @@ execution side, proposal 0063's domain — not the chat-completion span; reusing
 conflate request with execution. See *Relationship to 0063*.) The upstream output representation
 MUST be re-verified at Accept (see *Open questions*).
 
-### observability §5.5.1 — retire the forecast
+### observability §5.5.5 — retire the forecast
 
 The *Tool-call serialization* paragraph notes "(First-class tool-call observability is a separate
 forthcoming proposal.)" This proposal fulfills that forecast for the request side. At Accept the
@@ -144,7 +144,7 @@ New fixtures under `spec/observability/conformance/` (numbered at Accept):
 ## Versioning
 
 **MINOR bump** (pre-1.0). Additive and observability-only: three new OA-namespace span attributes
-on an existing span plus a fulfilled-forecast edit to §5.5.1; no change to the observer-event union,
+on an existing span plus a fulfilled-forecast edit to §5.5.5; no change to the observer-event union,
 the LLM completion contract, or any existing attribute. Spec version target deferred to Accept.
 
 ## Alternatives considered
