@@ -4,7 +4,7 @@
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-18
 - **Accepted:**
-- **Targets:** spec/observability/spec.md (§5.5 — a new first-class, queryable attribute family on the existing `openarmature.llm.complete` span surfacing the tool calls the model *requested* in its completion: `openarmature.llm.tool_calls.count`, `openarmature.llm.tool_calls.names`, `openarmature.llm.tool_calls.ids`; §5.5.1 — retire the "first-class tool-call observability is a separate forthcoming proposal" forecast in *Tool-call serialization*, which this proposal fulfils); plus new conformance fixtures under `spec/observability/conformance/`.
+- **Targets:** spec/observability/spec.md (§5.5 — a new first-class, queryable attribute family on the existing `openarmature.llm.complete` span surfacing the tool calls the model *requested* in its completion: `openarmature.llm.tool_calls.count`, `openarmature.llm.tool_calls.names`, `openarmature.llm.tool_calls.ids`; §5.5.1 — retire the "first-class tool-call observability is a separate forthcoming proposal" forecast in *Tool-call serialization*, which this proposal fulfills); plus new conformance fixtures under `spec/observability/conformance/`.
 - **Related:** 0049 (typed `LlmCompletionEvent` — the model *requesting* tools via `tool_calls`; this proposal renders that request as first-class span attributes), 0057 (`LlmCompletionEvent` field-set extension), 0006 / 0025 (llm-provider — the `ToolCall` record shape and `tool_choice` request-side control), 0050 (the `openarmature.llm.attempt_index` precedent — an OA-namespace LLM-span attribute with no upstream GenAI semconv equivalent), 0063 (tool-**execution** observability — the *execution*-side complement this splits cleanly against; linked by the `ToolCall.id`)
 - **Supersedes:**
 
@@ -26,7 +26,7 @@ The proposal adds three attributes on the LLM completion span:
 - `openarmature.llm.tool_calls.ids` — the requested `ToolCall.id`s, in order (the linkage to a
   later tool execution).
 
-These are **identity, not payload** — un-gated by `disable_provider_payload`, so "which tools did
+These are **identity, not payload** — ungated by `disable_provider_payload`, so "which tools did
 this completion ask for, and how many" survives with payloads off. The tool **arguments** stay in
 `openarmature.llm.output.content` (payload, gated) — not duplicated here.
 
@@ -49,7 +49,7 @@ as part of the serialized message content, not as a first-class dimension.
 **Names and ids are identity, not payload.** A tool *name* is a function identifier from the
 application's own tool schema (llm-provider §4 `Tool.name`), and a `ToolCall.id` is a correlation
 token — neither is user content or external data the way tool *arguments* are. Treating
-count/names/ids as un-gated identity attributes (the same class as `openarmature.llm.model` or
+count/names/ids as ungated identity attributes (the same class as `openarmature.llm.model` or
 `openarmature.llm.attempt_index`) lets tool-request visibility coexist with a payload-off privacy
 posture, which is exactly the common production configuration. The arguments remain payload and
 remain gated.
@@ -74,7 +74,7 @@ records the model is requesting):
 | `openarmature.llm.tool_calls.names` | string array | The requested tool names, in request order — each the `Tool.name` (llm-provider §4) of a `ToolCall`. Absent when no tools were requested. |
 | `openarmature.llm.tool_calls.ids` | string array | The requested `ToolCall.id`s (llm-provider §3), in the same order as `.names` (`names[i]` and `ids[i]` describe the same requested call). The linkage to a downstream tool execution: a 0063 `ToolCallEvent` / `openarmature.tool.call` span carrying `tool_call_id = X` satisfies the request whose id is `X` here. Absent when no tools were requested. |
 
-**Identity, not payload — un-gated.** These three attributes are NOT gated by
+**Identity, not payload — ungated.** These three attributes are NOT gated by
 `disable_provider_payload` (§5.5.4): tool names and call ids are identifiers, not provider
 payload. The tool **arguments** are payload and are NOT added here — they remain in
 `openarmature.llm.output.content` (§5.5.1), gated and truncated by the existing rules. Rendering
@@ -98,7 +98,7 @@ MUST be re-verified at Accept (see *Open questions*).
 ### observability §5.5.1 — retire the forecast
 
 The *Tool-call serialization* paragraph notes "(First-class tool-call observability is a separate
-forthcoming proposal.)" This proposal fulfils that forecast for the request side. At Accept the
+forthcoming proposal.)" This proposal fulfills that forecast for the request side. At Accept the
 parenthetical is updated to point at the new attribute family (names/ids/count are now first-class;
 the serialized arguments remain in the output payload as described there).
 
@@ -112,7 +112,7 @@ there is no overlap:
 | What | the model *requesting* tools in its completion | the caller *executing* a tool |
 | Where | attributes on the existing `openarmature.llm.complete` span | a separate `openarmature.tool.call` span |
 | Namespace | `openarmature.llm.tool_calls.*` (request) | `openarmature.tool.*` (execution; mirrors `gen_ai.tool.*`) |
-| Payload | names/ids/count un-gated; arguments stay in `output.content` | `arguments` / `result` payload-gated on the tool span |
+| Payload | names/ids/count ungated; arguments stay in `output.content` | `arguments` / `result` payload-gated on the tool span |
 | Linkage | the requested `ToolCall.id`s (`.ids`) → | ← `tool_call_id` on the `ToolCallEvent` / tool span |
 
 A request may be executed later (or never, or several times). The two surfaces are joined only by
@@ -162,7 +162,7 @@ the LLM completion contract, or any existing attribute. Spec version target defe
 3. **Also render the arguments as a flat attribute here.** Reject — arguments are payload and
    already live in `openarmature.llm.output.content` (gated, truncated). A second copy would
    shadow that surface, double the truncation problem, and blur the identity-vs-payload line that
-   makes names/ids/count safe to leave un-gated.
+   makes names/ids/count safe to leave ungated.
 
 4. **Add a Langfuse mapping in this proposal.** Defer (tracked as future work). The Langfuse
    Generation `output` already carries the requested calls; the queryable-OTel-attribute gap is the
