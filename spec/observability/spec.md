@@ -1083,8 +1083,8 @@ below are normative for cross-implementation consistency):
   (`openarmature.embedding.input.strings`, `openarmature.embedding.request.extras`), the §5.5.11 tool
   payload attributes (`openarmature.tool.call.arguments`, `openarmature.tool.call.result`), and the
   equivalent Langfuse payload fields per §8. When `False`, payload attributes emit per the
-  corresponding section, subject to the §5.5.5 truncation contract for LLM payload and per the
-  privacy posture documented in §8 for Langfuse embedding observations. (Renamed from
+  corresponding section, subject to the §5.5.5 truncation contract and per the
+  privacy posture documented in §8 for payload-bearing Langfuse observations (embedding §8.4.5, tool §8.4.6). (Renamed from
   `disable_llm_payload` by proposal 0059; the flag's scope broadened to cover payload from any
   provider operation rather than LLM-only. No semantic change beyond the broadened scope;
   default-conservative posture preserved.)
@@ -1108,14 +1108,17 @@ The three flags are independent. Typical configurations:
 
 #### 5.5.5 Truncation contract
 
-The §5.5.1 payload attributes (`openarmature.llm.input.messages`,
-`openarmature.llm.output.content`, `openarmature.llm.request.extras`) MAY be arbitrarily large in
-principle (a long conversation, a verbose model response, a multi-image user message). Emission
+The payload attributes — the §5.5.1 LLM attributes (`openarmature.llm.input.messages`,
+`openarmature.llm.output.content`, `openarmature.llm.request.extras`), the §5.5.8 embedding payload
+(`openarmature.embedding.input.strings`, `openarmature.embedding.request.extras`), and the §5.5.11 tool
+payload (`openarmature.tool.call.arguments`, `openarmature.tool.call.result`) — MAY be arbitrarily large
+in principle (a long conversation, a verbose model response, a multi-image user message, a large tool
+result). Emission
 without bounds would produce spans larger than typical OTLP exporters accept and inflate
 observability storage unbounded. The following contract applies:
 
-**Per-attribute byte cap.** Implementations MUST enforce a maximum byte length on each of the
-three payload attributes individually. The default cap is **65,536 bytes (64 KiB)** per
+**Per-attribute byte cap.** Implementations MUST enforce a maximum byte length on each
+payload attribute individually. The default cap is **65,536 bytes (64 KiB)** per
 attribute. Implementations MUST allow the cap to be configured per observer (specific mechanism —
 constructor argument, environment variable, etc. — is implementation-defined). The byte length
 is measured on the UTF-8 encoding of the final attribute string, after JSON serialization and
@@ -1423,7 +1426,7 @@ span-name convention, which OA does not adopt in v1 (see *adoption* below).
 | `openarmature.tool.call.id` | string | The `tool_call_id` (the §5.5.10 model-request linkage) when present; omitted otherwise. Mirrors `gen_ai.tool.call.id`. |
 | `openarmature.tool.call.arguments` | string (JSON-encoded) | The tool arguments. Mirrors `gen_ai.tool.call.arguments`. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract. |
 | `openarmature.tool.call.result` | string (JSON-encoded) | The tool result. Mirrors `gen_ai.tool.call.result`. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract. |
-| `error.type` | string | On failure only — the exception type. Uses the **standard OTel `error.type`** attribute (Stable core semconv, not a `gen_ai.tool.*` name), since OTel models span errors with `error.type` generally. Span status is ERROR (§4.2) with an OTel exception event carrying the `error_message`. |
+| `error.type` | string | On failure only — the exception type. Uses the **standard OTel `error.type`** attribute (Stable core semconv, not a `gen_ai.tool.*` name), since OTel models span errors with `error.type` generally. Span status is ERROR (§4.2) with an OTel exception event carrying the exception type + message (per §4.2). |
 
 **GenAI semconv adoption — peripheral, mirrored (per the §5.5 carve-out).** The upstream OTel GenAI
 semconv defines an `execute_tool` span (span name `execute_tool {gen_ai.tool.name}`,

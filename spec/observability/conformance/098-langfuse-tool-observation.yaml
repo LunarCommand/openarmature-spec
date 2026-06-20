@@ -81,6 +81,7 @@ cases:
                 level: ERROR
                 metadata:
                   openarmature_tool_name: "get_weather"
+                  openarmature_tool_call_id: "call_def456"
                   error_type: "TimeoutError"
                   error_message: "tool timed out"
                 children: []
