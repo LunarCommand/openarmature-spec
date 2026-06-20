@@ -2,13 +2,13 @@
 
 Verifies retrieval-provider §4's dimensionality-consistency cross-impl invariant. An
 `EmbeddingProvider` receiving a response whose inner vectors have inconsistent lengths MUST raise
-`provider_invalid_response` per §5.
+`provider_invalid_response` per §7.
 
 **Spec sections exercised:**
 
 - retrieval-provider §4 — dimensionality consistency invariant (all vectors in a single response
   MUST share the same dimensionality).
-- retrieval-provider §5 — `provider_invalid_response` error category.
+- retrieval-provider §7 — `provider_invalid_response` error category.
 
 **Cases:**
 

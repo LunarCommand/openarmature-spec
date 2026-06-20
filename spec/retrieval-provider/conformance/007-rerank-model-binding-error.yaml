@@ -1,0 +1,43 @@
+# retrieval-provider §5 + §7 — RerankProvider model-binding error.
+# Verifies that a RerankProvider instantiated with an unknown rerank
+# model identifier surfaces provider_invalid_model per llm-provider §7.
+# (calls_rerank / mock_rerank directives documented in 006's header.)
+
+cases:
+  - name: rerank_unknown_model_raises_provider_invalid_model
+    description: |
+      RerankProvider instantiated with model identifier
+      "nonexistent-rerank-model". The bound provider's ready() check
+      surfaces provider_invalid_model — verified by issuing rerank()
+      (which calls ready() implicitly per impl, or where ready() is
+      called explicitly first per the harness contract). The §7
+      category exception MUST raise out of the call.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["a", "b"]
+          stores_response_in: rerank_response
+          model: nonexistent-rerank-model
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 404
+        body:
+          error:
+            message: "model 'nonexistent-rerank-model' not found"
+            type: invalid_request_error
+            code: model_not_found
+    expected_error:
+      category: provider_invalid_model
+      raised_from: rerank_node
+    expected:
+      invariants:
+        exception_raised_out_of_rerank_call: true

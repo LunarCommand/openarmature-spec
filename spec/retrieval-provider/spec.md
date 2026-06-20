@@ -6,6 +6,7 @@ Canonical behavioral specification for the OpenArmature retrieval-provider abstr
 - **Introduced:** spec version 0.54.0
 - **History:**
   - created by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
+  - rerank protocol added by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -19,8 +20,8 @@ Normative keywords (MUST, MUST NOT, SHOULD, MAY) are used per [RFC 2119](https:/
 The retrieval-provider capability is the home for retrieval-primitive provider operations that sit
 alongside LLM completion. The first protocol surface this specification defines is **embedding** —
 turning a list of input strings into a list of vectors via an `EmbeddingProvider`. A sibling
-`RerankProvider` protocol covering re-ranking lands in a forthcoming proposal extending the same
-capability.
+`RerankProvider` protocol (§5) re-scores a list of candidate documents against a query, returning
+them sorted by relevance — the second retrieval-primitive surface on the same capability.
 
 Retrieval-provider is a sibling capability to `llm-provider` (per proposal 0006),
 not a subtype of it. Embedding and LLM completion both bind per-instance to a model identifier per
@@ -54,10 +55,9 @@ provider exception as cause.
 
 ## 2. Concepts
 
-**RetrievalProvider.** The umbrella term covering both `EmbeddingProvider` (this specification) and
-the forthcoming `RerankProvider`. Not a concrete protocol itself; used as the capability-level
-descriptor when discussing cross-protocol concerns (observability, error semantics, per-model
-binding).
+**RetrievalProvider.** The umbrella term covering both `EmbeddingProvider` and `RerankProvider`. Not
+a concrete protocol itself; used as the capability-level descriptor when discussing cross-protocol
+concerns (observability, error semantics, per-model binding).
 
 **EmbeddingProvider.** An object that, given a sequence of input strings, returns a sequence of
 vectors wrapped in an `EmbeddingResponse`. Bound to a specific embedding model identifier per
@@ -75,6 +75,28 @@ embedding-specific caller-supplied request parameters. Initially minimal: an opt
 field (for callers controlling output vector size on providers that support it) plus the
 extras-pass-through bag for vendor-specific knobs.
 
+**RerankProvider.** An object that, given a query string and a list of candidate documents, returns
+the documents sorted by query-relevance with provider-specific scores. Bound to a specific rerank
+model identifier per instance.
+
+**RerankResponse.** The result of a `rerank()` call: the sorted scored documents, the model
+identifier, usage information, and (when present) the provider-returned response identifier and the
+parsed raw response.
+
+**RerankUsage.** A usage record with optional `search_units` and optional `input_tokens`, reflecting
+the messy provider landscape where rerank pricing surfaces vary widely.
+
+**ScoredDocument.** A single result entry carrying the document's original index in the input list,
+the provider-assigned relevance score, and (optionally) an echo of the document text.
+
+**Rerank runtime config.** A `RuntimeConfig`-shaped record (parallel to llm-provider §6) carrying
+rerank-specific caller-supplied request parameters. Initially minimal: one declared field,
+`return_documents` (boolean, default `False`), controlling whether the provider echoes document text
+on each `ScoredDocument` in the response. The field name + default match the major rerank vendors'
+wire-shape parameter (Cohere, Voyage AI, Jina AI all expose `return_documents` defaulting `False`);
+per-vendor wire-format mappings pin the source-side translation where a vendor diverges. Plus the
+extras-pass-through bag for vendor-specific knobs.
+
 ## 3. EmbeddingProvider protocol
 
 The `EmbeddingProvider` protocol exposes two async operations.
@@ -86,11 +108,11 @@ model. Implementations MAY surface a hosted-provider authentication check, a loc
 attempt, or a noop — whichever fits the backend. The operation:
 
 - MUST be idempotent. Repeated `ready()` calls MUST NOT change observable provider state.
-- MUST surface `provider_invalid_model` (per §5) if the bound embedding model is not recognized by
+- MUST surface `provider_invalid_model` (per §7) if the bound embedding model is not recognized by
   the backend.
-- MUST surface `provider_model_not_loaded` (per §5) if the bound model is recognized but not
+- MUST surface `provider_model_not_loaded` (per §7) if the bound model is recognized but not
   currently usable (e.g., a local model that requires explicit loading).
-- MAY raise other §5 error categories (`provider_authentication`, `provider_unavailable`) when the
+- MAY raise other §7 error categories (`provider_authentication`, `provider_unavailable`) when the
   underlying readiness check encounters those conditions.
 
 ### `embed(input, *, config=None)`
@@ -108,8 +130,8 @@ The `embed()` operation:
 
 - MUST be stateless. Repeated calls with the same `input` and `config` MUST NOT change observable
   provider state.
-- MUST raise one of the §5 error categories on failure. The §5 enumeration is shared cross-
-  capability with llm-provider §7; embedding-applicable subset documented in §5.
+- MUST raise one of the §7 error categories on failure. The §7 enumeration is shared cross-
+  capability with llm-provider §7; embedding-applicable subset documented in §7.
 - MUST preserve input order in the response (the vector at index `i` MUST be the embedding of
   `input[i]`). Implementations MUST NOT permute vector position relative to input position.
 - MUST NOT loop, retry, or fall back. Pipeline-utilities §6 middleware and per-call retry compose
@@ -146,37 +168,134 @@ idiomatic equivalent). The bound identifier is visible to the observability laye
 - Exactly one vector per input string (the length of `vectors` MUST match the length of `input`).
 - Vector position is keyed by input order; implementations MUST NOT permute.
 - All vectors in a single response have the same dimensionality. Implementations MUST verify this
-  on the response and raise `provider_invalid_response` (§5) if violated.
+  on the response and raise `provider_invalid_response` (§7) if violated.
 - The `dimensions` field on the response MUST equal the dimensionality of each inner vector —
   cross-check invariant for adapters.
-- Implementations MUST raise `provider_invalid_response` (§5) when the response carries a mismatched
+- Implementations MUST raise `provider_invalid_response` (§7) when the response carries a mismatched
   count of vectors vs. input strings.
 
-## 5. Error semantics
+## 5. RerankProvider protocol
 
-The retrieval-provider capability inherits the llm-provider §7 error-category enumeration. The same nine normative categories are available to embedding calls.
-The embedding-applicable subset (the §7 categories minus the LLM-completion-specific ones) is:
+The `RerankProvider` protocol exposes two async operations, mirroring `EmbeddingProvider` (§3) with
+rerank-specific shapes.
+
+### `ready()`
+
+A no-argument async operation that verifies the provider can serve requests against the bound rerank
+model. Same idempotency + error-surfacing contract as §3's `ready()`:
+
+- MUST be idempotent. Repeated `ready()` calls MUST NOT change observable provider state.
+- MUST surface `provider_invalid_model` (per §7) if the bound rerank model is not recognized by the
+  backend.
+- MUST surface `provider_model_not_loaded` (per §7) if the bound model is recognized but not
+  currently usable.
+- MAY raise other §7 error categories (`provider_authentication`, `provider_unavailable`) under the
+  same conditions as §3's `ready()`.
+
+### `rerank(query, documents, *, top_k=None, config=None)`
+
+The rerank operation. Parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `query` | string | The query string the documents are scored against. MUST be non-empty; an empty query raises `provider_invalid_request` (§7) at the pre-send validation layer. |
+| `documents` | list of strings | The candidate documents to score against the query. MUST be a list (single-document callers wrap as a one-element list — matches the embedding protocol's "always a list" framing). MUST be non-empty; an empty document list raises `provider_invalid_request` (§7). |
+| `top_k` | optional int (keyword-only) | The maximum number of results the caller wants returned. `None` means "all" (the provider MAY return up to `len(documents)` results). MUST be positive when supplied; zero or negative raises `provider_invalid_request` (§7). MAY exceed `len(documents)` — the provider returns at most `len(documents)` results regardless. |
+| `config` | optional `RerankRuntimeConfig` (keyword-only) | Caller-supplied rerank runtime config. Keyword-only (or per-language idiomatic equivalent that prevents positional confusion). |
+
+Returns a `RerankResponse` (§6).
+
+The `rerank()` operation:
+
+- MUST be stateless. Repeated calls with the same `query` / `documents` / `top_k` / `config` MUST NOT
+  change observable provider state.
+- MUST raise one of the §7 error categories on failure.
+- MUST return results sorted by `relevance_score` descending (most relevant first).
+- MUST preserve each result's `index` field as the position in the *input* `documents` list, so
+  callers can map sorted results back to their original documents.
+- MUST NOT loop, retry, or fall back. Pipeline-utilities §6 middleware and per-call retry compose
+  above the provider.
+
+### Per-instance model binding
+
+Per-instance model binding follows the llm-provider §5 contract exactly, identical to §3's framing.
+Implementations bind one rerank model identifier per provider instance via a constructor parameter
+(or per-language idiomatic equivalent). The bound identifier is visible to the observability layer
+(per observability §5.5) as the `gen_ai.request.model` attribute on the rerank span.
+
+## 6. RerankResponse, RerankUsage, ScoredDocument shapes
+
+### RerankResponse
+
+| Field | Description |
+|---|---|
+| `results` | List of `ScoredDocument` entries sorted by `relevance_score` descending (most relevant first). `len(results)` is at most `min(top_k, len(documents))` when `top_k` is supplied; at most `len(documents)` otherwise. MAY be shorter than that bound if the provider returns fewer results (e.g., relevance-threshold filtering on the provider side). |
+| `model` | The model identifier the provider returned. MAY be a more specific identifier than the one the provider was bound against. |
+| `usage` | A `RerankUsage` record (defined below). |
+| `response_id` | The provider-returned response identifier when present; null otherwise. Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.13) and the typed `RerankEvent.response_id` field (per graph-engine §6). |
+| `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Per charter §3.1 principle 8 ("Transparency over abstraction") — callers retain access to provider-specific fields the normalized shape doesn't surface. Parallel to llm-provider §6 `Response.raw` and §4 `EmbeddingResponse.raw`. |
+
+### ScoredDocument
+
+| Field | Description |
+|---|---|
+| `index` | Int. The 0-based position of this document in the original input `documents` list. **Load-bearing for caller-side lookup** — callers MUST be able to map a result back to its input document via `documents[result.index]`. Implementations MUST preserve this verbatim from the provider response. |
+| `relevance_score` | Float. The provider-assigned relevance score; higher = more relevant. **Provider-specific scale** — most providers normalize to `[0.0, 1.0]` but the spec does NOT pin a scale. Cross-provider score comparisons are NOT meaningful. |
+| `document` | The echoed document text when the provider returns it; null otherwise. Implementations MUST surface the provider's echo verbatim when present; MUST NOT fabricate the echo from the input `documents` list when the provider omits it (the provider's echo and the caller's input are two different surfaces; conflating them would mask provider-side document transformations like deduplication or truncation). |
+
+### RerankUsage
+
+| Field | Description |
+|---|---|
+| `search_units` | Int or null. The provider-reported count of "search units" billed for this call. Populated for providers that surface it (e.g., Cohere); null otherwise. |
+| `input_tokens` | Int or null. The provider-reported count of input tokens (query + concatenated documents). Populated for providers that surface it (e.g., Voyage AI); null otherwise. |
+
+Both fields default to null. Implementations MUST populate the field when the provider returns a
+corresponding value and MUST NOT fabricate one when the provider omits it. A `RerankUsage` with both
+fields null is valid and represents the "provider reports no billing surface" case.
+
+### Cross-impl invariants
+
+- `results` are sorted by `relevance_score` descending. Implementations that receive an unsorted
+  provider response MUST sort before returning (some provider SDKs pre-sort; some don't).
+- Each result's `index` MUST be a valid index into the input `documents` list
+  (`0 <= index < len(documents)`). Implementations MUST raise `provider_invalid_response` (§7) when
+  the provider returns an out-of-range index.
+- The same `index` MUST NOT appear twice in `results`. Implementations MUST raise
+  `provider_invalid_response` (§7) on duplicate-index responses.
+- When `top_k` is supplied, `len(results) <= top_k`. Implementations MUST raise
+  `provider_invalid_response` (§7) if the provider returns more results than requested.
+- When the provider returns `document` echoes for some results but not others, implementations MUST
+  preserve the per-result variance (null where the provider omitted; populated where the provider
+  echoed). MUST NOT auto-fill from the input `documents` list.
+
+## 7. Error semantics
+
+The retrieval-provider capability inherits the llm-provider §7 error-category enumeration. The same
+nine normative categories are available to both embedding and rerank calls. The retrieval-applicable
+subset (the §7 categories minus the LLM-completion-specific ones), shared by both protocols, is:
 
 - `provider_authentication` — credentials missing, invalid, or revoked.
 - `provider_unavailable` — transport failure, provider-side outage, timeout.
 - `provider_invalid_model` — bound model identifier not recognized by the provider.
 - `provider_model_not_loaded` — model recognized but not currently usable.
 - `provider_rate_limit` — provider-side rate limit signaled.
-- `provider_invalid_response` — provider returned a malformed response (mismatched vector count,
-  inconsistent dimensions, missing required fields).
-- `provider_invalid_request` — caller-supplied input failed pre-send validation (empty input list,
-  invalid `dimensions` value, etc.).
+- `provider_invalid_response` — provider returned a malformed response: missing required fields, or a
+  violation of the capability's cross-impl invariants (embedding §4 — mismatched vector count,
+  inconsistent dimensions; rerank §6 — out-of-range or duplicate `index`, more results than `top_k`).
+- `provider_invalid_request` — caller-supplied input failed pre-send validation (embedding: empty
+  input list, invalid `dimensions`; rerank: empty `query`, empty `documents` list, `top_k <= 0`).
 
-The following llm-provider §7 categories do NOT apply to embedding:
+The following llm-provider §7 categories do NOT apply to embedding or rerank:
 
-- `provider_unsupported_content_block` — embedding takes strings, not content blocks.
-- `structured_output_invalid` — embedding has no `response_schema`.
+- `provider_unsupported_content_block` — both take strings, not content blocks.
+- `structured_output_invalid` — neither has a `response_schema`.
 
 The exception-flow contract from llm-provider §7 applies identically: the error category exception
-MUST raise out of `embed()` whether raised by the provider or by the implementation's pre-send
-validation layer.
+MUST raise out of `embed()` / `rerank()` whether raised by the provider or by the implementation's
+pre-send validation layer.
 
-## 6. Determinism
+## 8. Determinism
 
 Embedding model determinism guarantees vary by provider. This specification MUST NOT assume
 bit-identical vectors for equivalent inputs across calls — providers MAY return slightly different
@@ -186,35 +305,54 @@ Embedding-aware caches keyed on input strings MAY apply per the provider's docum
 guarantees but are NOT a spec contract. A future proposal MAY define a cache-attribute family
 analogous to proposal 0047's LLM prefix-cache attributes; out of scope for v1.
 
-## 7. Cross-spec touchpoints
+**Rerank determinism.** Rerank guarantees are similar to embedding's: providers MAY return slightly
+different scores for the same `(query, documents)` pair across calls. This specification MUST NOT
+assume bit-identical responses for equivalent inputs. Even when scores are identical bit-for-bit, two
+documents with identical scores MAY appear in either order across calls (provider implementation
+detail) unless the provider documents a tie-breaking rule; the spec MUST NOT assume one.
 
-- **graph-engine §6** — typed observer events `EmbeddingEvent` (success) and `EmbeddingFailedEvent`
-  (failure). See graph-engine §6 for the full event surface and dispatch contract.
-- **observability §5.5** — OTel mapping for embedding spans (Stable GenAI semconv subset plus
-  OA-namespace `openarmature.embedding.*` attributes; span name
-  `openarmature.embedding.complete` discriminates the operation).
-- **observability §8** — Langfuse mapping using Langfuse's dedicated `Embedding` observation type.
+## 9. Cross-spec touchpoints
+
+- **graph-engine §6** — typed observer events `EmbeddingEvent` / `EmbeddingFailedEvent` (embedding)
+  and `RerankEvent` / `RerankFailedEvent` (rerank). See graph-engine §6 for the full event surface
+  and dispatch contract.
+- **observability §5.5** — OTel mapping for embedding spans (§5.5.8) and rerank spans (§5.5.13): the
+  core GenAI semconv subset (per the §5.5 GenAI de-facto-standard carve-out) plus OA-namespace
+  `openarmature.embedding.*` / `openarmature.rerank.*` attributes; span names
+  `openarmature.embedding.complete` / `openarmature.rerank.complete` discriminate the operation.
+- **observability §8** — Langfuse mapping using Langfuse's dedicated `Embedding` (§8.4.5) and
+  `Retriever` (§8.4.7) observation types.
 - **observability §5.5.4** — observer-level privacy flag `disable_provider_payload` (renamed from
-  `disable_llm_payload` by proposal 0059) gates payload from any provider call, including
-  embedding payload (`input_strings`, `request_extras`, and the Langfuse `output` vectors).
+  `disable_llm_payload` by proposal 0059) gates payload from any provider call, including embedding
+  payload (`input_strings`, `request_extras`, the Langfuse `output` vectors) and rerank payload
+  (`query`, `documents`, the result document echoes).
 - **llm-provider §7** — error-category enumeration (inherited).
-- **pipeline-utilities §6 (middleware)** — `EmbeddingProvider` calls are eligible for retry
-  middleware identically to `complete()` calls.
+- **pipeline-utilities §6 (middleware)** — `EmbeddingProvider` and `RerankProvider` calls are
+  eligible for retry middleware identically to `complete()` calls.
 
-## 8. Out of scope
+## 10. Out of scope
 
 Not covered by this specification; deferred to follow-on capabilities or proposals:
 
-- **Rerank protocol** — lands in a forthcoming proposal extending this capability with
-  `RerankProvider` plus paired `RerankEvent` / `RerankFailedEvent` typed events.
-- **Multi-modal embedding** — image embeddings, audio embeddings. Text-only in v1.
-- **Per-vendor wire-format mappings.** Follow-on proposals add concrete vendor mappings (OpenAI,
-  Cohere, Voyage, Jina) analogous to llm-provider §8.1 / §8.2 / §8.3.
-- **Per-SDK implementation details** — httpx batching strategies, embedding-layer retry timing,
+- **Multi-modal embedding and rerank** — image / audio documents. Text-only in v1.
+- **Per-vendor and per-runtime wire-format mappings.** Follow-on proposals add concrete vendor /
+  runtime mappings — embedding (OpenAI, Cohere, Voyage, Jina) and rerank (Cohere, Voyage, Jina
+  hosted; TEI self-hosted) — analogous to llm-provider §8.1 / §8.2 / §8.3. Each pins the per-vendor
+  wire sourcing for fields the protocol leaves position-agnostic (e.g., where `response_id` is
+  surfaced in that vendor's response shape).
+- **Per-SDK implementation details** — httpx batching strategies, provider-layer retry timing,
   SDK-specific error mapping. Provider-internal choices.
-- **Caller-supplied determinism / seeding.** Embedding models rarely expose seeds; not v1.
-- **Cross-call observability correlation** (e.g., "this rerank call used vectors from that
-  embedding call"). Each call is independent at the protocol layer; any cross-call correlation
-  lives in node-body code.
-- **Embedding result caching at the framework level.** Caching is an application concern.
-- **Streaming embeddings.** Some providers stream embeddings for very long inputs; not v1.
+- **Caller-supplied determinism / seeding.** Embedding and rerank models rarely expose seeds; not v1.
+- **Cross-call observability correlation** (e.g., "this rerank call used vectors from that embedding
+  call"). Each call is independent at the protocol layer; any cross-call correlation lives in
+  node-body code.
+- **Embedding / rerank result caching at the framework level.** Caching is an application concern.
+- **Streaming embeddings and streaming rerank.** Some providers stream results for very long inputs
+  / large result sets; not v1.
+- **Score normalization across providers.** Each rerank provider's relevance scale is surfaced
+  as-returned; the spec does NOT define a normalization layer.
+- **Hybrid retrieval (embedding + rerank in one call).** No provider exposes this as a single
+  protocol-level operation; the two stages are always separate calls.
+- **`gen_ai.operation.name` adoption for rerank.** Deferred per the stable-only upstream adoption
+  policy; a follow-on proposal adds it when upstream reaches Stable with a rerank-applicable
+  well-known value.

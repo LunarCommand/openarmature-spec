@@ -4,6 +4,24 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.70.0] — 2026-06-20
+
+**Added**
+
+- **retrieval-provider §5 / §6 — rerank protocol.** Adds `RerankProvider` as the second protocol surface on the `retrieval-provider` capability (sibling to `EmbeddingProvider`): `ready()` + `rerank(query, documents, *, top_k=None, config=None)` returning a `RerankResponse` of `ScoredDocument` entries sorted by `relevance_score` descending, each carrying its input-documents `index` (load-bearing for caller-side lookup), with `RerankUsage` (optional `search_units` / `input_tokens`) reflecting the varied rerank billing landscape. Same per-model-binding + error-category + privacy posture as embedding. ([proposal 0060](proposals/0060-retrieval-provider-rerank.md))
+- **graph-engine §6 — typed rerank events.** Two paired typed observer events `RerankEvent` (success) + `RerankFailedEvent` (failure), the rerank sibling to the embedding pair, carrying the identity / scoping / request-side field set plus rerank success-side fields (`response_id`, `response_model`, `usage`, `document_count`, `top_k`, `result_count`) and the three failure-specific fields (`error_category`, `error_type`, `error_message`). Mutual exclusion + exception-flow + dispatch timing mirror the embedding pair; `query` / `documents` and the result document echoes are payload-bearing, gated observer-side by `disable_provider_payload`. ([proposal 0060](proposals/0060-retrieval-provider-rerank.md))
+- **observability §5.5.13 / §5.5.14 / §8.4.7 — rerank mapping.** OTel rerank span `openarmature.rerank.complete` carrying the core GenAI semconv subset (with `gen_ai.usage.input_tokens` conditionally emitted, since rerank providers vary on reporting it) plus OA-namespace `openarmature.rerank.*` attributes (including the conditionally-emitted `search_units`); the *Typed rerank events* note (§5.5.14); and the Langfuse dedicated `Retriever` observation `asType: "retriever"` (§8.4.7), with the OA `usageDetails.searchUnits` convention. `gen_ai.operation.name` deferred — no upstream rerank coverage. `disable_provider_payload` (proposal 0059) already gates the rerank payload. ([proposal 0060](proposals/0060-retrieval-provider-rerank.md))
+- **observability §11 — rerank metrics.** Rerank joins 0067's operation-generic GenAI metric instruments: the `openarmature.gen_ai.operation` dimension gains `rerank`, the duration histogram + `error.type` source `RerankFailedEvent`, and the token-usage histogram records rerank `input_tokens` as `input` when reported (rerank has no output tokens; `search_units` is a billing unit, not a token). Completes the rerank hook 0067 left in §11.2 / §11.3. ([proposal 0060](proposals/0060-retrieval-provider-rerank.md))
+- Seven new retrieval-provider conformance fixtures (`006`–`012`): rerank positive control, model-binding error, malformed-response (out-of-range / duplicate index), `top_k` contract (respected / violation), and per-result echo variance. Eleven new observability conformance fixtures (`099`–`109`): rerank event dispatch (success / failure), mutual exclusion, call-id distinctness, query/documents + request-params + top_k/result-count + active-prompt population, OTel span attributes (both conditional branches), the Langfuse `Retriever` observation, and rerank metrics (token + duration, operation `rerank`). ([proposal 0060](proposals/0060-retrieval-provider-rerank.md))
+
+**Changed**
+
+- **retrieval-provider §-renumber.** The rerank protocol inserts as §5 / §6; the existing §5 *Error semantics*, §6 *Determinism*, §7 *Cross-spec touchpoints*, §8 *Out of scope* renumber to §7–§10. Cross-references in graph-engine §6, observability §11, and the embedding conformance fixtures (`002`–`004`, `075`) are reconciled in the same change. ([proposal 0060](proposals/0060-retrieval-provider-rerank.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Additive: a new protocol surface on an existing capability + two new typed events + new OTel / Langfuse mappings; the §-renumber is internal to the retrieval-provider spec with all cross-references reconciled. No change to existing behavior. ([proposal 0060](proposals/0060-retrieval-provider-rerank.md))
+
 ## [0.69.0] — 2026-06-19
 
 **Added**

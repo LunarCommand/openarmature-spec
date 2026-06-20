@@ -1,0 +1,150 @@
+# observability §5.5.13 — OTel rerank span attributes.
+# Verifies the rerank span name (openarmature.rerank.complete), the
+# core GenAI semconv subset (gen_ai.system, gen_ai.request.model,
+# gen_ai.response.model, gen_ai.response.id, and the CONDITIONAL
+# gen_ai.usage.input_tokens), and the OA-namespace rerank attributes
+# (query_length, document_count, top_k, result_count, and the
+# CONDITIONAL search_units). Two cases exercise both conditional
+# branches: a provider reporting search-units only (input_tokens
+# absent) and a provider reporting input-tokens only (search_units
+# absent). Both assert gen_ai.operation.name is NOT emitted (no
+# upstream rerank coverage) and run under default payload-off config
+# (the payload attributes openarmature.rerank.query / .documents /
+# .results are gated off). (Directives in fixture 099's header.)
+
+cases:
+  - name: rerank_span_with_search_units_no_input_tokens
+    description: |
+      One rerank node; provider reports search-units but no token
+      count (a search-units-only billing surface). Default OTel observer config. Asserts the
+      span emits openarmature.rerank.search_units and OMITS
+      gen_ai.usage.input_tokens (conditional branch) plus
+      gen_ai.operation.name and the gated payload attributes.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "paris"
+          documents: ["doc one", "doc two"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-107a-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              search_units: 1
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "rerank_node"
+              status: OK
+              children:
+                - name: "openarmature.rerank.complete"
+                  status: OK
+                  attributes:
+                    gen_ai.system: "cohere"
+                    gen_ai.request.model: "rerank-test"
+                    gen_ai.response.model: "rerank-test"
+                    gen_ai.response.id: "rerank-107a-id"
+                    openarmature.rerank.query_length: 5
+                    openarmature.rerank.document_count: 2
+                    openarmature.rerank.top_k: 2
+                    openarmature.rerank.result_count: 2
+                    openarmature.rerank.search_units: 1
+                  attributes_absent:
+                    - gen_ai.operation.name
+                    - gen_ai.usage.input_tokens
+                    - openarmature.rerank.query
+                    - openarmature.rerank.documents
+                    - openarmature.rerank.results
+                  children: []
+      invariants:
+        rerank_span_name_is_openarmature_rerank_complete: true
+        core_genai_semconv_subset_emitted: true
+        input_tokens_omitted_when_provider_reports_none: true
+        search_units_emitted_when_provider_reports_it: true
+        operation_name_attribute_not_emitted_in_v1: true
+
+  - name: rerank_span_with_input_tokens_no_search_units
+    description: |
+      One rerank node; provider reports input-tokens but no
+      search-units (a token-count-only billing surface). Default OTel observer config.
+      Asserts the span emits gen_ai.usage.input_tokens and OMITS
+      openarmature.rerank.search_units (conditional branch) plus
+      gen_ai.operation.name and the gated payload attributes.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "paris"
+          documents: ["doc one", "doc two"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-107b-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              input_tokens: 42
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "rerank_node"
+              status: OK
+              children:
+                - name: "openarmature.rerank.complete"
+                  status: OK
+                  attributes:
+                    gen_ai.system: "cohere"
+                    gen_ai.request.model: "rerank-test"
+                    gen_ai.response.model: "rerank-test"
+                    gen_ai.response.id: "rerank-107b-id"
+                    gen_ai.usage.input_tokens: 42
+                    openarmature.rerank.query_length: 5
+                    openarmature.rerank.document_count: 2
+                    openarmature.rerank.top_k: 2
+                    openarmature.rerank.result_count: 2
+                  attributes_absent:
+                    - gen_ai.operation.name
+                    - openarmature.rerank.search_units
+                    - openarmature.rerank.query
+                    - openarmature.rerank.documents
+                    - openarmature.rerank.results
+                  children: []
+      invariants:
+        rerank_span_name_is_openarmature_rerank_complete: true
+        core_genai_semconv_subset_emitted: true
+        input_tokens_emitted_when_provider_reports_it: true
+        search_units_omitted_when_provider_reports_none: true
+        operation_name_attribute_not_emitted_in_v1: true

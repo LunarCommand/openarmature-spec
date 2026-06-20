@@ -23,6 +23,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 *Node event shape* `branch_name` clarified for the inline-callable parallel-branch form (pipeline-utilities §11.1.1, proposal 0075): a callable branch has no inner nodes, so the branch itself is the event-source unit — one **synthetic** `started` / `completed` pair keyed by `branch_name` (the branch name as a synthetic `node_name` / `namespace`, standing in for the registered-node `node_name`); a `when`-skipped branch (§11.10) emits no events. No new event variant; reuses the existing `branch_name` surface by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
   - §6 observer event union: `LlmCompletionEvent` gained an `output_tool_calls` field — the assistant message's output tool calls (`[{id, name, arguments}]`, typed-event-native form), the output-side counterpart to the tool calls carried within `input_messages`; null / empty when the response had none, complementary to `output_content` (null for a tool-call-only response). Payload-bearing, gated like the other payload fields. It is the source the observability §5.5.1 `openarmature.llm.output.tool_calls` span attribute and §5.5.10 identity projections render from by [proposal 0076](../../proposals/0076-tool-call-request-observability-llm-spans.md)
   - §6 observer event union extended with two paired typed variants — `ToolCallEvent` (success) + `ToolCallFailedEvent` (failure) — for tool *execution* (the caller running a tool the model requested via `output_tool_calls`), per the 0049 → 0058 → 0059 success+failure precedent; plus an opt-in node-body **tool-call instrumentation scope** the caller wraps a single tool execution in (OA observes — emits the terminal event at outcome time and re-raises on failure — it does NOT select, run, retry, or loop tools). Events carry the identity / scoping baseline + `tool_name` / `tool_call_id` (linking to the requesting `LlmCompletionEvent.output_tool_calls` entry, the §5.5.10 `.ids` projection) / `arguments` / `result` (success) and `error_type` + `error_message` (failure — **no `error_category`**, the deliberate departure: arbitrary tool code has no closed llm-provider §7 taxonomy). Event-driven start/complete split carries the scope-entry identity; payload gated observer-side by `disable_provider_payload` (§5.5.4) by [proposal 0063](../../proposals/0063-tool-execution-observability.md)
+  - §6 observer event union extended with two new typed event variants — `RerankEvent` (success) and `RerankFailedEvent` (failure) — paired from launch per the 0049 → 0058 success+failure pairing precedent, the rerank sibling to the embedding pair. Both carry the identity / scoping / request-side field set established by `EmbeddingEvent` (with `query` + `documents` in place of `input_strings` and the rerank-specific runtime-config shape), with capability-appropriate success-side fields (`response_id`, `response_model`, `usage`, `result_count`) plus `document_count` / `top_k`, and the three failure-specific fields (`error_category`, `error_type`, `error_message`) on the failure variant. Mutual exclusion + exception-flow + dispatch-timing rules mirror the embedding pair; `query` / `documents` / `request_extras` and the `ScoredDocument.document` result echoes are payload-bearing, gated observer-side by `disable_provider_payload` (§5.5.4) by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -901,7 +902,7 @@ discriminator and is NOT subject to the `phases` subscription filter.
 
 **Typed embedding failure event.** The observer delivery queue also carries a typed
 `EmbeddingFailedEvent` on every `embed()` call that raises one of the llm-provider §7 error
-categories (per retrieval-provider §5's embedding-applicable subset). A fourth spec-normatively-
+categories (per retrieval-provider §7's embedding-applicable subset). A fourth spec-normatively-
 typed event variant on the observer event union, paired with `EmbeddingEvent` per the 0049 → 0058
 success+failure pairing precedent — observers filter via type discrimination
 (`isinstance(event, EmbeddingFailedEvent)` or per-language idiomatic equivalent) rather than via
@@ -929,7 +930,7 @@ failure-specific fields in place of the success-only response-side fields:
 | `active_prompt` | record \| null | Snapshot of the active `Prompt` identity at embedding-call time. Same shape as on `EmbeddingEvent`. |
 | `active_prompt_group` | record \| null | Snapshot of the active `PromptGroup` identity. Same shape as on `EmbeddingEvent`. |
 | `call_id` | string | A per-call disambiguator minted by the implementation. **Always present**; freshly minted per `embed()` call. A failed call gets its own `call_id`, distinct from any retry-attempt sibling. |
-| `error_category` | string | One of the llm-provider §7 normative categories applicable to embedding (per retrieval-provider §5). Always present. |
+| `error_category` | string | One of the llm-provider §7 normative categories applicable to embedding (per retrieval-provider §7). Always present. |
 | `error_type` | string \| null | OPTIONAL impl-level / vendor-specific error type or code. Two acceptable styles (vendor error code, upstream exception class name). Null when no impl-side type is available. |
 | `error_message` | string | Human-readable message from the raised exception. Always present (empty string when the exception carried no message). |
 
@@ -946,6 +947,100 @@ boundary per observability §5.5.4 (implementations populate the fields uncondit
 honor `disable_provider_payload`). Custom queryable observers (per observability §9) consuming
 either embedding-variant are responsible for their own redaction posture, identical to the
 `LlmCompletionEvent` / `LlmFailedEvent` posture.
+
+**Typed rerank event.** The observer delivery queue also carries a typed `RerankEvent` on every
+successful `RerankProvider.rerank()` call per the retrieval-provider §5 contract — a spec-normatively-
+typed variant on the observer event union, filtered via type discrimination
+(`isinstance(event, RerankEvent)` or per-language idiomatic equivalent) rather than via a
+sentinel-namespace string match. The class name `RerankEvent` is normative as an identifier shape;
+implementations MAY use a per-language idiomatic name provided the field set + dispatch contract are
+preserved. It mirrors `EmbeddingEvent`'s identity / scoping / request-side field set with
+rerank-specific substitutions (`query` + `documents` in place of `input_strings`):
+
+| Field | Type | Description |
+|---|---|---|
+| `invocation_id` | string | The outer invocation's identifier, per observability §5.1. |
+| `correlation_id` | string \| null | Cross-backend correlation ID, per observability §3.1. |
+| `node_name` | string | The user-defined node that issued the call. |
+| `namespace` | sequence of strings | The calling node's namespace, per the *Node event shape* above. |
+| `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
+| `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. |
+| `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11). Null otherwise. |
+| `provider` | string | The rerank provider identifier (matches `gen_ai.system` per observability §5.5.3). |
+| `model` | string | The model identifier the request was made against. |
+| `response_model` | string \| null | The model identifier the provider returned in the response (matches `gen_ai.response.model`). May be more specific than requested; null when the provider doesn't return a response model. |
+| `response_id` | string \| null | The provider-returned response identifier when present. |
+| `usage` | record \| null | `RerankUsage` record per retrieval-provider §6. May be null when the provider does not report usage. |
+| `latency_ms` | float \| null | Wall-clock latency of the rerank call measured at the adapter boundary, in milliseconds. May be null when latency is not measured. |
+| `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `EmbeddingEvent` (per observability §3.4). Default absent / null. |
+| `query` | string | The query string the rerank call was made with. Populated unconditionally on every typed event; observer-side privacy gating applies at the rendering boundary per the privacy paragraph below. |
+| `documents` | list of string | The input documents list. Populated unconditionally; same privacy posture as `query`. |
+| `request_params` | mapping | Rerank-specific runtime-config fields the caller supplied (initially `return_documents` per retrieval-provider §2). Absence-is-meaningful semantics per the equivalent field on `EmbeddingEvent`. Empty mapping when no parameters were supplied. |
+| `request_extras` | mapping | The rerank runtime config's extras pass-through bag — vendor-specific knobs. Same shape and privacy posture as on `EmbeddingEvent`. Empty mapping when no extras were supplied. |
+| `active_prompt` | record \| null | Snapshot of the active `Prompt` identity at rerank-call time. Same field set and nullability as on `EmbeddingEvent`. |
+| `active_prompt_group` | record \| null | Snapshot of the active `PromptGroup` identity. Same shape as on `EmbeddingEvent`. |
+| `call_id` | string | A per-call disambiguator minted by the implementation. **Always present** (never null); freshly minted per `rerank()` call. |
+| `document_count` | int | The number of input documents the call was made with (equals `len(documents)`). Derivable but kept for ergonomics + cross-vendor consistency. |
+| `top_k` | int \| null | The caller-supplied `top_k` value (or null when the caller passed `None`). |
+| `result_count` | int | The number of `ScoredDocument` entries the provider returned (equals `len(response.results)`). |
+
+The event MUST be dispatched on the observer delivery queue at the point of `rerank()` completion
+(after the response is parsed and validated per retrieval-provider §6, before `rerank()` returns to
+the caller). Delivery semantics follow the *Event delivery* rules above — strict-serial across the
+invocation, async-delivered concurrently with graph execution, not blocking the engine's execution
+loop. Like the other typed event variants, `RerankEvent` carries no `phase` discriminator and is NOT
+subject to the `phases` subscription filter.
+
+**Typed rerank failure event.** The observer delivery queue also carries a typed `RerankFailedEvent`
+on every `rerank()` call that raises one of the llm-provider §7 error categories (per
+retrieval-provider §7's rerank-applicable subset). Paired with `RerankEvent` per the 0049 → 0058
+success+failure pairing precedent — filtered via type discrimination
+(`isinstance(event, RerankFailedEvent)` or per-language idiomatic equivalent) rather than via a
+sentinel-namespace string match.
+
+The event mirrors `RerankEvent`'s identity / scoping / request-side field set 1:1, carries
+failure-specific fields in place of the success-only response-side fields (`response_id`,
+`response_model`, `usage`, `result_count` absent):
+
+| Field | Type | Description |
+|---|---|---|
+| `invocation_id` | string | The outer invocation's identifier, per observability §5.1. |
+| `correlation_id` | string \| null | Cross-backend correlation ID, per observability §3.1. |
+| `node_name` | string | The user-defined node that issued the call. |
+| `namespace` | sequence of strings | The calling node's namespace, per the *Node event shape* above. |
+| `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
+| `fan_out_index` | int \| null | The fan-out instance index (per pipeline-utilities §9). Null otherwise. |
+| `branch_name` | string \| null | The parallel-branches branch name (per pipeline-utilities §11). Null otherwise. |
+| `provider` | string | The rerank provider identifier. |
+| `model` | string | The model identifier the request was made against. |
+| `latency_ms` | float \| null | Wall-clock latency from `rerank()` entry to the point the failure was raised, in milliseconds. May be null when latency is not measured. |
+| `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `RerankEvent`. |
+| `query` | string | The query string. Populated unconditionally; same observer-side privacy-gating posture as on `RerankEvent`. |
+| `documents` | list of string | The input documents list. Populated unconditionally; same privacy posture. |
+| `request_params` | mapping | Rerank-specific config fields the caller supplied. Same shape as on `RerankEvent`. |
+| `request_extras` | mapping | The rerank runtime config's extras pass-through bag. Same shape and privacy posture as on `RerankEvent`. |
+| `active_prompt` | record \| null | Snapshot of the active `Prompt` identity at rerank-call time. Same shape as on `RerankEvent`. |
+| `active_prompt_group` | record \| null | Snapshot of the active `PromptGroup` identity. Same shape. |
+| `call_id` | string | A per-call disambiguator minted by the implementation. **Always present**; freshly minted per `rerank()` call. A failed call gets its own `call_id`, distinct from any retry-attempt sibling. |
+| `document_count` | int | The number of input documents the call was made with (equals `len(documents)`). |
+| `top_k` | int \| null | The caller-supplied `top_k` value (or null when the caller passed `None`). |
+| `error_category` | string | One of the llm-provider §7 normative categories applicable to rerank (per retrieval-provider §7). Always present. |
+| `error_type` | string \| null | OPTIONAL impl-level / vendor-specific error type or code. Two acceptable styles (vendor error code, upstream exception class name). Null when no impl-side type is available. |
+| `error_message` | string | Human-readable message from the raised exception. Always present (empty string when the exception carried no message). |
+
+The event MUST be dispatched on the observer delivery queue at the point of `rerank()` failure
+(after the §7 category exception is raised — whether by the provider or by the implementation's
+pre-send validation layer per retrieval-provider §7 — and before the exception propagates to the
+caller). The §7 category exception still raises out of `rerank()`; the typed event is dispatched
+alongside the exception, not in place of it.
+
+`RerankEvent` and `RerankFailedEvent` are mutually exclusive on a given `rerank()` call.
+Implementations MUST NOT emit both for the same call. The privacy posture for `query` / `documents` /
+`request_extras` is identical to `EmbeddingEvent`'s — observer-side gating at the rendering boundary
+per observability §5.5.4 (implementations populate the fields unconditionally; observers honor
+`disable_provider_payload`). The `ScoredDocument.document` echoes in the response are payload-bearing
+on the same footing. Custom queryable observers (per observability §9) consuming either rerank-variant
+are responsible for their own redaction posture, identical to the embedding-variant posture.
 
 **Tool-call instrumentation scope.** Tool *execution* — the caller running a tool the model requested
 via `LlmCompletionEvent.output_tool_calls` (the output-side tool-call requests, per observability

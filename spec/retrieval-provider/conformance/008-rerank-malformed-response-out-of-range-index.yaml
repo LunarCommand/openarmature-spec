@@ -1,0 +1,46 @@
+# retrieval-provider §6 + §7 — out-of-range index surfaces
+# provider_invalid_response. The §6 cross-impl invariant requires each
+# result index to be a valid index into the input documents list
+# (0 <= index < len(documents)); an out-of-range index MUST raise
+# provider_invalid_response. (Directives documented in 006's header.)
+
+cases:
+  - name: rerank_out_of_range_index_raises_provider_invalid_response
+    description: |
+      RerankProvider called with 2 input documents. Mocked response
+      returns a result with index=5 — out of range for a 2-document
+      input. The adapter MUST detect the out-of-range index and raise
+      provider_invalid_response per §7.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-008-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.9}
+            - {index: 5, relevance_score: 0.4}
+          meta:
+            billed_units:
+              search_units: 1
+    expected_error:
+      category: provider_invalid_response
+      raised_from: rerank_node
+    expected:
+      invariants:
+        out_of_range_index_detected: true
+        exception_raised_out_of_rerank_call: true

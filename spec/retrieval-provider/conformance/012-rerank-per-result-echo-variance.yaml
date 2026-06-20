@@ -1,0 +1,55 @@
+# retrieval-provider §6 — per-result document-echo variance. The §6
+# cross-impl invariant requires implementations to preserve the
+# provider's per-result `document` echo verbatim (null where the
+# provider omitted it, populated where the provider echoed it) and
+# MUST NOT auto-fill the echo from the input documents list.
+# (Directives documented in 006's header.)
+
+cases:
+  - name: rerank_preserves_per_result_echo_variance
+    description: |
+      Caller requests return_documents=True over 3 documents. The
+      mocked provider echoes document text for two results (indices 0
+      and 2) but omits it for one (index 1) — a realistic mixed
+      response. The adapter MUST surface `document` populated for the
+      echoed results and null for the omitted one, and MUST NOT
+      fabricate the missing echo from the input documents list.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["alpha doc", "beta doc", "gamma doc"]
+          config:
+            return_documents: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-012-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.9, document: "alpha doc"}
+            - {index: 2, relevance_score: 0.5, document: "gamma doc"}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              search_units: 1
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 0, relevance_score: 0.9, document: "alpha doc"}
+            - {index: 2, relevance_score: 0.5, document: "gamma doc"}
+            - {index: 1, relevance_score: 0.2, document: null}
+      invariants:
+        echoed_documents_preserved_verbatim: true
+        omitted_echo_left_null_not_autofilled: true

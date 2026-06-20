@@ -1,0 +1,60 @@
+# graph-engine §6 + observability §5.5 — Typed RerankFailedEvent
+# dispatch. A rerank() call that raises an llm-provider §7 error MUST
+# fire RerankFailedEvent on the observer delivery queue AND the
+# exception MUST still raise out of the call — the two surfaces compose
+# without conflict. (Directives in fixture 099's header.)
+
+cases:
+  - name: rerank_failure_event_dispatched_on_provider_unavailable
+    description: |
+      Mocked provider returns HTTP 503; the implementation classifies
+      the response as provider_unavailable. Asserts exactly one
+      RerankFailedEvent observed, zero RerankEvent (mutual exclusion),
+      the exception propagates out of rerank(), and the typed event
+      carries the mirrored identity / scoping fields plus
+      error_category = "provider_unavailable".
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 503
+        body:
+          error:
+            message: "service unavailable"
+            type: server_error
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: rerank_node
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: RerankFailedEvent
+            fields:
+              provider: cohere
+              model: rerank-test
+              error_category: provider_unavailable
+              node_name: rerank_node
+              namespace: [rerank_node]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+      invariants:
+        exactly_one_rerank_failed_event_observed: true
+        zero_rerank_success_events_observed: true
+        exception_propagates_out_of_rerank_call: true

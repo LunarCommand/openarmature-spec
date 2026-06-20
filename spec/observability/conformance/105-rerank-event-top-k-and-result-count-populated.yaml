@@ -1,0 +1,102 @@
+# graph-engine §6 — RerankEvent.top_k mirrors the caller-supplied
+# top_k (or null when the caller passed None); result_count and
+# document_count mirror the response and input. (Directives in fixture
+# 099's header.)
+
+cases:
+  - name: top_k_and_counts_populated_when_top_k_supplied
+    description: |
+      rerank() called with top_k=2 over 3 documents; provider returns
+      2 results. The typed event carries top_k=2, document_count=3,
+      result_count=2.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b", "doc c"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-105a-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.9}
+            - {index: 2, relevance_score: 0.4}
+          meta:
+            billed_units:
+              search_units: 1
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: RerankEvent
+            fields:
+              top_k: 2
+              document_count: 3
+              result_count: 2
+      invariants:
+        top_k_matches_caller_supplied_value: true
+        document_count_matches_input: true
+        result_count_matches_response: true
+
+  - name: top_k_null_when_caller_passed_none
+    description: |
+      rerank() called without top_k (None) over 3 documents; provider
+      returns 3 results. The typed event carries top_k=null,
+      document_count=3, result_count=3.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b", "doc c"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-105b-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.9}
+            - {index: 1, relevance_score: 0.5}
+            - {index: 2, relevance_score: 0.1}
+          meta:
+            billed_units:
+              search_units: 1
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: RerankEvent
+            fields:
+              top_k: null
+              document_count: 3
+              result_count: 3
+      invariants:
+        top_k_null_when_caller_passed_none: true
+        result_count_matches_response: true

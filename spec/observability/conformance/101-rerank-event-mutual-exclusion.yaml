@@ -1,0 +1,90 @@
+# graph-engine §6 — RerankEvent / RerankFailedEvent mutual exclusion.
+# A successful rerank() emits exactly one RerankEvent and zero
+# RerankFailedEvent; a failed rerank() emits exactly one
+# RerankFailedEvent and zero RerankEvent. (Directives in 099's header.)
+
+cases:
+  - name: success_emits_only_rerank_event
+    description: |
+      One successful rerank() call. Asserts exactly one RerankEvent
+      and zero RerankFailedEvent observed.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-101a-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              search_units: 1
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          event_count:
+            event_type: RerankEvent
+            count: 1
+      invariants:
+        exactly_one_rerank_event: true
+        zero_rerank_failed_events: true
+
+  - name: failure_emits_only_rerank_failed_event
+    description: |
+      One failed rerank() call (HTTP 503 → provider_unavailable).
+      Asserts exactly one RerankFailedEvent and zero RerankEvent
+      observed.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 503
+        body:
+          error:
+            message: "service unavailable"
+            type: server_error
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: rerank_node
+    expected:
+      observers:
+        collector:
+          event_count:
+            event_type: RerankFailedEvent
+            count: 1
+      invariants:
+        exactly_one_rerank_failed_event: true
+        zero_rerank_success_events: true
