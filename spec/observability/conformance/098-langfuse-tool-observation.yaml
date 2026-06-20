@@ -1,0 +1,90 @@
+# observability §8.4.6 (proposal 0063): tool executions render as Langfuse's
+# dedicated Tool observation (created via asType "tool"), NOT a Generation with a
+# metadata discriminator. input/output are payload-gated; tool_name / tool_call_id
+# sit in metadata; the observation is DEFAULT level on success and ERROR on a
+# ToolCallFailedEvent. The Tool observation nests under the calling node's Span.
+
+cases:
+  - name: tool_execution_renders_dedicated_tool_observation
+    description: |
+      A successful tool execution (payload on) renders a dedicated Tool
+      observation under the calling node's Span — type tool (not generation),
+      DEFAULT level, with input / output populated and tool_name / tool_call_id in
+      metadata.
+    disable_provider_payload: false
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_abc123"
+          arguments: {city: "Paris"}
+          mock_tool: {returns: {temperature_c: 20}}
+          stores_result_in: out
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "run_tool"
+            children:
+              - type: tool
+                name: "openarmature.tool.call"
+                level: DEFAULT
+                input: {city: "Paris"}
+                output: {temperature_c: 20}
+                metadata:
+                  openarmature_tool_name: "get_weather"
+                  openarmature_tool_call_id: "call_abc123"
+                children: []
+      invariants:
+        renders_as_dedicated_tool_observation_not_generation: true
+        tool_name_and_call_id_in_metadata: true
+        input_output_populated_with_payload_on: true
+
+  - name: failed_tool_execution_renders_error_level
+    description: |
+      A failed tool execution renders the Tool observation at ERROR level, with
+      error_type / error_message in metadata (and the status message).
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_def456"
+          arguments: {city: "Paris"}
+          mock_tool: {raises: {error_type: "TimeoutError", message: "tool timed out"}}
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    expected_error:
+      category: node_exception
+      raised_from: run_tool
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "run_tool"
+            children:
+              - type: tool
+                name: "openarmature.tool.call"
+                level: ERROR
+                metadata:
+                  openarmature_tool_name: "get_weather"
+                  openarmature_tool_call_id: "call_def456"
+                  error_type: "TimeoutError"
+                  error_message: "tool timed out"
+                children: []
+      invariants:
+        failed_tool_renders_error_level: true
+        error_type_and_message_in_metadata: true

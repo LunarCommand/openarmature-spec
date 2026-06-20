@@ -22,6 +22,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 observer event union extended with two new typed event variants — `EmbeddingEvent` (success) and `EmbeddingFailedEvent` (failure) — paired from launch per the 0049 → 0058 success+failure pairing precedent. Both variants carry the identity / scoping / request-side field set established by `LlmCompletionEvent` post-0057 (with `input_strings` in place of `input_messages` and the embedding-specific runtime-config shape), with capability-appropriate success-side fields (`response_id`, `response_model`, `usage`, `dimensions`, `input_count`) on the success variant and the three failure-specific fields (`error_category`, `error_type`, `error_message`) on the failure variant per the 0058 pattern. Mutual exclusion + exception-flow + dispatch-timing rules mirror the LLM-side pair; the observer-side `disable_provider_payload` privacy flag (renamed by this proposal) gates the rendering boundary identically to its LLM-side counterpart. Existing LlmCompletionEvent / LlmFailedEvent privacy paragraphs updated to reference the renamed flag by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
   - §6 *Node event shape* `branch_name` clarified for the inline-callable parallel-branch form (pipeline-utilities §11.1.1, proposal 0075): a callable branch has no inner nodes, so the branch itself is the event-source unit — one **synthetic** `started` / `completed` pair keyed by `branch_name` (the branch name as a synthetic `node_name` / `namespace`, standing in for the registered-node `node_name`); a `when`-skipped branch (§11.10) emits no events. No new event variant; reuses the existing `branch_name` surface by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
   - §6 observer event union: `LlmCompletionEvent` gained an `output_tool_calls` field — the assistant message's output tool calls (`[{id, name, arguments}]`, typed-event-native form), the output-side counterpart to the tool calls carried within `input_messages`; null / empty when the response had none, complementary to `output_content` (null for a tool-call-only response). Payload-bearing, gated like the other payload fields. It is the source the observability §5.5.1 `openarmature.llm.output.tool_calls` span attribute and §5.5.10 identity projections render from by [proposal 0076](../../proposals/0076-tool-call-request-observability-llm-spans.md)
+  - §6 observer event union extended with two paired typed variants — `ToolCallEvent` (success) + `ToolCallFailedEvent` (failure) — for tool *execution* (the caller running a tool the model requested via `output_tool_calls`), per the 0049 → 0058 → 0059 success+failure precedent; plus an opt-in node-body **tool-call instrumentation scope** the caller wraps a single tool execution in (OA observes — emits the terminal event at outcome time and re-raises on failure — it does NOT select, run, retry, or loop tools). Events carry the identity / scoping baseline + `tool_name` / `tool_call_id` (linking to the requesting `LlmCompletionEvent.output_tool_calls` entry, the §5.5.10 `.ids` projection) / `arguments` / `result` (success) and `error_type` + `error_message` (failure — **no `error_category`**, the deliberate departure: arbitrary tool code has no closed llm-provider §7 taxonomy). Event-driven start/complete split carries the scope-entry identity; payload gated observer-side by `disable_provider_payload` (§5.5.4) by [proposal 0063](../../proposals/0063-tool-execution-observability.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -945,6 +946,123 @@ boundary per observability §5.5.4 (implementations populate the fields uncondit
 honor `disable_provider_payload`). Custom queryable observers (per observability §9) consuming
 either embedding-variant are responsible for their own redaction posture, identical to the
 `LlmCompletionEvent` / `LlmFailedEvent` posture.
+
+**Tool-call instrumentation scope.** Tool *execution* — the caller running a tool the model requested
+via `LlmCompletionEvent.output_tool_calls` (the output-side tool-call requests, per observability
+§5.5.10) — happens in user node-body code; llm-provider §1 is explicit that the caller, not OA,
+executes tools. To make that execution observable without owning it, the graph engine provides an
+opt-in **tool-call instrumentation scope**: a node-body primitive the caller enters around a single
+tool execution. Behaviorally (language-agnostic; e.g. an async context manager, or a helper wrapping
+the call):
+
+- The caller provides the `tool_name`, the `arguments` the tool is invoked with, and OPTIONALLY a
+  `tool_call_id` (the `ToolCall.id` of the `LlmCompletionEvent.output_tool_calls` entry this execution
+  satisfies, per llm-provider §3).
+- The caller executes the tool **within** the scope. OA does not execute it.
+- On the execution returning a result, OA emits a `ToolCallEvent` carrying the result.
+- On the execution raising, OA emits a `ToolCallFailedEvent` carrying the exception's type + message,
+  and **re-raises** — the scope observes, it does not swallow. The caller's node body decides what to
+  do with the exception (feed it back to the model as a `tool` message, abort, etc. — orchestration,
+  out of scope).
+
+**OA observes; the caller runs.** The scope MUST NOT select which tool to call, retry it, loop, or
+feed the result back to the model — those are tool-dispatch orchestration, separate from this
+observability layer. It instruments a single caller-initiated execution and obtains the outcome as the value the execution
+**yields to the scope**: in the inline-wrapping form, the return value of the caller-supplied call the
+scope wraps (the wrapping invocation is instrumentation — capturing timing and the return value — not
+tool ownership); in the start/complete form, a result the caller reports at completion (the outcome
+arrives in a later turn, so there is nothing to wrap). The result is **opaque** to OA — the
+pre-serialization, language-idiomatic value as the tool produced it; OA has no tool schema and does not
+parse, validate, or transform it, it records it (the observability mappings JSON-encode it for
+rendering). A failure is symmetric: the wrapped call raises, or the caller reports a failure, surfaced
+as `error_type` + `error_message`.
+
+**Event-driven composition.** The scope MUST NOT assume synchronous inline execution. In an
+event-driven runtime a tool call may dispatch as a separate step and return in a later invocation /
+turn. The contract is that the terminal event is **emitted when the tool's outcome is known** (result
+or failure), not necessarily synchronously within one function call. Implementations MAY offer an
+inline-wrapping form (the common case) and a start/complete split (for deferred execution),
+correlating the completion to its start via `call_id` / `tool_call_id`. The spec defines the event
+contract (one terminal `ToolCallEvent` XOR `ToolCallFailedEvent` per execution, at outcome time); the
+surface shape is per-language / per-runtime.
+
+**Identity under deferred execution.** When the start and the outcome fall in different invocations /
+turns, the emitted event carries the **scope-entry identity** — the `node_name`, `namespace`,
+`invocation_id`, `correlation_id`, `attempt_index`, `fan_out_index`, and `branch_name` captured when
+the scope was *entered* (the node that initiated the execution), NOT the ambient identity of the later
+turn where the outcome landed. The tool execution belongs to the node that requested it; attributing
+it to a downstream turn's context would mislocate it in the trace. This mirrors suspension §7's
+`invocation_id`-reuse correlation across the suspend/resume boundary. (The inline case is the trivial
+instance — start and outcome share one context.)
+
+**"Tool" is any instrumented function.** The scope is general — it observes any function the caller
+records as a tool call, not only model-requested ones. `tool_call_id` is populated when the execution
+satisfies an `output_tool_calls` entry, and null otherwise (a node-body utility the caller chooses to
+instrument as a tool).
+
+**Typed tool-call event.** On a tool execution returning a result, the observer delivery queue carries
+a typed `ToolCallEvent` — a spec-normatively-typed variant on the observer event union, filtered via
+type discrimination (`isinstance(event, ToolCallEvent)` or per-language idiomatic equivalent) rather
+than via a sentinel-namespace string match. The class name `ToolCallEvent` is normative as an
+identifier shape; implementations MAY use a per-language idiomatic name provided the field set +
+dispatch contract are preserved. It mirrors `LlmCompletionEvent`'s identity / scoping baseline plus
+tool-specific fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `invocation_id` | string | The outer invocation's identifier, per observability §5.1. |
+| `correlation_id` | string \| null | Cross-backend correlation ID, per observability §3.1. |
+| `node_name` | string | The user-defined node that executed the tool. |
+| `namespace` | sequence of strings | The calling node's namespace, per the *Node event shape* above. |
+| `attempt_index` | int | The node-level retry-attempt index (0 on the first attempt). |
+| `fan_out_index` | int \| null | The fan-out instance index (per pipeline-utilities §9). Null otherwise. |
+| `branch_name` | string \| null | The parallel-branches branch name (per pipeline-utilities §11). Null otherwise. |
+| `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `LlmCompletionEvent` (per observability §3.4). Default absent / null. |
+| `call_id` | string | A per-execution disambiguator minted by the implementation when the scope is entered. **Always present**; freshly minted per tool execution. Distinct from `tool_call_id` — `call_id` is OA's own correlation token for this execution, `tool_call_id` is the provider's id from the model's request. |
+| `tool_name` | string | The name of the tool / function executed. Matches the `Tool.name` (llm-provider §4) when the execution satisfies a model request. |
+| `tool_call_id` | string \| null | The `ToolCall.id` (llm-provider §3) of the `LlmCompletionEvent.output_tool_calls` entry this execution satisfies — the linkage back to the requesting LLM call (the §5.5.10 `openarmature.llm.output.tool_calls.ids` projection surfaces these request-side ids). Null when the instrumented function did not originate from an LLM tool request. |
+| `arguments` | mapping \| null | The arguments the tool was invoked with. For an LLM-originated call, the parsed `ToolCall.arguments` mapping (llm-provider §3/§4); for a standalone instrumented function, the caller-supplied argument shape. Null when the tool takes no arguments. Payload-bearing — observer-side gating per the privacy paragraph below. |
+| `result` | (language-idiomatic value) | The tool's return value **as the tool produced it** (pre-serialization — a mapping, string, or any language-idiomatic value). OA observes the return value; it does not build the `tool` message (the caller serializes the result into the `tool` message content, a string per llm-provider §3; the observability mappings JSON-encode it for rendering). Payload-bearing. |
+| `latency_ms` | float \| null | Wall-clock latency of the tool execution measured at the scope boundary, in milliseconds. May be null when not measured. |
+
+**Typed tool-call failure event.** On a tool execution raising, the observer delivery queue carries a
+typed `ToolCallFailedEvent` (paired with `ToolCallEvent` per the 0049 → 0058 → 0059 success+failure
+precedent; filtered via type discrimination). It mirrors `ToolCallEvent`'s identity / scoping /
+request-side fields (`tool_name`, `tool_call_id`, `arguments`, `latency_ms`, `call_id`), with the
+success-only `result` absent and two failure-specific fields:
+
+| Field | Type | Description |
+|---|---|---|
+| (identity / scoping / `tool_name` / `tool_call_id` / `arguments` / `latency_ms` / `call_id`) | | Same definitions as on `ToolCallEvent`. |
+| `error_type` | string \| null | The impl-level / language-level exception type — the exception class name (e.g. `"TimeoutError"`, `"ValueError"`) or a tool-defined error code. Null when no type is available. |
+| `error_message` | string | The human-readable message from the raised exception. Always present (empty string when the exception carried no message). |
+
+**No `error_category`.** This is the deliberate departure from `LlmFailedEvent` / `EmbeddingFailedEvent`.
+Those carry an `error_category` from the llm-provider §7 normative enumeration because provider calls
+have a closed, spec-defined failure taxonomy. Tool execution is arbitrary user / third-party code that
+can raise anything — there is no normative category to assign, and inventing one would be a fiction.
+`error_type` (the actual exception class) + `error_message` carry the failure faithfully.
+
+**Mutual exclusion, exception flow, and dispatch.** `ToolCallEvent` and `ToolCallFailedEvent` are
+mutually exclusive per tool execution — implementations MUST NOT emit both for the same execution. The
+exception still propagates out of the scope (the re-raise rule above); the typed event is dispatched
+alongside the exception, not in place of it — caller code handling the exception sees the exception
+path unchanged, observers see the failure event. Both events MUST be dispatched on the observer
+delivery queue at the point the outcome is known (after the result is in hand / after the exception is
+raised; before the result or exception flows back to the caller), strict-serial across the invocation
+and async-delivered per the §6 contract. Like the other typed variants, they carry no `phase`
+discriminator and are not subject to the `phases` filter; observers filter via type discrimination.
+
+**Privacy posture (tool events).** `arguments` and `result` carry potentially sensitive payload (the
+tool's inputs and outputs — often user content or external-API data). The posture matches
+`LlmCompletionEvent`'s — implementations populate the fields unconditionally; observer-side gating
+applies at the rendering boundary per observability §5.5.4. The `disable_provider_payload` flag (renamed
+from `disable_llm_payload` by proposal 0059) gates tool payload: its framing covers payload from any
+instrumented external operation, and a tool call is exactly that. The flag gates observability
+*rendering* only — it does NOT affect the `result` the caller serializes into the `tool` message (the
+model needs the tool's output to continue), nor the event-field population. Custom queryable observers
+(per observability §9) consuming the tool events own their own redaction posture, identical to the
+`LlmCompletionEvent` posture.
 
 ## 7. Out of scope
 

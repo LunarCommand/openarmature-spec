@@ -10,8 +10,8 @@ lifecycle and the proposal template.
 | [0076](proposals/0076-tool-call-request-observability-llm-spans.md) | Tool-call request observability on LLM spans | observability | Accepted | Pending         | —          |
 | [0075](proposals/0075-parallel-branches-lightweight-branches.md) | Parallel-branches lightweight callable + conditional branches | pipeline-utilities | Accepted | Pending         | —          |
 | [0074](proposals/0074-failure-isolation-catch-classification.md) | Failure-isolation cause-chain catch classification | pipeline-utilities | Accepted | Pending         | —          |
-| [0073](proposals/0073-genai-semconv-adoption-reconciliation.md) | GenAI semconv adoption reconciliation | observability | Accepted | Pending         | —          |
-| [0072](proposals/0072-prompt-management-fetch-cache-ttl.md) | Per-fetch cache-TTL control | prompt-management   | Accepted | Pending         | —          |
+| [0073](proposals/0073-genai-semconv-adoption-reconciliation.md) | GenAI semconv adoption reconciliation | observability | Accepted | Textual (0.15.0)| —          |
+| [0072](proposals/0072-prompt-management-fetch-cache-ttl.md) | Per-fetch cache-TTL control | prompt-management   | Accepted | Shipped (0.15.0)| —          |
 | [0071](proposals/0071-conformance-adapter-failure-mock-catalog.md) | Failure-mock directive catalog | conformance-adapter | Accepted | Textual (0.14.0)| —          |
 | [0070](proposals/0070-conformance-adapter-crash-injection-and-cause-chaining.md) | Crash-injection + cause-chaining adapter directives | conformance-adapter | Accepted | Shipped (0.14.0)| —          |
 | [0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md) | Fan-out degrade contribution refinements | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
@@ -20,7 +20,7 @@ lifecycle and the proposal template.
 | [0066](proposals/0066-pipeline-utilities-fan-out-degrade-contribution.md) | Fan-out failure-isolation degrade contribution           | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0065](proposals/0065-pipeline-utilities-failure-isolation-cause-fidelity.md) | Failure-isolation cause-fidelity at wrapping sites        | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0064](proposals/0064-observability-langfuse-session-user-promotion.md) | Langfuse session / user trace-field population            | observability       | Accepted | Partial (0.15.0)| —          |
-| [0063](proposals/0063-tool-execution-observability.md) | Tool-execution observability                              | graph-engine        | Draft    | —               | —          |
+| [0063](proposals/0063-tool-execution-observability.md) | Tool-execution observability                              | graph-engine        | Accepted | Pending         | —          |
 | [0062](proposals/0062-llm-completion-streaming.md) | LLM completion streaming                                  | llm-provider        | Draft    | —               | —          |
 | [0061](proposals/0061-detached-trace-invocation-span.md) | Detached-trace invocation span                            | observability       | Accepted | Shipped (0.15.0)| —          |
 | [0060](proposals/0060-retrieval-provider-rerank.md) | Retrieval-provider rerank protocol                        | retrieval-provider  | Draft    | —               | —          |

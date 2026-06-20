@@ -99,6 +99,14 @@ the *de-facto-standard carve-out* + *post-adoption retention* rules):
   `gen_ai.tool.call.{id,arguments,result}`, `gen_ai.tool.definitions`, …) is scoped to the separate
   `execute_tool` span — the tool-*execution* side, not the chat-completion span. Verified against the
   `semantic-conventions-genai` registry, 2026-06-19.
+- **Tool-execution span — `openarmature.tool.*` mirror (verified for proposal 0063).** OA's
+  tool-execution observability (observability §5.5.11) emits OA-namespace `openarmature.tool.*`
+  attributes and the span name `openarmature.tool.call`, mirroring the upstream `execute_tool` span +
+  `gen_ai.tool.*` attributes — which are **Development** (verified 2026-06-19) and, under the
+  de-facto-standard carve-out, assessed **peripheral** (the tool-execution surface lacks the
+  installed-base recognition of the core completion attributes; upstream itself directs manual
+  instrumentation). A follow-on adopts `gen_ai.tool.*` (a prefix swap) when the surface reaches
+  recognized-core / Stable. The failure `error.type` is Stable core, used directly.
 - **GenAI metric instruments — mirrored (verified for proposal 0067).** The upstream GenAI metric
   instruments `gen_ai.client.token.usage` (`{token}`) and `gen_ai.client.operation.duration` (`s`) are
   Development (verified 2026-06-19); OA emits `openarmature.gen_ai.client.*` mirrors (instrument type /

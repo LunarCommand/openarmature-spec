@@ -1,0 +1,93 @@
+# graph-engine §6 (proposal 0063): a tool execution satisfying an
+# LlmCompletionEvent.output_tool_calls entry carries the matching tool_call_id
+# (the §5.5.10 .ids linkage joining "model requested call X" to "call X was
+# executed"); a standalone instrumented function carries tool_call_id = null.
+
+cases:
+  - name: llm_originated_tool_call_carries_matching_id
+    description: |
+      An LLM node returns a tool-call request (output_tool_calls id
+      "call_xyz789"); a downstream node executes that tool through the scope with
+      the same tool_call_id. The harness asserts the ToolCallEvent carries
+      tool_call_id "call_xyz789" — the linkage back to the requesting LLM call.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+        out: {type: record, default: null}
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "weather in Paris?"}]
+          stores_response_in: answer
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_xyz789"
+          arguments: {city: "Paris"}
+          mock_tool: {returns: {temperature_c: 20}}
+          stores_result_in: out
+    edges:
+      - {from: ask_llm, to: run_tool}
+      - {from: run_tool, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-095
+          object: chat.completion
+          model: test-model
+          choices:
+            - index: 0
+              message:
+                role: assistant
+                content: null
+                tool_calls:
+                  - {id: "call_xyz789", type: function, function: {name: "get_weather", arguments: "{\"city\": \"Paris\"}"}}
+              finish_reason: tool_calls
+          usage: {prompt_tokens: 10, completion_tokens: 5, total_tokens: 15}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: ToolCallEvent
+            fields:
+              tool_name: "get_weather"
+              tool_call_id: "call_xyz789"
+      invariants:
+        tool_call_id_matches_requesting_llm_output_tool_calls_id: true
+
+  - name: standalone_instrumented_function_carries_null_id
+    description: |
+      A node instruments a utility as a tool without an originating LLM request.
+      The ToolCallEvent carries tool_call_id = null.
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "local_compute"
+          arguments: {n: 3}
+          mock_tool: {returns: {value: 9}}
+          stores_result_in: out
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: ToolCallEvent
+            fields:
+              tool_name: "local_compute"
+              tool_call_id: null
+      invariants:
+        standalone_tool_call_id_is_null: true
