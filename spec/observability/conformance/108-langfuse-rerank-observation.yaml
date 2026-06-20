@@ -1,0 +1,134 @@
+# observability §8.4.7 — Langfuse rerank observation mapping.
+# Verifies that RerankProvider.rerank() calls render as a dedicated
+# `Retriever` observation type (created via asType="retriever"), NOT a
+# Generation, with model / usageDetails / metadata / input / output
+# field population. Two cases gate the disable_provider_payload flag.
+# (Directives in fixture 099's header.)
+
+cases:
+  - name: rerank_observation_payload_suppressed_by_default
+    description: |
+      One rerank call. Default Langfuse observer config
+      (disable_provider_payload=True). The Retriever observation MUST
+      emit with model, usageDetails, identity metadata, but NOT input
+      or output (payload-gated). Asserts the observation type is
+      "retriever" rather than "generation".
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "paris"
+          documents: ["doc one", "doc two"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-108-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              search_units: 1
+    langfuse_observer:
+      disable_provider_payload: true
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "rerank_node"
+            children:
+              - type: retriever
+                name: "openarmature.rerank.complete"
+                model: "rerank-test"
+                usageDetails:
+                  searchUnits: 1
+                metadata:
+                  openarmature_query_length: 5
+                  openarmature_document_count: 2
+                  openarmature_top_k: 2
+                  openarmature_result_count: 2
+                  openarmature_response_id: "rerank-108-id"
+                level: DEFAULT
+                input: null
+                output: null
+                children: []
+      invariants:
+        observation_type_is_retriever_not_generation: true
+        input_and_output_suppressed_under_default_privacy_posture: true
+
+  - name: rerank_observation_payload_emitted_with_flag_off
+    description: |
+      One rerank call. Langfuse observer with
+      disable_provider_payload=False. The Retriever observation MUST
+      emit with input ({query, documents}) and output (the scored
+      results) populated alongside the always-emitted fields.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "paris"
+          documents: ["doc one", "doc two"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-108b-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              search_units: 1
+    langfuse_observer:
+      disable_provider_payload: false
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "rerank_node"
+            children:
+              - type: retriever
+                name: "openarmature.rerank.complete"
+                model: "rerank-test"
+                usageDetails:
+                  searchUnits: 1
+                metadata:
+                  openarmature_query_length: 5
+                  openarmature_document_count: 2
+                  openarmature_top_k: 2
+                  openarmature_result_count: 2
+                  openarmature_response_id: "rerank-108b-id"
+                level: DEFAULT
+                input:
+                  query: "paris"
+                  documents: ["doc one", "doc two"]
+                output:
+                  - {index: 0, relevance_score: 0.8}
+                  - {index: 1, relevance_score: 0.2}
+                children: []
+      invariants:
+        observation_type_is_retriever_not_generation: true
+        input_and_output_populated_when_payload_flag_disabled: true

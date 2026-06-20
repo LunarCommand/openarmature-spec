@@ -1,0 +1,47 @@
+# retrieval-provider §6 + §7 — top_k violation surfaces
+# provider_invalid_response. The §6 cross-impl invariant requires
+# len(results) <= top_k when top_k is supplied; a provider returning
+# MORE results than requested MUST raise provider_invalid_response.
+# Negative-control counterpart to 010. (Directives in 006's header.)
+
+cases:
+  - name: rerank_top_k_violation_raises_provider_invalid_response
+    description: |
+      Caller supplies top_k=2 over 3 documents; the mocked provider
+      returns 3 results — more than requested. The adapter MUST detect
+      the violation and raise provider_invalid_response per §7.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b", "doc c"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-011-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.9}
+            - {index: 1, relevance_score: 0.6}
+            - {index: 2, relevance_score: 0.2}
+          meta:
+            billed_units:
+              search_units: 1
+    expected_error:
+      category: provider_invalid_response
+      raised_from: rerank_node
+    expected:
+      invariants:
+        top_k_violation_detected: true
+        exception_raised_out_of_rerank_call: true

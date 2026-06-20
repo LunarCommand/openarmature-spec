@@ -1,0 +1,84 @@
+# retrieval-provider §5 + §6 — RerankProvider.rerank() positive control.
+# Verifies the response shape contract: results sorted by
+# relevance_score descending (the mock returns them UNSORTED so the
+# adapter-side sort is genuinely exercised), each result's index a
+# valid index into the input documents list, usage.search_units
+# populated, response_id populated when the provider returns one.
+#
+# Per-directory harness directive (per conformance-adapter §3.2):
+#
+# - calls_rerank: {query: "...", documents: [...], top_k: <int>,
+#     config: {return_documents: <bool>}, stores_response_in: <field>,
+#     model: <id>} — node calls the bound RerankProvider's rerank()
+#   with the given query / documents / top_k / config and stores the
+#   resulting RerankResponse record in the named state field. top_k,
+#   config, and model are optional.
+#
+# Per-directory suite-level harness directive:
+#
+# - mock_rerank: [{status, body}, ...] — mock provider responses.
+#   Each entry is dispatched for one rerank() call in arrival order.
+#   The mock body is harness-internal: the v1 retrieval-provider spec
+#   does NOT pin the wire shape that produces results / response_id /
+#   usage. A forthcoming per-vendor wire-format mapping proposal
+#   (analogous to llm-provider §8.1 / §8.2 / §8.3) pins the actual
+#   wire-source per provider; this suite's body (top-level `id`,
+#   `results[].{index, relevance_score, document?}`,
+#   `meta.billed_units.search_units`) is a stand-in pending that work.
+
+cases:
+  - name: rerank_response_shape_invariants_satisfied
+    description: |
+      Bound RerankProvider with a mocked response returning 3 scored
+      documents for 3 input documents, deliberately UNSORTED by score
+      (0.5, 0.9, 0.1), so the assertion that the adapter returns them
+      sorted by relevance_score descending is exercised. The harness
+      asserts the response carries:
+      - results length = 3, sorted descending: scores [0.9, 0.5, 0.1]
+        with input indices [1, 0, 2] preserved
+      - each result index in [0, 3)
+      - usage.search_units = 1, usage.input_tokens = null
+      - model = "rerank-test", response_id = "rerank-006-id"
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-006-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.5}
+            - {index: 1, relevance_score: 0.9}
+            - {index: 2, relevance_score: 0.1}
+          meta:
+            billed_units:
+              search_units: 1
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.9}
+            - {index: 0, relevance_score: 0.5}
+            - {index: 2, relevance_score: 0.1}
+          model: rerank-test
+          response_id: rerank-006-id
+          usage:
+            search_units: 1
+            input_tokens: null
+      invariants:
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        result_count_matches_response: true

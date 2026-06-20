@@ -9,7 +9,7 @@ surfaces compose without conflict.
 
 - graph-engine §6 — `EmbeddingFailedEvent` typed event variant (proposal 0059).
 - observability §5.5 — typed embedding failure event framing.
-- retrieval-provider §5 — `provider_unavailable` error category (inherited from llm-provider §7).
+- retrieval-provider §7 — `provider_unavailable` error category (inherited from llm-provider §7).
 
 **Cases:**
 

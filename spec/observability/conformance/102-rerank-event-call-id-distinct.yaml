@@ -1,0 +1,67 @@
+# graph-engine §6 — RerankEvent.call_id is per-call: distinct call_id
+# values across multiple rerank() calls in the same invocation.
+# (Directives in fixture 099's header.)
+
+cases:
+  - name: multiple_rerank_calls_have_distinct_call_ids
+    description: |
+      Graph with two rerank-calling nodes in series. Both calls
+      succeed. The harness asserts two RerankEvent events are observed
+      and their call_id fields are distinct (and non-null).
+    state:
+      fields:
+        first_response:
+          type: record
+          default: null
+        second_response:
+          type: record
+          default: null
+    entry: rerank_first
+    nodes:
+      rerank_first:
+        calls_rerank:
+          query: "first query"
+          documents: ["doc a", "doc b"]
+          stores_response_in: first_response
+      rerank_second:
+        calls_rerank:
+          query: "second query"
+          documents: ["doc c", "doc d"]
+          stores_response_in: second_response
+    edges:
+      - {from: rerank_first, to: rerank_second}
+      - {from: rerank_second, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-102a-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              search_units: 1
+      - status: 200
+        body:
+          id: rerank-102b-id
+          model: rerank-test
+          results:
+            - {index: 1, relevance_score: 0.7}
+            - {index: 0, relevance_score: 0.3}
+          meta:
+            billed_units:
+              search_units: 1
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          event_count:
+            event_type: RerankEvent
+            count: 2
+      invariants:
+        call_ids_distinct_across_rerank_events: true
+        all_call_ids_non_null: true

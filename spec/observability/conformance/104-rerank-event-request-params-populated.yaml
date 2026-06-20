@@ -1,0 +1,96 @@
+# graph-engine §6 — RerankEvent.request_params carries the
+# rerank-specific runtime-config fields supplied by the caller
+# (initially: return_documents). Absence-is-meaningful for other
+# params. (Directives in fixture 099's header.)
+
+cases:
+  - name: request_params_populates_return_documents_when_supplied
+    description: |
+      rerank() called with config.return_documents=True. The harness
+      asserts the typed event's request_params carries
+      {return_documents: true} and no other keys.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b"]
+          config:
+            return_documents: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-104a-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8, document: "doc a"}
+            - {index: 1, relevance_score: 0.2, document: "doc b"}
+          meta:
+            billed_units:
+              search_units: 1
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: RerankEvent
+            fields:
+              request_params:
+                return_documents: true
+      invariants:
+        request_params_populated_with_caller_supplied_fields: true
+
+  - name: request_params_empty_when_no_config_supplied
+    description: |
+      rerank() called without config. The harness asserts the typed
+      event's request_params is an empty mapping (absence-is-meaningful
+      — no keys carried).
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-104b-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              search_units: 1
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: RerankEvent
+            fields:
+              request_params: {}
+      invariants:
+        request_params_empty_when_caller_supplied_none: true

@@ -1,0 +1,53 @@
+# graph-engine §6 — RerankEvent.query and RerankEvent.documents carry
+# the rerank call's inputs verbatim (populated unconditionally on the
+# typed event; observer-side privacy gating is a rendering-boundary
+# concern per observability §5.5.4, not a population concern).
+# (Directives in fixture 099's header.)
+
+cases:
+  - name: query_and_documents_carried_verbatim
+    description: |
+      rerank() called with a specific query and documents list. The
+      harness asserts the typed event's query and documents fields
+      carry the inputs verbatim.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-103-id
+          model: rerank-test
+          results:
+            - {index: 1, relevance_score: 0.9}
+            - {index: 0, relevance_score: 0.3}
+            - {index: 2, relevance_score: 0.1}
+          meta:
+            billed_units:
+              search_units: 1
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: RerankEvent
+            fields:
+              query: "what is the capital of france?"
+              documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+      invariants:
+        query_carried_verbatim: true
+        documents_carried_verbatim: true

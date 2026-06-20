@@ -2,12 +2,12 @@
 
 Verifies retrieval-provider §4's vector-count cross-impl invariant. An `EmbeddingProvider`
 receiving a response with fewer vectors than input strings MUST raise
-`provider_invalid_response` per §5.
+`provider_invalid_response` per §7.
 
 **Spec sections exercised:**
 
 - retrieval-provider §4 — vector-count invariant (length of `vectors` MUST equal length of `input`).
-- retrieval-provider §5 — `provider_invalid_response` error category.
+- retrieval-provider §7 — `provider_invalid_response` error category.
 
 **Cases:**
 

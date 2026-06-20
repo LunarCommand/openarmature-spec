@@ -9,7 +9,7 @@ lifecycle and the proposal template.
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
 | [0076](proposals/0076-tool-call-request-observability-llm-spans.md) | Tool-call request observability on LLM spans | observability | Accepted | Pending         | —          |
 | [0075](proposals/0075-parallel-branches-lightweight-branches.md) | Parallel-branches lightweight callable + conditional branches | pipeline-utilities | Accepted | Pending         | —          |
-| [0074](proposals/0074-failure-isolation-catch-classification.md) | Failure-isolation cause-chain catch classification | pipeline-utilities | Accepted | Pending         | —          |
+| [0074](proposals/0074-failure-isolation-catch-classification.md) | Failure-isolation cause-chain catch classification | pipeline-utilities | Accepted | Shipped (0.15.0)| —          |
 | [0073](proposals/0073-genai-semconv-adoption-reconciliation.md) | GenAI semconv adoption reconciliation | observability | Accepted | Textual (0.15.0)| —          |
 | [0072](proposals/0072-prompt-management-fetch-cache-ttl.md) | Per-fetch cache-TTL control | prompt-management   | Accepted | Shipped (0.15.0)| —          |
 | [0071](proposals/0071-conformance-adapter-failure-mock-catalog.md) | Failure-mock directive catalog | conformance-adapter | Accepted | Textual (0.14.0)| —          |
@@ -23,7 +23,7 @@ lifecycle and the proposal template.
 | [0063](proposals/0063-tool-execution-observability.md) | Tool-execution observability                              | graph-engine        | Accepted | Pending         | —          |
 | [0062](proposals/0062-llm-completion-streaming.md) | LLM completion streaming                                  | llm-provider        | Draft    | —               | —          |
 | [0061](proposals/0061-detached-trace-invocation-span.md) | Detached-trace invocation span                            | observability       | Accepted | Shipped (0.15.0)| —          |
-| [0060](proposals/0060-retrieval-provider-rerank.md) | Retrieval-provider rerank protocol                        | retrieval-provider  | Draft    | —               | —          |
+| [0060](proposals/0060-retrieval-provider-rerank.md) | Retrieval-provider rerank protocol                        | retrieval-provider  | Accepted | Pending         | —          |
 | [0059](proposals/0059-retrieval-provider-embedding.md) | Retrieval-provider capability (embedding protocol)        | retrieval-provider  | Accepted | Pending         | —          |
 | [0058](proposals/0058-typed-llm-failure-event.md) | Typed LLM failure event                                  | graph-engine        | Accepted | Shipped (0.13.0)| —          |
 | [0057](proposals/0057-llm-completion-event-field-set-extension.md) | LlmCompletionEvent field-set extension | graph-engine | Accepted | Shipped (0.13.0)| —          |

@@ -1,0 +1,80 @@
+# graph-engine §6 — RerankEvent.active_prompt is a snapshot of the
+# active Prompt identity at rerank() time, sourced from the impl's
+# prompt-context binding mechanism (same mechanism that drives the
+# openarmature.prompt.* span attributes per prompt-management §12).
+# Mirrors fixture 081 for the embedding-side variant.
+#
+# Per-fixture-suite harness directive extension (per
+# conformance-adapter §3.2):
+#
+# - query_from_rendered_prompt: true (on a calls_rerank: block) —
+#   the node uses the text from the most recently rendered prompt
+#   (per the renders_prompt: directive immediately above it) as the
+#   rerank() query. Lets a RAG retrieval-template scenario be
+#   expressed without threading the rendered text through a state
+#   field. (Sibling to the embedding suite's input_from_rendered_prompt
+#   directive, fixture 081.)
+
+cases:
+  - name: active_prompt_populated_when_rerank_inside_prompt_context
+    description: |
+      Graph with one rerank-calling node that renders a query prompt
+      first (RAG scenario — render the query template, then rerank
+      candidate documents against the rendered query) and then calls
+      rerank() with that prompt active. The typed event's active_prompt
+      carries the 5-field identity record matching the rendered prompt.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_query
+    nodes:
+      rerank_query:
+        renders_prompt: rag_query
+        calls_rerank:
+          query_from_rendered_prompt: true
+          documents: ["doc a", "doc b"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_query, to: END}
+    initial_state: {}
+    prompt_backend:
+      type: filesystem
+      prompts:
+        rag_query:
+          name: rag_query
+          version: "v3"
+          label: production
+          template: "search query: {{topic}}"
+          template_hash: "xyz789"
+    render_variables:
+      topic: "reranking"
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-106-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              search_units: 1
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: RerankEvent
+            fields:
+              active_prompt:
+                name: "rag_query"
+                version: "v3"
+                label: "production"
+                template_hash: "xyz789"
+                rendered_hash: "<any-string>"
+      invariants:
+        active_prompt_snapshot_matches_prompt_management_section_12_identity_attrs: true

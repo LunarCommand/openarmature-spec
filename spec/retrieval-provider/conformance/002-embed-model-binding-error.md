@@ -8,7 +8,7 @@ model identifier MUST surface `provider_invalid_model` on the readiness path.
 
 - retrieval-provider §3 — `ready()` and `embed()` model-binding contract; `ready()` MUST
   surface `provider_invalid_model` for unrecognized bound models.
-- retrieval-provider §5 — `provider_invalid_model` is one of the embedding-applicable
+- retrieval-provider §7 — `provider_invalid_model` is one of the embedding-applicable
   error categories.
 - llm-provider §7 — error-category enumeration (inherited).
 

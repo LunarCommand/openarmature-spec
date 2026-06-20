@@ -1,0 +1,77 @@
+# graph-engine §6 + observability §5.5 — Typed RerankEvent dispatch.
+# MUST fire on every successful RerankProvider.rerank() call, carrying
+# the identity / scoping / request-side field set plus rerank-specific
+# success-side fields (response_id, response_model, usage,
+# document_count, top_k, result_count).
+#
+# Per-directory harness directives `calls_rerank:` (node-level) and
+# `mock_rerank:` (suite-level) are defined for cross-directory reuse in
+# spec/retrieval-provider/conformance/006-rerank-positive-control.yaml's
+# header comment block; observability fixtures 099-108 reuse the same
+# vocabulary unchanged. The rerank provider's configured identifier
+# (gen_ai.system) is "cohere" across this suite — a harness stand-in,
+# the same way the embedding suite (074-083) uses "openai".
+
+cases:
+  - name: rerank_event_dispatched_with_populated_fields
+    description: |
+      Graph with one rerank-calling node. The mocked provider returns
+      a 2-result response with usage. The harness asserts a RerankEvent
+      is observed with the identity / scoping fields and the rerank
+      success-side fields matching the response.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "capital of france"
+          documents: ["doc about berlin", "doc about paris"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-099-id
+          model: rerank-test
+          results:
+            - {index: 1, relevance_score: 0.9}
+            - {index: 0, relevance_score: 0.3}
+          meta:
+            billed_units:
+              search_units: 1
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: RerankEvent
+            fields:
+              provider: cohere
+              model: rerank-test
+              response_model: rerank-test
+              response_id: rerank-099-id
+              document_count: 2
+              top_k: 2
+              result_count: 2
+              usage:
+                search_units: 1
+                input_tokens: null
+              node_name: rerank_node
+              namespace: [rerank_node]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+              caller_invocation_metadata: null
+      invariants:
+        exactly_one_rerank_event_observed: true
+        event_typed_fields_match_provider_response: true
+        identity_scoping_fields_populated: true

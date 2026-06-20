@@ -1,9 +1,9 @@
 # 0060: Retrieval-Provider Rerank Protocol
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-09
-- **Accepted:**
+- **Accepted:** 2026-06-20
 - **Targets:** spec/retrieval-provider/spec.md (extends — adds the second protocol surface to the existing capability per the *sibling rerank protocol scoped to a forthcoming proposal* hook left by proposal 0059; restructures §3–§8 to interleave rerank sections between embedding-shape sections and shared-semantics sections — new §5 *Rerank protocol*, new §6 *Rerank response and usage shapes*, existing §5 *Error semantics* renumbers to §7, §6 *Determinism* to §8, §7 *Cross-spec touchpoints* to §9, §8 *Out of scope* to §10; extends §2 *Concepts* with rerank-side records); spec/graph-engine/spec.md (§6 — add two new typed event variants on the observer event union: `RerankEvent` and `RerankFailedEvent`, paralleling `EmbeddingEvent` + `EmbeddingFailedEvent` per the 0049 / 0058 / 0059 success+failure pairing precedent); spec/observability/spec.md (§5.5 — new §5.5.10 *Rerank provider attributes* sub-subsection for OTel mapping using OA-namespace attributes since GenAI semconv has no settled rerank coverage as of OTel semconv v1.41.1 / 2026-06-09 verification; new §5.5.11 *Typed rerank events* sub-subsection paralleling §5.5.9 for embedding; §8 — new §8.4.6 *Rerank-specific mapping* sub-subsection for Langfuse mapping onto the dedicated `Retriever` observation type, verified 2026-06-09 against current Langfuse docs as the correct shape for rerank operations; the §5.5.4 `disable_provider_payload` flag introduced by proposal 0059 already covers rerank-side payload gating with no further rename needed); plus new conformance fixtures under `spec/retrieval-provider/conformance/` and `spec/observability/conformance/`.
 - **Related:** 0006 (llm-provider core — established the per-model-binding + typed-response pattern this proposal mirrors for rerank), 0049 (typed `LlmCompletionEvent` — typed-event pattern on the observer union this extends for the success-side variant), 0057 (LlmCompletionEvent field-set extension — request-side / prompt-identity / per-call disambiguator fields this proposal mirrors onto `RerankEvent` from launch rather than via a follow-on cycle), 0058 (LlmFailedEvent typed variant — failure-side typed event paired with the success-side per the success+failure pairing precedent this proposal applies), 0059 (retrieval-provider capability + embedding protocol — established the capability home, the `<domain>-provider` family framing, the `disable_provider_payload` cross-spec rename, the Langfuse dedicated-observation-type pattern this proposal extends to rerank, and the privacy posture pattern for payload-bearing provider operations)
 - **Supersedes:**
@@ -668,7 +668,7 @@ Net cross-reference impact at Accept: 6 distinct §5 references update to §7
   `spec/observability/conformance/` (numbered 084-093, appending to the existing
   074-083 embedding fixture set)
 
-Tentative spec version target: v0.55.0. No flag rename or other breaking change
+Tentative spec version target deferred to Accept. No flag rename or other breaking change
 needed (the cross-spec rename infrastructure from proposal 0059 already covers
 rerank's privacy posture).
 
