@@ -33,7 +33,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.5 gained an output-side home for the model's tool calls (proposal 0076): §5.5.1 adds the **gated** payload attribute `openarmature.llm.output.tool_calls` serializing the output tool calls `[{id, name, arguments}]` — the output-side counterpart to the input tool-call serialization (§5.5.5), since `output.content` is text only and omitted for tool-call-only completions; §5.5.10 adds the **ungated** identity projections `openarmature.llm.output.tool_calls.count` / `.names` / `.ids` so *which* tools were requested (and how many, and their ids) stays visible under the default payload-off posture and queryable without parsing the serialized calls. OA-namespace with no `gen_ai.*` mirror (verified the GenAI registry carries output tool calls as `tool_call` parts inside structured `gen_ai.output.messages`, and `gen_ai.tool.*` is the `execute_tool`/execution surface), the `openarmature.llm.attempt_index` (0050) precedent. The §5.5.5 *Tool-call serialization* forecast is retired. New fixtures 085–087 by [proposal 0076](../../proposals/0076-tool-call-request-observability-llm-spans.md)
   - §11 *Metrics* added — the OTel metrics signal complementing the §4–§6 spans and §7 logs: two opt-in OA-namespaced histogram instruments over provider calls, `openarmature.gen_ai.client.token.usage` (`{token}`) and `openarmature.gen_ai.client.operation.duration` (`s`), mirroring the Development-status upstream `gen_ai.client.*` instruments (per *Stable-only upstream adoption*; instrument-name cutover deferred), opt-in via an `enable_metrics` observer flag, recorded from the §5.5.7 / §5.5.9 typed completion events (and the typed `LlmFailedEvent` / `EmbeddingFailedEvent` for an errored attempt's duration + `error.type`), dimensioned per the §5.5 GenAI de-facto-standard carve-out (recognized-core `gen_ai.request.model` / `gen_ai.system` used directly — `gen_ai.system` retained; peripheral `gen_ai.operation.name` / `gen_ai.token.type` mirrored to `openarmature.gen_ai.*`; Stable `error.type` used directly), recorded per-attempt under call-level retry. Existing §11 *Out of scope* renumbered → §12, its *Metrics* bullet narrowed to graph-level metrics (+ streaming/server + instrument-cutover deferrals). New fixtures 088–091 by [proposal 0067](../../proposals/0067-observability-genai-metrics.md)
   - §5.5 gained §5.5.11 *Tool-execution span* (the OTel tool span `openarmature.tool.call` for the graph-engine §6 tool-call instrumentation scope: OA-namespace `openarmature.tool.*` attributes mirroring the Development `gen_ai.tool.*` / `execute_tool` surface — assessed **peripheral** under the §5.5 GenAI de-facto-standard carve-out, mirrored until recognized-core / Stable — plus the Stable `error.type` on failure; distinct from §5.5.10's tool-call *request* projections) and §5.5.12 *Typed tool events* (the `ToolCallEvent` / `ToolCallFailedEvent` structured-form note, paralleling §5.5.7 / §5.5.9); §5.5.4 `disable_provider_payload` extended to gate the tool payload attributes (`openarmature.tool.call.arguments` / `.result`); §8.4.6 *Tool-execution mapping* (Langfuse dedicated `Tool` observation via `asType: "tool"`, payload-gated `input` / `output`, `ERROR` level on `ToolCallFailedEvent`). New fixtures 092–098 by [proposal 0063](../../proposals/0063-tool-execution-observability.md)
-  - §5.5 gained §5.5.13 *Rerank provider attributes* (the OTel rerank span `openarmature.rerank.complete` for `RerankProvider.rerank()`: the core GenAI semconv subset per the §5.5 de-facto-standard carve-out — with `gen_ai.usage.input_tokens` conditionally emitted since rerank providers vary on reporting it — plus OA-namespace `openarmature.rerank.*` attributes including the conditionally-emitted `search_units`; `gen_ai.operation.name` deferred, no upstream rerank coverage) and §5.5.14 *Typed rerank events* (the `RerankEvent` / `RerankFailedEvent` structured-form note, paralleling §5.5.9); §8.4.7 *Rerank-specific mapping* (Langfuse dedicated `Retriever` observation via `asType: "retriever"`, payload-gated `input` / `output`, the OA `usageDetails.searchUnits` convention). The §5.5.4 `disable_provider_payload` flag (proposal 0059) already gates the rerank payload attributes. New fixtures 099–108 by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
+  - §5.5 gained §5.5.13 *Rerank provider attributes* (the OTel rerank span `openarmature.rerank.complete` for `RerankProvider.rerank()`: the core GenAI semconv subset per the §5.5 de-facto-standard carve-out — with `gen_ai.usage.input_tokens` conditionally emitted since rerank providers vary on reporting it — plus OA-namespace `openarmature.rerank.*` attributes including the conditionally-emitted `search_units`; `gen_ai.operation.name` deferred, no upstream rerank coverage) and §5.5.14 *Typed rerank events* (the `RerankEvent` / `RerankFailedEvent` structured-form note, paralleling §5.5.9); §8.4.7 *Rerank-specific mapping* (Langfuse dedicated `Retriever` observation via `asType: "retriever"`, payload-gated `input` / `output`, the OA `usageDetails.searchUnits` convention). The §5.5.4 `disable_provider_payload` flag (proposal 0059) already gates the rerank payload attributes. §11 metrics: rerank joins the operation-generic GenAI instruments (the `openarmature.gen_ai.operation` value `rerank`; `RerankFailedEvent` as a duration / `error.type` source; token-usage records rerank `input_tokens` only — no output tokens, `search_units` is not a token), completing the rerank hook 0067 left in §11.2 / §11.3. New fixtures 099–109 by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -2650,10 +2650,10 @@ does NOT assert exact timestamps or IDs.
 Observability so far has been span-based (§4–§6) and log-correlated (§7). This section adds the
 OpenTelemetry **metrics** signal: aggregatable histograms over provider calls, complementing the
 per-call spans. Metric observations are a projection of the same §6 observer event stream — the typed
-LLM completion event (§5.5.7) and typed embedding event (§5.5.9) for successful calls, and the typed
-`LlmFailedEvent` / `EmbeddingFailedEvent` (graph-engine §6, per proposals 0058 / 0059) for errored
-attempts (the source of an errored attempt's duration sample and its `error.type` dimension, §11.3) —
-and introduce no new data source.
+LLM completion event (§5.5.7), typed embedding event (§5.5.9), and typed rerank event (§5.5.14) for
+successful calls, and the typed `LlmFailedEvent` / `EmbeddingFailedEvent` / `RerankFailedEvent`
+(graph-engine §6, per proposals 0058 / 0059 / 0060) for errored attempts (the source of an errored
+attempt's duration sample and its `error.type` dimension, §11.3) — and introduce no new data source.
 
 ### 11.1 Emission and the Meter
 
@@ -2690,7 +2690,10 @@ prefix). Recording cadence under call-level retry is covered in *Call-level retr
   dimension `openarmature.gen_ai.token.type` = `"input"`, and the output-token count with `"output"`,
   sourced from the response usage record (§5.5.3 `gen_ai.usage.input_tokens` /
   `gen_ai.usage.output_tokens`). For an embedding call, it records **one** observation — the
-  input-token count with `"input"` (embeddings have no output tokens, per retrieval-provider §2). When
+  input-token count with `"input"` (embeddings have no output tokens, per retrieval-provider §2). For a
+  rerank call, it records the input-token count with `"input"` only when the rerank usage reports
+  `input_tokens` (rerank has no output tokens; `search_units` is a billing unit, not a token, and is
+  not recorded as a token-usage measurement). When
   a call's usage record is absent (the provider returned no usage), no observation is recorded for that
   call.
 
@@ -2708,25 +2711,25 @@ response and contribute nothing. The attempt index is deliberately NOT a dimensi
 unbounded cardinality); attempts are disambiguated on the spans, not the metrics.
 
 The instruments use an `openarmature.gen_ai.*` namespace (not `openarmature.llm.*`) because they are
-operation-generic — one instrument per signal, dimensioned by operation, covering LLM completions and
-embedding calls (and rerank calls when retrieval-provider rerank lands). This mirrors the upstream
+operation-generic — one instrument per signal, dimensioned by operation, covering LLM completions,
+embedding calls, and rerank calls. This mirrors the upstream
 single-instrument model and differs deliberately from the LLM-specific `openarmature.llm.*` attribute
 names of §5.5.3.1, which sit on the LLM span.
 
 ### 11.3 Dimensions
 
-Measurements carry the following dimensions, reusing the keys the provider (§5.5.3) and embedding
-(§5.5.8) spans already emit, under the same adoption split the §5.5 *GenAI semconv attribute adoption*
+Measurements carry the following dimensions, reusing the keys the provider (§5.5.3), embedding
+(§5.5.8), and rerank (§5.5.13) spans already emit, under the same adoption split the §5.5 *GenAI semconv attribute adoption*
 carve-out applies to those span attributes. Implementations MUST keep dimensions low-cardinality (no
 free-form per-request values).
 
 | Dimension key | On | Source | Notes |
 |---|---|---|---|
-| `openarmature.gen_ai.operation` | both | the operation kind | `"chat"` for LLM completion, `"embeddings"` for embedding. Mirrors the **peripheral** Development `gen_ai.operation.name` (mirrored to `openarmature.*` per the §5.5 carve-out / §5.5.8). |
-| `gen_ai.request.model` | both | §5.5.3 / §5.5.8 request model | Adopted directly as a **recognized-core** de-facto-standard name (§5.5 carve-out) — the model key both the LLM (§5.5.3) and embedding (§5.5.8) spans already emit. Cardinality is bounded by the set of models in use. |
-| `gen_ai.system` | both | §5.5.3 / §5.5.8 system identifier | Adopted directly as a recognized-core name and **retained** per the *post-adoption retention* rule (upstream removed it in favor of `gen_ai.provider.name`; §5.5.3). The provider identifier both spans already emit. |
+| `openarmature.gen_ai.operation` | both | the operation kind | `"chat"` for LLM completion, `"embeddings"` for embedding, `"rerank"` for rerank. Mirrors the **peripheral** Development `gen_ai.operation.name` (mirrored to `openarmature.*` per the §5.5 carve-out / §5.5.8). |
+| `gen_ai.request.model` | both | §5.5.3 / §5.5.8 request model | Adopted directly as a **recognized-core** de-facto-standard name (§5.5 carve-out) — the model key the LLM (§5.5.3), embedding (§5.5.8), and rerank (§5.5.13) spans already emit. Cardinality is bounded by the set of models in use. |
+| `gen_ai.system` | both | §5.5.3 / §5.5.8 system identifier | Adopted directly as a recognized-core name and **retained** per the *post-adoption retention* rule (upstream removed it in favor of `gen_ai.provider.name`; §5.5.3). The provider identifier all three spans already emit. |
 | `openarmature.gen_ai.token.type` | token.usage only | `"input"` / `"output"` | Mirrors the **peripheral** Development `gen_ai.token.type`. |
-| `error.type` | duration only, when the call errored | the llm-provider §7 error category (per retrieval-provider §7 for embedding), carried as `error_category` on the graph-engine §6 typed `LlmFailedEvent` / `EmbeddingFailedEvent` | **Stable** core semantic-conventions attribute (not GenAI-scoped), used directly. Absent on a successful call. |
+| `error.type` | duration only, when the call errored | the llm-provider §7 error category (per retrieval-provider §7 for embedding and rerank), carried as `error_category` on the graph-engine §6 typed `LlmFailedEvent` / `EmbeddingFailedEvent` / `RerankFailedEvent` | **Stable** core semantic-conventions attribute (not GenAI-scoped), used directly. Absent on a successful call. |
 
 The two `openarmature.*`-mirrored dimensions track the peripheral Development `gen_ai.operation.name` /
 `gen_ai.token.type` attributes; a follow-on adopts the `gen_ai.*` names if they reach Stable or become
@@ -2749,8 +2752,8 @@ assignment, or timestamps.
 Asserting metrics requires capturing recorded measurements in memory. Implementations MUST provide an
 in-memory **metric-capture** harness primitive (an in-memory `MetricReader`, sibling to the §6.3 OTel
 collector capture for spans), exposed to the conformance adapter per conformance-adapter §6. Fixtures
-assert the token-usage observations (value + dimensions) recorded for a completion or embedding call,
-and assert the duration instrument's presence + dimensions (not its value, per §11.4).
+assert the token-usage observations (value + dimensions) recorded for a completion, embedding, or
+rerank call, and assert the duration instrument's presence + dimensions (not its value, per §11.4).
 
 ## 12. Out of scope
 

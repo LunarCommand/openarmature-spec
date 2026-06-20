@@ -1,0 +1,144 @@
+# observability §11 (proposals 0067 + 0060): a rerank call with enable_metrics
+# on records the operation-generic GenAI metrics dimensioned by operation
+# "rerank". token.usage fires only when the rerank usage reports input_tokens
+# (rerank has no output tokens; search_units is a billing unit, not a token);
+# the duration histogram records every rerank call, carrying error.type on
+# failure. (calls_rerank / mock_rerank directives in retrieval-provider
+# fixture 006's header; the suite provider identifier is "cohere".)
+
+cases:
+  - name: rerank_records_input_token_and_duration
+    description: |
+      One rerank-calling node, enable_metrics=True. The mock reports
+      usage.input_tokens=5. The metric-capture primitive records token.usage
+      input=5 (operation "rerank", model, token.type "input") and one
+      operation.duration observation (operation "rerank", dimensions only).
+    state:
+      fields:
+        rr:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b"]
+          stores_response_in: rr
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    enable_metrics: true
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-109-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              input_tokens: 5
+    expected:
+      metrics:
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 5
+          dimensions:
+            openarmature.gen_ai.operation: "rerank"
+            openarmature.gen_ai.token.type: "input"
+            gen_ai.request.model: "rerank-test"
+            gen_ai.system: "cohere"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "rerank"
+            gen_ai.request.model: "rerank-test"
+            gen_ai.system: "cohere"
+      invariants:
+        rerank_records_input_token_when_reported: true
+        rerank_operation_dimension_is_rerank: true
+
+  - name: rerank_search_units_only_records_no_token_usage
+    description: |
+      One rerank call reporting search_units (no input_tokens). token.usage is
+      NOT recorded (search_units is a billing unit, not a token); the duration
+      observation is still recorded, operation "rerank".
+    state:
+      fields:
+        rr:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b"]
+          stores_response_in: rr
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    enable_metrics: true
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-109b-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+          meta:
+            billed_units:
+              search_units: 1
+    expected:
+      metrics:
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "rerank"
+            gen_ai.request.model: "rerank-test"
+            gen_ai.system: "cohere"
+      invariants:
+        no_token_usage_observation_when_search_units_only: true
+        duration_recorded_for_rerank: true
+
+  - name: errored_rerank_records_duration_with_error_type
+    description: |
+      The mock returns 503 -> provider_unavailable; the rerank call raises
+      (RerankFailedEvent dispatched, exception propagates). With enable_metrics
+      on, the duration histogram records one observation carrying
+      error.type="provider_unavailable"; no token.usage observation.
+    state:
+      fields:
+        rr:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "q"
+          documents: ["doc a", "doc b"]
+          stores_response_in: rr
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    enable_metrics: true
+    mock_rerank:
+      - status: 503
+        body:
+          error:
+            message: "service unavailable"
+    expected_error:
+      category: provider_unavailable
+      raised_from: rerank_node
+    expected:
+      metrics:
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "rerank"
+            gen_ai.request.model: "rerank-test"
+            gen_ai.system: "cohere"
+            error.type: "provider_unavailable"
+      invariants:
+        errored_rerank_records_duration_with_error_type: true
+        no_token_usage_observation_on_failure: true

@@ -15,8 +15,8 @@
 cases:
   - name: rerank_span_with_search_units_no_input_tokens
     description: |
-      One rerank node; provider reports search_units but no token
-      count (Cohere-shaped). Default OTel observer config. Asserts the
+      One rerank node; provider reports search-units but no token
+      count (a search-units-only billing surface). Default OTel observer config. Asserts the
       span emits openarmature.rerank.search_units and OMITS
       gen_ai.usage.input_tokens (conditional branch) plus
       gen_ai.operation.name and the gated payload attributes.
@@ -83,8 +83,8 @@ cases:
 
   - name: rerank_span_with_input_tokens_no_search_units
     description: |
-      One rerank node; provider reports input_tokens but no
-      search-units (Voyage-shaped). Default OTel observer config.
+      One rerank node; provider reports input-tokens but no
+      search-units (a token-count-only billing surface). Default OTel observer config.
       Asserts the span emits gen_ai.usage.input_tokens and OMITS
       openarmature.rerank.search_units (conditional branch) plus
       gen_ai.operation.name and the gated payload attributes.

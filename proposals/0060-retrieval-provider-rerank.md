@@ -4,7 +4,7 @@
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-09
 - **Accepted:** 2026-06-20
-- **Targets:** spec/retrieval-provider/spec.md (extends — adds the second protocol surface to the existing capability per the *sibling rerank protocol scoped to a forthcoming proposal* hook left by proposal 0059; restructures §3–§8 to interleave rerank sections between embedding-shape sections and shared-semantics sections — new §5 *Rerank protocol*, new §6 *Rerank response and usage shapes*, existing §5 *Error semantics* renumbers to §7, §6 *Determinism* to §8, §7 *Cross-spec touchpoints* to §9, §8 *Out of scope* to §10; extends §2 *Concepts* with rerank-side records); spec/graph-engine/spec.md (§6 — add two new typed event variants on the observer event union: `RerankEvent` and `RerankFailedEvent`, paralleling `EmbeddingEvent` + `EmbeddingFailedEvent` per the 0049 / 0058 / 0059 success+failure pairing precedent); spec/observability/spec.md (§5.5 — new §5.5.10 *Rerank provider attributes* sub-subsection for OTel mapping using OA-namespace attributes since GenAI semconv has no settled rerank coverage as of OTel semconv v1.41.1 / 2026-06-09 verification; new §5.5.11 *Typed rerank events* sub-subsection paralleling §5.5.9 for embedding; §8 — new §8.4.6 *Rerank-specific mapping* sub-subsection for Langfuse mapping onto the dedicated `Retriever` observation type, verified 2026-06-09 against current Langfuse docs as the correct shape for rerank operations; the §5.5.4 `disable_provider_payload` flag introduced by proposal 0059 already covers rerank-side payload gating with no further rename needed); plus new conformance fixtures under `spec/retrieval-provider/conformance/` and `spec/observability/conformance/`.
+- **Targets:** spec/retrieval-provider/spec.md (extends — adds the second protocol surface to the existing capability per the *sibling rerank protocol scoped to a forthcoming proposal* hook left by proposal 0059; restructures §3–§8 to interleave rerank sections between embedding-shape sections and shared-semantics sections — new §5 *Rerank protocol*, new §6 *Rerank response and usage shapes*, existing §5 *Error semantics* renumbers to §7, §6 *Determinism* to §8, §7 *Cross-spec touchpoints* to §9, §8 *Out of scope* to §10; extends §2 *Concepts* with rerank-side records); spec/graph-engine/spec.md (§6 — add two new typed event variants on the observer event union: `RerankEvent` and `RerankFailedEvent`, paralleling `EmbeddingEvent` + `EmbeddingFailedEvent` per the 0049 / 0058 / 0059 success+failure pairing precedent); spec/observability/spec.md (§5.5 — new §5.5.13 *Rerank provider attributes* sub-subsection for OTel mapping using OA-namespace attributes since GenAI semconv has no settled rerank coverage as of OTel semconv v1.41.1 / 2026-06-09 verification; new §5.5.14 *Typed rerank events* sub-subsection paralleling §5.5.9 for embedding; §8 — new §8.4.7 *Rerank-specific mapping* sub-subsection for Langfuse mapping onto the dedicated `Retriever` observation type, verified 2026-06-09 against current Langfuse docs as the correct shape for rerank operations; the §5.5.4 `disable_provider_payload` flag introduced by proposal 0059 already covers rerank-side payload gating with no further rename needed); plus new conformance fixtures under `spec/retrieval-provider/conformance/` and `spec/observability/conformance/`.
 - **Related:** 0006 (llm-provider core — established the per-model-binding + typed-response pattern this proposal mirrors for rerank), 0049 (typed `LlmCompletionEvent` — typed-event pattern on the observer union this extends for the success-side variant), 0057 (LlmCompletionEvent field-set extension — request-side / prompt-identity / per-call disambiguator fields this proposal mirrors onto `RerankEvent` from launch rather than via a follow-on cycle), 0058 (LlmFailedEvent typed variant — failure-side typed event paired with the success-side per the success+failure pairing precedent this proposal applies), 0059 (retrieval-provider capability + embedding protocol — established the capability home, the `<domain>-provider` family framing, the `disable_provider_payload` cross-spec rename, the Langfuse dedicated-observation-type pattern this proposal extends to rerank, and the privacy posture pattern for payload-bearing provider operations)
 - **Supersedes:**
 
@@ -224,7 +224,7 @@ idiomatic equivalent). The bound identifier is visible to the observability laye
 | `results` | List of `ScoredDocument` entries sorted by `relevance_score` descending (most relevant first). `len(results)` is at most `min(top_k, len(documents))` when `top_k` is supplied; at most `len(documents)` otherwise. MAY be shorter than that bound if the provider returns fewer results (e.g., relevance-threshold filtering on the provider side). |
 | `model` | The model identifier the provider returned. MAY be a more specific identifier than the one the provider was bound against. |
 | `usage` | A `RerankUsage` record (defined below). |
-| `response_id` | The provider-returned response identifier when present; null otherwise. Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.10) and the typed `RerankEvent.response_id` field (per graph-engine §6). |
+| `response_id` | The provider-returned response identifier when present; null otherwise. Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.13) and the typed `RerankEvent.response_id` field (per graph-engine §6). |
 | `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Per charter §3.1 principle 8 ("Transparency over abstraction") — callers retain access to provider-specific fields the normalized shape doesn't surface (provider-specific score-calibration metadata, vendor extensions, etc.). Parallel to llm-provider §6 `Response.raw` and retrieval-provider §4 `EmbeddingResponse.raw`. |
 
 ##### ScoredDocument
@@ -440,7 +440,7 @@ Default-suppression is the conservative posture.
 
 ### Extend observability §5.5 (OTel) with rerank mapping
 
-A new §5.5.10 *Rerank provider attributes* sub-subsection paralleling the existing
+A new §5.5.13 *Rerank provider attributes* sub-subsection paralleling the existing
 §5.5.8 *Embedding provider attributes* block (introduced by proposal 0059). Numbers
 assume nothing else lands in §5.5 between v0.54.0 and this proposal's Accept; if
 intervening proposals shift the available slot, the Accept PR renumbers accordingly.
@@ -501,13 +501,13 @@ documents). The `disable_llm_spans` flag is scoped to LLM completion spans only
 **Truncation.** The §5.5.5 truncation contract applies identically to the rerank
 payload attributes.
 
-A new §5.5.11 *Typed rerank events* sub-subsection frames the `RerankEvent` +
+A new §5.5.14 *Typed rerank events* sub-subsection frames the `RerankEvent` +
 `RerankFailedEvent` typed-event surface as the structured form of the rerank
 attribute surface, paralleling §5.5.9 for embedding events.
 
 ### Extend observability §8 (Langfuse) with rerank mapping
 
-A new §8.4.6 *Rerank-specific mapping* sub-subsection (after §8.4.5
+A new §8.4.7 *Rerank-specific mapping* sub-subsection (after §8.4.5
 embedding-specific mapping from proposal 0059).
 
 Rerank calls map onto Langfuse's dedicated **`Retriever`** observation type —
@@ -659,7 +659,7 @@ Net cross-reference impact at Accept: 6 distinct §5 references update to §7
   additive at the capability level
 - Two new typed event variants on the graph-engine §6 observer event union —
   `RerankEvent`, `RerankFailedEvent` (additive)
-- New §5.5.10 (OTel rerank attributes) + §5.5.11 (typed rerank events) + §8.4.6 (Langfuse rerank-specific mapping) subsections in observability spec (additive)
+- New §5.5.13 (OTel rerank attributes) + §5.5.14 (typed rerank events) + §8.4.7 (Langfuse rerank-specific mapping) subsections in observability spec (additive)
 - Section renumbering within retrieval-provider spec (existing §5–§8 shift to
   §7–§10; documented above; 6 cross-reference updates land in the same Accept
   PR for internal consistency)
@@ -764,7 +764,7 @@ mostly settled by precedent.
 - **`gen_ai.usage.input_tokens` conditional emission.** Settled by the OA
   conditional-emission convention (the §5.5.8 embedding mapping + the 0047
   cache-attribute precedent): emit when `RerankResponse.usage.input_tokens` is
-  non-null, omit otherwise. Stated normatively in the §5.5.10 OTel mapping above.
+  non-null, omit otherwise. Stated normatively in the §5.5.13 OTel mapping above.
   Not a genuine open question — the convention already covers it; the rerank case
   just exercises the conditional branch more often than embedding (where the field
   is always present).
