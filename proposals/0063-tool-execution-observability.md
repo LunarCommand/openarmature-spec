@@ -1,9 +1,9 @@
 # 0063: Tool-Execution Observability
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-09
-- **Accepted:**
+- **Accepted:** 2026-06-19
 - **Targets:** spec/graph-engine/spec.md (§6 — two new typed event variants on the observer event union, `ToolCallEvent` (success) and `ToolCallFailedEvent` (failure), paired per the 0049 / 0058 / 0059 success+failure precedent; plus a node-body **tool-call instrumentation scope** primitive the caller wraps tool execution in — OA observes the execution and emits the events; the caller runs the tool, OA does NOT select tools, loop, or feed results back); spec/observability/spec.md (§5.5 — new sub-subsection for the OTel tool span, span name `openarmature.tool.call`, OA-namespace `openarmature.tool.*` attributes; the upstream GenAI `execute_tool` span + `gen_ai.tool.*` attributes are at Development status (verified at draft time) and deferred per the stable-only adoption policy; §8.4 — Langfuse mapping onto the dedicated `Tool` observation type (`asType="tool"`); §5.5.4 — the `disable_provider_payload` flag's framing extends to cover tool-call payload (arguments / result), no new flag); plus new conformance fixtures under `spec/observability/conformance/`.
 - **Related:** 0006 (llm-provider — §3 `ToolCall` / `tool` message shape and §4 `Tool` definition this references; the `ToolCall.id` that `tool_call_id` links to), 0049 (typed `LlmCompletionEvent` — the model *requesting* tools, carrying `tool_calls`; `ToolCallEvent` is the downstream *execution* of one of those requests, linked by `tool_call_id`), 0058 (typed `LlmFailedEvent` — the success+failure pairing precedent), 0059 (retrieval-provider — the `disable_provider_payload` cross-spec flag this reuses for tool payload, and the dedicated-Langfuse-observation-type pattern this applies to `Tool`)
 - **Supersedes:**
@@ -11,8 +11,8 @@
 ## Summary
 
 Makes a caller's **tool execution** observable as a first-class typed event, closing the
-last RAG/agent-pipeline observability gap after LLM completion (0049/0058), embedding (0059),
-and rerank (0060). The model requests a tool via `LlmCompletionEvent.tool_calls`; the caller
+last RAG/agent-pipeline observability gap after LLM completion (0049/0058) and embedding (0059)
+— rerank (0060) is the remaining sibling. The model requests a tool via `LlmCompletionEvent.output_tool_calls`; the caller
 executes the tool (in node-body code — OA does not loop on tools per llm-provider §1); today
 that execution is invisible to OA's observer stream. This proposal adds:
 
@@ -26,7 +26,8 @@ that execution is invisible to OA's observer stream. This proposal adds:
    (`tool_name`, `tool_call_id` linking back to the requesting `LlmCompletionEvent`, the
    arguments, and the result or the error).
 3. OTel mapping (a tool span, OA-namespace attributes — the upstream `gen_ai.tool.*` / `execute_tool`
-   span is Development and deferred) and Langfuse mapping (the dedicated `Tool` observation type).
+   span is Development, assessed peripheral under the GenAI de-facto-standard carve-out and mirrored)
+   and Langfuse mapping (the dedicated `Tool` observation type).
 
 Because tool execution is arbitrary user-code, the failure variant departs from the other
 typed failure events: tool failures are **not** llm-provider §7 error categories, so
@@ -39,7 +40,7 @@ agent tool-loop, which remains a user-authored graph.
 ## Motivation
 
 **The execution half of tool calling is invisible.** llm-provider §3/§4 + proposal 0025
-(`tool_choice`) cover the model *requesting* a tool, and `LlmCompletionEvent.tool_calls`
+(`tool_choice`) cover the model *requesting* a tool, and `LlmCompletionEvent.output_tool_calls`
 (0049/0057) surfaces the request. But llm-provider §1 is explicit that "the caller is
 responsible for executing the tools" — OA does not loop. So the tool *execution* happens in
 user node-body code, outside any OA abstraction, and is invisible to the observer stream: no
@@ -68,7 +69,7 @@ execution. Behaviorally (language-agnostic; Python: an async context manager or 
 wrapping the call; TypeScript: equivalent):
 
 - The caller provides the `tool_name`, the `arguments` the tool is being invoked with, and
-  OPTIONALLY a `tool_call_id` (the `ToolCall.id` from the `LlmCompletionEvent.tool_calls` entry
+  OPTIONALLY a `tool_call_id` (the `ToolCall.id` from the `LlmCompletionEvent.output_tool_calls` entry
   this execution satisfies, per llm-provider §3).
 - The caller executes the tool **within** the scope. OA does not execute it.
 - On the execution returning a result, OA emits a `ToolCallEvent` carrying the result.
@@ -77,9 +78,15 @@ wrapping the call; TypeScript: equivalent):
   decides what to do with the exception (feed it back to the model as a tool message, abort,
   etc. — orchestration, out of scope here).
 
-**OA observes; the caller runs.** The scope MUST NOT select which tool to call, execute it,
-retry it, loop, or transform the result. It wraps a single execution for observation. Tool
-selection / looping / result-feedback live in the user's graph.
+**OA observes; the caller runs.** The scope MUST NOT select which tool to call (it has no tool
+registry), retry it, loop, or feed the result back to the model — those are orchestration. It
+instruments a single caller-initiated execution and obtains the outcome as the value the execution
+**yields to the scope**: in the inline-wrapping form, the return value of the caller-supplied call the
+scope wraps (the wrapping invocation is instrumentation — capturing timing and the return value — not
+tool ownership); in the start/complete form, a result the caller reports at completion. The result is
+**opaque** to OA — the pre-serialization, language-idiomatic value as the tool produced it; OA has no
+tool schema and does not parse, validate, or transform it. Tool selection / looping / result-feedback
+live in the user's graph.
 
 **Event-driven composition.** The scope MUST NOT assume synchronous inline execution. In an
 event-driven runtime a tool call may dispatch as a separate step and return in a later
@@ -123,7 +130,7 @@ Mirrors the identity / scoping baseline of `LlmCompletionEvent`, plus tool-speci
 | `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `LlmCompletionEvent`. |
 | `call_id` | string | A per-execution disambiguator minted by the implementation when the scope is entered. **Always present**; freshly minted per tool execution. (Distinct from `tool_call_id` — `call_id` is OA's own correlation token for this execution; `tool_call_id` is the provider's id from the model's request.) |
 | `tool_name` | string | The name of the tool / function executed. Matches the `Tool.name` (llm-provider §4) when the execution satisfies a model request. |
-| `tool_call_id` | string \| null | The `ToolCall.id` (llm-provider §3) of the `LlmCompletionEvent.tool_calls` entry this execution satisfies — the linkage back to the requesting LLM call. Null when the instrumented function did not originate from an LLM tool request. |
+| `tool_call_id` | string \| null | The `ToolCall.id` (llm-provider §3) of the `LlmCompletionEvent.output_tool_calls` entry this execution satisfies — the linkage back to the requesting LLM call. Null when the instrumented function did not originate from an LLM tool request. |
 | `arguments` | mapping \| null | The arguments the tool was invoked with. For an LLM-originated call this is the parsed `ToolCall.arguments` mapping (llm-provider §3/§4 — an object schema); for a standalone instrumented function it is the caller-supplied argument shape. Null when the tool takes no arguments. Payload-bearing — observer-side privacy gating per the privacy paragraph below. |
 | `result` | (language-idiomatic value) | The tool's return value, **as the tool produced it** (pre-serialization — a mapping, string, or any language-idiomatic value). The caller serializes it into the `tool` message content (a string per llm-provider §3); the §8.X observability mappings JSON-encode it for rendering. OA does not build the `tool` message — it observes the return value. Payload-bearing. |
 | `latency_ms` | float \| null | Wall-clock latency of the tool execution measured at the scope boundary, in milliseconds. May be null when not measured. |
@@ -203,31 +210,34 @@ span-name convention migrates per the §5.5.3.1 / 0047 mirror pattern.
 | `openarmature.tool.call.result` | string (JSON-encoded) | The tool result. Mirrors `gen_ai.tool.call.result`. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract. |
 | `error.type` | string | On failure only — the exception type. Uses the **standard OTel `error.type`** attribute (not an OA-namespace name) since OTel models span errors with `error.type` generally, not via a `gen_ai.tool.*` attribute. Span status is `ERROR` (§4.2) with an OTel exception event carrying the `error_message`. |
 
-**Stable-only upstream adoption — mirror now, adopt at Stable.** The upstream OTel GenAI
+**GenAI semconv adoption — peripheral, mirrored (per the carve-out).** The upstream OTel GenAI
 semconv defines an `execute_tool` span (`gen_ai.operation.name = "execute_tool"`, span name
 `execute_tool {gen_ai.tool.name}`) and tool attributes (`gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result`, `gen_ai.tool.type`,
-`gen_ai.tool.description`) — but **all are at Development status** (verified at draft time
-against the OTel GenAI spans semantic conventions; tracked in `docs/compatibility.md`). Per the
-`Stable-only upstream adoption` policy in `GOVERNANCE.md`, OA does NOT *adopt* the `gen_ai.tool.*`
-names in v1 — but it **does follow their lead**: the OA-namespace attributes above are
-deliberately structured to **mirror** the upstream shape (`openarmature.tool.name` ↔
-`gen_ai.tool.name`; `openarmature.tool.call.{id,arguments,result}` ↔
-`gen_ai.tool.call.{id,arguments,result}`), so adoption-on-Stable is a clean **prefix swap**
-(`openarmature.tool.*` → `gen_ai.tool.*`), not a re-modeling. This is the same mirror-then-adopt
-pattern proposal 0047 used for the cache-token attributes (`openarmature.llm.cache_read.input_tokens`
-↔ `gen_ai.usage.cache_read.input_tokens`). A follow-on proposal performs the adoption (the
-`gen_ai.tool.*` attribute names + the `execute_tool` span-name convention, and `gen_ai.tool.type`
-/ `gen_ai.tool.description` if useful) when those reach **Stable**, per the §5.5.3.1 / 0047 mirror
-pattern. The failure attribute uses the standard OTel `error.type` (not a `gen_ai.tool.*` name),
-which is already Stable and needs no migration.
+`gen_ai.tool.description`) — **all at Development status** (verified 2026-06-19 against the
+`semantic-conventions-genai` registry; tracked in `docs/compatibility.md`). Under the GenAI
+**de-facto-standard carve-out** (`GOVERNANCE.md` *External-dependency adoption*; observability §5.5),
+the deciding line is installed-base recognition, not the maturity label — and `gen_ai.tool.*` is
+assessed **peripheral**, not recognized-core: the tool-*execution* surface is an emerging convention
+(the upstream span guidance directs application developers to *manually* instrument tool calls) without
+the installed-base recognition of the core completion attributes (`gen_ai.system` /
+`gen_ai.request.model` / `gen_ai.usage.*`). So OA does NOT emit the `gen_ai.tool.*` names in v1 — it
+**mirrors** them: the OA-namespace attributes above are deliberately structured to mirror the upstream
+shape (`openarmature.tool.name` ↔ `gen_ai.tool.name`; `openarmature.tool.call.{id,arguments,result}` ↔
+`gen_ai.tool.call.{id,arguments,result}`), so adoption when the surface becomes recognized-core (or
+Stable) is a clean **prefix swap** (`openarmature.tool.*` → `gen_ai.tool.*`), not a re-modeling. This
+is the same mirror-then-adopt pattern proposal 0047 used for the cache-token attributes
+(`openarmature.llm.cache_read.input_tokens` ↔ `gen_ai.usage.cache_read.input_tokens`). A follow-on
+performs the adoption (the `gen_ai.tool.*` names + the `execute_tool` span-name convention, and
+`gen_ai.tool.type` / `gen_ai.tool.description` if useful) when the surface reaches recognized-core /
+Stable, per the §5.5.3.1 / 0047 pattern. The failure attribute uses the standard OTel `error.type`
+(not a `gen_ai.tool.*` name), which is already Stable and needs no migration.
 
 **Opt-out flags.** `disable_provider_payload` gates the payload attributes
 (`openarmature.tool.call.arguments`, `openarmature.tool.call.result`); `disable_genai_semconv` is
 not applicable in v1 (no GenAI semconv tool attributes are emitted — only the OA-namespace mirror
 and the Stable `error.type`). `disable_llm_spans` is scoped to LLM completion spans and does not
-gate tool spans (a future `disable_provider_spans` umbrella, noted under proposal 0060, would
-cover them).
+gate tool spans (a future `disable_provider_spans` umbrella could cover both).
 
 A *Typed tool events* note frames the `ToolCallEvent` / `ToolCallFailedEvent` surface as the
 structured form of the tool-span attribute surface, paralleling the typed-event notes for LLM
@@ -266,7 +276,7 @@ New fixtures under `spec/observability/conformance/` (numbered at Accept):
 - **tool-call-event-mutual-exclusion** — success emits exactly one `ToolCallEvent` / zero
   `ToolCallFailedEvent`; failure the reverse.
 - **tool-call-id-links-to-llm-request** — a tool execution satisfying an
-  `LlmCompletionEvent.tool_calls` entry carries the matching `tool_call_id`; a standalone
+  `LlmCompletionEvent.output_tool_calls` entry carries the matching `tool_call_id`; a standalone
   instrumented function carries `tool_call_id = null`.
 - **tool-call-payload-gating** — `disable_provider_payload=True` (default) suppresses
   `arguments` / `result` at the bundled OTel + Langfuse observers; `False` populates them.
@@ -306,12 +316,14 @@ target deferred to Accept.
    existing flag. (If independent tool-vs-provider payload gating ever becomes a real need, a
    follow-on can split it — see *Out of scope*.)
 
-4. **OA runs the tool (a registry / executor primitive).** Reject — that is orchestration, not
-   observability, and it is the agent-loop the primitives-first plan deliberately defers. The
-   caller executes tools (llm-provider §1); OA observes. Selecting, looping, and result-feedback
-   stay in the user's graph.
+4. **OA runs the tool (a registry / executor primitive).** Reject *for 0063* — running and
+   dispatching tools is the charter §4.4 **Tool System** (a core module: `ToolSet`, registry, MCP
+   dispatch), deferred to its own proposal. 0063 is the **observability** layer and observes tool
+   execution whoever runs it — a user node today, the §4.4 Tool System when it lands. The loop
+   *topology* stays user-composed (charter §5.2's conditional edge); 0063 supplies the observability
+   primitive both compose with.
 
-5. **Reuse `LlmCompletionEvent.tool_calls` instead of a separate event.** Reject — that event is
+5. **Reuse `LlmCompletionEvent.output_tool_calls` instead of a separate event.** Reject — that event is
    the model *requesting* tools; `ToolCallEvent` is the caller *executing* one of them. Different
    timing (request vs execution), different outcome (a tool can fail independently of the LLM
    call that requested it), and a request may be executed much later (event-driven). They are
@@ -323,31 +335,34 @@ target deferred to Accept.
    `Generation`-with-discriminator shape is the wrong fit, mirroring the embedding (0059) and
    rerank (0060) dedicated-type decisions.
 
-7. **Adopt the GenAI `gen_ai.tool.*` / `execute_tool` attributes now.** Reject — verified at
-   draft time that the entire GenAI tool-execution surface is at Development status; the
-   stable-only adoption policy defers it to OA-namespace until upstream Stable.
+7. **Adopt the GenAI `gen_ai.tool.*` / `execute_tool` attributes now.** Reject — the entire GenAI
+   tool-execution surface is Development (verified 2026-06-19), and under the GenAI de-facto-standard
+   carve-out it is assessed **peripheral** (not recognized-core), so OA mirrors it to the OA-namespace
+   until the surface becomes recognized-core / Stable.
 
 ## Open questions
 
 None at draft time. The two design points that could be open are settled in the text above:
 
-- **GenAI tool semconv adoption** — deferred (verified Development at draft time); OA-namespace
-  in v1, follow-on adopts the Stable subset when upstream stabilizes. Recorded in
-  `docs/compatibility.md` at Accept.
+- **GenAI tool semconv adoption** — assessed **peripheral** under the GenAI de-facto-standard
+  carve-out (verified Development 2026-06-19); OA-namespace mirror in v1, follow-on adopts when the
+  surface becomes recognized-core / Stable. Recorded in `docs/compatibility.md` at Accept.
 - **Independent tool-payload privacy gating** — resolved by reusing `disable_provider_payload`;
   a future proposal can introduce per-operation gating if a consumer demonstrates the need.
 
 ## Out of scope
 
-- **The agent tool-loop / executor / orchestration.** OA does not select tools, loop
-  `call_llm → execute → call_llm`, or feed tool results back to the model. The loop stays a
-  user-authored graph; this proposal supplies the observability primitive it composes from.
-- **Tool registry / discovery.** Mapping tool names to executables is an application concern.
+- **The agent tool-loop and tool dispatch.** The loop *topology* stays user-composed (charter §5.2's
+  conditional edge); tool *dispatch / execution* (registry, `ToolSet`, MCP) is the charter §4.4 **Tool
+  System** — a core module, deferred to its own proposal. This proposal supplies the observability
+  primitive both compose with; it does not itself dispatch tools or own the loop.
+- **Tool registry / discovery.** Mapping tool names to executables (local + MCP) is the charter §4.4
+  **Tool System**'s concern — a core module, deferred to its own proposal, not 0063's.
 - **Parallel tool execution.** When a model requests several tool calls, executing them
   concurrently is the existing fan-out / parallel-branches primitives over the `tool_calls`
   list — a documented pattern, not a new primitive. Each execution is instrumented with its own
   scope and emits its own event.
-- **GenAI `gen_ai.tool.*` / `execute_tool` adoption** — deferred pending upstream Stable.
+- **GenAI `gen_ai.tool.*` / `execute_tool` adoption** — mirrored as peripheral under the carve-out, deferred pending recognized-core / Stable.
 - **Independent tool-payload privacy gating** — reuses `disable_provider_payload`; a follow-on
   may split it if needed.
 - **Tool result caching / memoization** — an application concern, not a protocol primitive.

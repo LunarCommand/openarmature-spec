@@ -1,0 +1,60 @@
+# graph-engine §6 + observability §5.5.12 (proposal 0063): an instrumented tool
+# execution returning a result dispatches exactly one ToolCallEvent carrying the
+# full field set (tool_name, tool_call_id, arguments, result, latency_ms,
+# identity / scoping) and zero ToolCallFailedEvent.
+#
+# Harness directive `calls_tool` (observability fixture suite, self-documented
+# here like `calls_llm` / `calls_embed`): a node enters the graph-engine §6
+# tool-call instrumentation scope, runs a mock tool, and OA emits the typed event
+# at outcome time. `mock_tool.returns` → success (ToolCallEvent); `mock_tool.raises`
+# → failure (ToolCallFailedEvent). `tool_call_id` is optional (null = a standalone
+# instrumented function). `stores_result_in` is optional.
+
+cases:
+  - name: tool_call_event_dispatched_on_result
+    description: |
+      One node runs a tool via the instrumentation scope; the mock tool returns a
+      result. The harness asserts exactly one ToolCallEvent carrying tool_name,
+      tool_call_id, arguments, result, and identity / scoping; zero
+      ToolCallFailedEvent.
+    state:
+      fields:
+        weather: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_abc123"
+          arguments: {city: "Paris"}
+          mock_tool: {returns: {temperature_c: 20}}
+          stores_result_in: weather
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: ToolCallEvent
+            fields:
+              tool_name: "get_weather"
+              tool_call_id: "call_abc123"
+              arguments: {city: "Paris"}
+              result: {temperature_c: 20}
+              node_name: run_tool
+              namespace: [run_tool]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+          event_count:
+            event_type: ToolCallFailedEvent
+            count: 0
+      invariants:
+        exactly_one_tool_call_event_observed: true
+        tool_call_event_carries_full_field_set: true
+        latency_ms_present: true
+        zero_tool_call_failed_events_on_success: true

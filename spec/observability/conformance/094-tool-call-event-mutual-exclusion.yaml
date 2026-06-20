@@ -1,0 +1,70 @@
+# graph-engine §6 (proposal 0063): ToolCallEvent and ToolCallFailedEvent are
+# mutually exclusive per tool execution — a successful execution emits exactly one
+# ToolCallEvent and zero ToolCallFailedEvent; a failed one emits the reverse.
+
+cases:
+  - name: success_emits_only_tool_call_event
+    description: |
+      A tool that returns emits exactly one ToolCallEvent and zero
+      ToolCallFailedEvent.
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "lookup"
+          arguments: {q: "x"}
+          mock_tool: {returns: {hit: true}}
+          stores_result_in: out
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: ToolCallEvent
+          event_count:
+            event_type: ToolCallFailedEvent
+            count: 0
+      invariants:
+        success_one_tool_call_event_zero_failed: true
+
+  - name: failure_emits_only_tool_call_failed_event
+    description: |
+      A tool that raises emits exactly one ToolCallFailedEvent and zero
+      ToolCallEvent.
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "lookup"
+          arguments: {q: "x"}
+          mock_tool: {raises: {error_type: "ValueError", message: "bad query"}}
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: node_exception
+      raised_from: run_tool
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: ToolCallFailedEvent
+          event_count:
+            event_type: ToolCallEvent
+            count: 0
+      invariants:
+        failure_one_tool_call_failed_event_zero_success: true

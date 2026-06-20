@@ -32,6 +32,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §8.3 / §8.4.3 clarified the Langfuse mapping under **call-level retry**: §5.5's N per-attempt spans render as **one terminal Generation per `complete()` call** (the call's terminal outcome — the §5.5.7 completion on success, the terminal failure on exhaustion), not one Generation per attempt — the per-attempt surface is OTel-span-only (`openarmature.llm.attempt_index`); success → the terminal response Generation, retry exhaustion → the terminal failed Generation; distinct from node-level retry (pipeline-utilities §6.1), which renders one observation per attempt. The §8.3 "LLM provider span → Generation" row is qualified to match. Clarification of an already-implied consequence of the §5.5.7 terminal-event model; no behavior or fixture change — spec v0.66.1 (clarification PATCH, no proposal)
   - §5.5 gained an output-side home for the model's tool calls (proposal 0076): §5.5.1 adds the **gated** payload attribute `openarmature.llm.output.tool_calls` serializing the output tool calls `[{id, name, arguments}]` — the output-side counterpart to the input tool-call serialization (§5.5.5), since `output.content` is text only and omitted for tool-call-only completions; §5.5.10 adds the **ungated** identity projections `openarmature.llm.output.tool_calls.count` / `.names` / `.ids` so *which* tools were requested (and how many, and their ids) stays visible under the default payload-off posture and queryable without parsing the serialized calls. OA-namespace with no `gen_ai.*` mirror (verified the GenAI registry carries output tool calls as `tool_call` parts inside structured `gen_ai.output.messages`, and `gen_ai.tool.*` is the `execute_tool`/execution surface), the `openarmature.llm.attempt_index` (0050) precedent. The §5.5.5 *Tool-call serialization* forecast is retired. New fixtures 085–087 by [proposal 0076](../../proposals/0076-tool-call-request-observability-llm-spans.md)
   - §11 *Metrics* added — the OTel metrics signal complementing the §4–§6 spans and §7 logs: two opt-in OA-namespaced histogram instruments over provider calls, `openarmature.gen_ai.client.token.usage` (`{token}`) and `openarmature.gen_ai.client.operation.duration` (`s`), mirroring the Development-status upstream `gen_ai.client.*` instruments (per *Stable-only upstream adoption*; instrument-name cutover deferred), opt-in via an `enable_metrics` observer flag, recorded from the §5.5.7 / §5.5.9 typed completion events (and the typed `LlmFailedEvent` / `EmbeddingFailedEvent` for an errored attempt's duration + `error.type`), dimensioned per the §5.5 GenAI de-facto-standard carve-out (recognized-core `gen_ai.request.model` / `gen_ai.system` used directly — `gen_ai.system` retained; peripheral `gen_ai.operation.name` / `gen_ai.token.type` mirrored to `openarmature.gen_ai.*`; Stable `error.type` used directly), recorded per-attempt under call-level retry. Existing §11 *Out of scope* renumbered → §12, its *Metrics* bullet narrowed to graph-level metrics (+ streaming/server + instrument-cutover deferrals). New fixtures 088–091 by [proposal 0067](../../proposals/0067-observability-genai-metrics.md)
+  - §5.5 gained §5.5.11 *Tool-execution span* (the OTel tool span `openarmature.tool.call` for the graph-engine §6 tool-call instrumentation scope: OA-namespace `openarmature.tool.*` attributes mirroring the Development `gen_ai.tool.*` / `execute_tool` surface — assessed **peripheral** under the §5.5 GenAI de-facto-standard carve-out, mirrored until recognized-core / Stable — plus the Stable `error.type` on failure; distinct from §5.5.10's tool-call *request* projections) and §5.5.12 *Typed tool events* (the `ToolCallEvent` / `ToolCallFailedEvent` structured-form note, paralleling §5.5.7 / §5.5.9); §5.5.4 `disable_provider_payload` extended to gate the tool payload attributes (`openarmature.tool.call.arguments` / `.result`); §8.4.6 *Tool-execution mapping* (Langfuse dedicated `Tool` observation via `asType: "tool"`, payload-gated `input` / `output`, `ERROR` level on `ToolCallFailedEvent`). New fixtures 092–098 by [proposal 0063](../../proposals/0063-tool-execution-observability.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1079,7 +1080,8 @@ below are normative for cross-implementation consistency):
   provider call are NOT emitted — the §5.5.1 LLM payload attributes
   (`openarmature.llm.input.messages`, `openarmature.llm.output.content`,
   `openarmature.llm.output.tool_calls`, `openarmature.llm.request.extras`), the §5.5.8 embedding payload attributes
-  (`openarmature.embedding.input.strings`, `openarmature.embedding.request.extras`), and the
+  (`openarmature.embedding.input.strings`, `openarmature.embedding.request.extras`), the §5.5.11 tool
+  payload attributes (`openarmature.tool.call.arguments`, `openarmature.tool.call.result`), and the
   equivalent Langfuse payload fields per §8. When `False`, payload attributes emit per the
   corresponding section, subject to the §5.5.5 truncation contract for LLM payload and per the
   privacy posture documented in §8 for Langfuse embedding observations. (Renamed from
@@ -1389,7 +1391,7 @@ returned.)
 
 **Cross-span linkage.** `.ids` are the `ToolCall.id`s a downstream tool-execution observation links
 back to via its `tool_call_id`, joining "the model requested call X" (this span) to "call X was
-executed" (the execution surface).
+executed" (the execution surface, §5.5.11).
 
 **OA-namespace, no GenAI mirror.** `openarmature.llm.output.tool_calls*` (the gated full and these
 identity projections) is OA-namespace with no `gen_ai.*` counterpart, for the same reason
@@ -1399,6 +1401,66 @@ carry the model's output tool calls as `tool_call` parts *inside* the structured
 ids surface (verified against the GenAI semantic-conventions registry; the `gen_ai.tool.*` family is
 scoped to the separate `execute_tool` span — the execution side — not the chat-completion span).
 There is no flat upstream attribute to adopt or mirror.
+
+#### 5.5.11 Tool-execution span
+
+Distinct from §5.5.10 (the model *requesting* tools, projected onto the LLM completion span), this
+section covers the *execution* of a tool — the caller running a requested (or standalone) tool through
+the graph-engine §6 tool-call instrumentation scope. A **tool span** emits per instrumented tool
+execution, parented under the calling node's span.
+
+**Span name** — `openarmature.tool.call`. The `.call` suffix (rather than the sibling spans'
+`.complete` — `openarmature.llm.complete` / `openarmature.embedding.complete`) matches the terminology
+used everywhere for this concept: the `ToolCallEvent` name, llm-provider §3's "tool call," and
+Langfuse's `Tool`. It is deliberately distinct from the upstream GenAI `execute_tool {gen_ai.tool.name}`
+span-name convention, which OA does not adopt in v1 (see *adoption* below).
+
+**OA-namespace attributes**:
+
+| Attribute | Type | Description |
+|---|---|---|
+| `openarmature.tool.name` | string | The tool name. Mirrors `gen_ai.tool.name`. |
+| `openarmature.tool.call.id` | string | The `tool_call_id` (the §5.5.10 model-request linkage) when present; omitted otherwise. Mirrors `gen_ai.tool.call.id`. |
+| `openarmature.tool.call.arguments` | string (JSON-encoded) | The tool arguments. Mirrors `gen_ai.tool.call.arguments`. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract. |
+| `openarmature.tool.call.result` | string (JSON-encoded) | The tool result. Mirrors `gen_ai.tool.call.result`. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract. |
+| `error.type` | string | On failure only — the exception type. Uses the **standard OTel `error.type`** attribute (Stable core semconv, not a `gen_ai.tool.*` name), since OTel models span errors with `error.type` generally. Span status is ERROR (§4.2) with an OTel exception event carrying the `error_message`. |
+
+**GenAI semconv adoption — peripheral, mirrored (per the §5.5 carve-out).** The upstream OTel GenAI
+semconv defines an `execute_tool` span (span name `execute_tool {gen_ai.tool.name}`,
+`gen_ai.operation.name = "execute_tool"`) and tool attributes (`gen_ai.tool.name`,
+`gen_ai.tool.call.{id,arguments,result}`, `gen_ai.tool.type`, `gen_ai.tool.description`) — all at
+**Development** status (verified against the `semantic-conventions-genai` registry, 2026-06-19; tracked
+in `docs/compatibility.md`). Under the §5.5 *GenAI semconv attribute adoption* carve-out, `gen_ai.tool.*`
+is assessed **peripheral**, not recognized-core: the tool-*execution* surface is an emerging convention
+(upstream itself directs application developers to *manually* instrument tool calls) and lacks the
+installed-base recognition of the core completion attributes (`gen_ai.system` / `gen_ai.request.model` /
+`gen_ai.usage.*`). So OA **mirrors** it to the `openarmature.tool.*` namespace — deliberately structured
+so adoption when the surface reaches recognized-core (or Stable) is a clean prefix swap
+(`openarmature.tool.*` → `gen_ai.tool.*`), the same mirror-then-adopt pattern §5.5.3.1 / proposal 0047
+used for the cache-token attributes. A follow-on performs the adoption then. The failure attribute uses
+the standard OTel `error.type` (already Stable core), which needs no migration.
+
+**Opt-out flags.** `disable_provider_payload` (§5.5.4) gates the payload attributes
+(`openarmature.tool.call.arguments` / `.result`). `disable_genai_semconv` is not applicable in v1 (no
+GenAI semconv tool attributes are emitted — only the OA-namespace mirror and the Stable `error.type`).
+`disable_llm_spans` is scoped to LLM completion spans and does not gate tool spans.
+
+#### 5.5.12 Typed tool events
+
+The structured form of the §5.5.11 tool-span attribute surface as typed observer event variants on the
+graph-engine §6 observer event union. Paralleling §5.5.7 *Typed LLM completion event* and §5.5.9
+*Typed embedding events*, two variants `ToolCallEvent` (success) and `ToolCallFailedEvent` (failure)
+are dispatched per instrumented tool execution — mutually exclusive per execution, per the 0049 → 0058
+→ 0059 success+failure pairing precedent. Observers consuming them for backend-specific rendering (OTel
+tool-span enrichment per §5.5.11, Langfuse `Tool` observation per §8.4.6, custom queryable observer
+accumulators per §9) filter via type discrimination (`isinstance(event, ToolCallEvent)` /
+`isinstance(event, ToolCallFailedEvent)`).
+
+The privacy posture mirrors §5.5.7's LLM-side typed events — `arguments` and `result` are populated by
+the implementation unconditionally on every typed event; observer-side gating at the rendering boundary
+honors `disable_provider_payload` per §5.5.4. `ToolCallFailedEvent` carries `error_type` +
+`error_message` and — unlike the LLM / embedding failure events — **no `error_category`** (arbitrary
+tool code has no closed llm-provider §7 failure taxonomy; see graph-engine §6).
 
 ### 5.6 Cross-cutting attributes
 
@@ -2178,6 +2240,34 @@ exposure. Out of scope for the v0.54.0 mapping.
 `Embedding` observations uniformly via the per-observation `usageDetails` field. No metadata
 discriminator is needed; the observation type itself discriminates. Costs from embedding calls
 roll into the same `trace.totalCost` aggregation as LLM completion costs.
+
+#### 8.4.6 Tool-execution mapping (sourced from tool span attributes)
+
+Tool executions (per the graph-engine §6 tool-call instrumentation scope; §5.5.11) map onto Langfuse's
+dedicated `Tool` observation type — NOT a `Generation` with a metadata discriminator. Langfuse defines
+`Tool` as "a tool call, for example to a weather API" (verified against current Langfuse docs); the
+dedicated type carries the tool semantics (`input` / `output` / metadata) directly and integrates with
+trace rollup. Implementations create the observation via the Langfuse SDK's `asType: "tool"` parameter
+(or per-language idiomatic equivalent) — the `Tool` type in §8.4.5's observation-type enumeration.
+
+Field mappings:
+
+| Tool observation field | Source |
+|---|---|
+| `tool.input` | The tool `arguments`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), NOT populated. |
+| `tool.output` | The tool `result`. Privacy-gated per `disable_provider_payload`. When the flag is `True` (default), NOT populated. |
+| `tool.metadata.openarmature_tool_name` | The tool name (`tool_name`). |
+| `tool.metadata.openarmature_tool_call_id` | The `tool_call_id` (the §5.5.10 model-request linkage) when present. |
+| `tool.level` / status | `DEFAULT` on `ToolCallEvent`; `ERROR` on `ToolCallFailedEvent`, with `error_type` / `error_message` in metadata + the status message. |
+
+**Privacy posture.** `input` (arguments) and `output` (result) are payload-bearing, gated by
+`disable_provider_payload` (default `True` per §5.5.4) identically to the other provider observations.
+When the flag is `True`, the `Tool` observation populates the tool name + identity metadata (+ status)
+only; `input` / `output` are NOT populated.
+
+**Nesting and rollup.** Tool observations nest under the calling node's `Span` observation, and
+trace-level cost / latency aggregation includes them alongside `Generation` / `Embedding` / `Retriever`
+observations.
 
 ### 8.5 Correlation ID realization
 

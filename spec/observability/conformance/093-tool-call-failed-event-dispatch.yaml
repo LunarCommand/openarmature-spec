@@ -1,0 +1,55 @@
+# graph-engine §6 (proposal 0063): an instrumented tool execution that raises
+# dispatches exactly one ToolCallFailedEvent carrying error_type + error_message
+# and NO error_category (the deliberate departure from LlmFailedEvent /
+# EmbeddingFailedEvent — arbitrary tool code has no closed llm-provider §7
+# taxonomy), and the exception re-raises out of the scope (the node lets it
+# propagate, so the invocation errors with the graph-engine §4 node_exception
+# category — distinct from the category-less typed event).
+
+cases:
+  - name: tool_call_failed_event_dispatched_on_raise
+    description: |
+      The mock tool raises. The harness asserts exactly one ToolCallFailedEvent
+      with error_type + error_message and no error_category field, zero
+      ToolCallEvent, and that the exception propagates out of the scope (the
+      invocation errors, node_exception, raised from run_tool).
+    state:
+      fields:
+        weather: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_def456"
+          arguments: {city: "Paris"}
+          mock_tool: {raises: {error_type: "TimeoutError", message: "tool timed out"}}
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: node_exception
+      raised_from: run_tool
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: ToolCallFailedEvent
+            fields:
+              tool_name: "get_weather"
+              tool_call_id: "call_def456"
+              arguments: {city: "Paris"}
+              error_type: "TimeoutError"
+              error_message: "tool timed out"
+              node_name: run_tool
+          event_count:
+            event_type: ToolCallEvent
+            count: 0
+      invariants:
+        exactly_one_tool_call_failed_event_observed: true
+        no_error_category_field_on_tool_failure_event: true
+        zero_tool_call_events_on_failure: true
+        exception_propagates_alongside_typed_event: true

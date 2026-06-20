@@ -1,0 +1,56 @@
+# observability §5.5.11 (proposal 0063): the OTel tool span uses span name
+# openarmature.tool.call and OA-namespace openarmature.tool.* attributes,
+# mirroring the Development gen_ai.tool.* surface WITHOUT emitting it. Asserts the
+# gen_ai.tool.* attributes and the execute_tool span-name convention are NOT
+# emitted in v1 (assessed peripheral, mirrored per the §5.5 carve-out). Payload on
+# to surface all attributes.
+
+cases:
+  - name: otel_tool_span_uses_oa_namespace_not_gen_ai_tool
+    description: |
+      A tool execution emits an openarmature.tool.call span carrying the
+      OA-namespace openarmature.tool.* attributes, parented under the calling
+      node's span; the Development gen_ai.tool.* attributes are NOT emitted.
+    disable_provider_payload: false
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_abc123"
+          arguments: {city: "Paris"}
+          mock_tool: {returns: {temperature_c: 20}}
+          stores_result_in: out
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "run_tool"
+              status: OK
+              children:
+                - name: "openarmature.tool.call"
+                  status: OK
+                  attributes_present:
+                    - openarmature.tool.name
+                    - openarmature.tool.call.id
+                    - openarmature.tool.call.arguments
+                    - openarmature.tool.call.result
+                  attributes_absent:
+                    - gen_ai.tool.name
+                    - gen_ai.tool.call.id
+                    - gen_ai.tool.call.arguments
+                    - gen_ai.tool.call.result
+                    - gen_ai.operation.name
+                  children: []
+      invariants:
+        tool_span_name_is_openarmature_tool_call: true
+        oa_namespace_tool_attributes_emitted: true
+        gen_ai_tool_attributes_not_emitted_in_v1: true
+        execute_tool_span_name_not_used: true

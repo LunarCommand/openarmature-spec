@@ -4,6 +4,19 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.69.0] — 2026-06-19
+
+**Added**
+
+- **graph-engine §6 — tool-execution observability.** Makes a caller's tool *execution* observable: an opt-in node-body **tool-call instrumentation scope** (the caller wraps a single tool execution; OA observes — it does not select, run, retry, or loop tools) and two paired typed events `ToolCallEvent` (success) + `ToolCallFailedEvent` (failure), carrying the identity / scoping baseline + `tool_name` / `tool_call_id` (linking to the requesting `LlmCompletionEvent.output_tool_calls` entry) / `arguments` / `result` (success) and `error_type` + `error_message` (failure — **no `error_category`**, since arbitrary tool code has no closed llm-provider §7 taxonomy). The event-driven start/complete split carries the scope-entry identity. ([proposal 0063](proposals/0063-tool-execution-observability.md))
+- **observability §5.5.11 / §5.5.12 / §8.4.6 — tool-execution mapping.** OTel tool span `openarmature.tool.call` with OA-namespace `openarmature.tool.*` attributes + the Stable `error.type` on failure (§5.5.11), the *Typed tool events* note (§5.5.12), and the Langfuse dedicated `Tool` observation `asType: "tool"` (§8.4.6). `disable_provider_payload` (§5.5.4) extended to gate the tool payload (arguments / result). ([proposal 0063](proposals/0063-tool-execution-observability.md))
+- Seven new observability conformance fixtures (`092`–`098`): tool-call event dispatch (success / failure), mutual exclusion, id-linkage, payload gating, OTel span attributes, Langfuse `Tool` observation. ([proposal 0063](proposals/0063-tool-execution-observability.md))
+
+**Notes**
+
+- **GenAI `gen_ai.tool.*` adoption — peripheral, mirrored.** The upstream `execute_tool` span + `gen_ai.tool.*` attributes are Development (verified 2026-06-19); under the §5.5 GenAI de-facto-standard carve-out (proposal 0073) the tool-execution surface is assessed peripheral (not recognized-core), so OA mirrors it to `openarmature.tool.*` — a clean prefix swap when it reaches recognized-core / Stable. ([proposal 0063](proposals/0063-tool-execution-observability.md))
+- **MINOR bump (pre-1.0).** Additive and opt-in: two new typed events + a node-body instrumentation primitive + new OTel / Langfuse mappings; events fire only when the caller instruments a tool execution. No change to existing behavior. ([proposal 0063](proposals/0063-tool-execution-observability.md))
+
 ## [0.68.0] — 2026-06-19
 
 **Added**

@@ -1,0 +1,85 @@
+# observability §5.5.4 / §5.5.11 (proposal 0063): disable_provider_payload gates
+# the tool payload attributes (openarmature.tool.call.arguments / .result) on the
+# OTel tool span. Default True (payload off) suppresses them while the identity
+# attributes (openarmature.tool.name / .call.id) stay; False populates them.
+
+cases:
+  - name: payload_off_default_suppresses_arguments_and_result
+    description: |
+      Default observer config (disable_provider_payload True). The
+      openarmature.tool.call span carries the identity attributes but NOT the
+      arguments / result payload attributes.
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_abc123"
+          arguments: {city: "Paris"}
+          mock_tool: {returns: {temperature_c: 20}}
+          stores_result_in: out
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "run_tool"
+              status: OK
+              children:
+                - name: "openarmature.tool.call"
+                  status: OK
+                  attributes:
+                    openarmature.tool.name: "get_weather"
+                    openarmature.tool.call.id: "call_abc123"
+                  attributes_absent:
+                    - openarmature.tool.call.arguments
+                    - openarmature.tool.call.result
+                  children: []
+      invariants:
+        payload_off_suppresses_tool_arguments_and_result: true
+        identity_attributes_present_with_payload_off: true
+
+  - name: payload_on_populates_arguments_and_result
+    description: |
+      disable_provider_payload False. The openarmature.tool.call span additionally
+      carries the JSON-encoded arguments and result payload attributes.
+    disable_provider_payload: false
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_abc123"
+          arguments: {city: "Paris"}
+          mock_tool: {returns: {temperature_c: 20}}
+          stores_result_in: out
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "run_tool"
+              status: OK
+              children:
+                - name: "openarmature.tool.call"
+                  status: OK
+                  attributes_present:
+                    - openarmature.tool.name
+                    - openarmature.tool.call.id
+                    - openarmature.tool.call.arguments
+                    - openarmature.tool.call.result
+                  children: []
+      invariants:
+        payload_on_populates_tool_arguments_and_result: true
