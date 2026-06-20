@@ -1,0 +1,84 @@
+# observability §5.7 (proposal 0075): inline-callable parallel branches render
+# on the OTel side as per-branch dispatch spans keyed by
+# openarmature.node.branch_name — the callable branch is the single unit, with
+# NO inner-node spans beneath it (contrast the subgraph-branch fixture 038, where
+# inner nodes span under the dispatch span). A `when`-skipped branch (§11.10)
+# produces no span at all. Pins the §5.7 callable-branch / skipped-branch span
+# shape that proposal 0075 specified but left unfixtured.
+#
+# Fixture directives (per 0075; see pipeline-utilities fixtures 073 / 074): a
+# branch carries `call: {update: {...}}` (an inline callable returning a
+# parent-shaped partial) and an optional `when: {field: <name>}` (a truthy check
+# on a parent-state field at dispatch). The span_tree assertion implies the
+# bundled OTel observer (default config), as in fixtures 038 / 082.
+#
+# NOTE: openarmature.parallel_branches.branch_count is deliberately NOT asserted.
+# §5.7 defines it as "branches dispatched" yet sources it from
+# parallel_branches_config (whose branch_names is unaffected by a when-skip), so
+# its value under a skip is ambiguous in the current spec. This fixture pins only
+# the span shape + skip-emits-no-span, which are unambiguous; span_tree attribute
+# matching is subset-based, so leaving branch_count unlisted is safe.
+
+cases:
+  - name: callable_branches_render_keyed_spans_skipped_emits_none
+    description: |
+      A parallel-branches node `retrieve` with three inline-callable branches:
+      `vector` (when run_vector — defaults false, so skipped), `fts`, and
+      `keyword` (both dispatch). The OTel observer MUST render one per-branch
+      dispatch span per DISPATCHED callable branch, keyed by
+      openarmature.node.branch_name, carrying
+      openarmature.parallel_branches.parent_node_name, with NO inner-node spans
+      (children: []). The skipped `vector` branch produces NO span.
+    state:
+      fields:
+        run_vector: {type: bool, default: false}
+        vector_result: {type: int, default: 0}
+        fts_result: {type: int, default: 0}
+        keyword_result: {type: int, default: 0}
+    entry: retrieve
+    nodes:
+      retrieve:
+        parallel_branches:
+          branches:
+            vector:
+              call: {update: {vector_result: 1}}
+              when: {field: run_vector}
+            fts:
+              call: {update: {fts_result: 2}}
+            keyword:
+              call: {update: {keyword_result: 3}}
+          error_policy: fail_fast
+    edges:
+      - {from: retrieve, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        run_vector: false
+        vector_result: 0       # skipped -> no contribution
+        fts_result: 2
+        keyword_result: 3
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "retrieve"
+              status: OK
+              attributes:
+                openarmature.parallel_branches.error_policy: "fail_fast"
+              children:
+                - name: "fts"
+                  status: OK
+                  attributes:
+                    openarmature.node.branch_name: "fts"
+                    openarmature.parallel_branches.parent_node_name: "retrieve"
+                  children: []
+                - name: "keyword"
+                  status: OK
+                  attributes:
+                    openarmature.node.branch_name: "keyword"
+                    openarmature.parallel_branches.parent_node_name: "retrieve"
+                  children: []
+      invariants:
+        callable_branch_renders_one_span_keyed_by_branch_name: true
+        callable_branch_span_has_no_inner_node_spans: true
+        when_skipped_branch_emits_no_span: true

@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.70.1] — 2026-06-20
+
+**Added**
+
+- **observability conformance fixture `110`** — pins the §5.7 callable-branch span shape that proposal 0075 specified but left unfixtured: an inline-callable parallel branch renders as a per-branch dispatch span keyed by `openarmature.node.branch_name` with no inner-node spans, and a `when`-skipped branch emits no span. No spec-text change (the 0075 behavior is already normative). ([proposal 0075](proposals/0075-parallel-branches-lightweight-branches.md))
+
+**Notes**
+
+- **PATCH (pre-1.0).** Conformance coverage only — adds one fixture; no spec-text or behavior change.
+
 ## [0.70.0] — 2026-06-20
 
 **Added**
