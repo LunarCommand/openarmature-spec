@@ -61,7 +61,7 @@ cases:
         finish_reason: stop
         usage: {prompt_tokens: 7, completion_tokens: 3, total_tokens: 10}
         raw_check:
-          required_keys: [choices, usage]
+          required_keys: [id, object, model, choices, usage]
       invariants:
         streamed_request_sends_stream_true_and_include_usage: true
         assembled_content_is_ordered_concatenation_of_deltas: true
@@ -127,7 +127,7 @@ cases:
         finish_reason: tool_calls
         usage: {prompt_tokens: 12, completion_tokens: 8, total_tokens: 20}
         raw_check:
-          required_keys: [choices, usage]
+          required_keys: [id, object, model, choices, usage]
       invariants:
         streamed_tool_call_arguments_reassemble_and_parse: true
         reassembled_tool_calls_equal_non_streamed_equivalent: true
@@ -177,7 +177,7 @@ cases:
         finish_reason: stop
         usage: {prompt_tokens: 10, completion_tokens: 6, total_tokens: 16}
         raw_check:
-          required_keys: [choices, usage]
+          required_keys: [id, object, model, choices, usage]
       invariants:
         reasoning_delta_assembles_into_thinking_block: true
         content_delta_assembles_into_text_block: true
