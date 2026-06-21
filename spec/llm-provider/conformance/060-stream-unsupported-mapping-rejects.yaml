@@ -1,0 +1,77 @@
+# §5 *Provider streaming support* — a wire mapping that does NOT implement
+# streaming MUST reject a stream-set call at pre-send validation, raising
+# provider_invalid_request (§7), with NO token events emitted and NO silent
+# atomic fallback. Same mold as tool_choice pre-send validation. This is the
+# defined behavior for the §8.2 Anthropic / §8.3 Gemini mappings until their
+# streaming wire handling lands in follow-ons.
+#
+# Synthetic streaming-unsupported mapping (per conformance-adapter §3.2): the
+# `mapping: streaming_unsupported_stub` directive selects a synthetic wire
+# mapping that supports atomic complete() but declares NO streaming support —
+# a stand-in for a not-yet-streaming §8.X mapping (Anthropic / Gemini), so the
+# rejection contract is tested independently of any one vendor's wire details
+# (which change when that vendor's streaming follow-on lands). A stream-set call
+# on this mapping MUST be rejected at pre-send validation.
+
+mapping: streaming_unsupported_stub
+
+cases:
+  - name: stream_set_call_rejected_pre_send_no_token_events_no_fallback
+    description: |
+      A complete(stream=True) call against the streaming-unsupported mapping.
+      The mapping MUST raise provider_invalid_request at pre-send validation —
+      before contacting the provider — with a message identifying that the
+      mapping does not support streaming. The mock provider's response list is
+      empty: if the implementation sends any request (an atomic fallback, or a
+      mid-call failure), the mock fails the test, confirming the pre-send catch
+      and the no-fallback rule. No LlmTokenEvent is emitted.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "stream this"}
+    mock_provider:
+      # The mock is never reached — rejection is pre-send. A sent request
+      # (atomic fallback or mid-call) fails the test.
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request
+      # No token events on the rejected path (no stream was ever consumed).
+      no_token_events_emitted: true
+      invariants:
+        stream_unsupported_mapping_rejects_pre_send: true
+        rejection_category_is_provider_invalid_request: true
+        no_silent_atomic_fallback: true
+        no_token_events_on_rejected_stream: true
+
+  - name: atomic_call_on_same_mapping_still_succeeds
+    description: |
+      Control: the SAME streaming-unsupported mapping handles an atomic call
+      (stream unset) normally — the rejection is specific to the stream-set
+      request shape, not a broken mapping. The mock returns one atomic response;
+      the assembled Response is the ordinary atomic shape.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "atomic this"}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-060
+            object: chat.completion
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+    expected:
+      response:
+        message:
+          role: assistant
+          content: "ok"
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+      invariants:
+        atomic_call_unaffected_by_streaming_rejection: true

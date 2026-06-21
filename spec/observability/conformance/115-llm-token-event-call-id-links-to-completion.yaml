@@ -1,0 +1,68 @@
+# graph-engine §6 — LlmTokenEvent.call_id links a token stream to its terminal
+# LlmCompletionEvent. Two streamed calls in one invocation: each call's token
+# events carry THAT call's call_id, distinct across the two calls, each matching
+# its own terminal LlmCompletionEvent's call_id. This is the linkage observers
+# use to associate a token stream with its eventual completion.
+# (Streaming directives in fixture 111's header.)
+
+cases:
+  - name: each_streams_token_events_share_their_own_completion_call_id
+    description: |
+      Graph chains two streamed LLM-calling nodes (both stream=True). Call 1
+      streams "A1"/"B1"; call 2 streams "A2"/"B2"/"C2". The harness asserts:
+      - 5 LlmTokenEvents and 2 LlmCompletionEvents total
+      - the token events for call 1 (chunk_index 0,1) all share one call_id,
+        equal to call 1's terminal LlmCompletionEvent's call_id
+      - the token events for call 2 (chunk_index 0,1,2) all share one call_id,
+        equal to call 2's terminal LlmCompletionEvent's call_id
+      - the two call_ids are distinct and non-null.
+      Each call's chunk_index restarts at 0 (chunk_index is monotonic PER call).
+    state:
+      fields:
+        first:
+          type: string
+          default: ""
+        second:
+          type: string
+          default: ""
+    entry: call1
+    nodes:
+      call1:
+        calls_llm:
+          stream: true
+          messages: [{role: user, content: "first"}]
+          stores_response_in: first
+      call2:
+        calls_llm:
+          stream: true
+          messages: [{role: user, content: "second"}]
+          stores_response_in: second
+    edges:
+      - {from: call1, to: call2}
+      - {from: call2, to: END}
+    initial_state: {}
+    mock_llm_stream:
+      - - {choices: [{index: 0, delta: {content: "A1"}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "B1"}, finish_reason: stop}]}
+        - {choices: [], usage: {prompt_tokens: 3, completion_tokens: 2, total_tokens: 5}}
+      - - {choices: [{index: 0, delta: {content: "A2"}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "B2"}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "C2"}, finish_reason: stop}]}
+        - {choices: [], usage: {prompt_tokens: 4, completion_tokens: 3, total_tokens: 7}}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          event_counts:
+            - {event_type: LlmTokenEvent, count: 5}
+            - {event_type: LlmCompletionEvent, count: 2}
+      invariants:
+        # Grouping the token events by call_id yields two groups; each group's
+        # call_id equals exactly one of the two LlmCompletionEvents' call_ids.
+        token_events_group_by_call_id_into_two_streams: true
+        call1_token_events_share_call1_completion_call_id: true
+        call2_token_events_share_call2_completion_call_id: true
+        two_call_ids_distinct_and_non_null: true
+        chunk_index_restarts_at_zero_per_call: true

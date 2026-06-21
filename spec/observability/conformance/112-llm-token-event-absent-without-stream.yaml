@@ -1,0 +1,59 @@
+# graph-engine §6 + llm-provider §5 — backward-compat / opt-in lockdown.
+# A complete() call WITHOUT `stream` set emits ZERO LlmTokenEvents and exactly
+# one LlmCompletionEvent. Token events fire ONLY when stream is set; the atomic
+# path is byte-for-byte the pre-streaming behavior. (Streaming directives in
+# fixture 111's header; this fixture deliberately uses the plain atomic mock_llm
+# to contrast with the streamed path.)
+
+cases:
+  - name: no_token_events_when_stream_unset
+    description: |
+      The same single-LLM-node graph as fixture 111 but invoked WITHOUT
+      stream (the flag is absent — the atomic path). The mock returns one
+      atomic response. The harness asserts zero LlmTokenEvents and exactly
+      one LlmCompletionEvent — proving token-event emission is gated strictly
+      on the stream flag.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "say hello"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-112
+          object: chat.completion
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Hello world"}, finish_reason: stop}
+          usage: {prompt_tokens: 9, completion_tokens: 3, total_tokens: 12}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          event_counts:
+            - {event_type: LlmTokenEvent, count: 0}
+            - {event_type: LlmCompletionEvent, count: 1}
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              finish_reason: stop
+              node_name: ask
+              namespace: [ask]
+      invariants:
+        zero_token_events_on_non_streamed_call: true
+        exactly_one_llm_completion_event: true
+        atomic_path_unchanged_by_streaming_capability: true

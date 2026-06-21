@@ -34,6 +34,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §11 *Metrics* added — the OTel metrics signal complementing the §4–§6 spans and §7 logs: two opt-in OA-namespaced histogram instruments over provider calls, `openarmature.gen_ai.client.token.usage` (`{token}`) and `openarmature.gen_ai.client.operation.duration` (`s`), mirroring the Development-status upstream `gen_ai.client.*` instruments (per *Stable-only upstream adoption*; instrument-name cutover deferred), opt-in via an `enable_metrics` observer flag, recorded from the §5.5.7 / §5.5.9 typed completion events (and the typed `LlmFailedEvent` / `EmbeddingFailedEvent` for an errored attempt's duration + `error.type`), dimensioned per the §5.5 GenAI de-facto-standard carve-out (recognized-core `gen_ai.request.model` / `gen_ai.system` used directly — `gen_ai.system` retained; peripheral `gen_ai.operation.name` / `gen_ai.token.type` mirrored to `openarmature.gen_ai.*`; Stable `error.type` used directly), recorded per-attempt under call-level retry. Existing §11 *Out of scope* renumbered → §12, its *Metrics* bullet narrowed to graph-level metrics (+ streaming/server + instrument-cutover deferrals). New fixtures 088–091 by [proposal 0067](../../proposals/0067-observability-genai-metrics.md)
   - §5.5 gained §5.5.11 *Tool-execution span* (the OTel tool span `openarmature.tool.call` for the graph-engine §6 tool-call instrumentation scope: OA-namespace `openarmature.tool.*` attributes mirroring the Development `gen_ai.tool.*` / `execute_tool` surface — assessed **peripheral** under the §5.5 GenAI de-facto-standard carve-out, mirrored until recognized-core / Stable — plus the Stable `error.type` on failure; distinct from §5.5.10's tool-call *request* projections) and §5.5.12 *Typed tool events* (the `ToolCallEvent` / `ToolCallFailedEvent` structured-form note, paralleling §5.5.7 / §5.5.9); §5.5.4 `disable_provider_payload` extended to gate the tool payload attributes (`openarmature.tool.call.arguments` / `.result`); §8.4.6 *Tool-execution mapping* (Langfuse dedicated `Tool` observation via `asType: "tool"`, payload-gated `input` / `output`, `ERROR` level on `ToolCallFailedEvent`). New fixtures 092–098 by [proposal 0063](../../proposals/0063-tool-execution-observability.md)
   - §5.5 gained §5.5.13 *Rerank provider attributes* (the OTel rerank span `openarmature.rerank.complete` for `RerankProvider.rerank()`: the core GenAI semconv subset per the §5.5 de-facto-standard carve-out — with `gen_ai.usage.input_tokens` conditionally emitted since rerank providers vary on reporting it — plus OA-namespace `openarmature.rerank.*` attributes including the conditionally-emitted `search_units`; `gen_ai.operation.name` deferred, no upstream rerank coverage) and §5.5.14 *Typed rerank events* (the `RerankEvent` / `RerankFailedEvent` structured-form note, paralleling §5.5.9); §8.4.7 *Rerank-specific mapping* (Langfuse dedicated `Retriever` observation via `asType: "retriever"`, payload-gated `input` / `output`, the OA `usageDetails.searchUnits` convention). The §5.5.4 `disable_provider_payload` flag (proposal 0059) already gates the rerank payload attributes. §11 metrics: rerank joins the operation-generic GenAI instruments (the `openarmature.gen_ai.operation` value `rerank`; `RerankFailedEvent` as a duration / `error.type` source; token-usage records rerank `input_tokens` only — no output tokens, `search_units` is not a token), completing the rerank hook 0067 left in §11.2 / §11.3. New fixtures 099–109 by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
+  - §5.5.7 (OTel) and §8.4.3 (Langfuse) gained notes that the bundled observers do NOT render the graph-engine §6 `LlmTokenEvent` (streaming, proposal 0062): no per-token spans / observations; trace recording stays atomic at the terminal `LlmCompletionEvent` (the `openarmature.llm.complete` span and the Langfuse Generation collapse the streamed deltas back into one input / output payload). `LlmTokenEvent` (including its `delta_kind` content / reasoning split) is for custom forwarding observers (§9) by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1289,6 +1290,14 @@ have spec-normative typed equivalents. The SHOULD-emit-both transition window's 
 across both outcome sides; implementations MAY conclude the transition once their backends filter
 both typed variants via type discrimination.
 
+**Token events are not rendered (streaming, proposal 0062).** The bundled OTel observer does NOT
+render the graph-engine §6 `LlmTokenEvent` (the within-call streaming sub-event): no per-token spans.
+Trace recording stays **atomic** at the terminal `LlmCompletionEvent` — the `openarmature.llm.complete`
+span collapses the streamed deltas back into one input / output payload at end-of-call, exactly as for
+a non-streamed call (a 500-token response produces one span, not 500 children). `LlmTokenEvent`
+(including its `delta_kind` content / reasoning split) is for custom forwarding observers (§9); the
+bundled span mapping consumes the terminal events only.
+
 #### 5.5.8 Embedding provider attributes
 
 OTel mapping for `EmbeddingProvider.embed()` calls per the retrieval-provider capability. Parallels
@@ -2217,6 +2226,12 @@ output / finish_reason); on retry exhaustion it is the terminal failed Generatio
 (`observation.level = "ERROR"` + the §4 category, per the §8.4.2 mapping). This differs from **node-level** retry (pipeline-utilities §6.1) —
 where each node attempt is its own logical run and §8.3 renders one observation per attempt, keyed
 by `observation.metadata.attempt_index`.
+
+**Token events are not rendered (streaming, proposal 0062).** The bundled Langfuse observer does NOT
+render the graph-engine §6 `LlmTokenEvent`: no per-token observations. The Generation observation
+collapses the streamed deltas back into one input / output payload at the terminal
+`LlmCompletionEvent`, exactly as for a non-streamed call. `LlmTokenEvent` is for custom forwarding
+observers (§9), not the bundled Generation mapping.
 
 #### 8.4.4 Prompt linkage mapping (sourced from prompt-management §11 attributes)
 

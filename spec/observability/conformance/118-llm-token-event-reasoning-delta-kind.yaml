@@ -1,0 +1,139 @@
+# graph-engine §6 + llm-provider §6/§8.1.6 — streamed reasoning deltas surface
+# as LlmTokenEvent(delta_kind="reasoning"), streamed FIRST, then content deltas
+# as delta_kind="content". The reasoning assembles into the terminal Response's
+# reasoning/thinking block AND content into message.content. The reasoning-delta
+# field name is an OpenAI-compatible EXTENSION that varies by backend, and the
+# mapping MUST recognize BOTH names → delta_kind="reasoning":
+#   case A: choices[].delta.reasoning_content  (DeepSeek / older vLLM)
+#   case B: choices[].delta.reasoning          (current vLLM)
+# Within a chunk a reasoning delta and a content delta are mutually exclusive,
+# and reasoning streams before content. (Streaming directives in fixture 111's
+# header; the reasoning_content / reasoning chunk fields per llm-provider §8.1.6.)
+
+cases:
+  - name: reasoning_content_field_yields_reasoning_kind_then_content
+    description: |
+      Case A — DeepSeek-style extension. A stream=True call whose mock yields two
+      reasoning deltas via choices[].delta.reasoning_content ("Let me ", "think.")
+      then two content deltas ("The answer ", "is 42.") then a usage chunk. The
+      harness asserts, in order:
+      - chunk 0,1: LlmTokenEvent delta_kind="reasoning", deltas "Let me "/"think."
+      - chunk 2,3: LlmTokenEvent delta_kind="content", deltas "The answer "/"is 42."
+      - the terminal LlmCompletionEvent's assembled output_content is
+        "The answer is 42." (content only; reasoning assembled into the Response's
+        thinking block, not into output_content).
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          stream: true
+          messages: [{role: user, content: "what is the answer?"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm_stream:
+      - - {choices: [{index: 0, delta: {reasoning_content: "Let me "}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {reasoning_content: "think."}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "The answer "}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "is 42."}, finish_reason: stop}]}
+        - {choices: [], usage: {prompt_tokens: 10, completion_tokens: 6, total_tokens: 16}}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_events_in_order:
+            event_type: LlmTokenEvent
+            events:
+              - {chunk_index: 0, delta_kind: reasoning, delta: "Let me "}
+              - {chunk_index: 1, delta_kind: reasoning, delta: "think."}
+              - {chunk_index: 2, delta_kind: content, delta: "The answer "}
+              - {chunk_index: 3, delta_kind: content, delta: "is 42."}
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              finish_reason: stop
+              node_name: ask
+              namespace: [ask]
+              # Content only — reasoning assembles into the Response's thinking
+              # block, not into output_content.
+              output_content: "The answer is 42."
+          event_counts:
+            - {event_type: LlmTokenEvent, count: 4}
+            - {event_type: LlmCompletionEvent, count: 1}
+      invariants:
+        reasoning_content_field_recognized_as_reasoning_kind: true
+        reasoning_deltas_precede_content_deltas: true
+        reasoning_assembles_into_terminal_thinking_block: true
+        content_assembles_into_message_content: true
+        ordered_reasoning_then_content_chunk_indices: true
+
+  - name: reasoning_field_yields_reasoning_kind_then_content
+    description: |
+      Case B — current-vLLM-style extension. Identical structure to case A but the
+      reasoning deltas arrive via choices[].delta.reasoning (no _content suffix).
+      The mapping MUST recognize this field name too, producing the SAME
+      delta_kind="reasoning" token events. Asserts the same ordered reasoning →
+      content token-event sequence and the same content-only assembled
+      output_content.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          stream: true
+          messages: [{role: user, content: "what is the answer?"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm_stream:
+      - - {choices: [{index: 0, delta: {reasoning: "Let me "}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {reasoning: "think."}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "The answer "}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "is 42."}, finish_reason: stop}]}
+        - {choices: [], usage: {prompt_tokens: 10, completion_tokens: 6, total_tokens: 16}}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_events_in_order:
+            event_type: LlmTokenEvent
+            events:
+              - {chunk_index: 0, delta_kind: reasoning, delta: "Let me "}
+              - {chunk_index: 1, delta_kind: reasoning, delta: "think."}
+              - {chunk_index: 2, delta_kind: content, delta: "The answer "}
+              - {chunk_index: 3, delta_kind: content, delta: "is 42."}
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              finish_reason: stop
+              node_name: ask
+              namespace: [ask]
+              output_content: "The answer is 42."
+          event_counts:
+            - {event_type: LlmTokenEvent, count: 4}
+            - {event_type: LlmCompletionEvent, count: 1}
+      invariants:
+        reasoning_field_recognized_as_reasoning_kind: true
+        reasoning_deltas_precede_content_deltas: true
+        reasoning_assembles_into_terminal_thinking_block: true
+        content_assembles_into_message_content: true
+        both_reasoning_field_names_produce_identical_token_events: true

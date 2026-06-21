@@ -1,0 +1,184 @@
+# §8.1.6 OpenAI-compatible streaming wire path. complete(stream=True) sends
+# `stream: true` + `stream_options: {include_usage: true}` and consumes the
+# Server-Sent Events response, assembling the atomic Response per §6 *Streaming
+# assembly*. The assembled Response (content, tool_calls, usage, finish_reason)
+# MUST equal the equivalent non-streamed response — streaming is a delivery
+# concern, not a Response-shape change.
+#
+# Per-directory streaming wire directives (per conformance-adapter §3.2),
+# supplementing the llm-provider wire-fixture conventions (fixture 005's header):
+#
+# - call.stream: <bool> — when true, the call is complete(..., stream=True).
+#
+# - expected_wire_request adds `stream: true` and
+#   `stream_options: {include_usage: true}` (§8.1.6 request mapping).
+#
+# - mock_provider response `stream_body: [<sse_chunk>, ..., "[DONE]"]` — replaces
+#   `body` for a streamed response. An ordered list of the parsed JSON objects
+#   carried on successive SSE `data:` lines, terminated by the literal string
+#   "[DONE]" (the §8.1.6 sentinel). Each chunk mirrors the OpenAI streamed-chunk
+#   shape: {choices: [{index, delta: {content|reasoning_content|reasoning|tool_calls},
+#   finish_reason}]}; the terminal usage chunk carries empty choices +
+#   {usage: {...}}. The harness's mock SSE server yields these lines as the
+#   streaming response body. (This is the wire-level source the observability
+#   suite's mock_llm_stream stands in for.)
+
+cases:
+  - name: streamed_content_assembles_equal_to_non_streamed
+    description: |
+      A stream=True text completion. The wire request MUST carry stream:true and
+      stream_options.include_usage:true. The mocked SSE stream yields three
+      content chunks ("Hello"/", "/"world."), a finish_reason=stop on the last
+      content chunk, then a terminal empty-choices usage chunk, then [DONE]. The
+      assembled Response MUST equal the non-streamed equivalent: content
+      "Hello, world.", finish_reason stop, usage {7,3,10}.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "say hello"}
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "say hello"}
+      stream: true
+      stream_options: {include_usage: true}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - {id: cc-059a, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {role: assistant, content: "Hello"}, finish_reason: null}]}
+            - {id: cc-059a, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {content: ", "}, finish_reason: null}]}
+            - {id: cc-059a, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {content: "world."}, finish_reason: stop}]}
+            - {id: cc-059a, object: chat.completion.chunk, model: test-model, choices: [], usage: {prompt_tokens: 7, completion_tokens: 3, total_tokens: 10}}
+            - "[DONE]"
+    expected:
+      response:
+        message:
+          role: assistant
+          content: "Hello, world."
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 7, completion_tokens: 3, total_tokens: 10}
+        raw_check:
+          required_keys: [id, object, model, choices, usage]
+      invariants:
+        streamed_request_sends_stream_true_and_include_usage: true
+        assembled_content_is_ordered_concatenation_of_deltas: true
+        usage_and_finish_reason_sourced_from_terminal_chunks: true
+        assembled_response_equals_non_streamed_equivalent: true
+
+  - name: streamed_tool_calls_reassemble_equal_to_non_streamed
+    description: |
+      A stream=True call where the model streams a tool call: an opening
+      tool_calls delta (index/id/function.name), then argument-string fragments,
+      a finish_reason=tool_calls chunk, then the usage chunk and [DONE]. The
+      assembled Response MUST carry the complete reassembled tool_calls — id
+      "call_s9", name "get_weather", arguments parsing to {"city":"Paris"} —
+      identical to the non-streamed equivalent, with finish_reason tool_calls.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "weather in Paris?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather for a city."
+          parameters:
+            type: object
+            properties:
+              city: {type: string}
+            required: [city]
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "weather in Paris?"}
+      tools:
+        - type: function
+          function:
+            name: get_weather
+            description: "Get current weather for a city."
+            parameters:
+              type: object
+              properties:
+                city: {type: string}
+              required: [city]
+      stream: true
+      stream_options: {include_usage: true}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - {id: cc-059b, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {role: assistant, content: null, tool_calls: [{index: 0, id: call_s9, type: function, function: {name: get_weather, arguments: ""}}]}, finish_reason: null}]}
+            - {id: cc-059b, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {tool_calls: [{index: 0, function: {arguments: "{\"city\":"}}]}, finish_reason: null}]}
+            - {id: cc-059b, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {tool_calls: [{index: 0, function: {arguments: " \"Paris\"}"}}]}, finish_reason: null}]}
+            - {id: cc-059b, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {}, finish_reason: tool_calls}]}
+            - {id: cc-059b, object: chat.completion.chunk, model: test-model, choices: [], usage: {prompt_tokens: 12, completion_tokens: 8, total_tokens: 20}}
+            - "[DONE]"
+    expected:
+      response:
+        message:
+          role: assistant
+          content: null
+          tool_calls:
+            - id: call_s9
+              name: get_weather
+              arguments: {city: "Paris"}
+        finish_reason: tool_calls
+        usage: {prompt_tokens: 12, completion_tokens: 8, total_tokens: 20}
+        raw_check:
+          required_keys: [id, object, model, choices, usage]
+      invariants:
+        streamed_tool_call_arguments_reassemble_and_parse: true
+        reassembled_tool_calls_equal_non_streamed_equivalent: true
+        finish_reason_tool_calls_sourced_from_terminal_content_chunk: true
+
+  - name: streamed_reasoning_extension_assembles_into_reasoning_block
+    description: |
+      Reasoning extension (§8.1.6). A stream=True call against a reasoning-model
+      server that streams reasoning via choices[].delta.reasoning_content FIRST,
+      then content. The assembled Response MUST carry the reasoning text in a
+      thinking block (§3.1.4) AND the content in message.content — the streamed
+      Response is shape-identical to the equivalent non-streamed reasoning
+      response. (Field-name variants reasoning_content / reasoning are both
+      recognized; this case pins reasoning_content, the observability fixture 118
+      pins both at the token-event layer.)
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "what is the answer?"}
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "what is the answer?"}
+      stream: true
+      stream_options: {include_usage: true}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - {id: cc-059c, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {role: assistant, reasoning_content: "Let me think."}, finish_reason: null}]}
+            - {id: cc-059c, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {content: "It is 42."}, finish_reason: stop}]}
+            - {id: cc-059c, object: chat.completion.chunk, model: test-model, choices: [], usage: {prompt_tokens: 10, completion_tokens: 6, total_tokens: 16}}
+            - "[DONE]"
+    expected:
+      response:
+        message:
+          role: assistant
+          # message.content is a content-block sequence: the streamed reasoning
+          # is surfaced as a ThinkingBlock (§3.1.4), the answer as a text block,
+          # in stream order — shape-identical to a non-streamed reasoning
+          # response (§6 *Streaming assembly*). No signature on the OpenAI-
+          # compatible reasoning extension (no wire signature field).
+          content:
+            - {type: thinking, text: "Let me think."}
+            - {type: text, text: "It is 42."}
+        finish_reason: stop
+        usage: {prompt_tokens: 10, completion_tokens: 6, total_tokens: 16}
+        raw_check:
+          required_keys: [id, object, model, choices, usage]
+      invariants:
+        reasoning_delta_assembles_into_thinking_block: true
+        content_delta_assembles_into_text_block: true
+        streamed_reasoning_response_shape_identical_to_non_streamed: true

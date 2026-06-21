@@ -1,0 +1,123 @@
+# graph-engine §6 *Typed LLM token event* + llm-provider §5 *Streaming* /
+# §6 *Streaming assembly*. When complete() is called with `stream` set, the
+# provider consumes the streamed wire response and emits one LlmTokenEvent
+# per chunk (delta_kind="content" for answer text), in chunk_index order,
+# all BEFORE the terminal LlmCompletionEvent for the same call. The ordered
+# concatenation of the content deltas equals the terminal event's assembled
+# content, and every token event shares the terminal event's call_id.
+#
+# Per-directory streaming harness directives (per conformance-adapter §3.2).
+# These supplement the observability suite's harness contract (fixture 001's
+# header) for the streaming fixtures (111-118); they are harness-internal
+# stand-ins for genuine wire streaming (the spec cannot test wire-incremental
+# delivery — see llm-provider §5 — only the assembled-equals-concatenation
+# proxy), analogous to the mock_rerank stand-in (retrieval-provider 006):
+#
+# - calls_llm.stream: <bool> — when true, the node calls complete(..., stream=True)
+#   so the provider emits per-chunk LlmTokenEvents (graph-engine §6). Default
+#   false / absent preserves the atomic, no-token-event path.
+#
+# - mock_llm_stream: [[<chunk>, ...], ...] — suite-level; replaces mock_llm for
+#   streamed calls. A list with one entry per complete() call, in arrival order;
+#   each entry is the ordered list of streamed SSE chunks the mock provider
+#   yields for that call. Each <chunk> mirrors the OpenAI streamed-chunk shape:
+#     {choices: [{index, delta: {content: "..."}
+#                                | {reasoning_content: "..."}  (DeepSeek/older vLLM ext)
+#                                | {reasoning: "..."}          (current vLLM ext)
+#                                | {tool_calls: [{index, id?, function: {name?, arguments?}}]},
+#                 finish_reason: <reason|null>}]}
+#   The terminal usage chunk carries empty choices + a usage object:
+#     {choices: [], usage: {prompt_tokens, completion_tokens, total_tokens}}.
+#   A chunk entry MAY instead be a transient failure marker
+#   {error: {status: <int>}} (used by 114/116) — see those fixtures' headers.
+#   The mock body is harness-internal: the llm-provider §8.1.6 streaming wire
+#   mapping is what pins the real SSE source; this suite's chunk shape is the
+#   stand-in the per-vendor mapping fixtures (llm-provider 059) exercise directly.
+#
+# - contains_events_in_order: {event_type, events: [{<field>: <value>, ...}, ...]} —
+#   observer-introspection assertion (per-directory extension of the scalar
+#   contains_event, fixture 050). Asserts the observer's collected events of the
+#   named type, in delivery order, match the listed field maps positionally
+#   (length-exact). Used to pin the chunk_index / delta / delta_kind sequence of
+#   a token stream. Fields not listed on an entry are not asserted for that entry.
+
+cases:
+  - name: token_events_dispatched_in_chunk_order_concatenate_to_content
+    description: |
+      One LLM-calling node invoked with stream=True. The mock yields three
+      content chunks ("Hel", "lo ", "world") then a terminal usage chunk. The
+      harness asserts:
+      - exactly three LlmTokenEvents, delta_kind="content", chunk_index 0,1,2
+        in order, deltas "Hel" / "lo " / "world"
+      - exactly one terminal LlmCompletionEvent whose assembled content is the
+        ordered concatenation "Hello world"
+      - every token event's call_id equals the terminal event's call_id
+      - the full LlmTokenEvent identity / scoping field set is populated on the
+        first token event (node_name, namespace, attempt_index=0,
+        fan_out_index=null, branch_name=null, provider, model).
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          stream: true
+          messages: [{role: user, content: "say hello"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm_stream:
+      - - {choices: [{index: 0, delta: {content: "Hel"}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "lo "}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "world"}, finish_reason: stop}]}
+        - {choices: [], usage: {prompt_tokens: 9, completion_tokens: 3, total_tokens: 12}}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          # This fixture's purpose is field population, so the FIRST token
+          # event asserts the complete required LlmTokenEvent identity /
+          # scoping field set (not a convenient subset); the remaining entries
+          # pin the chunk_index / delta sequence.
+          contains_events_in_order:
+            event_type: LlmTokenEvent
+            events:
+              - node_name: ask
+                namespace: [ask]
+                attempt_index: 0
+                fan_out_index: null
+                branch_name: null
+                provider: openai
+                model: gpt-test
+                chunk_index: 0
+                delta_kind: content
+                delta: "Hel"
+                caller_invocation_metadata: null
+              - {chunk_index: 1, delta_kind: content, delta: "lo "}
+              - {chunk_index: 2, delta_kind: content, delta: "world"}
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              finish_reason: stop
+              node_name: ask
+              namespace: [ask]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+          event_count:
+            event_type: LlmCompletionEvent
+            count: 1
+      invariants:
+        n_content_chunks_emit_n_token_events: true
+        chunk_index_monotonic_from_zero: true
+        ordered_deltas_concatenate_to_assembled_content: true
+        all_token_event_call_ids_match_terminal_completion_event: true
+        exactly_one_terminal_llm_completion_event: true
