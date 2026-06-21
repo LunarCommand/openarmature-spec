@@ -87,8 +87,13 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-No proposals are currently in flight — every numbered proposal is Accepted. New
-work opens as a numbered Draft proposal under [`proposals/`](proposals/).
+Proposals currently in flight. Status is Draft; contracts may change before
+they are Accepted.
+
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0077](proposals/0077-retrieval-provider-tei-wire-mapping.md) | Draft | spec/retrieval-provider/spec.md (§2 / §3 — `input_type` knob; new §8 *Wire-format mappings* + §8.1 TEI; §8–§10 → §9–§11 renumber) | Adds a cross-vendor `input_type` (`query`/`document`) embedding knob, plus the first retrieval-provider wire mapping: TEI `/embed` + `/rerank` (separate per-model instances), realizing `input_type` via TEI's server-side `prompt_name`, with the mandatory rerank chunk-and-stitch and `truncate: false` fail-loud. |
+
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
 ---
