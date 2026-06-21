@@ -1,10 +1,10 @@
 # 0062: LLM Completion Streaming
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-09
-- **Accepted:**
-- **Targets:** spec/llm-provider/spec.md (§5 `complete()` gains an optional `stream` flag — when set, the provider consumes the LLM's streaming wire response and emits per-chunk token events, while the call STILL returns the atomic `Response` (return type unchanged); §6 gains a *Streaming assembly* contract specifying how the atomic `Response` is assembled from the stream (content concatenated, tool-call argument deltas reassembled into complete `tool_calls`, usage / finish_reason from the terminal chunk) so node bodies are agnostic to whether streaming was used; §8.1 OpenAI-compatible mapping gains a streaming sub-section (SSE wire handling); §5 also gains a *Provider streaming support* rule — a wire mapping that does not implement streaming MUST reject a `stream`-set call with `provider_invalid_request`, so the §8.2 Anthropic / §8.3 Gemini mappings reject streaming (defined behavior) until their streaming follow-ons land; §10 *Out of scope* — the "Streaming responses" item is lifted into scope, replaced by narrower deferrals); spec/graph-engine/spec.md (§6 — new `LlmTokenEvent` typed event variant on the observer event union, a within-call sub-event carrying per-chunk assistant **content** deltas (tool-call argument deltas are reassembled into the atomic `Response` but not emitted as token events in v1), correlated to the terminal `LlmCompletionEvent` by shared `call_id`); spec/observability/spec.md (§5.5 + §8 — note that the bundled OTel and Langfuse observers do NOT render `LlmTokenEvent` (no per-token spans / observations); trace recording stays atomic at the terminal `LlmCompletionEvent`, token events are for custom forwarding observers); plus new conformance fixtures under `spec/observability/conformance/` and `spec/llm-provider/conformance/`.
+- **Accepted:** 2026-06-20
+- **Targets:** spec/llm-provider/spec.md (§5 `complete()` gains an optional `stream` flag — when set, the provider consumes the LLM's streaming wire response and emits per-chunk token events, while the call STILL returns the atomic `Response` (return type unchanged); §6 gains a *Streaming assembly* contract specifying how the atomic `Response` is assembled from the stream (content concatenated, tool-call argument deltas reassembled into complete `tool_calls`, usage / finish_reason from the terminal chunk) so node bodies are agnostic to whether streaming was used; §8.1 OpenAI-compatible mapping gains a streaming sub-section (SSE wire handling); §5 also gains a *Provider streaming support* rule — a wire mapping that does not implement streaming MUST reject a `stream`-set call with `provider_invalid_request`, so the §8.2 Anthropic / §8.3 Gemini mappings reject streaming (defined behavior) until their streaming follow-ons land; §10 *Out of scope* — the "Streaming responses" item is lifted into scope, replaced by narrower deferrals); spec/graph-engine/spec.md (§6 — new `LlmTokenEvent` typed event variant on the observer event union, a within-call sub-event carrying per-chunk assistant **content** and **reasoning** deltas (discriminated by a `delta_kind` field; tool-call argument deltas are reassembled into the atomic `Response` but not emitted as token events), correlated to the terminal `LlmCompletionEvent` by shared `call_id`); spec/observability/spec.md (§5.5 + §8 — note that the bundled OTel and Langfuse observers do NOT render `LlmTokenEvent` (no per-token spans / observations); trace recording stays atomic at the terminal `LlmCompletionEvent`, token events are for custom forwarding observers); plus new conformance fixtures under `spec/observability/conformance/` and `spec/llm-provider/conformance/`.
 - **Related:** 0006 (llm-provider core — the `complete()` shape this extends), 0049 (typed `LlmCompletionEvent` — the terminal event the token stream precedes; the observer-union typed-event pattern this extends), 0058 (typed `LlmFailedEvent` — the terminal event for a mid-stream failure), 0057 (LlmCompletionEvent field-set extension — the identity / scoping baseline `LlmTokenEvent` mirrors), 0037 / 0038 (Anthropic / Gemini wire mappings — streaming wire handling for these is deferred to follow-ons, same as §8.1 is the first concrete streaming mapping here)
 - **Supersedes:**
 
@@ -160,12 +160,13 @@ A new sub-section specifying how the atomic `Response` is assembled from the str
 streamed and non-streamed paths produce structurally identical `Response` records:
 
 - **Content** — the `message.content` is the ordered concatenation of the streamed content
-  deltas. Reasoning-content blocks (§3.1.4 / §3.1.5) assemble into their respective blocks on
-  the terminal `Response` when the provider streams them, but are NOT surfaced as
-  `LlmTokenEvent` deltas in v1 (see *Out of scope*). So the terminal `Response` is
-  shape-identical to the non-streamed case (content + reasoning blocks present), while the
-  live `LlmTokenEvent` stream carries **answer content only** — the right default for
-  forwarding (you stream the answer to a user, not raw reasoning or partial tool-call args).
+  deltas, each emitted live as `LlmTokenEvent(delta_kind="content")`.
+- **Reasoning** — reasoning / thinking content (§3.1.4 / §3.1.5), when the provider streams it,
+  assembles into its blocks on the terminal `Response` AND is emitted live as
+  `LlmTokenEvent(delta_kind="reasoning")`, so a UI can render a live "thinking" element. Whether a
+  provider streams reasoning is a per-§8.X-mapping capability (§8.1's OpenAI-compatible mapping
+  recognizes the `reasoning_content` / `reasoning` extension field); the terminal `Response` stays
+  shape-identical to the non-streamed case (content + reasoning blocks present).
 - **Tool calls** — streamed tool-call argument deltas are reassembled into complete `ToolCall`
   records (`id`, `name`, `arguments`) on `message.tool_calls`, in the order the provider
   streamed them. The reassembled `arguments` MUST parse identically to the non-streamed case
@@ -196,8 +197,10 @@ mappings reject `stream`-set calls per the §5 *Provider streaming support* rule
 - Wire: Server-Sent Events; each `data:` line is a chunk with `choices[].delta` carrying either
   a `content` delta or `tool_calls` deltas (each with an `index`, and partial `id` / `name` /
   `arguments` fields); the `[DONE]` sentinel terminates the stream.
-- Content deltas map to `LlmTokenEvent` (content-only). Tool-call deltas are reassembled into
-  `message.tool_calls` per the §6 assembly contract but are NOT emitted as token events in v1.
+- Content deltas map to `LlmTokenEvent(delta_kind="content")`; reasoning deltas (the
+  OpenAI-compatible `reasoning_content` / `reasoning` extension field) map to
+  `LlmTokenEvent(delta_kind="reasoning")`. Tool-call deltas are reassembled into `message.tool_calls`
+  per the §6 assembly contract but are NOT emitted as token events.
 - `finish_reason` is set on the last content-bearing chunk's `choices[].finish_reason`; when
   `stream_options.include_usage` is set, a final chunk with empty `choices` carries `usage`,
   followed by the `[DONE]` sentinel.
@@ -245,7 +248,8 @@ via `call_id`):
 | `call_id` | string | The per-call disambiguator minted by the implementation for this `complete()` call. **Matches the `call_id` on the terminal `LlmCompletionEvent` / `LlmFailedEvent` for the same call** — this is the linkage observers use to associate a token stream with its eventual completion. |
 | `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `LlmCompletionEvent`. |
 | `chunk_index` | int | Monotonic per call, starting at 0. Establishes delta ordering within the call's token stream. |
-| `delta` | string | The assistant **content** text delta for this chunk. `LlmTokenEvent` carries answer content only — tool-call argument deltas are reassembled into the atomic `Response.message.tool_calls` (§6) for correctness but are NOT emitted as token events in v1 (see *Out of scope*), and reasoning-content deltas are likewise not emitted. So `delta` is always a content fragment; no payload discriminator is needed. |
+| `delta_kind` | string | The kind of delta this chunk carries: `"content"` (assistant answer text) or `"reasoning"` (chain-of-thought / thinking text, when the provider streams it). Forwarding observers route by kind (answer stream vs. live "thinking"). A `"tool_call"` value is reserved for live tool-argument streaming — NOT emitted in this version (tool-call deltas reassemble into the atomic `Response`, §6). |
+| `delta` | string | The text delta for this chunk, of the kind named by `delta_kind`. Tool-call argument deltas are reassembled into `Response.message.tool_calls` (§6) and are NOT emitted as token events. |
 
 Dispatch + ordering: `LlmTokenEvent`s are dispatched on the observer delivery queue in
 `chunk_index` order, all **before** the terminal `LlmCompletionEvent` for the same call.
@@ -389,15 +393,15 @@ proposal text above (collected here for retrieval).
   gets the atomic `Response` at the end and doesn't need the stream. Direct node-body
   consumption (incremental parsing, early-stop) has no current consumer, and an async-iterator
   return mode is purely additive later. Deferred per *Out of scope*.
-- **Tool-call-delta emission** — decided: **content-only token events.** `LlmTokenEvent` carries
-  answer content only; tool-call argument deltas are reassembled into the atomic `Response`
-  (correctness, unchanged) but are not emitted as token events. Rationale: the demand is content
-  streaming; the "show tool progress live" UI case is better served by the tool-execution
-  observability proposal's `ToolCallEvent` (the tool *running*) or the complete `tool_calls` on
-  the terminal `LlmCompletionEvent`, not by streaming the model *generating* the request's args.
-  This also keeps `LlmTokenEvent` lean (no `delta_kind` discriminator, no tool-call-delta fields)
-  and cleanly separates 0062 (streams the answer) from the tool-exec proposal (observes
-  execution). Deferred per *Out of scope*.
+- **Token-event delta kinds** — decided: **content + reasoning token events** (via a `delta_kind`
+  discriminator), **tool-call deltas deferred.** `LlmTokenEvent` carries `delta_kind="content"`
+  (answer text) and `delta_kind="reasoning"` (thinking text); the reasoning kind serves a live
+  "thinking" UI element (a real consumer). Tool-call argument deltas are reassembled into the atomic
+  `Response` but NOT emitted as token events: the "show tool progress live" case is better served by
+  the tool-execution observability proposal's `ToolCallEvent` (the tool *running*) or the complete
+  `tool_calls` on the terminal `LlmCompletionEvent`, not by streaming the model *generating* the
+  request's args. A `delta_kind="tool_call"` value is reserved for that follow-on. Deferred-tool-call
+  -delta per *Out of scope*.
 
 ## Out of scope
 
@@ -432,8 +436,3 @@ proposal text above (collected here for retrieval).
   on the §7.1 OTel span). A follow-on MAY add a per-wire-attempt field to `LlmTokenEvent` if a
   consumer needs token-event-level §7.1-restart detection; per-node retry restarts are already
   detectable via the `call_id` change.
-- **Streaming reasoning / thinking content as token deltas** — reasoning-content blocks
-  (§3.1.4 / §3.1.5) assemble into the terminal `Response` when the provider streams them, but
-  are NOT emitted as `LlmTokenEvent` deltas in v1 (`LlmTokenEvent` carries content only).
-  Forwarding raw partial reasoning to an end user is rarely wanted; a follow-on MAY add
-  reasoning-delta emission if a concrete consumer needs partial-reasoning streaming.

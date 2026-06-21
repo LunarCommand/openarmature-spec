@@ -16,6 +16,7 @@ Canonical behavioral specification for the OpenArmature LLM provider abstraction
   - §8.3 Google Gemini wire-format mapping added (sibling to §8.1 / §8.2) with §8.3.1 request mapping / §8.3.1.1 parts wire mapping (including thought-summary capture into `ThinkingBlock.text` and `thoughtSignature` round-trip into the §3 opaque `signature` field) / §8.3.1.2 `tool` role bidirectional translation / §8.3.2 response mapping / §8.3.3 error mapping; undeclared `RuntimeConfig` fields nest under Gemini's `generationConfig` (not the request root) to match Gemini's parameter location by [proposal 0038](../../proposals/0038-llm-provider-google-gemini-mapping.md)
   - §6 `Response.usage` extended with two optional fields (`cached_tokens?` for prefix-cache hit input tokens, `cache_creation_tokens?` for input tokens written to the cache during the call); §8 framing gained an *Intra-impl wire-byte stability* paragraph (canonical sorted-key serialization of JSON-schema, content-block, and RuntimeConfig-extras payloads — within a single implementation; cross-impl byte equality is non-normative); per-mapping *Wire-byte stability* sub-paragraphs added to §8.1.1 / §8.2.1 / §8.3.1 anchoring the rule to that mapping's payloads; §8.1.2 gained cache-stat source rows (`usage.cached_tokens` ← `usage.prompt_tokens_details.cached_tokens` with the OpenAI Responses API alternate path and a vLLM dual-flag caveat; `cache_creation_tokens` left absent for OpenAI); §8.2.2 gained the Anthropic-implicit-not-supported caveat (Anthropic implicit-cache fields left absent because Anthropic only supports explicit `cache_control`-driven caching, out of scope for §6's implicit-cache surface); §8.3.2 maps `usage.cached_tokens` ← Gemini's `usageMetadata.cachedContentTokenCount` (Gemini 2.5+ implicit caching) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
   - §5 `complete()` signature extended with an optional `retry` kwarg accepting an instance of pipeline-utilities §6.1's retry middleware configuration record (or `None` / absent default preserving the v0.4.0 no-retry behavior); the "does NOT retry" operation-semantics bullet amended to note retry policy lives at the per-node layer (pipeline-utilities §6.1) OR the per-call layer (this kwarg per §7.1); new §7.1 *Call-level retry* sub-section defining the in-call retry loop semantics (transient classification reuses §6.1's default categories, backoff reuses §6.1's exponential-with-jitter default, cancellation propagation rule preserved, per-attempt span emission produces N spans for N attempts), reuses the §6.1 framework-agnostic four-field configuration record (cross-spec reference direction is the inverse of §6.1's existing dependency on §7 transient categories — bidirectional acceptable because the shared record is framework-agnostic), plus a *Two-level retry lane separation* table comparing per-call vs per-node layers and a *Common mistakes* list (multiplicative budget pitfall `3 × 5 × 3 = 45` worst-case, inline try/except defeating per-attempt attribution, classifier widening to mask real errors) by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
+  - §5 `complete()` gained an optional `stream` flag (default off; return type unchanged — still `Response`), a *Streaming* rule (consume the wire incrementally + emit per-chunk `LlmTokenEvent`s; observably identical to the atomic path when no observer is attached), and a *Provider streaming support* rule (a mapping without streaming rejects `stream`-set calls with `provider_invalid_request`); §6 gained a *Streaming assembly* contract (content concatenation, reasoning-block assembly, tool-call-delta reassembly, terminal usage / finish_reason, structural identity with the atomic path); §8.1 gained §8.1.6 *Streaming* (OpenAI-compatible SSE: `stream_options.include_usage`, `[DONE]`, content / tool-call deltas, and the OpenAI-compatible reasoning-delta extension recognizing both `reasoning_content` and `reasoning`); §10 *Out of scope* lifted the blanket streaming deferral, replaced by narrower deferrals (node-body iterator consumption, tool-call-delta token events, Anthropic / Gemini streaming wire, non-completion streaming) by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -317,12 +318,15 @@ distinguishes "model in registry" from "model loaded" SHOULD be preferred over a
 `ready()` is a pre-flight check intended for fail-fast on startup or warmup polling. It MUST NOT
 be called automatically by `complete()`; callers decide when (or whether) to invoke it.
 
-### `complete(messages, tools=None, config=None, response_schema=None, tool_choice=None, retry=None)`
+### `complete(messages, tools=None, config=None, response_schema=None, tool_choice=None, retry=None, stream=False)`
 
 Async. Performs a single completion call. When `response_schema` is supplied, the call
 additionally constrains the model's output to conform to the schema. When `tool_choice` is
 supplied, the call additionally constrains the model's tool-calling behavior. When `retry` is
-supplied, the call additionally performs an in-call retry loop on transient failures per §7.1.
+supplied, the call additionally performs an in-call retry loop on transient failures per §7.1. When
+`stream` is set, the provider additionally consumes the model's streaming wire response and emits a
+per-chunk `LlmTokenEvent` (graph-engine §6) as each chunk arrives — the return type is unchanged
+(still a `Response`); see *Streaming* below.
 
 - `messages` — non-empty ordered sequence of messages. The first message MAY be `system`; otherwise
   the message list begins with `user`. The last message before the call MUST be `user` or `tool` (the
@@ -368,6 +372,11 @@ supplied, the call additionally performs an in-call retry loop on transient fail
   in-call retry loop per §7.1 *Call-level retry*; the same configuration-record instance a
   caller would pass to pipeline-utilities §6.1's retry middleware is accepted here (cross-spec
   re-use of the framework-agnostic shape).
+- `stream` — optional boolean (keyword-only, or per-language idiomatic equivalent). Default `False`
+  / absent — the v0.4.0 atomic behavior is preserved exactly. When set, the provider consumes the
+  model's streaming wire response and emits per-chunk `LlmTokenEvent`s (graph-engine §6) as chunks
+  arrive; the call STILL returns the atomic `Response` (the flag controls per-chunk event emission,
+  not the return shape). See *Streaming* below.
 
 Returns: a `Response` (§6).
 
@@ -422,6 +431,35 @@ returned `finish_reason` (`"tool_calls"` means the model called tools regardless
 `"none"` hint) but is not enforced by the framework. Providers vary in whether they honor
 `"none"` strictly; provider compliance is a provider-quality concern, not a framework-policed
 contract.
+
+**Streaming.** When `stream` is set:
+
+- The provider MUST consume the model's **streaming wire response** (SSE / chunked transfer per the
+  provider's API) rather than awaiting a single atomic response body, and MUST emit a `LlmTokenEvent`
+  (graph-engine §6) on the observer delivery queue **per chunk, as it arrives** — genuinely
+  incremental. Implementations MUST NOT satisfy the contract by awaiting the full response and then
+  emitting synthesized chunks; the first-token-latency benefit is the contract's purpose. (This MUST
+  states behavioral intent. Conformance verifies the testable proxy — that the assembled `Response`
+  equals the ordered concatenation of the streamed deltas, per §6 *Streaming assembly* — not that
+  chunks crossed the wire incrementally; a faked implementation passes conformance while violating
+  the contract's purpose.)
+- The call STILL returns the atomic `Response` (§6) at completion. **The return type is unchanged** —
+  `complete()` returns `Response` whether or not `stream` is set. The flag governs per-chunk event
+  emission, not the return shape; node bodies, reducers, retry middleware, and the terminal
+  `LlmCompletionEvent` all see the same atomic `Response` either way.
+- With no observer attached (direct provider use outside an invocation), `stream` set is **observably
+  identical** to `stream` unset — the same atomic `Response` returns and there is no consumer for the
+  token events. Implementations MAY still consume the wire incrementally for latency.
+
+**Provider streaming support.** Streaming is a per-§8.X-mapping capability, not a guaranteed property
+of every provider. A wire-format mapping that does NOT implement streaming MUST reject a `stream`-set
+call at pre-send validation, raising `provider_invalid_request` (§7) with a message identifying that
+the mapping does not support streaming. It MUST NOT silently fall back to an atomic call (which would
+hide that the requested mode was unavailable) and MUST NOT fail opaquely mid-call. This is the same
+mold as `tool_choice` validation — a request shape a mapping cannot satisfy is a pre-send
+`provider_invalid_request`. The §8.1 OpenAI-compatible mapping implements streaming (below); the §8.2
+Anthropic and §8.3 Gemini mappings do NOT in this version and therefore reject `stream`-set calls
+until their streaming wire handling lands in follow-ons.
 
 ## 6. Response and configuration
 
@@ -498,6 +536,33 @@ undeclared fields supplied to `RuntimeConfig` are forwarded per the extras-pass-
 above (the implementation's wire-format mapping determines whether an undeclared-field `None`
 appears as `null` in the request body or is omitted — implementation-defined, since the spec does
 not constrain undeclared-field types).
+
+**Streaming assembly.** When `complete()` is called with `stream` set (§5), the atomic `Response` is
+assembled from the streamed chunks so the streamed and non-streamed paths produce structurally
+identical `Response` records:
+
+- **Content** — `message.content` is the ordered concatenation of the streamed content deltas. Each
+  content delta is also emitted live as `LlmTokenEvent(delta_kind="content")` (graph-engine §6).
+- **Reasoning** — when the provider streams reasoning / thinking content (§3.1.4 / §3.1.5), the
+  reasoning deltas assemble into their `ThinkingBlock` / `RedactedThinkingBlock` entries on the
+  terminal `Response` AND are emitted live as `LlmTokenEvent(delta_kind="reasoning")`. Whether a
+  provider streams reasoning is a per-§8.X-mapping capability (see §8.1); a mapping that does not
+  surface streamed reasoning simply emits no `reasoning`-kind token events.
+- **Tool calls** — streamed tool-call argument deltas are reassembled into complete `ToolCall`
+  records (`id`, `name`, `arguments`) on `message.tool_calls`, in the order the provider streamed
+  them; the reassembled `arguments` MUST parse identically to the non-streamed case (a mapping when
+  valid JSON; `null` when unparseable, per §3). This reassembly is provider-internal — tool-call
+  argument deltas are NOT emitted as `LlmTokenEvent`s in this version (only the complete `tool_calls`
+  on the terminal `LlmCompletionEvent` is surfaced).
+- **Usage / finish_reason** — sourced from the terminal chunk (providers emit usage and the finish
+  reason on the final streamed event; §8.1 documents the OpenAI-compatible specifics).
+- **`raw`** — the parsed provider response; for a streamed call, the assembled representation of the
+  streamed events (implementation-defined assembly; MUST be populated per the `raw` contract above).
+  Within-implementation wire-byte stability (§8) applies to the assembled form.
+- **Structural identity** — a `Response` assembled from a stream MUST be indistinguishable in shape
+  from a `Response` returned atomically for the equivalent non-streamed call. This is the contract
+  that lets every downstream consumer (node bodies, reducers, the terminal typed events, the OTel /
+  Langfuse mappings) ignore whether streaming was used.
 
 ## 7. Error semantics
 
@@ -969,6 +1034,39 @@ When the response carries structured content (not tool calls):
 
 When the response carries tool calls instead, the mapping follows §8.1.2 unchanged: `parsed` is
 absent, `tool_calls` is populated, `finish_reason` is `"tool_calls"`.
+
+#### 8.1.6 Streaming
+
+When `complete()` is called with `stream` set (§5), the OpenAI-compatible mapping consumes the
+Server-Sent Events streaming response and emits per-chunk `LlmTokenEvent`s (graph-engine §6),
+assembling the atomic `Response` per §6 *Streaming assembly*.
+
+- **Request** — `stream: true` in the request body, plus `stream_options: {include_usage: true}` so
+  the terminal chunk carries usage (OpenAI omits usage from streamed responses otherwise).
+- **Wire** — Server-Sent Events: each `data:` line is a chunk whose `choices[].delta` carries a
+  `content` delta, `tool_calls` deltas (each with an `index` and partial `id` / `function.name` /
+  `function.arguments` fields), and/or a reasoning delta (see below). The `data: [DONE]` sentinel
+  terminates the stream.
+- **Content deltas** → `LlmTokenEvent(delta_kind="content")` (§5), concatenated into
+  `message.content` per §6.
+- **Tool-call deltas** → reassembled into `message.tool_calls` per §6; NOT emitted as token events.
+- **finish_reason / usage** — `finish_reason` is set on the last content-bearing chunk's
+  `choices[].finish_reason` (one of `stop`, `length`, `tool_calls`, `content_filter`). With
+  `stream_options.include_usage` set, a final chunk with empty `choices` carries `usage`, followed by
+  the `[DONE]` sentinel.
+
+**Reasoning deltas (OpenAI-compatible extension).** Base OpenAI Chat Completions does **not** stream
+raw reasoning — its reasoning models do not expose chain-of-thought over this API. Streamed reasoning
+is an OpenAI-compatible *extension* offered by reasoning-model servers, and the delta field name
+**varies by backend**: `choices[].delta.reasoning_content` (DeepSeek, and earlier vLLM) and
+`choices[].delta.reasoning` (current vLLM). The mapping MUST recognize **either** as a reasoning delta
+→ `LlmTokenEvent(delta_kind="reasoning")`, assembling into the terminal `Response`'s reasoning blocks
+per §6. On these backends a reasoning delta and a content delta are mutually exclusive within a single
+chunk, and reasoning tokens stream first, then content. A backend that emits neither extension field
+streams no reasoning token events (the vanilla-OpenAI case). The streamed-chunk shapes above (the
+`stream_options` flag, `finish_reason` / `usage` chunk positioning, the `[DONE]` sentinel, tool-call
+delta fields, and the two reasoning-delta field names) are **verified against current OpenAI, vLLM,
+and DeepSeek streaming docs** (2026-06-20; tracked in `docs/compatibility.md`).
 
 ### 8.2 Anthropic Messages mapping
 
@@ -1547,7 +1645,17 @@ against a mock or stub HTTP server.
 
 Not covered by this specification; deferred to follow-on capabilities or proposals:
 
-- **Streaming responses** — incremental delivery of assistant content and tool calls.
+- **Node-body direct stream consumption** — streaming is observer-only in this version (token events
+  via the observer union, §5); a node body consuming the stream directly (an async-iterator return for
+  incremental parsing / early-stop) is deferred, additive if a consumer surfaces.
+- **Tool-call-delta token events** — `LlmTokenEvent` carries `content` and `reasoning` deltas (§5);
+  tool-call argument deltas are reassembled into the atomic `Response` but NOT emitted as token events.
+  A `delta_kind="tool_call"` variant is additive if a consumer needs live tool-argument streaming.
+- **Per-vendor streaming wire mappings beyond OpenAI-compatible** — Anthropic §8.2 and Gemini §8.3
+  streaming handling land as follow-ons; until then those mappings reject `stream`-set calls (§5
+  *Provider streaming support*).
+- **Streaming for non-completion provider operations** — embedding / rerank streaming is a separate
+  concern; not in this version.
 - **Multi-modal audio and video** — audio and video inputs and outputs. Image inputs are
   covered by §3.1 (per proposal 0015). Audio and video each warrant their own proposal —
   formats, codecs, inline-vs-URL semantics, and provider wire mappings differ enough that

@@ -24,6 +24,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 observer event union: `LlmCompletionEvent` gained an `output_tool_calls` field — the assistant message's output tool calls (`[{id, name, arguments}]`, typed-event-native form), the output-side counterpart to the tool calls carried within `input_messages`; null / empty when the response had none, complementary to `output_content` (null for a tool-call-only response). Payload-bearing, gated like the other payload fields. It is the source the observability §5.5.1 `openarmature.llm.output.tool_calls` span attribute and §5.5.10 identity projections render from by [proposal 0076](../../proposals/0076-tool-call-request-observability-llm-spans.md)
   - §6 observer event union extended with two paired typed variants — `ToolCallEvent` (success) + `ToolCallFailedEvent` (failure) — for tool *execution* (the caller running a tool the model requested via `output_tool_calls`), per the 0049 → 0058 → 0059 success+failure precedent; plus an opt-in node-body **tool-call instrumentation scope** the caller wraps a single tool execution in (OA observes — emits the terminal event at outcome time and re-raises on failure — it does NOT select, run, retry, or loop tools). Events carry the identity / scoping baseline + `tool_name` / `tool_call_id` (linking to the requesting `LlmCompletionEvent.output_tool_calls` entry, the §5.5.10 `.ids` projection) / `arguments` / `result` (success) and `error_type` + `error_message` (failure — **no `error_category`**, the deliberate departure: arbitrary tool code has no closed llm-provider §7 taxonomy). Event-driven start/complete split carries the scope-entry identity; payload gated observer-side by `disable_provider_payload` (§5.5.4) by [proposal 0063](../../proposals/0063-tool-execution-observability.md)
   - §6 observer event union extended with two new typed event variants — `RerankEvent` (success) and `RerankFailedEvent` (failure) — paired from launch per the 0049 → 0058 success+failure pairing precedent, the rerank sibling to the embedding pair. Both carry the identity / scoping / request-side field set established by `EmbeddingEvent` (with `query` + `documents` in place of `input_strings` and the rerank-specific runtime-config shape), with capability-appropriate success-side fields (`response_id`, `response_model`, `usage`, `result_count`) plus `document_count` / `top_k`, and the three failure-specific fields (`error_category`, `error_type`, `error_message`) on the failure variant. Mutual exclusion + exception-flow + dispatch-timing rules mirror the embedding pair; `query` / `documents` / `request_extras` and the `ScoredDocument.document` result echoes are payload-bearing, gated observer-side by `disable_provider_payload` (§5.5.4) by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
+  - §6 observer event union gained `LlmTokenEvent` — an **unpaired within-call sub-event** (not a call outcome; no `LlmTokenFailedEvent`) carrying one streamed delta per chunk when `complete()` is called with `stream` set (llm-provider §5). Mirrors `LlmCompletionEvent`'s identity / scoping baseline plus `chunk_index`, `delta_kind` (`"content"` / `"reasoning"`; `"tool_call"` reserved, not emitted), and `delta`; correlated to the terminal `LlmCompletionEvent` / `LlmFailedEvent` by shared `call_id`, dispatched in `chunk_index` order before the terminal event. `attempt_index` is node-level (does not advance across llm-provider §7.1 call-level wire attempts). Bundled OTel / Langfuse observers do not render it — it is payload for custom forwarding observers by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -856,6 +857,52 @@ Inline image bytes in `input_messages` MUST be redacted per the observability §
 redaction rule before population. Custom queryable observers (per observability §9) consuming the
 failure variant are responsible for their own redaction posture, identical to the
 `LlmCompletionEvent` posture.
+
+**Typed LLM token event.** When a `complete()` call is made with `stream` set (llm-provider §5), the
+observer delivery queue also carries a typed `LlmTokenEvent` per streamed chunk. Unlike
+`LlmCompletionEvent` / `LlmFailedEvent` (and the embedding / rerank pairs), `LlmTokenEvent` is a
+**within-call sub-event** — it carries one delta of an in-progress call, not a call outcome. It is
+therefore **unpaired**: there is no `LlmTokenFailedEvent`. A streamed call that fails mid-stream emits
+the partial token events it produced, then the terminal `LlmFailedEvent` (the pair above) fires when
+the §7 category exception raises; the call's outcome is carried by the terminal `LlmCompletionEvent` /
+`LlmFailedEvent`, never by the token events. Observers filter via type discrimination
+(`isinstance(event, LlmTokenEvent)` or per-language idiomatic equivalent); the class name
+`LlmTokenEvent` is normative as an identifier shape.
+
+The field set mirrors `LlmCompletionEvent`'s identity / scoping baseline plus the per-chunk delta.
+Request-side and response-side payload fields are deliberately absent (they are invariant across the
+stream and live on the terminal `LlmCompletionEvent`; consumers correlate via `call_id`):
+
+| Field | Type | Description |
+|---|---|---|
+| `invocation_id` | string | The outer invocation's identifier, per observability §5.1. |
+| `correlation_id` | string \| null | Cross-backend correlation ID, per observability §3.1. |
+| `node_name` | string | The user-defined node that issued the call. |
+| `namespace` | sequence of strings | The calling node's namespace, per the *Node event shape* above. |
+| `attempt_index` | int | The **node-level** retry-attempt index (0 on the first attempt), sourced from the same per-node retry context as `LlmCompletionEvent.attempt_index`. It does NOT vary across llm-provider §7.1 *call-level* wire attempts (those share one `call_id` and one node-level index); the per-wire-attempt index lives on the §7.1 OTel span, not here. |
+| `fan_out_index` | int \| null | The fan-out instance index (per pipeline-utilities §9). Null otherwise. |
+| `branch_name` | string \| null | The parallel-branches branch name (per pipeline-utilities §11). Null otherwise. |
+| `provider` | string | The LLM provider identifier. |
+| `model` | string | The model identifier the request was made against. |
+| `call_id` | string | The per-call disambiguator minted by the implementation for this `complete()` call. **Matches the `call_id` on the terminal `LlmCompletionEvent` / `LlmFailedEvent` for the same call** — the linkage observers use to associate a token stream with its eventual completion. |
+| `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `LlmCompletionEvent`. |
+| `chunk_index` | int | Monotonic per call, starting at 0. Establishes delta ordering within the call's token stream. |
+| `delta_kind` | string | The kind of delta this chunk carries: `"content"` (assistant answer text) or `"reasoning"` (chain-of-thought / thinking text, when the provider streams it per llm-provider §8.1). Forwarding observers route by kind (e.g., a UI's answer stream vs. its "thinking" stream). Extensible: a `"tool_call"` value is reserved for live tool-argument streaming, NOT emitted in this version (tool-call deltas reassemble into the terminal `Response`, llm-provider §6). |
+| `delta` | string | The text delta for this chunk, of the kind named by `delta_kind`. Tool-call argument deltas are reassembled into `Response.message.tool_calls` (llm-provider §6) and are NOT emitted as token events in this version. |
+
+Dispatch + ordering: `LlmTokenEvent`s are dispatched on the observer delivery queue in `chunk_index`
+order, all **before** the terminal `LlmCompletionEvent` for the same call. Delivery follows the
+*Event delivery* rules above — strict-serial across the invocation, async-delivered. Token events fire
+ONLY when the call was made with `stream` set; a non-streamed call emits no token events
+(backward-compatible). Like the other typed variants, `LlmTokenEvent` carries no `phase` discriminator
+and is NOT subject to the `phases` subscription filter.
+
+The `delta` field carries model output (payload-bearing). The bundled OTel and Langfuse observers do
+NOT render token events (observability §5.5 / §8), so there is no bundled-observer rendering surface to
+gate; custom observers consuming token events (the UI-forwarding case) are responsible for their own
+redaction posture, identical to the custom-observer posture for `LlmCompletionEvent` (observability
+§9). The terminal `LlmCompletionEvent`'s payload remains gated by `disable_provider_payload` at the
+bundled observers; streaming changes nothing there.
 
 **Typed embedding event.** The observer delivery queue also carries a typed `EmbeddingEvent` on
 every successful `EmbeddingProvider.embed()` call per the retrieval-provider §3 contract. A third spec-normatively-typed event variant on the observer event union — observers

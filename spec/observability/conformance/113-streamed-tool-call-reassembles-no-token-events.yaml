@@ -1,0 +1,85 @@
+# graph-engine §6 + llm-provider §6 *Streaming assembly* — streamed tool-call
+# argument deltas reassemble into the terminal Response.message.tool_calls
+# (surfaced on LlmCompletionEvent.output_tool_calls) but are NOT emitted as
+# token events. LlmTokenEvent carries answer CONTENT only; tool-call deltas are
+# provider-internal reassembly. Locks the "reassemble into the atomic Response,
+# don't emit as token events" contract. (Streaming directives in fixture 111's
+# header.)
+
+cases:
+  - name: tool_call_deltas_reassemble_only_content_token_events
+    description: |
+      A streamed call (stream=True) whose mock yields a short content preamble
+      ("Looking ") followed by tool-call argument deltas (the OpenAI streamed
+      tool-call shape: an opening delta carrying index/id/function.name, then
+      argument-string fragments), then a terminal finish_reason=tool_calls
+      chunk and a usage chunk. The harness asserts:
+      - exactly ONE LlmTokenEvent (delta_kind="content", delta "Looking ") —
+        the tool-call argument deltas produce NO token events
+      - zero token events with delta_kind="tool_call" (the reserved, not-emitted
+        kind)
+      - the terminal LlmCompletionEvent's output_tool_calls is the COMPLETE
+        reassembled [{id, name, arguments}], arguments parsing to
+        {"city": "Paris"} — identical to the non-streamed equivalent.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          stream: true
+          messages: [{role: user, content: "weather in Paris?"}]
+          tools:
+            - name: get_weather
+              description: "Get current weather for a city."
+              parameters:
+                type: object
+                properties:
+                  city: {type: string}
+                required: [city]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm_stream:
+      - - {choices: [{index: 0, delta: {content: "Looking "}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {tool_calls: [{index: 0, id: call_w1, function: {name: get_weather, arguments: ""}}]}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {tool_calls: [{index: 0, function: {arguments: "{\"city\":"}}]}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {tool_calls: [{index: 0, function: {arguments: " \"Paris\"}"}}]}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {}, finish_reason: tool_calls}]}
+        - {choices: [], usage: {prompt_tokens: 12, completion_tokens: 8, total_tokens: 20}}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          # Only the content preamble is a token event; the three tool-call
+          # argument deltas produce none.
+          contains_events_in_order:
+            event_type: LlmTokenEvent
+            events:
+              - {chunk_index: 0, delta_kind: content, delta: "Looking "}
+          event_counts:
+            - {event_type: LlmTokenEvent, count: 1}
+            - {event_type: LlmCompletionEvent, count: 1}
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              finish_reason: tool_calls
+              node_name: ask
+              namespace: [ask]
+              # Reassembled, complete, parses identically to the non-streamed case.
+              output_tool_calls:
+                - {id: call_w1, name: get_weather, arguments: {city: "Paris"}}
+      invariants:
+        tool_call_argument_deltas_emit_no_token_events: true
+        no_tool_call_kind_token_events: true
+        only_content_kind_token_events_emitted: true
+        terminal_output_tool_calls_reassembled_complete_and_parsed: true
+        reassembled_tool_calls_identical_to_non_streamed: true

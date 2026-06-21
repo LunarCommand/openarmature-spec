@@ -4,6 +4,23 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.71.0] — 2026-06-20
+
+**Added**
+
+- **llm-provider §5 / §6 / §8.1.6 — LLM completion streaming.** `complete()` gains an optional `stream` flag (default off; return type unchanged — still `Response`). When set, the provider consumes the model's streaming wire response and emits a per-chunk `LlmTokenEvent` (graph-engine §6) as each chunk arrives; the §6 *Streaming assembly* contract reassembles the atomic `Response` (content concatenation, reasoning-block assembly, tool-call-delta reassembly, terminal usage / finish_reason) so the streamed and non-streamed paths are structurally identical. A *Provider streaming support* rule requires mappings without streaming to reject `stream`-set calls with `provider_invalid_request`; §8.1.6 adds the OpenAI-compatible SSE wire handling (`stream_options.include_usage`, `[DONE]`, content / tool-call deltas, and the reasoning-delta extension recognizing both `reasoning_content` and `reasoning`). ([proposal 0062](proposals/0062-llm-completion-streaming.md))
+- **graph-engine §6 — `LlmTokenEvent`.** A new unpaired within-call typed observer event (no `LlmTokenFailedEvent`) carrying one streamed delta per chunk: `delta_kind` (`"content"` / `"reasoning"`; `"tool_call"` reserved), `delta`, monotonic `chunk_index`, and the identity / scoping baseline, correlated to the terminal `LlmCompletionEvent` / `LlmFailedEvent` by shared `call_id`. Fires only on a `stream`-set call; dispatched in `chunk_index` order before the terminal event. ([proposal 0062](proposals/0062-llm-completion-streaming.md))
+- **observability §5.5.7 / §8.4.3 — token events not rendered.** Notes that the bundled OTel and Langfuse observers do NOT render `LlmTokenEvent`: no per-token spans / observations; trace recording stays atomic at the terminal `LlmCompletionEvent`. `LlmTokenEvent` is for custom forwarding observers (the live-UI / live-"thinking" case). ([proposal 0062](proposals/0062-llm-completion-streaming.md))
+- Eight new observability conformance fixtures (`111`–`118`) and two new llm-provider fixtures (`059`–`060`): token-event dispatch / absence / no-token-events-for-tool-calls / failure-mid-stream / call-id linkage / call-level-retry / reasoning `delta_kind` (both `reasoning_content` and `reasoning`); bundled-observer atomicity under stream; the OpenAI-compatible streaming wire path; and the streaming-unsupported-mapping rejection. ([proposal 0062](proposals/0062-llm-completion-streaming.md))
+
+**Changed**
+
+- **llm-provider §10 — streaming deferral lifted.** The blanket "Streaming responses" out-of-scope item is removed (now in scope), replaced by narrower deferrals: node-body iterator consumption, tool-call-delta token events, Anthropic / Gemini streaming wire (those mappings reject `stream`-set calls until their follow-ons), and non-completion streaming. ([proposal 0062](proposals/0062-llm-completion-streaming.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Additive: `stream` is opt-in (default off; the atomic path is byte-for-byte the prior behavior), `LlmTokenEvent` is a new opt-in observer-union variant, and the bundled trace mappings are unchanged (token events are for custom observers). ([proposal 0062](proposals/0062-llm-completion-streaming.md))
+
 ## [0.70.1] — 2026-06-20
 
 **Added**

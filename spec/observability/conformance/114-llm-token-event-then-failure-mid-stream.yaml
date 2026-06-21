@@ -1,0 +1,77 @@
+# graph-engine §6 — a streamed call that fails MID-STREAM emits the partial
+# LlmTokenEvents it produced, then the terminal LlmFailedEvent (proposal 0058) —
+# there is NO LlmTokenFailedEvent (the event is unpaired; the call's outcome is
+# carried by the terminal LlmFailedEvent). The §7 category exception still
+# raises out of complete(). (Streaming directives in fixture 111's header.)
+#
+# Mid-stream failure marker (per conformance-adapter §3.2): a mock_llm_stream
+# chunk entry of the form {error: {status: <int>}} makes the mock provider
+# stop yielding chunks and raise the §7 category for that HTTP status (503 ->
+# provider_unavailable) AFTER the preceding chunks have been delivered as token
+# events — modelling a stream that errors partway.
+
+cases:
+  - name: partial_token_events_then_failed_event_no_token_failed_event
+    description: |
+      A stream=True call whose mock yields two content chunks ("Par", "tial ")
+      then a mid-stream failure marker (503 -> provider_unavailable). The
+      harness asserts:
+      - the two partial LlmTokenEvents fired (delta_kind="content",
+        chunk_index 0,1)
+      - exactly one terminal LlmFailedEvent (error_category="provider_unavailable")
+      - zero LlmCompletionEvent (the call failed)
+      - zero "LlmTokenFailedEvent" of any kind (the event is unpaired)
+      - the provider_unavailable exception raises out of complete().
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          stream: true
+          messages: [{role: user, content: "stream then fail"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm_stream:
+      - - {choices: [{index: 0, delta: {content: "Par"}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "tial "}, finish_reason: null}]}
+        - {error: {status: 503}}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_events_in_order:
+            event_type: LlmTokenEvent
+            events:
+              - {chunk_index: 0, delta_kind: content, delta: "Par"}
+              - {chunk_index: 1, delta_kind: content, delta: "tial "}
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              error_category: provider_unavailable
+              node_name: ask
+              namespace: [ask]
+              attempt_index: 0
+          event_counts:
+            - {event_type: LlmTokenEvent, count: 2}
+            - {event_type: LlmFailedEvent, count: 1}
+            - {event_type: LlmCompletionEvent, count: 0}
+            - {event_type: LlmTokenFailedEvent, count: 0}
+      invariants:
+        partial_token_events_fire_before_failure: true
+        exactly_one_terminal_llm_failed_event: true
+        zero_llm_completion_events_on_failed_stream: true
+        no_llm_token_failed_event_variant_exists: true
+        exception_propagates_out_of_complete: true

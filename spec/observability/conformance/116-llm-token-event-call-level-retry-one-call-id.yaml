@@ -1,0 +1,95 @@
+# graph-engine §6 + llm-provider §5/§7.1 — a streamed complete(retry=...) whose
+# first WIRE attempt fails transiently and whose second wire attempt succeeds.
+# Per the §7.1 interaction note, the retry loop runs INSIDE one complete() call:
+# it is ONE call with ONE call_id and ONE node-level attempt_index (the wire
+# retry does NOT advance the node-level index). The harness asserts:
+#   - all token events (across the post-transient successful attempt) share ONE
+#     call_id and ONE node-level attempt_index (0)
+#   - exactly ONE terminal LlmCompletionEvent fires — no per-attempt typed event
+#     for the caught transient (graph-engine §6 one-typed-event-per-complete()-
+#     call mutual exclusion)
+#   - the assembled Response reflects the SUCCESSFUL attempt only.
+# Locks the §7.1-call-level-vs-per-node distinction and the
+# one-typed-event-per-complete()-call contract under streaming.
+#
+# Call-level-retry streamed mock (per conformance-adapter §3.2): when a streamed
+# call supplies `retry`, its single mock_llm_stream entry is a list of WIRE
+# ATTEMPTS, each attempt either a mid-stream failure marker {error: {status}}
+# (a transient that the §7.1 loop catches internally, emitting NO terminal typed
+# event and NOT advancing the node-level attempt_index) or a successful chunk
+# sub-stream. The entry is wrapped in `wire_attempts:` to disambiguate it from
+# the flat chunk-list form (a single non-retry stream). The mock dispatches one
+# wire attempt per §7.1 internal attempt, in order.
+
+cases:
+  - name: call_level_retry_token_events_share_one_call_id_and_attempt_index
+    description: |
+      A stream=True node with retry={max_attempts:2} whose first wire attempt is
+      a transient 503 (caught internally by the §7.1 loop) and whose second wire
+      attempt streams "Re"/"try"/"ok" successfully. The harness asserts:
+      - exactly 3 LlmTokenEvents (only the successful attempt's chunks), all with
+        attempt_index=0 (node-level — the wire retry does NOT advance it) and one
+        shared call_id
+      - exactly ONE LlmCompletionEvent, attempt_index=0, same call_id, assembled
+        content "Retryok"
+      - zero LlmFailedEvent (the transient was caught; the call succeeded).
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          stream: true
+          messages: [{role: user, content: "retry me"}]
+          retry:
+            max_attempts: 2
+            backoff: {type: deterministic, seconds: 0}
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm_stream:
+      - wire_attempts:
+          # Wire attempt 0 — transient 503, caught internally by the §7.1 loop.
+          - - {error: {status: 503}}
+          # Wire attempt 1 — streams successfully.
+          - - {choices: [{index: 0, delta: {content: "Re"}, finish_reason: null}]}
+            - {choices: [{index: 0, delta: {content: "try"}, finish_reason: null}]}
+            - {choices: [{index: 0, delta: {content: "ok"}, finish_reason: stop}]}
+            - {choices: [], usage: {prompt_tokens: 4, completion_tokens: 3, total_tokens: 7}}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_events_in_order:
+            event_type: LlmTokenEvent
+            events:
+              - {chunk_index: 0, delta_kind: content, delta: "Re", attempt_index: 0}
+              - {chunk_index: 1, delta_kind: content, delta: "try", attempt_index: 0}
+              - {chunk_index: 2, delta_kind: content, delta: "ok", attempt_index: 0}
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              finish_reason: stop
+              node_name: ask
+              namespace: [ask]
+              attempt_index: 0
+          event_counts:
+            - {event_type: LlmTokenEvent, count: 3}
+            - {event_type: LlmCompletionEvent, count: 1}
+            - {event_type: LlmFailedEvent, count: 0}
+      invariants:
+        all_token_events_share_one_call_id: true
+        token_event_call_id_matches_terminal_completion_event: true
+        all_token_events_node_level_attempt_index_zero: true
+        wire_retry_does_not_advance_node_level_attempt_index: true
+        exactly_one_terminal_llm_completion_event: true
+        no_per_attempt_typed_event_for_caught_transient: true
+        assembled_response_reflects_successful_attempt_only: true

@@ -1,0 +1,117 @@
+# observability §5.5 + §8 — the bundled OTel and Langfuse observers do NOT
+# render LlmTokenEvent. A streamed call collapses back to ONE atomic recording
+# at the terminal LlmCompletionEvent: exactly one openarmature.llm.complete span
+# (no per-token children) and one Langfuse Generation observation (no per-token
+# observations), each carrying the FULL assembled input/output — identical to a
+# non-streamed call. A 500-token response is one span / one Generation, not 500.
+# (Streaming directives in fixture 111's header; the span / Langfuse expected
+# shapes follow the observability suite's standard span_tree / langfuse_trace.)
+
+cases:
+  - name: otel_one_llm_span_no_per_token_children_under_stream
+    description: |
+      A stream=True call with the default OTel observer (payload enabled here so
+      the assembled output is asserted). The mock streams "Hel"/"lo "/"world".
+      The harness asserts exactly one openarmature.llm.complete span parented
+      under the node span, with NO per-token child spans (children: []) and
+      openarmature.llm.output.content carrying the full assembled "Hello world".
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          stream: true
+          messages:
+            - {role: user, content: "say hello"}
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm_stream:
+      - - {choices: [{index: 0, delta: {content: "Hel"}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "lo "}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "world"}, finish_reason: stop}]}
+        - {choices: [], usage: {prompt_tokens: 9, completion_tokens: 3, total_tokens: 12}}
+    disable_provider_payload: false
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    openarmature.llm.model: "gpt-test"
+                    openarmature.llm.finish_reason: "stop"
+                    # Full assembled output, not a per-chunk fragment.
+                    openarmature.llm.output.content: "Hello world"
+                  # No per-token child spans — token events are not rendered.
+                  children: []
+      invariants:
+        exactly_one_llm_complete_span_under_stream: true
+        no_per_token_child_spans: true
+        span_output_is_full_assembled_content: true
+
+  - name: langfuse_one_generation_no_per_token_observations_under_stream
+    description: |
+      The same streamed call with the bundled Langfuse observer
+      (disable_provider_payload=False). The harness asserts exactly one
+      Generation observation under the node span, with the full assembled
+      output ("Hello world") and NO per-token child observations.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          stream: true
+          messages:
+            - {role: user, content: "say hello"}
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm_stream:
+      - - {choices: [{index: 0, delta: {content: "Hel"}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "lo "}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {content: "world"}, finish_reason: stop}]}
+        - {choices: [], usage: {prompt_tokens: 9, completion_tokens: 3, total_tokens: 12}}
+    langfuse_observer:
+      disable_provider_payload: false
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                model: "gpt-test"
+                usage:
+                  input: 9
+                  output: 3
+                  total: 12
+                metadata:
+                  finish_reason: "stop"
+                  system: "openai"
+                input_parses_as_messages:
+                  - {role: user, content: "say hello"}
+                # Full assembled output, collapsed from the stream.
+                output: "Hello world"
+                # No per-token child observations.
+                children: []
+      invariants:
+        exactly_one_generation_observation_under_stream: true
+        no_per_token_child_observations: true
+        generation_output_is_full_assembled_content: true
