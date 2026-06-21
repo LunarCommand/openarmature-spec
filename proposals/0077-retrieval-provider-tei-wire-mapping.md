@@ -43,8 +43,7 @@ embedding-protocol gap that self-hosted setup exposes:
 
 Together these "fully support TEI" — closing the two-stage RAG loop (embed → rerank) across the
 self-hosted TEI deployments (an embedding instance + a reranker instance) — and make the embedding
-protocol correct for the whole asymmetric-retrieval-embedder family,
-not just TEI.
+protocol correct for the whole asymmetric-retrieval-embedder family.
 
 ## Motivation
 
