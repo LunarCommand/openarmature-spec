@@ -1,0 +1,126 @@
+# retrieval-provider §8.1 TEI /embed — the /embed wire round-trip.
+#
+# Verifies the §8.1 TEI embedding mapping on the request and response
+# wire surfaces (no input_type — that path is fixture 013):
+#   - the request always sends the ARRAY form {"inputs": [str]} even for
+#     a single-string caller (§8.1 /embed: "the mapping always sends the
+#     array form per §3's always-a-list"); with no input_type and no
+#     dimensions, the body is exactly {"inputs": [...]}.
+#   - dimensions on EmbeddingRuntimeConfig maps to TEI's `dimensions`
+#     field when set.
+#   - the TEI response (a bare array of vector arrays) maps to
+#     EmbeddingResponse.vectors IN INPUT ORDER, one vector per input
+#     (§4 cross-impl invariants: vector count == input count, all inner
+#     vectors same dimensionality, dimensions field == inner length).
+#   - TEI surfaces no response id, so response_id is null (§4).
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 013's header (mapping: tei,
+# expected_wire_request, the TEI /embed request + vector-array response
+# shapes, tei_embedding_provider construction block).
+
+mapping: tei
+
+tei_embedding_provider:
+  base_url: "http://tei-embed.invalid"
+  model: tei-embed-test
+  input_type_prompt_map: {query: "query", document: "passage"}
+
+cases:
+  - name: embed_array_form_response_in_input_order
+    description: |
+      embed() over 3 input strings, no config. The wire request MUST be
+      exactly {"inputs": [s0, s1, s2]} (the array form, no prompt_name,
+      no dimensions). The mocked TEI response is the bare vector array
+      [[...], [...], [...]] of dimension 4. The adapter MUST return
+      EmbeddingResponse.vectors in input order (vector i == embedding of
+      input i), with vectors length 3, all inner length 4, dimensions 4,
+      response_id null. To make the input-order check load-bearing, the
+      three vectors are distinct first components (0.0x / 0.1x / 0.2x).
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string", "beta string", "gamma string"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      inputs: ["alpha string", "beta string", "gamma string"]
+    expected_wire_request_absent_keys: [prompt_name, dimensions]
+    mock_embedding:
+      - status: 200
+        body:
+          - [0.01, 0.02, 0.03, 0.04]
+          - [0.11, 0.12, 0.13, 0.14]
+          - [0.21, 0.22, 0.23, 0.24]
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+            - [0.11, 0.12, 0.13, 0.14]
+            - [0.21, 0.22, 0.23, 0.24]
+          vectors_length: 3
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: tei-embed-test
+          response_id: null
+      invariants:
+        wire_request_is_array_form: true
+        vectors_length_matches_input_length: true
+        vectors_in_input_order: true
+        all_vectors_same_dimensionality: true
+        dimensions_field_matches_inner_vector_length: true
+
+  - name: embed_dimensions_maps_to_tei_dimensions_field
+    description: |
+      embed(config={dimensions: 4}) — the §8.1 mapping sends TEI's
+      `dimensions` field alongside the inputs array. Single input; the
+      response is a one-element vector array of length 4. Confirms the
+      dimensions request-param maps onto the wire and the response shape
+      holds.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            dimensions: 4
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      inputs: ["alpha string"]
+      dimensions: 4
+    expected_wire_request_absent_keys: [prompt_name]
+    mock_embedding:
+      - status: 200
+        body:
+          - [0.01, 0.02, 0.03, 0.04]
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: tei-embed-test
+          response_id: null
+      invariants:
+        wire_request_carries_dimensions_field: true
+        vectors_length_matches_input_length: true
+        dimensions_field_matches_inner_vector_length: true

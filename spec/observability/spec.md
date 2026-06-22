@@ -1324,6 +1324,7 @@ attribute.
 |---|---|---|
 | `openarmature.embedding.input_count` | int | The number of input strings the call was made with. |
 | `openarmature.embedding.dimensions` | int | The output vector dimensionality (equals the inner-vector length on `EmbeddingResponse.vectors`). |
+| `openarmature.embedding.input_type` | string | The `input_type` request parameter (`"query"` / `"document"`, an extensible string) when the caller supplied one (retrieval-provider §2). Absent when `input_type` was not set (the symmetric default). |
 | `openarmature.embedding.input.strings` | string (JSON-encoded) | The input strings list. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract — parallel to `openarmature.llm.input.messages`. |
 | `openarmature.embedding.request.extras` | string (JSON-encoded) | The embedding runtime config's extras pass-through bag. Subject to `disable_provider_payload`. |
 

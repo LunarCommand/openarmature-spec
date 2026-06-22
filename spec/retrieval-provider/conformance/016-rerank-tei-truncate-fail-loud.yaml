@@ -1,0 +1,112 @@
+# retrieval-provider §8.1 TEI /rerank — truncate: false fail-loud.
+#
+# Verifies the §8.1 *truncate: false (fail-loud)* contract: the mapping
+# sends truncate: false explicitly, so an over-length (query, document)
+# pair makes TEI error (HTTP 413 / 422) rather than silently truncating.
+# The resulting TEI error MUST map to provider_invalid_request (§7); the
+# adapter MUST raise that category, NOT return a (silently truncated)
+# score. Two cases cover both documented over-length status codes.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 013's header (mapping: tei,
+# expected_wire_request, the TEI /rerank request shape) and 014's header
+# (tei_rerank_provider construction block). Error-assertion shape:
+#
+# - expected_error: {category, raised_from} — the conformance-adapter
+#   §5.8 compact error-assertion shape (as used by retrieval fixtures
+#   002, 007). Asserts the §7 category that surfaces and the node it
+#   raises from. A non-2xx mock_rerank entry drives the error path.
+#
+# - mock_rerank non-2xx entries under `mapping: tei` carry TEI's real
+#   error body shape ({"error": str, "error_type": str}) at the given
+#   HTTP status (413 / 422 for over-length input per §8.1 *Errors*).
+
+mapping: tei
+
+tei_rerank_provider:
+  base_url: "http://tei-rerank.invalid"
+  model: tei-rerank-test
+  chunk_size: 32
+
+cases:
+  - name: over_length_413_maps_to_provider_invalid_request
+    description: |
+      A (query, document) pair exceeds the model's context. Because the
+      mapping sends truncate: false, TEI returns HTTP 413 (payload too
+      large). The adapter MUST classify it as provider_invalid_request
+      (§8.1 *Errors*: over-length / malformed request 413/422 ->
+      provider_invalid_request) and raise out of the rerank node — NOT
+      return a truncated score. The wire request still carries
+      truncate: false (the fail-loud directive).
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "summarize the entire document corpus in full detail"
+          documents: ["a very long document that exceeds the cross-encoder context window"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      query: "summarize the entire document corpus in full detail"
+      texts: ["a very long document that exceeds the cross-encoder context window"]
+      truncate: false
+      return_text: false
+    mock_rerank:
+      - status: 413
+        body:
+          error: "Input validation error: `inputs` must have less than 512 tokens. Given: 904"
+          error_type: "Validation"
+    expected_error:
+      category: provider_invalid_request
+      raised_from: rerank_node
+    expected:
+      invariants:
+        exception_raised_out_of_rerank_call: true
+        wire_request_truncate_false: true
+        no_truncated_score_returned: true
+
+  - name: over_length_422_maps_to_provider_invalid_request
+    description: |
+      Same fail-loud contract via HTTP 422 (unprocessable entity), the
+      other over-length status TEI surfaces. The adapter MUST classify it
+      as provider_invalid_request and raise out of the rerank node.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "summarize the entire document corpus in full detail"
+          documents: ["another over-length document beyond the context window"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      query: "summarize the entire document corpus in full detail"
+      texts: ["another over-length document beyond the context window"]
+      truncate: false
+      return_text: false
+    mock_rerank:
+      - status: 422
+        body:
+          error: "Input validation error: `inputs` must have less than 512 tokens. Given: 771"
+          error_type: "Validation"
+    expected_error:
+      category: provider_invalid_request
+      raised_from: rerank_node
+    expected:
+      invariants:
+        exception_raised_out_of_rerank_call: true
+        wire_request_truncate_false: true
+        no_truncated_score_returned: true

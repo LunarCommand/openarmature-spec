@@ -1,6 +1,6 @@
 # External-dependency compatibility
 
-**Last refreshed:** 2026-06-20
+**Last refreshed:** 2026-06-22
 
 OpenArmature normatively references several external specifications and APIs.
 This page is the **operational tracking artifact** for those references:
@@ -37,6 +37,7 @@ publishes it.
 | [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) | Header `anthropic-version: 2023-06-01` | Stable (date-versioned) | 2026-05-31 | Wire shape per llm-provider §8.2. **No implicit caching** — `cache_read_input_tokens` / `cache_creation_input_tokens` fire only under explicit `cache_control` annotations. |
 | [Google Gemini API](https://ai.google.dev/api) | URL-path `v1`; model `gemini-2.5+` for implicit caching | Stable (URL-path versioned) | 2026-05-31 | Wire shape per llm-provider §8.3. Implicit caching default-on for Gemini 2.5+ models; `cachedContentTokenCount` populated in `usageMetadata` for both implicit and explicit cache hits. |
 | [OpenAI streaming + reasoning-delta extension](https://platform.openai.com/docs/api-reference/chat/streaming) | Chat Completions SSE; `stream_options.include_usage`; vLLM / DeepSeek reasoning-delta ext | Stable (OpenAI SSE); reasoning-delta is a non-standard server extension | 2026-06-20 | Wire shape per llm-provider §8.1.6. OpenAI streams content / tool-call deltas as SSE `data:` chunks, `finish_reason` on the last content chunk, a final empty-`choices` chunk carrying `usage` (with `stream_options.include_usage`), then `[DONE]`. Reasoning streaming is a non-standard OpenAI-compatible **extension** with divergent field names — `choices[].delta.reasoning_content` (DeepSeek / older vLLM) and `choices[].delta.reasoning` (current vLLM); base OpenAI does not stream raw reasoning. |
+| [HuggingFace Text Embeddings Inference (TEI)](https://github.com/huggingface/text-embeddings-inference) | self-hosted; `/embed` + `/rerank`; `max-client-batch-size` default 32 | OSS (OpenAPI, continuously updated) | 2026-06-22 | Wire shape per retrieval-provider §8.1. Verified against the TEI OpenAPI: `/rerank` `{query, texts, truncate (default false), return_text (default false), raw_scores, truncation_direction}` → `[{index, score, text?}]` (no guaranteed sort order); `/embed` `{inputs, normalize, dimensions, truncate, prompt_name}`; `prompt_name` realizes the `input_type` knob server-side; mandatory client-side chunk-and-stitch at `max-client-batch-size` (default 32). |
 | [Langfuse Python SDK](https://github.com/langfuse/langfuse-python) | v4.7.1 | Stable v4.x | 2026-05-31 | Used by observability §8 Langfuse mapping. v5 announcement watched; `set_current_trace_io` marked deprecated in v4 per observability §8.4.1 caveat. |
 | [JSON Schema](https://json-schema.org/specification) | draft-2020-12 | Released (latest draft) | 2026-05-31 | Used in llm-provider §4 `Tool.parameters` and §5 `response_schema`. |
 | [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119) — keyword conventions | RFC 2119 (Best Current Practice) | Published | 2026-05-31 | MUST / SHOULD / MAY usage across normative spec text. |

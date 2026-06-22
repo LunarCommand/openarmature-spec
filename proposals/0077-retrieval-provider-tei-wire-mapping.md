@@ -1,9 +1,9 @@
 # 0077: TEI Retrieval-Provider Wire Mapping + Asymmetric Query/Document Embedding
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-21
-- **Accepted:**
+- **Accepted:** 2026-06-22
 - **Targets:** spec/retrieval-provider/spec.md (§2 *Concepts* + §3 *EmbeddingProvider protocol* — the *Embedding runtime config* gains a declared `input_type` field; new **§8 Wire-format mappings** with **§8.1 TEI** covering both of TEI's `/embed` and `/rerank` surfaces — served as separate per-model instances — analogous to llm-provider §8.1 / §8.2 / §8.3 — this is the first concrete retrieval-provider wire mapping; the section restructure renumbers existing §8 *Determinism* → §9, §9 *Cross-spec touchpoints* → §10, §10 *Out of scope* → §11, and the §10/§11 out-of-scope wire-mapping deferral drops its TEI entry, now landed); plus new conformance fixtures under `spec/retrieval-provider/conformance/`. No graph-engine change: `input_type` flows into the existing `EmbeddingEvent.request_params` (graph-engine §6) with absence-is-meaningful semantics, like `dimensions`. Minor observability touch: `input_type` is a request-side embedding runtime-config field, surfaced on the §5.5.8 embedding span the same way the existing request-params family is (no new attribute family).
 - **Related:** 0059 (retrieval-provider embedding protocol — the `embed()` / `EmbeddingRuntimeConfig` surface this extends, and the deferred-all-wire-mappings posture this begins to fill), 0060 (rerank protocol — the `RerankProvider` contract the TEI `/rerank` mapping realizes, including the `results` sort + valid-index invariants), 0006 / 0037 / 0038 (llm-provider §8.X wire-mapping pattern — the per-vendor / per-runtime mapping precedent this mirrors for retrieval-provider)
 - **Supersedes:**
