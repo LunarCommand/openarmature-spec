@@ -4,6 +4,22 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.72.0] — 2026-06-22
+
+**Added**
+
+- **retrieval-provider §2 / §3 — `input_type` embedding knob.** `EmbeddingRuntimeConfig` gains an optional `input_type` field (`"query"` / `"document"`, an extensible string) so a provider bound to an asymmetric retrieval model (BGE / E5 / GTE, and hosted vendors via their own wire parameters) applies the model-appropriate query vs. passage treatment; **absent ⇒ symmetric** (the prior behavior, unchanged). It flows into `EmbeddingEvent.request_params` (graph-engine §6, alongside `dimensions`) and is surfaced as the `openarmature.embedding.input_type` span attribute (observability §5.5.8). ([proposal 0077](proposals/0077-retrieval-provider-tei-wire-mapping.md))
+- **retrieval-provider §8 *Wire-format mappings* + §8.1 TEI.** A new top-level section (the retrieval analogue of llm-provider §8) cataloging per-vendor / per-runtime wire mappings, opening with **§8.1 TEI** (HuggingFace Text Embeddings Inference, self-hosted): construction (`base_url` + model + `input_type → prompt_name` map + optional client-side prefixes + `chunk_size`), the `/embed` and `/rerank` wire shapes, `input_type` realized via TEI's server-side `prompt_name`, the **mandatory rerank chunk-and-stitch** (split pools over `max-client-batch-size`, re-base indices to absolute positions, global re-sort, honor `top_k`), and `truncate: false` fail-loud. A TEI `EmbeddingProvider` and `RerankProvider` are distinct instances against distinct deployments (TEI hosts one model per instance). ([proposal 0077](proposals/0077-retrieval-provider-tei-wire-mapping.md))
+- Five retrieval-provider conformance fixtures (`013`–`017`): `input_type → prompt_name` realization; single-batch `/rerank`; the load-bearing chunk-and-stitch (3 requests, absolute-index re-basing, global sort, `top_k`); `truncate` fail-loud; and the `/embed` wire round-trip. ([proposal 0077](proposals/0077-retrieval-provider-tei-wire-mapping.md))
+
+**Changed**
+
+- **retrieval-provider section renumber.** Inserting §8 *Wire-format mappings* shifts the former §8 *Determinism* → §9, §9 *Cross-spec touchpoints* → §10, §10 *Out of scope* → §11; the §11 out-of-scope wire-mapping deferral drops its now-landed TEI entry. ([proposal 0077](proposals/0077-retrieval-provider-tei-wire-mapping.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Additive: `input_type` is optional (absent ⇒ the prior symmetric behavior, byte-identical), §8 / §8.1 are new, and the renumber is internal (no external cross-references). ([proposal 0077](proposals/0077-retrieval-provider-tei-wire-mapping.md))
+
 ## [0.71.0] — 2026-06-20
 
 **Added**

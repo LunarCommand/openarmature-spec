@@ -1,0 +1,157 @@
+# retrieval-provider §8.1 TEI /rerank — MANDATORY chunk-and-stitch
+# (pool > chunk_size). THE LOAD-BEARING FIXTURE for the §8.1 rerank
+# contract.
+#
+# Verifies §8.1 *Mandatory rerank batch chunking*: when len(documents)
+# exceeds the instance chunk_size, the mapping MUST
+#   1. split the documents into CONSECUTIVE <= chunk_size slices,
+#   2. issue ONE /rerank request per chunk (same query),
+#   3. re-base each chunk's response index to the ABSOLUTE position in
+#      the original documents list,
+#   4. concatenate all (index, score) pairs, GLOBALLY sort by score
+#      descending, and honor top_k.
+#
+# chunk_size: 4 over 9 documents => ceil(9/4) = 3 requests with texts of
+# sizes 4, 4, 1 (the consecutive slices [0..3], [4..7], [8]). Each chunk's
+# mocked TEI response uses CHUNK-LOCAL indices; the adapter MUST re-base
+# them so the final results[].index are ABSOLUTE positions into the
+# original 9-document list (NOT chunk-local). Scores are laid out so the
+# global descending order interleaves across all three chunks — a
+# per-chunk sort would produce a different (wrong) order, so this locks
+# the GLOBAL re-sort. top_k: 4 keeps the four highest globally.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 013's header (mapping: tei,
+# expected_wire_request, the TEI /rerank request + response shapes) and
+# 014's header (tei_rerank_provider construction block). For the
+# chunk-and-stitch path:
+#
+# - expected_wire_request here is a LIST of /rerank request bodies, one
+#   per chunk, in arrival order. The harness MUST capture every outbound
+#   /rerank request, assert the count matches the list length, and
+#   compare each captured body key-by-key against the corresponding list
+#   entry. expected_wire_request_count pins the request count explicitly.
+#
+# - mock_rerank entries are dispatched one per /rerank request in arrival
+#   order (same as the base directive). Each entry is a TEI response array
+#   [{index, score, text?}] with CHUNK-LOCAL indices for that chunk.
+
+mapping: tei
+
+tei_rerank_provider:
+  base_url: "http://tei-rerank.invalid"
+  model: tei-rerank-test
+  chunk_size: 4
+
+cases:
+  - name: nine_documents_three_chunks_global_sort_top_k
+    description: |
+      9 documents, chunk_size 4. The mapping issues exactly 3 /rerank
+      requests with texts sizes [4, 4, 1] over the consecutive slices
+      docs[0:4], docs[4:8], docs[8:9] (same query each). Each chunk's
+      mocked TEI response uses chunk-local indices; the mapping re-bases
+      them to absolute positions:
+        chunk A (docs 0-3) local->abs: i -> i
+          local {0:0.20, 1:0.95, 2:0.10, 3:0.55}
+        chunk B (docs 4-7) local->abs: i -> 4+i
+          local {0:0.80, 1:0.30, 2:0.88, 3:0.05} => abs {4:0.80, 5:0.30, 6:0.88, 7:0.05}
+        chunk C (doc 8)    local->abs: 0 -> 8
+          local {0:0.65} => abs {8:0.65}
+      Global descending order across all 9:
+        abs1(0.95), abs6(0.88), abs4(0.80), abs8(0.65), abs3(0.55),
+        abs5(0.30), abs0(0.20), abs2(0.10), abs7(0.05).
+      With top_k: 4 the result is the four highest globally —
+        [{1, 0.95}, {6, 0.88}, {4, 0.80}, {8, 0.65}] — drawn from chunks
+      A, B, B, C respectively, so both the re-basing and the cross-chunk
+      global sort are exercised (a per-chunk sort could not produce this).
+      All four indices are ABSOLUTE positions into the original 9-doc list.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "which animal is the fastest land mammal?"
+          documents:
+            - "doc 0 about lions"
+            - "doc 1 about cheetahs"
+            - "doc 2 about elephants"
+            - "doc 3 about gazelles"
+            - "doc 4 about pronghorns"
+            - "doc 5 about zebras"
+            - "doc 6 about greyhounds"
+            - "doc 7 about tortoises"
+            - "doc 8 about horses"
+          top_k: 4
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    # One /rerank body per chunk, in arrival order. texts sizes 4, 4, 1.
+    expected_wire_request:
+      - query: "which animal is the fastest land mammal?"
+        texts:
+          - "doc 0 about lions"
+          - "doc 1 about cheetahs"
+          - "doc 2 about elephants"
+          - "doc 3 about gazelles"
+        truncate: false
+        return_text: false
+      - query: "which animal is the fastest land mammal?"
+        texts:
+          - "doc 4 about pronghorns"
+          - "doc 5 about zebras"
+          - "doc 6 about greyhounds"
+          - "doc 7 about tortoises"
+        truncate: false
+        return_text: false
+      - query: "which animal is the fastest land mammal?"
+        texts:
+          - "doc 8 about horses"
+        truncate: false
+        return_text: false
+    expected_wire_request_count: 3
+    # One TEI response per chunk, CHUNK-LOCAL indices, in arrival order.
+    # Returned unsorted within each chunk too, for good measure.
+    mock_rerank:
+      - status: 200
+        body:
+          - {index: 2, score: 0.10}
+          - {index: 0, score: 0.20}
+          - {index: 3, score: 0.55}
+          - {index: 1, score: 0.95}
+      - status: 200
+        body:
+          - {index: 3, score: 0.05}
+          - {index: 1, score: 0.30}
+          - {index: 0, score: 0.80}
+          - {index: 2, score: 0.88}
+      - status: 200
+        body:
+          - {index: 0, score: 0.65}
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.95, document: null}
+            - {index: 6, relevance_score: 0.88, document: null}
+            - {index: 4, relevance_score: 0.80, document: null}
+            - {index: 8, relevance_score: 0.65, document: null}
+          model: tei-rerank-test
+          response_id: null
+          usage:
+            search_units: null
+            input_tokens: null
+      invariants:
+        exactly_three_rerank_requests_issued: true
+        chunk_texts_sizes_4_4_1_consecutive_slices: true
+        same_query_on_every_chunk_request: true
+        chunk_local_indices_rebased_to_absolute_positions: true
+        results_globally_sorted_by_score_descending_across_chunks: true
+        top_k_honored_after_global_sort: true
+        result_indices_are_absolute_into_original_document_list: true
+        each_index_valid_into_input_documents: true
+        no_duplicate_index_across_stitched_results: true

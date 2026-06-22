@@ -71,9 +71,16 @@ response.
 (vectors aren't tokens).
 
 **Embedding runtime config.** A `RuntimeConfig`-shaped record (parallel to llm-provider §6) carrying
-embedding-specific caller-supplied request parameters. Initially minimal: an optional `dimensions`
-field (for callers controlling output vector size on providers that support it) plus the
-extras-pass-through bag for vendor-specific knobs.
+embedding-specific caller-supplied request parameters: an optional `dimensions` field (for callers
+controlling output vector size on providers that support it), an optional **`input_type`** field, and
+the extras-pass-through bag for vendor-specific knobs. `input_type` (`"query"` / `"document"`, an
+extensible string) declares what the embedded text is *for*, so a provider bound to an asymmetric model
+applies the model-appropriate query/document treatment per its §8 wire mapping; **absent ⇒ symmetric
+embedding** (a symmetric model ignores it). Additional well-known values (`"classification"`,
+`"clustering"`, …) MAY be recognized by mappings whose backend supports them; an unrecognized value is
+`provider_invalid_request` (§7) at a mapping that declares a closed set, or passed through by a mapping
+that accepts arbitrary types. Free-form per-model instruction overrides ride the extras-pass-through
+bag (no second declared field).
 
 **RerankProvider.** An object that, given a query string and a list of candidate documents, returns
 the documents sorted by query-relevance with provider-specific scores. Bound to a specific rerank
@@ -136,6 +143,13 @@ The `embed()` operation:
   `input[i]`). Implementations MUST NOT permute vector position relative to input position.
 - MUST NOT loop, retry, or fall back. Pipeline-utilities §6 middleware and per-call retry compose
   above the provider for those concerns.
+
+**Query vs. document (`input_type`).** When the caller sets `EmbeddingRuntimeConfig.input_type` (§2),
+the provider applies the model-appropriate query/document treatment per its §8 wire mapping.
+`input_type` is a request-side parameter: it flows into `EmbeddingEvent.request_params` (graph-engine
+§6) with the same absence-is-meaningful semantics as `dimensions`, and is surfaced on the embedding
+span as the `openarmature.embedding.input_type` attribute (observability §5.5.8). Absent ⇒
+the symmetric default.
 
 ### Per-instance model binding
 
@@ -295,7 +309,82 @@ The exception-flow contract from llm-provider §7 applies identically: the error
 MUST raise out of `embed()` / `rerank()` whether raised by the provider or by the implementation's
 pre-send validation layer.
 
-## 8. Determinism
+## 8. Wire-format mappings
+
+Wire mappings are per-vendor / per-runtime realizations of the runtime-agnostic `EmbeddingProvider` /
+`RerankProvider` contracts (§3 / §5) — the retrieval-provider analogue of llm-provider §8. Each mapping
+pins the wire shapes, the construction parameters (e.g. `base_url`), and the per-mapping realization of
+cross-vendor knobs (`input_type`). Mappings are normative: a conforming implementation of a given
+mapping MUST produce the wire requests and consume the wire responses described here.
+
+### 8.1 TEI (Text Embeddings Inference)
+
+HuggingFace Text Embeddings Inference is a self-hosted serving runtime. Its `gen_ai.system` identifier
+is `"tei"` (per observability §5.5.8 / §5.5.13 — identify the wire surface, not the model developer).
+The `/embed` and `/rerank` wire shapes below were verified against the TEI OpenAPI; `docs/compatibility.md`
+records the verified version.
+
+**Construction (two separate instances).** TEI hosts one model per instance, and embedding models and
+cross-encoder rerankers are different model families — so a TEI `EmbeddingProvider` and a TEI
+`RerankProvider` are distinct provider instances against distinct TEI deployments, each binding its own
+`base_url` (§3 / §5 per-instance binding):
+
+- the **TEI `EmbeddingProvider`** binds `base_url` (the embedding instance) + the bound model + an
+  `input_type` → `prompt_name` map (e.g. `{query: "query", document: "passage"}`) realizing asymmetric
+  embedding via TEI's native server-side prompts, with OPTIONAL client-side `query_prefix` /
+  `document_prefix` strings as the fallback for models without configured prompts;
+- the **TEI `RerankProvider`** binds `base_url` (the reranker instance) + the bound model + `chunk_size`
+  (the rerank client-batch chunk size, default `32` — see *Mandatory rerank batch chunking*).
+
+The spec does NOT enumerate per-model prefixes (model-specific, a moving target) — they are
+operator-supplied at construction.
+
+**`/embed`.** `POST {base_url}/embed` with `{"inputs": [str]}` (TEI accepts a string or array; the
+mapping always sends the array form per §3's "always a list"); `EmbeddingRuntimeConfig.dimensions` maps
+to TEI's `dimensions` field when set. The response is the vector array, in input order.
+
+`input_type` realization: the mapping sends TEI's native `prompt_name` field, looked up from the
+construction `input_type → prompt_name` map, so TEI applies the model's configured query/document
+prompt **server-side** (the idiomatic path — TEI models carry named prompts in their config). For a
+model without configured prompts, the mapping MAY instead prepend the construction-supplied
+`query_prefix` / `document_prefix` **client-side**. Either way, `input_type` absent ⇒ no prompt and no
+prefix (the symmetric default).
+
+**`/rerank`.** `POST {base_url}/rerank` with `{"query": str, "texts": [str], "truncate": false, "return_text": <bool>}`.
+TEI's `texts: [str]` maps directly onto `documents: list[str]` (§5; no per-document object wrapping);
+`return_documents` (§6 rerank runtime config) → TEI's `return_text` (default `false`), surfacing the
+echoed text on `ScoredDocument.document`. The response `[{"index": int, "score": float, "text"?: str}]`
+maps onto `results` (§6): `index` → `ScoredDocument.index`, `score` → `relevance_score`, `text` →
+`document`. Scores are normalized by default (`raw_scores: false`); the scale is model-specific (§6
+pins none). TEI does not guarantee response sort order, so the mapping MUST sort per §6's "sort if the
+provider didn't" invariant — subsumed by the chunk-and-stitch global re-sort below.
+
+**Mandatory rerank batch chunking.** TEI enforces `max-client-batch-size` (server-configured, default
+32). When `len(documents)` exceeds the instance's `chunk_size`, the mapping MUST split the documents
+into consecutive ≤`chunk_size` chunks, issue one `/rerank` request per chunk (same `query`), and stitch
+the results: re-base each chunk's `index` to its absolute position in the original `documents` list,
+concatenate all `(index, score)` pairs, then apply §6's contract — sort by `score` descending and honor
+`top_k`. This is valid because a cross-encoder scores each `(query, document)` pair independently of the
+others in its batch. `chunk_size` is a construction parameter, default `32` (TEI's documented default;
+an operator who lowered `--max-client-batch-size` sets it to match; an implementation MAY auto-detect
+from TEI's `/info`). A mapping that does not chunk MUST NOT silently send an over-cap request; chunking
+is required, not optional.
+
+**`truncate: false` (fail-loud).** TEI's `truncate` defaults to `false` on both endpoints, so an
+over-length input errors rather than being silently truncated (model context caps vary). The `/rerank`
+mapping sends `truncate: false` **explicitly** (leaving TEI's `truncation_direction` default, `Right`) —
+the surface where a silently truncated `(query, document)` pair would yield a wrong relevance score; the
+resulting TEI error (HTTP 413 / 422) maps to `provider_invalid_request` (§7). The `/embed` mapping
+relies on TEI's `false` default and does **not** add `truncate` to the request, keeping the body minimal
+(`{inputs[, prompt_name][, dimensions]}`) and byte-identical to the symmetric path when `input_type` is
+absent.
+
+**Errors.** TEI HTTP / transport failures map to the §7 categories per the shared enumeration:
+connection / 5xx → `provider_unavailable`; unknown model → `provider_invalid_model`; over-length /
+malformed request (413 / 422) → `provider_invalid_request`; malformed response →
+`provider_invalid_response`.
+
+## 9. Determinism
 
 Embedding model determinism guarantees vary by provider. This specification MUST NOT assume
 bit-identical vectors for equivalent inputs across calls — providers MAY return slightly different
@@ -311,7 +400,7 @@ assume bit-identical responses for equivalent inputs. Even when scores are ident
 documents with identical scores MAY appear in either order across calls (provider implementation
 detail) unless the provider documents a tie-breaking rule; the spec MUST NOT assume one.
 
-## 9. Cross-spec touchpoints
+## 10. Cross-spec touchpoints
 
 - **graph-engine §6** — typed observer events `EmbeddingEvent` / `EmbeddingFailedEvent` (embedding)
   and `RerankEvent` / `RerankFailedEvent` (rerank). See graph-engine §6 for the full event surface
@@ -330,16 +419,15 @@ detail) unless the provider documents a tie-breaking rule; the spec MUST NOT ass
 - **pipeline-utilities §6 (middleware)** — `EmbeddingProvider` and `RerankProvider` calls are
   eligible for retry middleware identically to `complete()` calls.
 
-## 10. Out of scope
+## 11. Out of scope
 
 Not covered by this specification; deferred to follow-on capabilities or proposals:
 
 - **Multi-modal embedding and rerank** — image / audio documents. Text-only in v1.
-- **Per-vendor and per-runtime wire-format mappings.** Follow-on proposals add concrete vendor /
-  runtime mappings — embedding (OpenAI, Cohere, Voyage, Jina) and rerank (Cohere, Voyage, Jina
-  hosted; TEI self-hosted) — analogous to llm-provider §8.1 / §8.2 / §8.3. Each pins the per-vendor
-  wire sourcing for fields the protocol leaves position-agnostic (e.g., where `response_id` is
-  surfaced in that vendor's response shape).
+- **Further per-vendor and per-runtime wire-format mappings.** Beyond §8.1 (TEI), follow-on proposals
+  add concrete vendor / runtime mappings — embedding (OpenAI, Cohere, Voyage, Jina) and rerank
+  (Cohere, Voyage, Jina hosted) — each pinning the per-vendor wire sourcing for fields the protocol
+  leaves position-agnostic (e.g., where `response_id` is surfaced in that vendor's response shape).
 - **Per-SDK implementation details** — httpx batching strategies, provider-layer retry timing,
   SDK-specific error mapping. Provider-internal choices.
 - **Caller-supplied determinism / seeding.** Embedding and rerank models rarely expose seeds; not v1.

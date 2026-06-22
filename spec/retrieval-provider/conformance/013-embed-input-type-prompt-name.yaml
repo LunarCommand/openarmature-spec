@@ -1,0 +1,212 @@
+# retrieval-provider §8.1 TEI + §2/§3 input_type — the input_type ->
+# prompt_name realization on TEI's /embed.
+#
+# Verifies the §8.1 TEI embedding mapping's input_type contract:
+#   - input_type: query  -> wire carries prompt_name "query"
+#   - input_type: document -> wire carries prompt_name "passage"
+#   - input_type absent  -> NO prompt_name on the wire (the symmetric
+#     default), byte-identical to the pre-0077 symmetric path.
+# Also verifies (§3 + graph-engine §6) that input_type flows into
+# EmbeddingEvent.request_params with absence-is-meaningful semantics.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives (per conformance-adapter §3.2). The
+# base calls_embed / mock_embedding directives are defined in 001's
+# header; THIS fixture introduces the §8.X wire-mapping vocabulary that
+# the TEI fixtures (013-017) share. New directives:
+#
+# - mapping: tei — selects the §8.1 TEI wire mapping for the fixture
+#   (mirrors llm-provider fixture 033's `mapping: anthropic`). Absent =>
+#   the harness-internal mock shape the pre-0077 retrieval fixtures
+#   (001-012) use; `mapping: tei` pins TEI's real /embed + /rerank wire
+#   shapes (request the mapping MUST send, response it MUST consume).
+#
+# - tei_embedding_provider: {base_url, model, input_type_prompt_map,
+#     query_prefix?, document_prefix?} — suite-level construction block
+#   for the bound TEI EmbeddingProvider (§8.1 *Construction*). The
+#   input_type_prompt_map binds input_type -> TEI prompt_name (e.g.
+#   {query: "query", document: "passage"}); the optional prefix strings
+#   are the client-side fallback. base_url is a generic placeholder
+#   (no real host).
+#
+# - expected_wire_request (case-level): the request body the mapping
+#   MUST POST to TEI's /embed. The harness captures the outbound request
+#   body and compares key-by-key (mapping key order is not significant),
+#   mirroring the llm-provider wire-fixture convention
+#   (005-openai-wire-mapping). The TEI /embed body is
+#   {"inputs": [str], "prompt_name"?: str, "dimensions"?: int}; a field
+#   absent from expected_wire_request MUST be absent on the wire.
+#
+# - mock_embedding entries under `mapping: tei` use TEI's real /embed
+#   response shape: a bare JSON array of vector arrays in input order
+#   ([[float, ...], ...]). (The 001-012 mock_embedding shape is the
+#   harness-internal OpenAI-compatible stand-in; under TEI the body is
+#   the vector array TEI actually returns.)
+#
+# - typed_observers / expected.observers.<name>.contains_event — the
+#   typed-event collector convention from observability fixture 074,
+#   reused here to assert EmbeddingEvent.request_params.
+
+mapping: tei
+
+tei_embedding_provider:
+  base_url: "http://tei-embed.invalid"
+  model: tei-embed-test
+  input_type_prompt_map: {query: "query", document: "passage"}
+
+cases:
+  - name: input_type_query_sends_prompt_name_query
+    description: |
+      embed(config={input_type: "query"}) against a TEI EmbeddingProvider
+      whose input_type_prompt_map binds query -> "query". The wire request
+      to /embed MUST carry prompt_name "query" alongside the inputs array.
+      input_type MUST also reach EmbeddingEvent.request_params.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["how tall is the eiffel tower?"]
+          config:
+            input_type: query
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      inputs: ["how tall is the eiffel tower?"]
+      prompt_name: "query"
+    mock_embedding:
+      - status: 200
+        body:
+          - [0.10, 0.20, 0.30, 0.40]
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: query
+      invariants:
+        vectors_length_matches_input_length: true
+        wire_request_carries_prompt_name_query: true
+        input_type_in_embedding_event_request_params: true
+
+  - name: input_type_document_sends_prompt_name_passage
+    description: |
+      embed(config={input_type: "document"}) against the same provider:
+      document -> "passage" per the map, so the wire request MUST carry
+      prompt_name "passage". input_type MUST reach
+      EmbeddingEvent.request_params as "document".
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["the eiffel tower is 330 metres tall."]
+          config:
+            input_type: document
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      inputs: ["the eiffel tower is 330 metres tall."]
+      prompt_name: "passage"
+    mock_embedding:
+      - status: 200
+        body:
+          - [0.50, 0.60, 0.70, 0.80]
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: document
+      invariants:
+        vectors_length_matches_input_length: true
+        wire_request_carries_prompt_name_passage: true
+        input_type_in_embedding_event_request_params: true
+
+  - name: input_type_absent_omits_prompt_name_symmetric_default
+    description: |
+      embed() with NO config (input_type absent) against the same
+      provider. The wire request MUST NOT carry prompt_name — the
+      symmetric / pre-0077 default. This body MUST be byte-identical to
+      the symmetric path (the same {"inputs": [...]} with no prompt_name
+      a non-TEI symmetric mapping would send). EmbeddingEvent.request_params
+      MUST be the empty mapping (no input_type key) per the
+      absence-is-meaningful contract.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["the eiffel tower is 330 metres tall."]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      inputs: ["the eiffel tower is 330 metres tall."]
+      # prompt_name MUST be ABSENT — asserted by absent_keys below and by
+      # the byte-identity invariant against the symmetric path.
+    expected_wire_request_absent_keys: [prompt_name]
+    mock_embedding:
+      - status: 200
+        body:
+          - [0.50, 0.60, 0.70, 0.80]
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params: {}
+      invariants:
+        vectors_length_matches_input_length: true
+        wire_request_omits_prompt_name_when_input_type_absent: true
+        wire_body_byte_identical_to_symmetric_path: true
+        request_params_empty_when_input_type_absent: true
