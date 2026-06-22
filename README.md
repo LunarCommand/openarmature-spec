@@ -92,6 +92,7 @@ they are Accepted.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
+| [0078](proposals/0078-retrieval-provider-jina-wire-mapping.md) | Draft | spec/retrieval-provider/spec.md §8 *Wire-format mappings* — adds §8.2 Jina (reuses 0077's `input_type`); corrects the 0060 §2 `return_documents` parenthetical | Jina hosted rerank + embedding mapping: `/v1/rerank` (near-1:1 to 0060) and `/v1/embeddings` realizing `input_type` via Jina's `task` (`retrieval.query`/`retrieval.passage`); API-key auth, no chunking. Folds in a 0060 §2 fix (Jina's wire `return_documents` defaults `true`). |
 | [0077](proposals/0077-retrieval-provider-tei-wire-mapping.md) | Draft | spec/retrieval-provider/spec.md (§2 / §3 — `input_type` knob; new §8 *Wire-format mappings* + §8.1 TEI; §8–§10 → §9–§11 renumber) | Adds a cross-vendor `input_type` (`query`/`document`) embedding knob, plus the first retrieval-provider wire mapping: TEI `/embed` + `/rerank` (separate per-model instances), realizing `input_type` via TEI's server-side `prompt_name`, with the mandatory rerank chunk-and-stitch and `truncate: false` fail-loud. |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).

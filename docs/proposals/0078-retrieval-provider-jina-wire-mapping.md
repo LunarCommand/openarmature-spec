@@ -1,0 +1,1 @@
+../../proposals/0078-retrieval-provider-jina-wire-mapping.md
