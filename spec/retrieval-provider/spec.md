@@ -148,7 +148,7 @@ The `embed()` operation:
 the provider applies the model-appropriate query/document treatment per its §8 wire mapping.
 `input_type` is a request-side parameter: it flows into `EmbeddingEvent.request_params` (graph-engine
 §6) with the same absence-is-meaningful semantics as `dimensions`, and is surfaced on the embedding
-span (observability §5.5.8) through the existing request-parameter family — no new attribute. Absent ⇒
+span as the `openarmature.embedding.input_type` attribute (observability §5.5.8). Absent ⇒
 the symmetric default.
 
 ### Per-instance model binding
@@ -370,10 +370,14 @@ an operator who lowered `--max-client-batch-size` sets it to match; an implement
 from TEI's `/info`). A mapping that does not chunk MUST NOT silently send an over-cap request; chunking
 is required, not optional.
 
-**`truncate: false` (fail-loud).** TEI's `truncate` defaults to `false`, so an over-length
-`(query, document)` pair (or `/embed` input) errors rather than being silently truncated (model context
-caps vary). The mapping sends `truncate: false` explicitly (leaving TEI's `truncation_direction`
-default, `Right`); the resulting TEI error (HTTP 413 / 422) maps to `provider_invalid_request` (§7).
+**`truncate: false` (fail-loud).** TEI's `truncate` defaults to `false` on both endpoints, so an
+over-length input errors rather than being silently truncated (model context caps vary). The `/rerank`
+mapping sends `truncate: false` **explicitly** (leaving TEI's `truncation_direction` default, `Right`) —
+the surface where a silently truncated `(query, document)` pair would yield a wrong relevance score; the
+resulting TEI error (HTTP 413 / 422) maps to `provider_invalid_request` (§7). The `/embed` mapping
+relies on TEI's `false` default and does **not** add `truncate` to the request, keeping the body minimal
+(`{inputs[, prompt_name][, dimensions]}`) and byte-identical to the symmetric path when `input_type` is
+absent.
 
 **Errors.** TEI HTTP / transport failures map to the §7 categories per the shared enumeration:
 connection / 5xx → `provider_unavailable`; unknown model → `provider_invalid_model`; over-length /
