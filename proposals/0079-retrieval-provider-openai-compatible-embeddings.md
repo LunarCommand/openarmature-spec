@@ -28,7 +28,7 @@ The third retrieval-provider wire mapping, and the **highest-leverage** one: the
 1. **One mapping, the whole ecosystem.** OpenAI's `/v1/embeddings` (`{model, input, dimensions, encoding_format}`)
    is the de-facto-standard embedding wire — vLLM and TEI's *own* OpenAI-compatible endpoint expose it
    (verified), as do other OpenAI-compatible servers (LocalAI, Together, …). A `base_url`-configurable mapping (default
-   `https://api.openai.com/v1`, override for any compatible backend) covers all of them in one
+   `https://api.openai.com`, override for any compatible backend) covers all of them in one
    proposal — exactly the play llm-provider §8.1 made for chat completions.
 
 2. **Symmetric — it exercises 0077's graceful degradation, not a new knob.** OpenAI embeddings have
@@ -69,12 +69,13 @@ shapes below were **verified against the OpenAI OpenAPI on 2026-06-22**; recorde
 
 - **Construction.** An OpenAI-compatible `EmbeddingProvider` binds an **API key** (sent as
   `Authorization: Bearer <key>`) + the bound model identifier (§3 / §5 per-instance binding), with
-  **`base_url` defaulting to `https://api.openai.com/v1`** and overridable for any OpenAI-compatible
-  backend (mirrors llm-provider §8.1's construction). It MAY additionally bind the optional client-side
+  **`base_url` defaulting to `https://api.openai.com`** and overridable for any OpenAI-compatible
+  backend (origin only — the `/v1` version stays in the route, consistent with §8.1 / §8.2; mirrors
+  llm-provider §8.1's construction). It MAY additionally bind the optional client-side
   `query_prefix` / `document_prefix` from 0077 §8.1 — off by default (pure-symmetric OpenAI), set only
   for an asymmetric model served behind a compatible endpoint (see *`input_type`* below).
   **Embeddings-only** — no `RerankProvider` counterpart in this mapping.
-- **`/v1/embeddings`** — `POST {base_url}/embeddings` with `{"model": str, "input": [str], "dimensions"?: int, "encoding_format"?: "float"}`.
+- **`/v1/embeddings`** — `POST {base_url}/v1/embeddings` with `{"model": str, "input": [str], "dimensions"?: int, "encoding_format"?: "float"|"base64"}`.
   `input` is always the array form (§3's "always a list"); `EmbeddingRuntimeConfig.dimensions` → wire
   `dimensions` (Matryoshka, on models that support it) when set; `encoding_format` defaults to `float`
   (base64 rides the extras bag). Response
@@ -91,7 +92,7 @@ shapes below were **verified against the OpenAI OpenAPI on 2026-06-22**; recorde
   wire that has no `input_type` field. A server that *extends* the wire with its own `input_type`-style
   field instead takes it through the extras-pass-through bag.
 - **Errors** — HTTP failures map to the §7 categories per the shared enumeration: `401` →
-  `provider_authentication`; `429` (rate limit) / `5xx` → `provider_unavailable`; unknown model
+  `provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`; unknown model
   (`404` / `400`) → `provider_invalid_model`; malformed / oversized request (`400`) →
   `provider_invalid_request`; malformed response → `provider_invalid_response`.
 
