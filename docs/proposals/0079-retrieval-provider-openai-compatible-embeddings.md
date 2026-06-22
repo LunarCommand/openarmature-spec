@@ -1,0 +1,1 @@
+../../proposals/0079-retrieval-provider-openai-compatible-embeddings.md
