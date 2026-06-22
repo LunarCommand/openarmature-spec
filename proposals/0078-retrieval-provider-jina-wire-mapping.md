@@ -83,7 +83,7 @@ the verified versions are recorded in `docs/compatibility.md` at Accept.
   search units). Results are returned ranked, but the mapping applies 0060's "sort if the provider
   didn't" invariant regardless.
 - **`/v1/embeddings`** — `POST {base_url}/v1/embeddings` with
-  `{"model": str, "input": [str], "task"?: str, "dimensions"?: int}`. **`input_type` realization:**
+  `{"model": str, "input": [str], "task"?: str, "dimensions"?: int, "truncate": false}`. **`input_type` realization:**
   the mapping sets Jina's native **`task`** from `input_type` — `"query"` → `"retrieval.query"`,
   `"document"` → `"retrieval.passage"` — so Jina applies the model-appropriate query/passage
   representation server-side; `input_type` absent ⇒ `task` omitted (Jina's model default). The mapping
