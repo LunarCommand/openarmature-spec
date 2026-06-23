@@ -1603,7 +1603,9 @@ observer per §4.3 and §6):
 
 Parallel-branches node spans (the parent of the per-branch dispatch spans) carry:
 
-- `openarmature.parallel_branches.branch_count` — int. The number of branches dispatched.
+- `openarmature.parallel_branches.branch_count` — int. The number of branches dispatched (under a
+  `when`-skip per proposal 0075, the dispatched subset — fewer than the declared branch set; see
+  graph-engine §6).
 - `openarmature.parallel_branches.error_policy` — string. One of `"fail_fast"` or `"collect"`
   (per pipeline-utilities §11.5). Useful for filtering traces by policy.
 

@@ -228,3 +228,128 @@ cases:
         # The two status-carrier spans live in DISTINCT traces but share invocation_id.
         distinct_trace_ids: true
         detached_invocation_id_equals_parent: true
+
+  - name: detached_fan_out_instance_raises_error_status_on_both_spans
+    # §4.2 Detached invocation span status (proposal 0061), fan-out-instance
+    # variant: when a detached fan-out instance's inner node raises, ERROR
+    # surfaces on BOTH the parent's fan-out node dispatch span (parent trace) and
+    # that instance's per-instance detached invocation span (its own detached
+    # trace) — each the authoritative status carrier for its own view of the
+    # dispatch, each carrying the §4 category + an OTel exception event. This is
+    # the fan-out-instance counterpart to case 3 (detached subgraph): case 2's
+    # detached fan-out structure with the inner node raising.
+    #
+    # A SINGLE-element fan-out (items: [1]) is used deliberately — exactly one
+    # instance runs and raises, so there is no fail_fast sibling-cancellation
+    # nondeterminism, and the trace shape is the clean one-parent-trace +
+    # one-detached-instance-trace dual exactly mirroring case 3.
+    subgraph:
+      name: per_doc
+      state:
+        fields:
+          input:
+            type: int
+            default: 0
+          out:
+            type: int
+            default: 0
+      entry: score
+      nodes:
+        score:
+          raises: "boom"
+      edges:
+        - {from: score, to: END}
+    state:
+      fields:
+        items:
+          type: list<int>
+          default: [1]
+        results:
+          type: list<int>
+          reducer: append
+          default: []
+    entry: per_document_scoring
+    nodes:
+      per_document_scoring:
+        fan_out:
+          subgraph: per_doc
+          items_field: items
+          item_field: input
+          collect_field: out
+          target_field: results
+          error_policy: fail_fast
+    edges:
+      - {from: per_document_scoring, to: END}
+    initial_state: {}
+    detached_fan_outs: ["per_document_scoring"]
+    expected_error:
+      # Fan-out failures attribute to the fan-out node at the parent level (per
+      # the fan-out fixtures' convention, e.g. pipeline-utilities 018); the inner
+      # `score` raise propagates up wrapped as the fan-out node's node_exception.
+      category: node_exception
+      raised_from: per_document_scoring
+    expected:
+      traces:
+        - trace_id: "<trace_id_parent>"
+          span_tree:
+            # Parent trace: the `per_document_scoring` fan-out NODE dispatch span
+            # reflects the instance's failure (§4.2); the parent invocation span
+            # inherits ERROR. The fan-out node span carries one Link to the
+            # detached instance trace and (being detached) no nested per-instance
+            # children in the parent trace.
+            - name: "openarmature.invocation"
+              status: ERROR
+              children:
+                - name: "per_document_scoring"
+                  status: ERROR
+                  status_description: "node_exception"
+                  exception_recorded: true
+                  attributes:
+                    openarmature.error.category: "node_exception"
+                  links:
+                    - target_trace_id: "<trace_id_detached_instance>"
+                  children: []   # detached — no per-instance children in parent trace
+                  link_count: 1   # one Link to the single detached instance trace
+        - trace_id: "<trace_id_detached_instance>"
+          span_tree:
+            # Detached instance trace: the per-instance detached invocation span
+            # carries the instance's own ERROR status + §4 category + exception
+            # event (§4.2 *Detached invocation span status*), sharing the parent
+            # invocation_id. Beneath it, the per-instance subgraph span (named
+            # after the fan-out node, disambiguated by fan_out_index) and the
+            # raising `score` node carry the category as usual.
+            - name: "openarmature.invocation"
+              status: ERROR
+              status_description: "node_exception"
+              exception_recorded: true
+              attributes:
+                openarmature.error.category: "node_exception"
+              children:
+                - name: "per_document_scoring"
+                  status: ERROR
+                  attributes:
+                    openarmature.node.fan_out_index: 0
+                    openarmature.fan_out.parent_node_name: "per_document_scoring"
+                  children:
+                    - name: "score"
+                      status: ERROR
+                      status_description: "node_exception"
+                      exception_recorded: true
+                      attributes:
+                        openarmature.error.category: "node_exception"
+                      children: []
+      invariants:
+        # ERROR on BOTH the parent's fan-out node dispatch span and the
+        # per-instance detached invocation span.
+        error_status_on_parent_fan_out_node_span: true
+        error_status_on_detached_instance_invocation_span: true
+        # Both ERROR spans carry an OTel exception event with the §4 category.
+        exception_event_on_both_error_spans: true
+        # The two status-carrier spans live in DISTINCT traces.
+        distinct_trace_ids: true
+        # The parent's fan-out node span carries exactly one Link, targeting the
+        # detached instance trace.
+        fan_out_node_span_link_count: 1
+        # The detached instance invocation span carries the SAME invocation_id as
+        # the parent invocation span (§4.3 detached-dispatch correlation).
+        detached_invocation_id_equals_parent: true

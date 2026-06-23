@@ -31,7 +31,7 @@ parallel branch renders as a per-branch dispatch span keyed by `openarmature.nod
 - The skipped branch still emits a span.
 - A dispatch span is not keyed by `branch_name` or is missing `parent_node_name`.
 
-> Note: `openarmature.parallel_branches.branch_count` is intentionally not asserted — §5.7 defines it
-> as "branches dispatched" but sources it from `parallel_branches_config` (whose `branch_names` is
-> unaffected by a `when`-skip), leaving its value under a skip ambiguous. A follow-up should reconcile
-> that; this fixture pins only the unambiguous span shape.
+> Note: `openarmature.parallel_branches.branch_count = 2` is asserted here — the **dispatched** count
+> (`vector` is `when`-skipped; `fts` + `keyword` dispatch). The graph-engine §6 / observability §5.7
+> reconciliation confirms `branch_count` is the dispatched subset under a `when`-skip (`branch_names`
+> stays the full declared set), so the value is unambiguous.

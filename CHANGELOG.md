@@ -4,6 +4,20 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.73.1] — 2026-06-22
+
+**Changed**
+
+- **graph-engine §6 / observability §5.7 — `branch_count` reconciled under a `when`-skip.** Clarified that `parallel_branches_config.branch_count` is the number of branches **dispatched** — equal to `len(branch_names)` only when no branch is `when`-skipped (proposal 0075); under a skip it is the dispatched subset, while `branch_names` stays the full declared set. Resolves the §5.7-vs-§6 ambiguity that fixture 110 flagged. ([proposal 0044](proposals/0044-parallel-branches-dispatch-span.md), [proposal 0075](proposals/0075-parallel-branches-lightweight-branches.md))
+
+**Added**
+
+- Conformance coverage round-out: observability fixture `110` now asserts `branch_count = 2` (the dispatched count under a `when`-skip); fixture `008` gains case `detached_fan_out_instance_raises_error_status_on_both_spans` (the §4.2 detached fan-out-**instance** error path, previously covered only for the subgraph case — [proposal 0061](proposals/0061-detached-trace-invocation-span.md)); new fixture `119` pins the callable-branch dispatch-span `attempt_index` under node-level retry ([proposal 0075](proposals/0075-parallel-branches-lightweight-branches.md)).
+
+**Notes**
+
+- **PATCH (pre-1.0).** A clarifying reconciliation of contradictory `branch_count` text plus conformance coverage round-out; no behavior change (the dispatched reading was already the §5.7 wording, and reference implementations conform).
+
 ## [0.73.0] — 2026-06-22
 
 **Added**
