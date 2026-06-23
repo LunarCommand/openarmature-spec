@@ -1,0 +1,92 @@
+# retrieval-provider §8.2 Jina /v1/rerank — truncation: false fail-loud.
+#
+# Verifies the §8.2 *truncation / truncate (fail-loud)* contract on the
+# rerank endpoint: Jina names the flag `truncation` on /v1/rerank, and the
+# mapping sends truncation: false explicitly, so an over-length
+# (query, document) pair makes Jina error (HTTP 422) rather than silently
+# truncating. The resulting Jina error MUST map to provider_invalid_request
+# (§7 / §8.2 *Errors*: over-length / malformed request 422 ->
+# provider_invalid_request); the adapter MUST raise that category, NOT
+# return a (silently truncated) score.
+#
+# (Jina names the flag `truncate` on /v1/embeddings — its fail-loud value
+# false is asserted on every /v1/embeddings request in fixture 020; this
+# fixture covers the /v1/rerank `truncation` surface where a truncated
+# pair would yield a wrong relevance score.)
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 006's header (calls_rerank /
+# mock_rerank), 013's / 014's headers (mapping: <name>,
+# expected_wire_request), 016's header (expected_error error-assertion
+# shape, non-2xx mock_rerank entries), and 018's header (mapping: jina,
+# jina_rerank_provider, expected_wire_headers, Jina's /v1/rerank request
+# shape). Error-assertion shape recap:
+#
+# - expected_error: {category, raised_from} — the conformance-adapter
+#   §5.8 compact error-assertion shape (as used by retrieval fixtures
+#   002, 007, 016). Asserts the §7 category that surfaces and the node it
+#   raises from. A non-2xx mock_rerank entry drives the error path.
+#
+# - mock_rerank non-2xx entries under `mapping: jina` carry Jina's real 422
+#   validation-error shape (HTTPValidationError: {detail, errors: [{field,
+#   message, type}]}) — verified against the Jina OpenAPI — for the over-length
+#   input per §8.2 *Errors*. (The error body is non-load-bearing: classification
+#   keys off the HTTP status, not the body.)
+
+mapping: jina
+
+jina_rerank_provider:
+  base_url: "https://api.jina.invalid"
+  model: jina-reranker-test
+  api_key: "test-jina-key"
+
+cases:
+  - name: over_length_422_maps_to_provider_invalid_request
+    description: |
+      A (query, document) pair exceeds the model's context. Because the
+      mapping sends truncation: false, Jina returns HTTP 422 (unprocessable
+      entity) for the over-length input. The adapter MUST classify it as
+      provider_invalid_request (§8.2 *Errors*: over-length / malformed
+      request 422 -> provider_invalid_request) and raise out of the rerank
+      node — NOT return a truncated score. The wire request still carries
+      truncation: false (the fail-loud directive) and the
+      Authorization: Bearer header.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "summarize the entire document corpus in full detail"
+          documents: ["a very long document that exceeds the reranker context window"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "summarize the entire document corpus in full detail"
+      documents: ["a very long document that exceeds the reranker context window"]
+      return_documents: false
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 422
+        body:
+          detail: "Input validation failed."
+          errors:
+            - {field: "documents", message: "Input is too long. Maximum context length is 1024 tokens; got 1503.", type: "too_long"}
+    expected_error:
+      category: provider_invalid_request
+      raised_from: rerank_node
+    expected:
+      invariants:
+        exception_raised_out_of_rerank_call: true
+        wire_request_truncation_false: true
+        authorization_bearer_header_present: true
+        no_truncated_score_returned: true

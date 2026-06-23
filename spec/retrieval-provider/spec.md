@@ -100,7 +100,7 @@ the provider-assigned relevance score, and (optionally) an echo of the document 
 rerank-specific caller-supplied request parameters. Initially minimal: one declared field,
 `return_documents` (boolean, default `False`), controlling whether the provider echoes document text
 on each `ScoredDocument` in the response. The field name + default match the major rerank vendors'
-wire-shape parameter (Cohere, Voyage AI, Jina AI all expose `return_documents` defaulting `False`);
+wire-shape parameter (Cohere and Voyage AI expose `return_documents` defaulting `False`; Jina AI's wire default is `True`, so the §8.2 Jina mapping sends the OA value explicitly);
 per-vendor wire-format mappings pin the source-side translation where a vendor diverges. Plus the
 extras-pass-through bag for vendor-specific knobs.
 
@@ -383,6 +383,51 @@ absent.
 connection / 5xx → `provider_unavailable`; unknown model → `provider_invalid_model`; over-length /
 malformed request (413 / 422) → `provider_invalid_request`; malformed response →
 `provider_invalid_response`.
+
+### 8.2 Jina
+
+Jina AI is a hosted retrieval API. Its `gen_ai.system` identifier is `"jina"` (per §5.5.8 / §5.5.13 —
+identify the wire surface, not the model developer). The wire shapes below were verified against the
+Jina OpenAPI; `docs/compatibility.md` records the verified version.
+
+**Construction.** A Jina provider instance binds an **API key** (sent as `Authorization: Bearer <key>`)
++ the bound model identifier (§3 / §5 per-instance binding), with `base_url` defaulting to
+`https://api.jina.ai` (origin only — the `/v1` version stays in the route; override for a proxy /
+private gateway). A Jina `EmbeddingProvider` (`/v1/embeddings`) and a Jina `RerankProvider`
+(`/v1/rerank`) are distinct instances (one model each) sharing the hosted endpoint.
+
+**`/v1/rerank`.** `POST {base_url}/v1/rerank` with
+`{"model": str, "query": str, "documents": [str], "top_n"?: int, "return_documents": <bool>, "truncation": false}`.
+`documents` ← `documents` (§5); `top_n` ← `top_k` (§5); `return_documents` ← the
+`RerankRuntimeConfig.return_documents` value, **sent explicitly** — Jina's wire default is `true`, but
+OA's default is `False` (§6), so the mapping sends the OA value rather than relying on Jina's default.
+The response `{model, usage: {total_tokens}, results: [{index, relevance_score, document?}]}` maps onto
+`results` (§6): `index` → `ScoredDocument.index`, `relevance_score` → `relevance_score`, `document` →
+`document`; `usage.total_tokens` → `RerankUsage.input_tokens` (Jina meters rerank by tokens, not search
+units). Results are returned ranked; the mapping applies §6's "sort if the provider didn't" invariant
+regardless.
+
+**`/v1/embeddings`.** `POST {base_url}/v1/embeddings` with
+`{"model": str, "input": [str], "task"?: str, "dimensions"?: int, "truncate": false}`. **`input_type`
+realization:** the mapping sets Jina's native `task` from `input_type` — `"query"` → `"retrieval.query"`,
+`"document"` → `"retrieval.passage"` — so Jina applies the model-appropriate query/passage representation
+server-side; `input_type` absent ⇒ `task` omitted. The mapping recognizes a **closed `input_type` set**
+(`query` / `document`); an unrecognized value is a pre-send `provider_invalid_request` (§7). Jina's other
+`task` values (e.g. `text-matching`, `classification`, `clustering` — model-dependent) are reached via
+the extras-pass-through bag, not `input_type` (widening `input_type`'s normative value space is a
+protocol-level change, deferred until a consumer needs it). `EmbeddingRuntimeConfig.dimensions` → Jina's
+`dimensions` (Matryoshka) when set. The response `{model, usage, data: [{index, embedding}]}` maps to the
+`EmbeddingResponse` vectors in input order.
+
+**`truncation` / `truncate` (fail-loud).** Jina names the flag `truncation` on `/v1/rerank` and
+`truncate` on `/v1/embeddings` (vendor inconsistency); the mapping sends the per-endpoint flag `false`
+so an over-length input errors rather than being silently truncated (consistent with §8.1's TEI
+fail-loud posture).
+
+**Errors.** Jina HTTP failures map to the §7 categories per the shared enumeration: `401` →
+`provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`;
+unknown model (`422` / `404`) → `provider_invalid_model`; over-length / malformed request (`422`) →
+`provider_invalid_request`; malformed response → `provider_invalid_response`.
 
 ## 9. Determinism
 
