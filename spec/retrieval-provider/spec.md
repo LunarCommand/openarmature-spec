@@ -352,7 +352,7 @@ prefix (the symmetric default).
 
 **`/rerank`.** `POST {base_url}/rerank` with `{"query": str, "texts": [str], "truncate": false, "return_text": <bool>}`.
 TEI's `texts: [str]` maps directly onto `documents: list[str]` (§5; no per-document object wrapping);
-`return_documents` (§6 rerank runtime config) → TEI's `return_text` (default `false`), surfacing the
+`return_documents` (§2 rerank runtime config) → TEI's `return_text` (default `false`), surfacing the
 echoed text on `ScoredDocument.document`. The response `[{"index": int, "score": float, "text"?: str}]`
 maps onto `results` (§6): `index` → `ScoredDocument.index`, `score` → `relevance_score`, `text` →
 `document`. Scores are normalized by default (`raw_scores: false`); the scale is model-specific (§6
@@ -386,7 +386,7 @@ malformed request (413 / 422) → `provider_invalid_request`; malformed response
 
 ### 8.2 Jina
 
-Jina AI is a hosted retrieval API. Its `gen_ai.system` identifier is `"jina"` (per §5.5.8 / §5.5.13 —
+Jina AI is a hosted retrieval API. Its `gen_ai.system` identifier is `"jina"` (per observability §5.5.8 / §5.5.13 —
 identify the wire surface, not the model developer). The wire shapes below were verified against the
 Jina OpenAPI; `docs/compatibility.md` records the verified version.
 
@@ -400,7 +400,7 @@ private gateway). A Jina `EmbeddingProvider` (`/v1/embeddings`) and a Jina `Rera
 `{"model": str, "query": str, "documents": [str], "top_n"?: int, "return_documents": <bool>, "truncation": false}`.
 `documents` ← `documents` (§5); `top_n` ← `top_k` (§5); `return_documents` ← the
 `RerankRuntimeConfig.return_documents` value, **sent explicitly** — Jina's wire default is `true`, but
-OA's default is `False` (§6), so the mapping sends the OA value rather than relying on Jina's default.
+OA's default is `False` (§2), so the mapping sends the OA value rather than relying on Jina's default.
 The response `{model, usage: {total_tokens}, results: [{index, relevance_score, document?}]}` maps onto
 `results` (§6): `index` → `ScoredDocument.index`, `relevance_score` → `relevance_score`, `document` →
 `document`; `usage.total_tokens` → `RerankUsage.input_tokens` (Jina meters rerank by tokens, not search
@@ -426,7 +426,7 @@ fail-loud posture).
 
 **Errors.** Jina HTTP failures map to the §7 categories per the shared enumeration: `401` →
 `provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`;
-unknown model (`422` / `404`) → `provider_invalid_model`; over-length / malformed request (`422`) →
+unknown model (`404`) → `provider_invalid_model`; over-length / malformed request (`422`) →
 `provider_invalid_request`; malformed response → `provider_invalid_response`.
 
 ## 9. Determinism
