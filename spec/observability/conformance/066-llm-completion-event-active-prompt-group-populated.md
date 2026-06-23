@@ -14,17 +14,19 @@ per prompt-management §12 / observability §8.4.4 when the LLM call ran inside 
 **Cases:**
 
 1. `active_prompt_group_populated_when_call_inside_group_context` — Graph with one
-   LLM-calling node that renders a prompt inside a `PromptGroup` context. The typed event's
+   LLM-calling node that renders a prompt inside a two-member `PromptGroup` context
+   (`classify` + `summarize`, with `classify` active). The typed event's
    `active_prompt_group` carries `{group_name: "classification_pipeline"}`; `active_prompt`
    carries the active member's identity record.
 
 **Per-directory directive (per conformance-adapter §3.2):**
 
-- `renders_prompt_group: {group_name: <name>, active_prompt: <prompt_name>}` (on a node) —
-  the adapter constructs a `PromptGroup` binding from the named members of
-  `prompt_backend.prompts`, makes that group the active `PromptGroup` context, sets the
-  named `active_prompt` member as the active `Prompt` context, then invokes the LLM. Both
-  bindings are torn down when the node returns.
+- `renders_prompt_group: {group_name: <name>, members: [<prompt_name>, …], active_prompt: <prompt_name>}`
+  (on a node) — the adapter constructs a `PromptGroup` from the explicit `members` list (an
+  ordered sequence of at least two prompts defined in `prompt_backend.prompts`, per
+  prompt-management §10), makes that group the active `PromptGroup` context, sets the named
+  `active_prompt` member as the active `Prompt` context, then invokes the LLM. Both bindings
+  are torn down when the node returns.
 
 **What passes:**
 

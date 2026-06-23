@@ -4,11 +4,12 @@
 #
 # Per-directory directive (per conformance-adapter §3.2): this fixture
 # introduces `renders_prompt_group:` on a node. Semantics: the adapter
-# constructs a PromptGroup binding from the named members of
-# `prompt_backend.prompts`, makes that group the active PromptGroup
-# context, sets the named `active_prompt` member as the active Prompt
-# context, then invokes the LLM. Both bindings are torn down when the
-# node returns.
+# constructs a PromptGroup from the explicit `members` list (an ordered
+# sequence of two or more prompts defined in `prompt_backend.prompts`,
+# per prompt-management §10's two-or-more-members rule), makes that group
+# the active PromptGroup context, sets the named `active_prompt` member as
+# the active Prompt context, then invokes the LLM. Both bindings are torn
+# down when the node returns.
 
 cases:
   - name: active_prompt_group_populated_when_call_inside_group_context
@@ -27,6 +28,7 @@ cases:
       ask_llm:
         renders_prompt_group:
           group_name: "classification_pipeline"
+          members: [classify, summarize]
           active_prompt: classify
         calls_llm:
           stores_response_in: msg
@@ -42,6 +44,12 @@ cases:
           label: production
           template: "classify this: {{topic}}"
           template_hash: "abc123"
+        summarize:
+          name: summarize
+          version: "v3"
+          label: production
+          template: "summarize: {{topic}}"
+          template_hash: "def456"
     render_variables:
       topic: "weather"
     mock_llm:

@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.74.1] — 2026-06-23
+
+**Fixed**
+
+- **observability conformance fixture `066` — `PromptGroup` member-count correction.** Fixture `066` (`LlmCompletionEvent.active_prompt_group` population) constructed a single-member group, which prompt-management §10 marks spec-invalid (`members` MUST contain at least two elements). Corrected to a valid two-member group (`classify` + `summarize`, with `classify` active); the `renders_prompt_group` conformance directive gains an explicit `members: [<name>, …]` sub-key (the ordered ≥2 member list) so group membership is declared rather than inferred from the backend's prompt set. No behavior change — the asserted `active_prompt` / `active_prompt_group` records are unchanged; the fix reconciles the fixture with already-accepted §10. ([proposal 0057](proposals/0057-llm-completion-event-field-set-extension.md))
+
+**Notes**
+
+- **PATCH (pre-1.0).** A conformance-fixture correction reconciling fixture `066` with prompt-management §10's two-or-more-members rule; no spec-text or behavior change, and reference implementations already enforce the ≥2 constructor. ([proposal 0057](proposals/0057-llm-completion-event-field-set-extension.md))
+
 ## [0.74.0] — 2026-06-22
 
 **Added**
