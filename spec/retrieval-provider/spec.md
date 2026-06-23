@@ -447,12 +447,13 @@ bind the optional client-side `query_prefix` / `document_prefix` from §8.1 — 
 *`input_type`* below).
 
 **`/v1/embeddings`.** `POST {base_url}/v1/embeddings` with
-`{"model": str, "input": [str], "dimensions"?: int, "encoding_format"?: "float" | "base64"}`. `input`
-is always the array form (§3's "always a list"); `EmbeddingRuntimeConfig.dimensions` → wire
-`dimensions` (Matryoshka, on models that support it) when set; `encoding_format` defaults to `float`
-(base64 rides the extras bag). The response
-`{data: [{index, embedding}], model, usage: {prompt_tokens, total_tokens}}` maps to the
-`EmbeddingResponse` vectors in input order; `usage.prompt_tokens` → `EmbeddingUsage.input_tokens`
+`{"model": str, "input": [str], "dimensions"?: int}`. `input` is always the array form (§3's "always a
+list"); `EmbeddingRuntimeConfig.dimensions` → wire `dimensions` (Matryoshka, on models that support it)
+when set. The mapping does **not** send `encoding_format` by default (OpenAI's wire default is
+`"float"`); `"base64"` rides the extras-pass-through bag. The response
+`{object: "list", data: [{object: "embedding", index, embedding}], model, usage: {prompt_tokens, total_tokens}}`
+maps to the `EmbeddingResponse` vectors in input order — the mapping consumes `data` + `usage` (the
+`object` fields are OpenAI wire metadata); `usage.prompt_tokens` → `EmbeddingUsage.input_tokens`
 (embedding has no output tokens, so `total_tokens` equals `prompt_tokens`).
 
 **`input_type` (symmetric base wire; client-side prefix for asymmetric).** The OpenAI `/v1/embeddings`
