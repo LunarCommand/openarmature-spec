@@ -155,10 +155,9 @@ cases:
         # The parallel-branches NODE and its callable-branch events are seen at
         # both attempt indices.
         retrieve_node_attempt_indices_seen: [0, 1]
-        # Callable-branch events keyed by branch_name carry the node's current
-        # attempt_index: vector at {0, 1} (failed then retried-success), fts at
-        # {1} (only dispatched on the successful retry — attempt 0 fail_fast
-        # cancelled it before it ran, or it was re-dispatched fresh on attempt 1).
+        # The vector callable-branch events carry the node's current attempt_index:
+        # it fails on attempt 0, then retries-successfully on attempt 1, so vector's
+        # callable-branch events are seen at both {0, 1}.
         vector_callable_branch_attempt_indices_seen: [0, 1]
         # The synthetic callable-branch events report the current attempt_index,
         # NOT a hard-coded 0.

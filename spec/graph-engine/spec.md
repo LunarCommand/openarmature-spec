@@ -612,7 +612,7 @@ this section, which carry no `phase` — carries the following fields:
     declared set, **unaffected by a `when`-skip** (a skipped branch's name remains here;
     `branch_count` reflects the dispatched subset). Available at parallel-branches entry, so
     populated on both `started` and `completed` events.
-  - `branch_count` — positive integer. The number of branches **dispatched**. Equals
+  - `branch_count` — non-negative integer. The number of branches **dispatched**. Equals
     `len(branch_names)` when no branch is `when`-skipped (pipeline-utilities §11 / proposal 0075);
     under a `when`-skip it is the dispatched subset (fewer than `len(branch_names)`, which remains
     the full declared set). Surfaced explicitly so observers and downstream consumers do not need
