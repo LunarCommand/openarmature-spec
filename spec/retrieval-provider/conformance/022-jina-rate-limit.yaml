@@ -1,0 +1,130 @@
+# retrieval-provider §8.2 Jina — HTTP 429 -> provider_rate_limit.
+#
+# Locks the §8.2 *Errors* mapping the accept fixes: a Jina HTTP 429 (rate
+# limit) MUST map to provider_rate_limit (§7), NOT provider_unavailable.
+# Covered on BOTH Jina endpoints so the rate-limit classification holds
+# across the rerank and embedding surfaces:
+#   - case A: /v1/rerank returns 429 -> provider_rate_limit
+#   - case B: /v1/embeddings returns 429 -> provider_rate_limit
+# In both, the §7 category exception MUST raise out of the call (the
+# adapter MUST NOT loop / retry — that is a pipeline-utilities concern per
+# §5 / §10).
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 006's header (calls_rerank /
+# mock_rerank), 001's header (calls_embed / mock_embedding), 016's header
+# (expected_error error-assertion shape, non-2xx mock entries), and 018's
+# / 020's headers (mapping: jina, jina_rerank_provider /
+# jina_embedding_provider construction blocks). Error-assertion shape:
+#
+# - expected_error: {category, raised_from} — the conformance-adapter
+#   §5.8 compact error-assertion shape (retrieval fixtures 002, 007, 016,
+#   021). Asserts the §7 category and the raising node.
+#
+# - mock_rerank / mock_embedding non-2xx entries under `mapping: jina`
+#   carry Jina's real ErrorResponse shape ({detail, code}) — verified against
+#   the Jina OpenAPI — at HTTP 429 (code RATE_TOKEN_LIMIT_EXCEEDED per §8.2
+#   *Errors*). Both construction blocks are present so each case binds the
+#   relevant provider. (The error body is non-load-bearing: classification keys
+#   off the HTTP status.)
+
+mapping: jina
+
+jina_rerank_provider:
+  base_url: "https://api.jina.invalid"
+  model: jina-reranker-test
+  api_key: "test-jina-key"
+
+jina_embedding_provider:
+  base_url: "https://api.jina.invalid"
+  model: jina-embeddings-test
+  api_key: "test-jina-key"
+
+cases:
+  - name: rerank_429_maps_to_provider_rate_limit
+    description: |
+      A /v1/rerank call where Jina returns HTTP 429 (rate limit). The
+      adapter MUST classify it as provider_rate_limit (§8.2 *Errors*:
+      429 -> provider_rate_limit) and raise out of the rerank node — NOT
+      provider_unavailable, and NOT a retry loop. The wire request still
+      carries the Authorization: Bearer header.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+      return_documents: false
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 429
+        body:
+          detail: "Rate limit exceeded. Please retry after some time."
+          code: "RATE_TOKEN_LIMIT_EXCEEDED"
+    expected_error:
+      category: provider_rate_limit
+      raised_from: rerank_node
+    expected:
+      invariants:
+        exception_raised_out_of_rerank_call: true
+        rate_limit_not_misclassified_as_unavailable: true
+        authorization_bearer_header_present: true
+        no_retry_loop: true
+
+  - name: embeddings_429_maps_to_provider_rate_limit
+    description: |
+      An /v1/embeddings call where Jina returns HTTP 429 (rate limit). The
+      adapter MUST classify it as provider_rate_limit and raise out of the
+      embed node — locking the rate-limit mapping on the embedding surface
+      too. The wire request still carries the Authorization: Bearer header.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["hello"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-embeddings-test
+      input: ["hello"]
+      truncate: false
+    expected_wire_request_absent_keys: [task, dimensions]
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_embedding:
+      - status: 429
+        body:
+          detail: "Rate limit exceeded. Please retry after some time."
+          code: "RATE_TOKEN_LIMIT_EXCEEDED"
+    expected_error:
+      category: provider_rate_limit
+      raised_from: embed_node
+    expected:
+      invariants:
+        exception_raised_out_of_embed_call: true
+        rate_limit_not_misclassified_as_unavailable: true
+        authorization_bearer_header_present: true
+        no_retry_loop: true

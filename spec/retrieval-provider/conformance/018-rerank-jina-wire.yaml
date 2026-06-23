@@ -1,0 +1,144 @@
+# retrieval-provider §8.2 Jina /v1/rerank — the /v1/rerank wire round-trip.
+#
+# Verifies the §8.2 Jina rerank mapping on the request and response wire
+# surfaces (the return_documents default-override is fixture 019; the
+# error paths are 021/022). Locks:
+#   - the /v1/rerank request shape
+#     {model, query, documents, return_documents, truncation: false}
+#     (top_n absent when top_k is not supplied)
+#   - documents maps directly onto documents (no per-document object
+#     wrapping); the bound model is sent in the body
+#   - the Authorization: Bearer <api_key> header is present on the wire
+#     (hosted-vendor auth, §8.2 *Construction*)
+#   - the Jina response {model, usage: {total_tokens}, results:
+#     [{index, relevance_score, document?}]} mapping onto results
+#     (index -> ScoredDocument.index, relevance_score -> relevance_score),
+#     returned UNSORTED so the §6 "sort if the provider didn't" invariant
+#     is genuinely exercised
+#   - results sorted by relevance_score descending with valid indices
+#     (§6 / 0060 invariants)
+#   - usage.total_tokens -> RerankUsage.input_tokens; Jina surfaces no
+#     search_units (null); Jina returns no rerank response id here so
+#     response_id is null (§6)
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives (per conformance-adapter §3.2). Base
+# calls_rerank / mock_rerank directives are defined in 006's header; the
+# §8.X wire-mapping vocabulary (mapping: <name>, expected_wire_request,
+# expected_wire_request_absent_keys) is defined in 013's / 014's headers
+# (TEI). THIS fixture introduces the Jina (§8.2) realization of that
+# vocabulary. New directives:
+#
+# - mapping: jina — selects the §8.2 Jina wire mapping for the fixture
+#   (parallel to 013's `mapping: tei`; mirrors llm-provider fixture 033's
+#   `mapping: anthropic`). Pins Jina's real /v1/rerank + /v1/embeddings
+#   wire shapes (the request the mapping MUST send, the response it MUST
+#   consume).
+#
+# - jina_rerank_provider: {base_url, model, api_key} — suite-level
+#   construction block for the bound Jina RerankProvider (§8.2
+#   *Construction*). Unlike TEI's per-deployment base_url, Jina is one
+#   hosted API: the provider binds the api_key (sent as
+#   Authorization: Bearer <key>) + the bound model, with base_url
+#   defaulting to the Jina endpoint (overridden here to a generic
+#   placeholder — no real Jina host or key). base_url is origin-only;
+#   the mapping appends /v1/rerank.
+#
+# - expected_wire_headers (case-level): a mapping of HTTP request-header
+#   names to expected values the mapping MUST send on the outbound
+#   request. The harness captures the outbound request headers and
+#   asserts each listed header is present with the given value (SUBSET
+#   match — other headers, e.g. content-type, MAY also be present; header
+#   names are case-insensitive per HTTP). Introduced here because §8.2 is
+#   the first hosted-vendor (API-key) mapping; no prior retrieval/TEI
+#   fixture asserts request headers. Used to lock the
+#   Authorization: Bearer <api_key> header from jina_rerank_provider.api_key.
+#
+# - mock_rerank entries under `mapping: jina` use Jina's real /v1/rerank
+#   response shape: {model, usage: {total_tokens}, results: [{index,
+#   relevance_score, document?}]}. (The 006-012 mock_rerank shape is the
+#   harness-internal Cohere-flavoured stand-in; under `mapping: jina` the
+#   body is what Jina actually returns.) Jina meters rerank by tokens, not
+#   search units, so usage.total_tokens -> RerankUsage.input_tokens and
+#   search_units stays null.
+
+mapping: jina
+
+jina_rerank_provider:
+  base_url: "https://api.jina.invalid"
+  model: jina-reranker-test
+  api_key: "test-jina-key"
+
+cases:
+  - name: rerank_wire_round_trip_sorted_results
+    description: |
+      3 documents, default config (return_documents false), no top_k. The
+      mapping issues ONE POST to {base_url}/v1/rerank carrying
+      {model, query, documents: [...3...], return_documents: false,
+      truncation: false} with top_n ABSENT (no top_k supplied) and the
+      Authorization: Bearer <api_key> header present. The mocked Jina
+      response is UNSORTED ([{0, 0.42}, {1, 0.91}, {2, 0.08}]); the
+      adapter MUST return results sorted by relevance_score descending
+      ([{1, 0.91}, {0, 0.42}, {2, 0.08}]) with each index valid into the
+      3-document input. usage.total_tokens 57 -> RerankUsage.input_tokens
+      57, search_units null; Jina returns no id here so response_id null.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+      return_documents: false
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 200
+        body:
+          model: jina-reranker-test
+          usage: {total_tokens: 57}
+          results:
+            - {index: 0, relevance_score: 0.42}
+            - {index: 1, relevance_score: 0.91}
+            - {index: 2, relevance_score: 0.08}
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.91, document: null}
+            - {index: 0, relevance_score: 0.42, document: null}
+            - {index: 2, relevance_score: 0.08, document: null}
+          model: jina-reranker-test
+          response_id: null
+          usage:
+            search_units: null
+            input_tokens: 57
+      invariants:
+        exactly_one_rerank_request_issued: true
+        wire_request_carries_model: true
+        wire_request_documents_match_in_order: true
+        wire_request_return_documents_false: true
+        wire_request_truncation_false: true
+        wire_request_omits_top_n_when_top_k_absent: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        result_count_matches_response: true
+        total_tokens_maps_to_input_tokens: true
+        search_units_null_when_jina_omits: true
+        response_id_null_when_jina_omits: true

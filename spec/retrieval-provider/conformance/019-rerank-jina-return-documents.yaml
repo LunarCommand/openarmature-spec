@@ -1,0 +1,157 @@
+# retrieval-provider §8.2 Jina /v1/rerank — return_documents honors the
+# OA default (overriding Jina's `true` wire default).
+#
+# This is the headline behavior the §8.2 accept fixes: Jina's wire
+# `return_documents` defaults `true`, but OA's RerankRuntimeConfig
+# .return_documents defaults `False` (§2 / §6), so the mapping MUST send
+# return_documents EXPLICITLY rather than relying on Jina's wire default.
+# Verifies:
+#   - case A: OA return_documents=False (the default — no config field
+#     supplied) => wire return_documents: false, EXPLICITLY overriding
+#     Jina's `true` wire default. The mocked response carries no document
+#     echo, so ScoredDocument.document is null.
+#   - case B: OA return_documents=True => wire return_documents: true, and
+#     the Jina-echoed `document` per result populates
+#     ScoredDocument.document verbatim (§6).
+# Both cases return the mocked response UNSORTED to keep the §6 sort
+# invariant load-bearing.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 006's header (calls_rerank /
+# mock_rerank), 013's / 014's headers (mapping: <name>,
+# expected_wire_request), and 018's header (mapping: jina, the
+# jina_rerank_provider construction block, expected_wire_headers, and
+# Jina's /v1/rerank request + response shapes). No new directive.
+
+mapping: jina
+
+jina_rerank_provider:
+  base_url: "https://api.jina.invalid"
+  model: jina-reranker-test
+  api_key: "test-jina-key"
+
+cases:
+  - name: return_documents_default_false_overrides_jina_wire_default
+    description: |
+      3 documents, DEFAULT config (no return_documents field => OA default
+      False). The wire request MUST carry return_documents: false
+      EXPLICITLY — overriding Jina's `true` wire default — so OA's
+      default-False is honored on the wire. The mocked Jina response omits
+      `document` on each result (Jina echoes nothing when return_documents
+      is false), so every ScoredDocument.document MUST be null. Response
+      UNSORTED ([{0, 0.42}, {1, 0.91}, {2, 0.08}]) => sorted descending.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+      return_documents: false
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 200
+        body:
+          model: jina-reranker-test
+          usage: {total_tokens: 57}
+          results:
+            - {index: 0, relevance_score: 0.42}
+            - {index: 1, relevance_score: 0.91}
+            - {index: 2, relevance_score: 0.08}
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.91, document: null}
+            - {index: 0, relevance_score: 0.42, document: null}
+            - {index: 2, relevance_score: 0.08, document: null}
+          model: jina-reranker-test
+          response_id: null
+          usage:
+            search_units: null
+            input_tokens: 57
+      invariants:
+        wire_request_return_documents_false_explicit: true
+        wire_request_overrides_jina_true_default: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        document_null_when_provider_omits_echo: true
+
+  - name: return_documents_true_populates_document_echo
+    description: |
+      Same 3 documents with config return_documents=True. The wire request
+      MUST carry return_documents: true. The mocked Jina response echoes
+      `document` per result; the adapter MUST surface it verbatim on
+      ScoredDocument.document (§6 — the provider's echo, NOT the input
+      documents list). Response again UNSORTED to exercise the sort.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          config:
+            return_documents: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+      return_documents: true
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 200
+        body:
+          model: jina-reranker-test
+          usage: {total_tokens: 57}
+          results:
+            - {index: 0, relevance_score: 0.42, document: "doc about berlin"}
+            - {index: 1, relevance_score: 0.91, document: "doc about paris"}
+            - {index: 2, relevance_score: 0.08, document: "doc about madrid"}
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.91, document: "doc about paris"}
+            - {index: 0, relevance_score: 0.42, document: "doc about berlin"}
+            - {index: 2, relevance_score: 0.08, document: "doc about madrid"}
+          model: jina-reranker-test
+          response_id: null
+          usage:
+            search_units: null
+            input_tokens: 57
+      invariants:
+        wire_request_return_documents_true: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        echoed_document_preserved_verbatim: true

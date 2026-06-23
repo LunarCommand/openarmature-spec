@@ -1,0 +1,298 @@
+# retrieval-provider §8.2 Jina + §2/§3 input_type — the input_type ->
+# task realization on Jina's /v1/embeddings (the cross-vendor payoff:
+# the same EmbeddingRuntimeConfig.input_type knob 0077 placed on the
+# protocol, realized on a SECOND wire — Jina's native `task` — after
+# TEI's prompt_name (fixture 013)).
+#
+# Verifies the §8.2 Jina embedding mapping's input_type contract:
+#   - input_type: query    -> wire task "retrieval.query"
+#   - input_type: document -> wire task "retrieval.passage"
+#   - input_type absent     -> NO task on the wire (the symmetric default,
+#     Jina's model default)
+# Plus the surrounding /v1/embeddings wire surface:
+#   - the request always sends the array form {"input": [str]} even for a
+#     single-string caller (§3's "always a list")
+#   - the bound model is sent in the body
+#   - EmbeddingRuntimeConfig.dimensions -> Jina's `dimensions` (Matryoshka)
+#     when set
+#   - truncate: false sent on every request (fail-loud; see fixture 021)
+#   - the Authorization: Bearer <api_key> header is present
+#   - the Jina response {model, usage, data: [{index, embedding}]} maps to
+#     EmbeddingResponse.vectors IN INPUT ORDER (§4 cross-impl invariants)
+# Also (§3 + graph-engine §6) input_type flows into
+# EmbeddingEvent.request_params with absence-is-meaningful semantics.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 001's header (calls_embed /
+# mock_embedding), 013's header (mapping: <name>, expected_wire_request,
+# expected_wire_request_absent_keys, the typed_event_collector convention
+# used to assert EmbeddingEvent.request_params), and 018's header
+# (mapping: jina, expected_wire_headers). New directive:
+#
+# - jina_embedding_provider: {base_url, model, api_key} — suite-level
+#   construction block for the bound Jina EmbeddingProvider (§8.2
+#   *Construction*; sibling to 018's jina_rerank_provider). The provider
+#   binds the api_key (sent as Authorization: Bearer <key>) + the bound
+#   model; base_url is a generic origin-only placeholder (no real Jina
+#   host or key) — the mapping appends /v1/embeddings. Unlike TEI's
+#   embedding provider, there is NO input_type_prompt_map: Jina realizes
+#   input_type on the wire `task` per the §8.2 closed-set mapping
+#   (query -> retrieval.query, document -> retrieval.passage), so the
+#   input_type -> task translation is mapping-internal, not constructed.
+#
+# - mock_embedding entries under `mapping: jina` use Jina's real
+#   /v1/embeddings response shape: {model, usage: {total_tokens}, data:
+#   [{index, embedding}]}. (The 001-012 mock_embedding shape is the
+#   harness-internal OpenAI-compatible stand-in.) Jina returns vectors in
+#   the `data` array in input order.
+
+mapping: jina
+
+jina_embedding_provider:
+  base_url: "https://api.jina.invalid"
+  model: jina-embeddings-test
+  api_key: "test-jina-key"
+
+cases:
+  - name: input_type_query_sends_task_retrieval_query
+    description: |
+      embed(config={input_type: "query"}) against a Jina EmbeddingProvider.
+      The §8.2 closed-set mapping translates input_type "query" to Jina's
+      native task "retrieval.query", so the wire request to /v1/embeddings
+      MUST carry task "retrieval.query" alongside {model, input,
+      truncate: false}. input_type MUST also reach
+      EmbeddingEvent.request_params as "query". The Authorization: Bearer
+      header is present.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["how tall is the eiffel tower?"]
+          config:
+            input_type: query
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-embeddings-test
+      input: ["how tall is the eiffel tower?"]
+      task: "retrieval.query"
+      truncate: false
+    expected_wire_request_absent_keys: [dimensions]
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_embedding:
+      - status: 200
+        body:
+          model: jina-embeddings-test
+          usage: {total_tokens: 8}
+          data:
+            - {index: 0, embedding: [0.10, 0.20, 0.30, 0.40]}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: jina-embeddings-test
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: query
+      invariants:
+        vectors_length_matches_input_length: true
+        wire_request_carries_task_retrieval_query: true
+        wire_request_carries_model: true
+        wire_request_truncate_false: true
+        authorization_bearer_header_present: true
+        input_type_in_embedding_event_request_params: true
+
+  - name: input_type_document_sends_task_retrieval_passage
+    description: |
+      embed(config={input_type: "document"}) against the same provider:
+      document -> "retrieval.passage" per the §8.2 closed-set mapping, so
+      the wire request MUST carry task "retrieval.passage". input_type MUST
+      reach EmbeddingEvent.request_params as "document".
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["the eiffel tower is 330 metres tall."]
+          config:
+            input_type: document
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-embeddings-test
+      input: ["the eiffel tower is 330 metres tall."]
+      task: "retrieval.passage"
+      truncate: false
+    expected_wire_request_absent_keys: [dimensions]
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_embedding:
+      - status: 200
+        body:
+          model: jina-embeddings-test
+          usage: {total_tokens: 9}
+          data:
+            - {index: 0, embedding: [0.50, 0.60, 0.70, 0.80]}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: jina-embeddings-test
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: document
+      invariants:
+        vectors_length_matches_input_length: true
+        wire_request_carries_task_retrieval_passage: true
+        wire_request_truncate_false: true
+        authorization_bearer_header_present: true
+        input_type_in_embedding_event_request_params: true
+
+  - name: input_type_absent_omits_task_symmetric_default
+    description: |
+      embed() with NO config (input_type absent) against the same
+      provider. The wire request MUST NOT carry `task` — the symmetric
+      default (Jina's model default). The body is exactly
+      {model, input, truncate: false} with no task and no dimensions.
+      EmbeddingEvent.request_params MUST be the empty mapping (no
+      input_type key) per the absence-is-meaningful contract.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["the eiffel tower is 330 metres tall."]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-embeddings-test
+      input: ["the eiffel tower is 330 metres tall."]
+      truncate: false
+    expected_wire_request_absent_keys: [task, dimensions]
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_embedding:
+      - status: 200
+        body:
+          model: jina-embeddings-test
+          usage: {total_tokens: 9}
+          data:
+            - {index: 0, embedding: [0.50, 0.60, 0.70, 0.80]}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: jina-embeddings-test
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params: {}
+      invariants:
+        vectors_length_matches_input_length: true
+        wire_request_omits_task_when_input_type_absent: true
+        wire_request_truncate_false: true
+        authorization_bearer_header_present: true
+        request_params_empty_when_input_type_absent: true
+
+  - name: dimensions_maps_to_jina_dimensions_field
+    description: |
+      embed(config={dimensions: 4}) — the §8.2 mapping sends Jina's
+      `dimensions` field (Matryoshka truncation) alongside {model, input,
+      truncate: false}. No input_type, so `task` is ABSENT. Single input;
+      the response is a one-element data array of length 4. Confirms the
+      dimensions request-param reaches the wire while task stays absent.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            dimensions: 4
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-embeddings-test
+      input: ["alpha string"]
+      dimensions: 4
+      truncate: false
+    expected_wire_request_absent_keys: [task]
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_embedding:
+      - status: 200
+        body:
+          model: jina-embeddings-test
+          usage: {total_tokens: 2}
+          data:
+            - {index: 0, embedding: [0.01, 0.02, 0.03, 0.04]}
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: jina-embeddings-test
+      invariants:
+        wire_request_carries_dimensions_field: true
+        wire_request_omits_task_when_input_type_absent: true
+        wire_request_truncate_false: true
+        authorization_bearer_header_present: true
+        vectors_length_matches_input_length: true
+        dimensions_field_matches_inner_vector_length: true

@@ -4,6 +4,21 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.73.0] — 2026-06-22
+
+**Added**
+
+- **retrieval-provider §8.2 Jina.** The second wire mapping — Jina AI's hosted `/v1/rerank` and `/v1/embeddings`. Rerank maps near-1:1 onto §5 / §6 (`documents`, `top_k` → `top_n`, `return_documents`, `results` → `ScoredDocument`, `usage.total_tokens` → `RerankUsage.input_tokens`); `/v1/embeddings` realizes the §2 `input_type` knob via Jina's native `task` (`"query"` → `"retrieval.query"`, `"document"` → `"retrieval.passage"`); `Bearer` API-key auth, `base_url` defaulting to the hosted endpoint (origin; `/v1` in the route). ([proposal 0078](proposals/0078-retrieval-provider-jina-wire-mapping.md))
+- Five retrieval-provider conformance fixtures (`018`–`022`): the Jina `/v1/rerank` wire round-trip; `return_documents` default-override; `input_type` → `task`; `truncation` fail-loud; and `429` → `provider_rate_limit`. ([proposal 0078](proposals/0078-retrieval-provider-jina-wire-mapping.md))
+
+**Fixed**
+
+- **retrieval-provider §2 — `return_documents` vendor-default correction.** The §2 *Rerank runtime config* note wrongly stated Jina AI's wire `return_documents` defaults `False`; it defaults `True` (Cohere and Voyage default `False`). OA's `RerankRuntimeConfig.return_documents` still defaults `False`; the §8.2 Jina mapping sends the value explicitly so the OA default is honored. ([proposal 0078](proposals/0078-retrieval-provider-jina-wire-mapping.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Additive: §8.2 is a new wire mapping; no protocol-surface change (the `input_type` knob and §8 are 0077's), no renumber. ([proposal 0078](proposals/0078-retrieval-provider-jina-wire-mapping.md))
+
 ## [0.72.0] — 2026-06-22
 
 **Added**

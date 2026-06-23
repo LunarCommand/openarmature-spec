@@ -8,7 +8,7 @@ lifecycle and the proposal template.
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
 | [0079](proposals/0079-retrieval-provider-openai-compatible-embeddings.md) | OpenAI-compatible embeddings wire mapping | retrieval-provider | Draft    | —               | —          |
-| [0078](proposals/0078-retrieval-provider-jina-wire-mapping.md) | Jina wire mapping (rerank + embedding) | retrieval-provider | Draft    | —               | —          |
+| [0078](proposals/0078-retrieval-provider-jina-wire-mapping.md) | Jina wire mapping (rerank + embedding) | retrieval-provider | Accepted    | Pending         | —          |
 | [0077](proposals/0077-retrieval-provider-tei-wire-mapping.md) | TEI wire mapping + asymmetric query/document embedding | retrieval-provider | Accepted    | Pending         | —          |
 | [0076](proposals/0076-tool-call-request-observability-llm-spans.md) | Tool-call request observability on LLM spans | observability | Accepted | Shipped (0.15.0)| —          |
 | [0075](proposals/0075-parallel-branches-lightweight-branches.md) | Parallel-branches lightweight callable + conditional branches | pipeline-utilities | Accepted | Shipped (0.15.0)| —          |
@@ -23,7 +23,7 @@ lifecycle and the proposal template.
 | [0066](proposals/0066-pipeline-utilities-fan-out-degrade-contribution.md) | Fan-out failure-isolation degrade contribution           | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0065](proposals/0065-pipeline-utilities-failure-isolation-cause-fidelity.md) | Failure-isolation cause-fidelity at wrapping sites        | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0064](proposals/0064-observability-langfuse-session-user-promotion.md) | Langfuse session / user trace-field population            | observability       | Accepted | Partial (0.15.0)| —          |
-| [0063](proposals/0063-tool-execution-observability.md) | Tool-execution observability                              | graph-engine        | Accepted | Pending         | —          |
+| [0063](proposals/0063-tool-execution-observability.md) | Tool-execution observability                              | graph-engine        | Accepted | Shipped (0.15.0)| —          |
 | [0062](proposals/0062-llm-completion-streaming.md) | LLM completion streaming                                  | llm-provider        | Accepted | Pending         | —          |
 | [0061](proposals/0061-detached-trace-invocation-span.md) | Detached-trace invocation span                            | observability       | Accepted | Shipped (0.15.0)| —          |
 | [0060](proposals/0060-retrieval-provider-rerank.md) | Retrieval-provider rerank protocol                        | retrieval-provider  | Accepted | Pending         | —          |

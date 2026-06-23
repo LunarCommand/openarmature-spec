@@ -1,9 +1,9 @@
 # 0078: Jina Retrieval-Provider Wire Mapping (rerank + embedding)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-21
-- **Accepted:**
+- **Accepted:** 2026-06-22
 - **Targets:** spec/retrieval-provider/spec.md **§8 Wire-format mappings** (the section introduced by
   0077) — add **§8.2 Jina** covering `/v1/rerank` and `/v1/embeddings` on the hosted Jina API, and
   realizing 0077's `input_type` knob via Jina's native wire `task` parameter. **No protocol change**
