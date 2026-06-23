@@ -12,12 +12,11 @@
 # on a parent-state field at dispatch). The span_tree assertion implies the
 # bundled OTel observer (default config), as in fixtures 038 / 082.
 #
-# NOTE: openarmature.parallel_branches.branch_count is deliberately NOT asserted.
-# §5.7 defines it as "branches dispatched" yet sources it from
-# parallel_branches_config (whose branch_names is unaffected by a when-skip), so
-# its value under a skip is ambiguous in the current spec. This fixture pins only
-# the span shape + skip-emits-no-span, which are unambiguous; span_tree attribute
-# matching is subset-based, so leaving branch_count unlisted is safe.
+# NOTE: openarmature.parallel_branches.branch_count = 2 here — the DISPATCHED
+# count (vector is when-skipped; fts + keyword dispatch). The graph-engine §6 /
+# observability §5.7 reconciliation confirms branch_count is the dispatched
+# subset under a when-skip (branch_names stays the full declared set), so the
+# value is now unambiguous and asserted.
 
 cases:
   - name: callable_branches_render_keyed_spans_skipped_emits_none
@@ -64,6 +63,7 @@ cases:
             - name: "retrieve"
               status: OK
               attributes:
+                openarmature.parallel_branches.branch_count: 2
                 openarmature.parallel_branches.error_policy: "fail_fast"
               children:
                 - name: "fts"
@@ -82,3 +82,4 @@ cases:
         callable_branch_renders_one_span_keyed_by_branch_name: true
         callable_branch_span_has_no_inner_node_spans: true
         when_skipped_branch_emits_no_span: true
+        branch_count_is_dispatched_count_not_declared: true

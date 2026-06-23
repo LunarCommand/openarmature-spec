@@ -607,12 +607,15 @@ this section, which carry no `phase` — carries the following fields:
   events from non-parallel-branches nodes — inner-node events from inside a parallel-branches
   branch (those carry `branch_name` instead), subgraph wrapper events, fan-out events,
   function-node events, and so on. The value carries four fields:
-  - `branch_names` — non-empty ordered sequence of strings. The branch identifiers in
-    declaration / dispatch order, as configured on the parallel-branches node (pipeline-
-    utilities §11.1). Available at parallel-branches entry, so populated on both `started` and
-    `completed` events.
-  - `branch_count` — positive integer. The number of branches dispatched. Equals
-    `len(branch_names)`; surfaced explicitly so observers and downstream consumers do not need
+  - `branch_names` — non-empty ordered sequence of strings. The branch identifiers in declaration
+    order, as configured on the parallel-branches node (pipeline-utilities §11.1) — the full
+    declared set, **unaffected by a `when`-skip** (a skipped branch's name remains here;
+    `branch_count` reflects the dispatched subset). Available at parallel-branches entry, so
+    populated on both `started` and `completed` events.
+  - `branch_count` — positive integer. The number of branches **dispatched**. Equals
+    `len(branch_names)` when no branch is `when`-skipped (pipeline-utilities §11 / proposal 0075);
+    under a `when`-skip it is the dispatched subset (fewer than `len(branch_names)`, which remains
+    the full declared set). Surfaced explicitly so observers and downstream consumers do not need
     to derive it. Populated on both `started` and `completed` events.
   - `error_policy` — string, exactly one of `"fail_fast"` or `"collect"` (per pipeline-utilities
     §11.5). Populated on both `started` and `completed` events.

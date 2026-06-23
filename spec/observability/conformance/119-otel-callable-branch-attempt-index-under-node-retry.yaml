@@ -1,0 +1,176 @@
+# observability §5.7 + §5.2 + graph-engine §6 — a callable-branch
+# parallel-branches node under NODE-LEVEL retry. The synthetic callable-branch
+# started/completed events (graph-engine §6: the callable IS the event-source
+# unit) report the dispatching NODE's CURRENT attempt_index, NOT a hard-coded 0.
+# So on the retry attempt the callable-branch dispatch span carries
+# openarmature.node.attempt_index = 1.
+#
+# This pins the attempt_index dimension of the §5.7 callable-branch dispatch
+# span left unfixtured by proposal 0075 (fixture 110 covers the single-attempt
+# span shape + skip-emits-no-span; this covers the per-attempt-under-retry
+# dimension). It is the callable-branch analogue of fixture 007 (per-attempt
+# sibling node spans disambiguated by openarmature.node.attempt_index).
+#
+# Construction (per §11.6 node-level retry semantics): retry middleware is on
+# the parallel-branches NODE itself (sibling to `parallel_branches:`, as in
+# fixture 007's node-level retry), so it retries the WHOLE node — re-dispatching
+# all branches (§11.6). A `call` branch carries a `flaky` mock that raises a
+# transient on attempt 0 and succeeds when its failure sequence is exhausted on
+# attempt 1 (`call: {flaky: {...}}` per fixture 075). Under `fail_fast` the
+# callable's transient wraps as `parallel_branches_branch_failed` (a
+# node_exception subtype that inherits the wrapped exception's transient
+# classification, pipeline-utilities §11.9), which the node-level retry
+# classifier matches and re-attempts.
+#
+# OTel dispatch-span synthesis (observability §4.3 *Parallel-branches dispatch
+# span synthesis*): the parallel-branches NODE span and each per-branch dispatch
+# span are keyed on the §6 event-source identity tuple INCLUDING attempt_index,
+# so attempt 0 and attempt 1 produce DISTINCT sibling NODE spans, each with its
+# own callable-branch dispatch span carrying that attempt's
+# openarmature.node.attempt_index — exactly fixture 007's per-attempt
+# sibling-span shape applied to the callable-branch dispatch span.
+#
+# NOTE ON ASSERTION CHANNEL: the callable-branch events are BASE NodeEvents
+# (graph-engine §6 synthetic started/completed pair keyed by branch_name), NOT a
+# typed observer-event-union variant. So this fixture does NOT use
+# typed_observers / contains_event (which filter typed variants like
+# LlmCompletionEvent); it asserts the rendered OTel span_tree (the observability
+# surface) and reinforces with observer_event_invariants on the source §6
+# events' per-phase attempt_index via the `record` observer — the same channel
+# fixtures 007 / 020 / 036 use for raw-NodeEvent attempt_index.
+
+cases:
+  - name: callable_branch_dispatch_span_carries_attempt_index_one_on_node_retry
+    description: |
+      A parallel-branches node `retrieve` with two inline-callable branches —
+      `vector` (a `flaky` callable: transient on attempt 0, succeeds on attempt
+      1) and `fts` (always succeeds) — wrapped by node-level retry middleware on
+      the parallel-branches node itself (max_attempts 2, transient classifier on
+      provider_rate_limit). Under fail_fast, attempt 0's `vector` callable raises
+      a transient, failing the whole parallel-branches node; the node-level retry
+      re-dispatches both branches on attempt 1, where `vector` succeeds.
+
+      The OTel observer MUST render TWO sibling `retrieve` parallel-branches NODE
+      spans (one per attempt, disambiguated by openarmature.node.attempt_index),
+      each with its callable-branch dispatch spans carrying that attempt's
+      openarmature.node.attempt_index — 0 on the failed attempt, 1 on the
+      successful retry. The attempt-1 `vector`/`fts` dispatch spans MUST carry
+      openarmature.node.attempt_index = 1 (sourced from the §6 synthetic
+      callable-branch events' current attempt_index, NOT hard-coded 0).
+    state:
+      fields:
+        vector_result: {type: int, default: 0}
+        fts_result: {type: int, default: 0}
+    entry: retrieve
+    nodes:
+      retrieve:
+        parallel_branches:
+          branches:
+            vector:
+              call:
+                flaky:
+                  # Transient on attempt 0; exhausted (succeeds) on attempt 1.
+                  failure_sequence:
+                    - {transient: true, category: provider_rate_limit, message: "vector store throttled"}
+                  success_update: {vector_result: 1}
+            fts:
+              call: {update: {fts_result: 2}}
+          error_policy: fail_fast
+        # Node-level retry on the parallel-branches node itself (§11.6): retries
+        # the WHOLE node, re-dispatching all branches. Sibling key to
+        # parallel_branches, as in fixture 007's node-level retry.
+        middleware:
+          - type: retry
+            max_attempts: 2
+            backoff: {type: deterministic, seconds: 0}
+            classifier:
+              transient_categories: [provider_rate_limit]
+    edges:
+      - {from: retrieve, to: END}
+    initial_state: {}
+    observers:
+      - {name: obs, attach: graph, target: outer, behavior: record}
+    expected:
+      # Both branches' contributions land after the successful retry attempt.
+      final_state:
+        vector_result: 1
+        fts_result: 2
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            # Attempt 0 — the parallel-branches NODE span fails (vector's
+            # callable raised a transient under fail_fast). Its callable-branch
+            # dispatch spans carry attempt_index 0.
+            - name: "retrieve"
+              status: ERROR
+              attributes:
+                openarmature.node.attempt_index: 0
+                openarmature.parallel_branches.branch_count: 2
+                openarmature.parallel_branches.error_policy: "fail_fast"
+                openarmature.error.category: "node_exception"
+              children:
+                - name: "vector"
+                  status: ERROR
+                  status_description: "node_exception"
+                  exception_recorded: true
+                  attributes:
+                    openarmature.node.branch_name: "vector"
+                    openarmature.node.attempt_index: 0
+                    openarmature.parallel_branches.parent_node_name: "retrieve"
+                    openarmature.error.category: "node_exception"
+                  children: []
+            # Attempt 1 — a DISTINCT sibling parallel-branches NODE span (keyed
+            # by attempt_index per §4.3 dispatch-span synthesis). Both callable
+            # branches dispatch again; vector now succeeds. Every span carries
+            # openarmature.node.attempt_index = 1 — the load-bearing assertion:
+            # the synthetic callable-branch events report the node's CURRENT
+            # attempt_index, not 0.
+            - name: "retrieve"
+              status: OK
+              attributes:
+                openarmature.node.attempt_index: 1
+                openarmature.parallel_branches.branch_count: 2
+                openarmature.parallel_branches.error_policy: "fail_fast"
+              children:
+                - name: "vector"
+                  status: OK
+                  attributes:
+                    openarmature.node.branch_name: "vector"
+                    openarmature.node.attempt_index: 1
+                    openarmature.parallel_branches.parent_node_name: "retrieve"
+                  children: []
+                - name: "fts"
+                  status: OK
+                  attributes:
+                    openarmature.node.branch_name: "fts"
+                    openarmature.node.attempt_index: 1
+                    openarmature.parallel_branches.parent_node_name: "retrieve"
+                  children: []
+      # The §6 source events the spans render from: the synthetic callable-branch
+      # started/completed pairs carry the dispatching node's current
+      # attempt_index. Asserted via the `record` observer (raw NodeEvents), the
+      # same channel fixtures 007 / 020 / 036 use for attempt_index.
+      observer_event_invariants:
+        # The parallel-branches NODE and its callable-branch events are seen at
+        # both attempt indices.
+        retrieve_node_attempt_indices_seen: [0, 1]
+        # Callable-branch events keyed by branch_name carry the node's current
+        # attempt_index: vector at {0, 1} (failed then retried-success), fts at
+        # {1} (only dispatched on the successful retry — attempt 0 fail_fast
+        # cancelled it before it ran, or it was re-dispatched fresh on attempt 1).
+        vector_callable_branch_attempt_indices_seen: [0, 1]
+        # The synthetic callable-branch events report the current attempt_index,
+        # NOT a hard-coded 0.
+        callable_branch_events_report_current_attempt_index: true
+        # attempt-1 callable-branch started AND completed events both carry
+        # attempt_index = 1 (the retry attempt's events, both phases).
+        callable_branch_started_and_completed_carry_attempt_index_one_on_retry: true
+      invariants:
+        # Two sibling parallel-branches NODE spans, one per attempt.
+        sibling_parallel_branches_node_spans_per_attempt: 2
+        # The attempt-1 callable-branch dispatch spans carry attempt_index = 1.
+        retry_callable_branch_dispatch_span_attempt_index_is_one: true
+        # attempt_index sourced from the §6 synthetic callable-branch event, not
+        # hard-coded 0.
+        callable_branch_attempt_index_sourced_from_node_event_not_zero: true
