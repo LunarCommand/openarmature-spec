@@ -1,0 +1,109 @@
+# retrieval-provider §8.3 OpenAI-compatible /v1/embeddings — base_url
+# override (the ecosystem-compatibility case).
+#
+# This is the entire leverage of the §8.3 mapping: one OpenAI-compatible
+# mapping serves OpenAI AND the broad OpenAI-compatible serving ecosystem
+# (vLLM, LocalAI, Together, TEI's own OpenAI-compatible endpoint, …). The
+# fixture binds a non-OpenAI base_url (a vLLM-style origin) and asserts:
+#   - the request still routes to {base_url}/v1/embeddings — the mapping
+#     appends the SAME /v1/embeddings route to the overridden origin
+#     (base_url is origin-only; the /v1 version stays in the route, §8.3
+#     *Construction*). expected_wire_url locks the resolved route.
+#   - the Authorization: Bearer <api_key> header is still present (auth is
+#     mapping-level, not host-specific).
+#   - the wire body is the same {model, input} shape (no input_type), and
+#     the {object, data, model, usage} response maps to vectors in input
+#     order — identical contract regardless of backend, because
+#     gen_ai.system "openai" names the WIRE SURFACE, not the deployment
+#     (§8.3): a vLLM backend reached through this wire is the OpenAI wire
+#     surface.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 023's header (mapping: openai,
+# openai_embedding_provider, the OpenAI /v1/embeddings request + response
+# shapes, expected_wire_request / expected_wire_headers). New directive:
+#
+# - expected_wire_url (case-level): the fully-resolved request URL the
+#   mapping MUST POST to (origin from openai_embedding_provider.base_url +
+#   the mapping's fixed /v1/embeddings route). The harness captures the
+#   outbound request URL and asserts an exact match. Introduced here
+#   because §8.3's base_url is the first construction param whose override
+#   must be observed on the wire route (TEI's base_url in 013-017 is host
+#   placeholder only; this fixture makes the route load-bearing).
+
+mapping: openai
+
+openai_embedding_provider:
+  base_url: "http://vllm.invalid"
+  model: bge-base-en-test
+  api_key: "test-openai-key"
+
+cases:
+  - name: base_url_override_routes_to_compatible_backend
+    description: |
+      An OpenAI-compatible EmbeddingProvider bound to a non-OpenAI
+      base_url (a vLLM-style origin http://vllm.invalid). embed() over 2
+      inputs, no config. The mapping MUST POST to
+      http://vllm.invalid/v1/embeddings (origin + the fixed /v1/embeddings
+      route) with the Authorization: Bearer header present and body
+      {model, input: [s0, s1]} (array form, no input_type / dimensions).
+      The {object, data, model, usage} response maps to vectors in input
+      order — byte-identical contract to the OpenAI-host case (023),
+      because this is the OpenAI WIRE SURFACE regardless of backend. The
+      two vectors have distinct first components to keep input order
+      load-bearing.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string", "beta string"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_url: "http://vllm.invalid/v1/embeddings"
+    expected_wire_request:
+      model: bge-base-en-test
+      input: ["alpha string", "beta string"]
+    expected_wire_request_absent_keys: [dimensions, encoding_format, input_type, task]
+    expected_wire_headers:
+      Authorization: "Bearer test-openai-key"
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: bge-base-en-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.01, 0.02, 0.03, 0.04]}
+            - {object: embedding, index: 1, embedding: [0.11, 0.12, 0.13, 0.14]}
+          usage:
+            prompt_tokens: 4
+            total_tokens: 4
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+            - [0.11, 0.12, 0.13, 0.14]
+          vectors_length: 2
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: bge-base-en-test
+          response_id: null
+          usage:
+            input_tokens: 4
+      invariants:
+        wire_request_routes_to_base_url: true
+        wire_request_is_array_form: true
+        wire_request_carries_model: true
+        authorization_bearer_header_present: true
+        vectors_length_matches_input_length: true
+        vectors_in_input_order: true
+        all_vectors_same_dimensionality: true
+        prompt_tokens_maps_to_input_tokens: true
+        response_id_null_when_openai_omits: true

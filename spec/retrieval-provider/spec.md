@@ -429,6 +429,48 @@ fail-loud posture).
 unknown model (`404`) → `provider_invalid_model`; over-length / malformed request (`422`) →
 `provider_invalid_request`; malformed response → `provider_invalid_response`.
 
+### 8.3 OpenAI-compatible embeddings
+
+The OpenAI `/v1/embeddings` wire is the de-facto-standard embedding API, exposed by OpenAI and the
+OpenAI-compatible serving ecosystem (vLLM, LocalAI, Together, TEI's own OpenAI-compatible endpoint, …).
+`gen_ai.system` is `"openai"` — identifying the **wire surface**, not the backing deployment (per
+§5.5.8 / §5.5.13; a vLLM / LocalAI backend reached through this wire is still the OpenAI wire surface).
+Wire shapes verified against the OpenAI OpenAPI; `docs/compatibility.md` records the verified version.
+**Embeddings-only** — OpenAI exposes no rerank API, so this mapping has no `RerankProvider` counterpart.
+
+**Construction.** An OpenAI-compatible `EmbeddingProvider` binds an **API key** (sent as
+`Authorization: Bearer <key>`) + the bound model identifier (§3 / §5 per-instance binding), with
+`base_url` defaulting to `https://api.openai.com` (origin only — the `/v1` version stays in the route,
+consistent with §8.1 / §8.2) and overridable for any OpenAI-compatible backend. It MAY additionally
+bind the optional client-side `query_prefix` / `document_prefix` from §8.1 — off by default
+(pure-symmetric OpenAI), set only for an asymmetric model served behind a compatible endpoint (see
+*`input_type`* below).
+
+**`/v1/embeddings`.** `POST {base_url}/v1/embeddings` with
+`{"model": str, "input": [str], "dimensions"?: int}`. `input` is always the array form (§3's "always a
+list"); `EmbeddingRuntimeConfig.dimensions` → wire `dimensions` (Matryoshka, on models that support it)
+when set. The mapping does **not** send `encoding_format` by default (OpenAI's wire default is
+`"float"`); `"base64"` rides the extras-pass-through bag. The response
+`{object: "list", data: [{object: "embedding", index, embedding}], model, usage: {prompt_tokens, total_tokens}}`
+maps to the `EmbeddingResponse` vectors in input order — the mapping consumes `data` + `usage` (the
+`object` fields are OpenAI wire metadata); `usage.prompt_tokens` → `EmbeddingUsage.input_tokens`
+(embedding has no output tokens, so `total_tokens` equals `prompt_tokens`).
+
+**`input_type` (symmetric base wire; client-side prefix for asymmetric).** The OpenAI `/v1/embeddings`
+wire has no query/document parameter, so on the base wire `input_type` is **not realized** — an absent
+`input_type` is the correct symmetric default for OpenAI's symmetric models (e.g. `text-embedding-3`),
+and the mapping does not error on it. For an **asymmetric** model served behind a compatible endpoint
+(e.g. a BGE / E5 model on vLLM), the mapping applies the **client-side prefix** from §8.1: when
+`query_prefix` / `document_prefix` are bound at construction, `input_type` selects which to prepend
+before sending — the only way to express the distinction on a wire with no `input_type` field. A server
+that *extends* the wire with its own `input_type`-style field instead takes it through the
+extras-pass-through bag.
+
+**Errors.** HTTP failures map to the §7 categories per the shared enumeration: `401` →
+`provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`;
+unknown model (`404`) → `provider_invalid_model`; malformed / oversized request (`400`) →
+`provider_invalid_request`; malformed response → `provider_invalid_response`.
+
 ## 9. Determinism
 
 Embedding model determinism guarantees vary by provider. This specification MUST NOT assume
