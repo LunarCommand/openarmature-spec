@@ -1,0 +1,147 @@
+# retrieval-provider §8.3 OpenAI-compatible /v1/embeddings — the
+# /v1/embeddings wire round-trip (the de-facto-standard embedding wire,
+# the THIRD §8 mapping after TEI's /embed (017) and Jina's /v1/embeddings
+# (020)).
+#
+# Verifies the §8.3 OpenAI-compatible embedding mapping on the request
+# and response wire surfaces (no input_type — that path is fixtures
+# 026/027; base_url override is 025; dimensions is 024):
+#   - the request always sends the ARRAY form {"input": [str]} even for a
+#     single-string caller (§8.3 /v1/embeddings: "input is always the
+#     array form per §3's always-a-list"); with no input_type and no
+#     dimensions the body is exactly {"model": str, "input": [...]}.
+#   - the bound model is sent in the body.
+#   - the Authorization: Bearer <api_key> header is present on the wire
+#     (hosted-vendor auth, §8.3 *Construction*; the assertion convention
+#     is 018's expected_wire_headers).
+#   - the OpenAI response {object, data: [{object, index, embedding}],
+#     model, usage: {prompt_tokens, total_tokens}} maps to
+#     EmbeddingResponse.vectors IN INPUT ORDER, one vector per input
+#     (§4 cross-impl invariants: vector count == input count, all inner
+#     vectors same dimensionality, dimensions field == inner length).
+#   - usage.prompt_tokens -> EmbeddingUsage.input_tokens (total_tokens ==
+#     prompt_tokens; embedding has no output tokens, §8.3).
+#   - OpenAI embeddings carry NO response id, so response_id is null (§4).
+#
+# To make the input-order check load-bearing, the three vectors have
+# distinct first components (0.0x / 0.1x / 0.2x), and the response `data`
+# is emitted out of natural order (index 2, 0, 1) so an adapter that
+# trusted array position instead of input order would produce the wrong
+# mapping.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives (per conformance-adapter §3.2). The
+# base calls_embed / mock_embedding directives are defined in 001's
+# header; the §8.X wire-mapping vocabulary (mapping: <name>,
+# expected_wire_request, expected_wire_request_absent_keys) is defined in
+# 013's header (TEI) and the expected_wire_headers Authorization: Bearer
+# assertion in 018's header (Jina). THIS fixture introduces the
+# OpenAI-compatible (§8.3) realization of that vocabulary. New directives:
+#
+# - mapping: openai — selects the §8.3 OpenAI-compatible wire mapping for
+#   the fixture (parallel to 013's `mapping: tei` / 018's `mapping: jina`;
+#   mirrors llm-provider fixture 005's OpenAI wire mapping). gen_ai.system
+#   is "openai" — it names the WIRE SURFACE, not the backing deployment
+#   (§8.3); a vLLM / LocalAI backend reached through this wire is still the
+#   OpenAI wire surface (exercised by 025's base_url override).
+#
+# - openai_embedding_provider: {base_url, model, api_key,
+#     query_prefix?, document_prefix?} — suite-level construction block
+#   for the bound OpenAI-compatible EmbeddingProvider (§8.3
+#   *Construction*; sibling to 018's jina_rerank_provider /
+#   020's jina_embedding_provider). The provider binds the api_key (sent
+#   as Authorization: Bearer <key>) + the bound model; base_url defaults
+#   to https://api.openai.com (origin-only — the mapping appends
+#   /v1/embeddings) and is overridable for any OpenAI-compatible backend.
+#   The OPTIONAL query_prefix / document_prefix (from 0077 §8.1) are off
+#   by default (pure-symmetric OpenAI) and bound only for an asymmetric
+#   model behind a compatible endpoint (exercised by 027). There is NO
+#   input_type -> task / prompt_name map: the OpenAI wire has NO
+#   query/document field at all (§8.3 *input_type*).
+#
+# - mock_embedding entries under `mapping: openai` use OpenAI's real
+#   /v1/embeddings response shape: {object: "list", data: [{object:
+#   "embedding", index, embedding}], model, usage: {prompt_tokens,
+#   total_tokens}}. (The 001-012 mock_embedding shape is a harness-internal
+#   OpenAI-compatible stand-in; under `mapping: openai` the body is what
+#   the wire actually returns.) OpenAI returns vectors in the `data`
+#   array (each entry carries its own `index`); the response carries no
+#   top-level id, so response_id is null.
+
+mapping: openai
+
+openai_embedding_provider:
+  base_url: "https://api.openai.invalid"
+  model: text-embedding-test
+  api_key: "test-openai-key"
+
+cases:
+  - name: embed_array_form_response_in_input_order
+    description: |
+      embed() over 3 input strings, no config. The wire request MUST be
+      exactly {"model": "text-embedding-test", "input": [s0, s1, s2]}
+      (the array form, no dimensions, no encoding_format) with the
+      Authorization: Bearer <api_key> header present. The mocked OpenAI
+      response is the {object, data, model, usage} shape with `data`
+      emitted OUT of order (index 2, 0, 1) to make the input-order
+      mapping load-bearing. The adapter MUST return
+      EmbeddingResponse.vectors in INPUT order (vector i == embedding of
+      input i), with vectors length 3, all inner length 4, dimensions 4,
+      model echoed, response_id null (OpenAI embeddings carry no id), and
+      usage.prompt_tokens 6 -> usage.input_tokens 6.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string", "beta string", "gamma string"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: text-embedding-test
+      input: ["alpha string", "beta string", "gamma string"]
+    expected_wire_request_absent_keys: [dimensions, encoding_format, input_type, task]
+    expected_wire_headers:
+      Authorization: "Bearer test-openai-key"
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 2, embedding: [0.21, 0.22, 0.23, 0.24]}
+            - {object: embedding, index: 0, embedding: [0.01, 0.02, 0.03, 0.04]}
+            - {object: embedding, index: 1, embedding: [0.11, 0.12, 0.13, 0.14]}
+          usage:
+            prompt_tokens: 6
+            total_tokens: 6
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+            - [0.11, 0.12, 0.13, 0.14]
+            - [0.21, 0.22, 0.23, 0.24]
+          vectors_length: 3
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: text-embedding-test
+          response_id: null
+          usage:
+            input_tokens: 6
+      invariants:
+        wire_request_is_array_form: true
+        wire_request_carries_model: true
+        authorization_bearer_header_present: true
+        vectors_length_matches_input_length: true
+        vectors_in_input_order: true
+        all_vectors_same_dimensionality: true
+        dimensions_field_matches_inner_vector_length: true
+        prompt_tokens_maps_to_input_tokens: true
+        response_id_null_when_openai_omits: true

@@ -1,0 +1,187 @@
+# retrieval-provider §8.3 OpenAI-compatible /v1/embeddings — input_type is
+# a NO-OP on the symmetric wire (0077's graceful "absent ⇒ symmetric"
+# degradation, exercised on a symmetric mapping).
+#
+# This is the §8.3 counterpart to 013's / 020's input_type fixtures: where
+# TEI realizes input_type as `prompt_name` and Jina as `task`, the OpenAI
+# /v1/embeddings wire has NO query/document parameter at all, so the
+# mapping does NOT realize input_type on the wire (§8.3 *input_type*). The
+# fixture asserts BOTH halves of the contract:
+#
+#   1. WIRE: embed(config={input_type: "query"}) against a SYMMETRIC
+#      provider (NO query_prefix / document_prefix bound) produces a wire
+#      request with NO query/document/input_type/task field, and the
+#      `input` is sent VERBATIM (not prefixed) — byte-identical to the
+#      no-input_type request (case 2). The mapping does NOT error on
+#      input_type (the absent-symmetric default is correct for OpenAI's
+#      symmetric models, §8.3).
+#
+#   2. EVENT: input_type STILL flows into EmbeddingEvent.request_params
+#      (§3 — request-side parameter, same absence-is-meaningful semantics
+#      as `dimensions`), EVEN THOUGH the wire ignores it. The protocol
+#      knob and its wire realization are separate surfaces: the caller's
+#      intent is observable on the event regardless of whether THIS wire
+#      can express it. (Asserted via typed_observers / contains_event, the
+#      convention from 013 / 020.)
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 023's header (mapping: openai,
+# openai_embedding_provider, the OpenAI /v1/embeddings request + response
+# shapes, expected_wire_request / expected_wire_request_absent_keys /
+# expected_wire_headers) and 013's header (typed_observers /
+# contains_event asserting EmbeddingEvent.request_params). New
+# assertion vocabulary:
+#
+# - wire_body_byte_identical_to_symmetric_path: the with-input_type body
+#   is byte-identical to the no-input_type body (the symmetric-no-op
+#   proof); reused from 013's symmetric-default case.
+#
+# The openai_embedding_provider here binds NO query_prefix / document_prefix
+# (pure-symmetric OpenAI) — that is what makes input_type a true no-op on
+# the wire. The asymmetric-behind-compatible-endpoint case (where prefixes
+# ARE bound and input_type selects one client-side) is fixture 027.
+
+mapping: openai
+
+openai_embedding_provider:
+  base_url: "https://api.openai.invalid"
+  model: text-embedding-test
+  api_key: "test-openai-key"
+
+cases:
+  - name: input_type_query_is_noop_on_symmetric_wire
+    description: |
+      embed(config={input_type: "query"}) against a SYMMETRIC
+      openai_embedding_provider (no prefixes bound). The wire request MUST
+      NOT carry any query/document/input_type/task field and MUST send the
+      `input` VERBATIM ("how tall is the eiffel tower?", un-prefixed). The
+      body is exactly {model, input} — byte-identical to the
+      no-input_type request (case input_type_absent_same_body below). The
+      mapping MUST NOT error. input_type MUST STILL reach
+      EmbeddingEvent.request_params as "query" (§3) even though the wire
+      ignores it.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["how tall is the eiffel tower?"]
+          config:
+            input_type: query
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: text-embedding-test
+      input: ["how tall is the eiffel tower?"]
+    expected_wire_request_absent_keys: [input_type, task, dimensions, encoding_format]
+    expected_wire_headers:
+      Authorization: "Bearer test-openai-key"
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.10, 0.20, 0.30, 0.40]}
+          usage:
+            prompt_tokens: 8
+            total_tokens: 8
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: text-embedding-test
+          response_id: null
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: query
+      invariants:
+        wire_request_omits_input_type_field: true
+        wire_request_input_sent_verbatim: true
+        wire_body_byte_identical_to_symmetric_path: true
+        wire_request_carries_model: true
+        authorization_bearer_header_present: true
+        mapping_does_not_error_on_input_type: true
+        input_type_in_embedding_event_request_params: true
+        vectors_length_matches_input_length: true
+
+  - name: input_type_absent_same_body
+    description: |
+      embed() with NO config (input_type absent) against the same
+      symmetric provider, SAME input string as the case above. The wire
+      body MUST be exactly {model, input: ["how tall is the eiffel
+      tower?"]} — establishing the byte-identical baseline the
+      input_type: "query" case is compared against (proving input_type is
+      a true wire no-op, not merely "also sent"). EmbeddingEvent.request_params
+      MUST be the empty mapping (no input_type key) per the
+      absence-is-meaningful contract.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["how tall is the eiffel tower?"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: text-embedding-test
+      input: ["how tall is the eiffel tower?"]
+    expected_wire_request_absent_keys: [input_type, task, dimensions, encoding_format]
+    expected_wire_headers:
+      Authorization: "Bearer test-openai-key"
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.10, 0.20, 0.30, 0.40]}
+          usage:
+            prompt_tokens: 8
+            total_tokens: 8
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: text-embedding-test
+          response_id: null
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params: {}
+      invariants:
+        wire_request_omits_input_type_field: true
+        wire_request_carries_model: true
+        authorization_bearer_header_present: true
+        request_params_empty_when_input_type_absent: true
+        vectors_length_matches_input_length: true

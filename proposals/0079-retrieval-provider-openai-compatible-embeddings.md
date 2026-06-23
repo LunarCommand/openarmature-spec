@@ -1,9 +1,9 @@
 # 0079: OpenAI-Compatible Embeddings Wire Mapping
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-22
-- **Accepted:**
+- **Accepted:** 2026-06-22
 - **Targets:** spec/retrieval-provider/spec.md **§8 Wire-format mappings** (the section introduced by
   0077) — add **§8.3 OpenAI-compatible embeddings** covering `POST /v1/embeddings`, with a
   **configurable `base_url`** so the one mapping serves OpenAI *and* the broad OpenAI-compatible
@@ -93,7 +93,7 @@ shapes below were **verified against the OpenAI OpenAPI on 2026-06-22**; recorde
   field instead takes it through the extras-pass-through bag.
 - **Errors** — HTTP failures map to the §7 categories per the shared enumeration: `401` →
   `provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`; unknown model
-  (`404` / `400`) → `provider_invalid_model`; malformed / oversized request (`400`) →
+  (`404`) → `provider_invalid_model`; malformed / oversized request (`400`) →
   `provider_invalid_request`; malformed response → `provider_invalid_response`.
 
 ## Conformance test impact

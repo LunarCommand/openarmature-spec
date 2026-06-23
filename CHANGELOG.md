@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.74.0] — 2026-06-22
+
+**Added**
+
+- **retrieval-provider §8.3 OpenAI-compatible embeddings.** The third wire mapping (the ecosystem anchor): `base_url`-configurable `POST /v1/embeddings` covering OpenAI plus the OpenAI-compatible serving ecosystem (vLLM, LocalAI, Together, TEI's own OpenAI endpoint, …) — the retrieval analogue of llm-provider §8.1. Symmetric: the OpenAI `/v1/embeddings` wire has no query/document parameter, so 0077's `input_type` is **not realized** on it (absent ⇒ symmetric; for an asymmetric model behind a compatible endpoint, the optional §8.1 client-side `query_prefix` / `document_prefix` applies). Embeddings-only (OpenAI has no rerank API). `usage.prompt_tokens` → `EmbeddingUsage.input_tokens`; `Bearer` auth; `gen_ai.system="openai"`. ([proposal 0079](proposals/0079-retrieval-provider-openai-compatible-embeddings.md))
+- Five retrieval-provider conformance fixtures (`023`–`027`): the `/v1/embeddings` wire round-trip; `base_url` override; `dimensions` passthrough; `input_type` symmetric no-op (+ the `request_params` flow); and the client-side-prefix fallback for an asymmetric model behind a compatible endpoint. ([proposal 0079](proposals/0079-retrieval-provider-openai-compatible-embeddings.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Additive: §8.3 is a new wire mapping; no protocol-surface change (the `input_type` knob and §8 are 0077's), no renumber. Completes the retrieval wire-mapping batch — TEI §8.1 (self-hosted) / Jina §8.2 (hosted) / OpenAI-compatible §8.3 (ecosystem). ([proposal 0079](proposals/0079-retrieval-provider-openai-compatible-embeddings.md))
+
 ## [0.73.1] — 2026-06-22
 
 **Changed**

@@ -1,0 +1,91 @@
+# retrieval-provider §8.3 OpenAI-compatible /v1/embeddings — dimensions
+# passthrough (Matryoshka).
+#
+# Verifies that EmbeddingRuntimeConfig.dimensions maps onto the OpenAI
+# /v1/embeddings wire `dimensions` field (§8.3 /v1/embeddings: "dimensions
+# -> wire dimensions (Matryoshka, on models that support it) when set").
+# This is the §8.3 realization of the dimensions passthrough that 017
+# (TEI) and 020 (Jina) assert on their wires:
+#   - embed(config={dimensions: 4}) MUST send {model, input, dimensions: 4}
+#     on the wire (no input_type / task / encoding_format).
+#   - the response is a one-element data array of a length-4 vector; the
+#     EmbeddingResponse.dimensions field MUST equal the inner vector
+#     length (§4 cross-check invariant).
+#   - the Authorization: Bearer header is present.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 023's header (mapping: openai,
+# openai_embedding_provider construction block, the OpenAI /v1/embeddings
+# request + {object, data, model, usage} response shapes, the
+# expected_wire_request / expected_wire_headers vocabulary cross-ref'd to
+# 013 / 018).
+
+mapping: openai
+
+openai_embedding_provider:
+  base_url: "https://api.openai.invalid"
+  model: text-embedding-test
+  api_key: "test-openai-key"
+
+cases:
+  - name: dimensions_maps_to_wire_dimensions_field
+    description: |
+      embed(config={dimensions: 4}) — the §8.3 mapping sends OpenAI's
+      `dimensions` field (Matryoshka truncation) alongside {model, input}.
+      No input_type, so there is NO query/document field on the wire (the
+      OpenAI wire has none regardless). Single input; the response is a
+      one-element data array of length 4. Confirms the dimensions
+      request-param reaches the wire and the EmbeddingResponse.dimensions
+      field matches the inner vector length.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            dimensions: 4
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: text-embedding-test
+      input: ["alpha string"]
+      dimensions: 4
+    expected_wire_request_absent_keys: [encoding_format, input_type, task]
+    expected_wire_headers:
+      Authorization: "Bearer test-openai-key"
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.01, 0.02, 0.03, 0.04]}
+          usage:
+            prompt_tokens: 2
+            total_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: text-embedding-test
+          response_id: null
+          usage:
+            input_tokens: 2
+      invariants:
+        wire_request_carries_dimensions_field: true
+        wire_request_carries_model: true
+        authorization_bearer_header_present: true
+        vectors_length_matches_input_length: true
+        dimensions_field_matches_inner_vector_length: true
+        prompt_tokens_maps_to_input_tokens: true

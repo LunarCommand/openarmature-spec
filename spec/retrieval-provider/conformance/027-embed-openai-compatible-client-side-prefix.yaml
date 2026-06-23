@@ -1,0 +1,189 @@
+# retrieval-provider §8.3 OpenAI-compatible /v1/embeddings — client-side
+# prefix fallback (asymmetric model behind a compatible endpoint).
+#
+# The OpenAI /v1/embeddings wire has NO query/document field (§8.3), so
+# for an ASYMMETRIC model served behind a compatible endpoint (e.g. a
+# BGE / E5 model on vLLM) the ONLY way to express the query/document
+# distinction is the OPTIONAL client-side query_prefix / document_prefix
+# from 0077 §8.1, reused by §8.3: when bound at construction, input_type
+# selects which prefix to PREPEND to each input string BEFORE sending —
+# the wire `input` carries the PREFIXED text (there is still no
+# input_type / task field on the wire). This is the §8.3 realization of
+# 0077's client-side-prefix fallback, which no prior fixture exercised
+# (013-017 use TEI's server-side prompt_name; 020 uses Jina's task).
+#
+# This fixture binds query_prefix / document_prefix on the
+# openai_embedding_provider and asserts:
+#   - input_type: "query"    -> wire input = query_prefix + original text
+#   - input_type: "document" -> wire input = document_prefix + original
+#   - the wire request STILL omits any input_type / task field (the
+#     distinction lives entirely in the prefixed text, §8.3)
+#   - the Authorization: Bearer header is present
+#   - input_type still reaches EmbeddingEvent.request_params (§3), as in
+#     026 — the request_params carry the UN-prefixed caller intent, not
+#     the wire-prefixed string (the prefix is a wire-mapping detail).
+#
+# Contrast 026 (symmetric, NO prefixes bound -> input sent verbatim).
+# Here the SAME input_type that was a no-op in 026 now selects a prefix,
+# because the provider is constructed asymmetric.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 023's header (mapping: openai,
+# openai_embedding_provider construction block INCLUDING the optional
+# query_prefix / document_prefix, the OpenAI /v1/embeddings request +
+# response shapes, expected_wire_request / expected_wire_headers) and
+# 013's header (typed_observers / contains_event asserting
+# EmbeddingEvent.request_params). The query_prefix / document_prefix
+# construction keys are the §8.1 client-side prefix strings (operator-
+# supplied, model-specific; the spec does NOT enumerate per-model
+# prefixes — 0077 §8.1). The literal prefixes here ("query: " /
+# "passage: ", an E5-style scheme) are placeholders chosen to make the
+# prepend observable, not a normative per-model table.
+
+mapping: openai
+
+openai_embedding_provider:
+  base_url: "http://vllm.invalid"
+  model: e5-base-en-test
+  api_key: "test-openai-key"
+  query_prefix: "query: "
+  document_prefix: "passage: "
+
+cases:
+  - name: input_type_query_prepends_query_prefix_client_side
+    description: |
+      embed(config={input_type: "query"}) against an ASYMMETRIC
+      openai_embedding_provider with query_prefix "query: " /
+      document_prefix "passage: " bound. The OpenAI wire has no
+      query/document field, so the mapping PREPENDS query_prefix to the
+      input string client-side: the wire `input` MUST be
+      ["query: how tall is the eiffel tower?"] (prefixed), with NO
+      input_type / task field on the wire and the Authorization: Bearer
+      header present. input_type MUST reach EmbeddingEvent.request_params
+      as "query" (the UN-prefixed caller intent — the prefix is a wire
+      detail, §3).
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["how tall is the eiffel tower?"]
+          config:
+            input_type: query
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: e5-base-en-test
+      input: ["query: how tall is the eiffel tower?"]
+    expected_wire_request_absent_keys: [input_type, task, dimensions, encoding_format]
+    expected_wire_headers:
+      Authorization: "Bearer test-openai-key"
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: e5-base-en-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.10, 0.20, 0.30, 0.40]}
+          usage:
+            prompt_tokens: 9
+            total_tokens: 9
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: e5-base-en-test
+          response_id: null
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: query
+      invariants:
+        wire_request_input_carries_query_prefix: true
+        wire_request_omits_input_type_field: true
+        wire_request_carries_model: true
+        authorization_bearer_header_present: true
+        input_type_in_embedding_event_request_params: true
+        vectors_length_matches_input_length: true
+
+  - name: input_type_document_prepends_document_prefix_client_side
+    description: |
+      embed(config={input_type: "document"}) against the same asymmetric
+      provider: document_prefix "passage: " is prepended client-side, so
+      the wire `input` MUST be ["passage: the eiffel tower is 330 metres
+      tall."]. No input_type / task field on the wire; Authorization:
+      Bearer present. input_type MUST reach EmbeddingEvent.request_params
+      as "document".
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["the eiffel tower is 330 metres tall."]
+          config:
+            input_type: document
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: e5-base-en-test
+      input: ["passage: the eiffel tower is 330 metres tall."]
+    expected_wire_request_absent_keys: [input_type, task, dimensions, encoding_format]
+    expected_wire_headers:
+      Authorization: "Bearer test-openai-key"
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: e5-base-en-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.50, 0.60, 0.70, 0.80]}
+          usage:
+            prompt_tokens: 9
+            total_tokens: 9
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: e5-base-en-test
+          response_id: null
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: document
+      invariants:
+        wire_request_input_carries_document_prefix: true
+        wire_request_omits_input_type_field: true
+        wire_request_carries_model: true
+        authorization_bearer_header_present: true
+        input_type_in_embedding_event_request_params: true
+        vectors_length_matches_input_length: true
