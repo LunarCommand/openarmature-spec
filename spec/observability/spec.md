@@ -2000,7 +2000,7 @@ to also catch Langfuse-specific constraints early, per §3.4's MAY-expand allowa
 
 #### 8.4.1 Trace-level mapping (sourced from invocation span attributes)
 
-| OA attribute (per §5.1, §5.6) | Langfuse Trace field |
+| OA source | Langfuse Trace field |
 |---|---|
 | `openarmature.invocation_id` | `trace.id` — a 128-bit id as 32 lowercase hex. A UUID `invocation_id` maps to its hex form (dashes stripped); a non-UUID value maps to a deterministic `SHA-256`-based derivation, with the raw id also written to `trace.metadata.invocation_id`. See the *`trace.id` derivation* note below the table. |
 | `openarmature.correlation_id` | `trace.metadata.correlation_id` AND propagated to every observation's `metadata.correlation_id` per §8.5 |
@@ -2175,7 +2175,7 @@ either.
 
 #### 8.4.2 Observation-level mapping (sourced from node / subgraph / fan-out span attributes)
 
-| OA attribute (per §5.2, §5.3, §5.4, §5.6) | Langfuse Observation field |
+| OA source | Langfuse Observation field |
 |---|---|
 | `openarmature.node.name` | `observation.name` |
 | `openarmature.node.namespace` | `observation.metadata.namespace` (string array preserved as-is) |
