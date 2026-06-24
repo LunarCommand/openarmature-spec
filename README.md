@@ -87,8 +87,10 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-No proposals are currently in flight — every numbered proposal is Accepted. New
-work opens as a numbered Draft proposal under [`proposals/`](proposals/).
+Two proposals are currently in flight as Drafts:
+
+- [0080](proposals/0080-prompt-group-arity-enforcement.md) — **PromptGroup arity enforcement** (prompt-management): pins §10's two-or-more-members rule with a construction-time raise and a new `prompt_group_invalid` error category.
+- [0081](proposals/0081-conformance-adapter-value-matcher-vocabulary.md) — **value-matcher vocabulary** (conformance-adapter): a normative §5.10 enumeration of the fixture value-matcher set (inline tokens, assertion sub-keys, the exact-value+derivation idiom).
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
