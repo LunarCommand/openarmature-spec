@@ -1,17 +1,19 @@
 # graph-engine §6 LlmFailedEvent.error_type — OPTIONAL impl-level /
-# vendor-specific error type or code. Spec text describes two
-# acceptable styles: a vendor error code (e.g., "rate_limit_exceeded")
-# and an upstream exception class name (e.g., "RateLimitError").
-# Either style satisfies the field contract; null is valid when no
-# impl-side type is available.
+# vendor-specific error type or code. The field contract is permissive:
+# either a vendor error code or an upstream exception class name
+# satisfies it, and null is valid when no impl-side type is available.
+# These cases assert the PERMISSIVE contract — error_type is a non-empty
+# string (populated) or null — not a verbatim per-style value, so an impl
+# that picks either sourcing style conforms.
 
 cases:
   - name: error_type_populated_with_vendor_code_style
     description: |
-      Mocked provider raises provider_rate_limit with a vendor error
-      code surfaced as error_type ("rate_limit_exceeded"). Typed
-      event carries both the normative error_category and the
-      vendor-specific error_type.
+      Provider raises provider_rate_limit; the mocked vendor body carries
+      an error code. The typed event carries the normative error_category
+      and a populated (non-empty) error_type. The fixture asserts
+      error_type is populated, NOT a verbatim value — a vendor code or an
+      exception class name both satisfy the contract.
     state:
       fields:
         answer:
@@ -45,14 +47,14 @@ cases:
             event_type: LlmFailedEvent
             fields:
               error_category: provider_rate_limit
-              error_type: rate_limit_exceeded
+              error_type: "<any-string>"
 
   - name: error_type_populated_with_exception_class_name_style
     description: |
-      Mocked provider raises provider_rate_limit but the impl surfaces
-      error_type as the upstream exception class name
-      ("RateLimitError"). The field accepts either style — vendor code
-      or exception class — per the spec text.
+      Provider raises provider_rate_limit; the mocked vendor body carries
+      a class-name-style type. Like case 1, the fixture asserts error_type
+      is populated (non-empty) regardless of how the impl sources it; it
+      does not pin the sourcing style.
     state:
       fields:
         answer:
@@ -86,7 +88,7 @@ cases:
             event_type: LlmFailedEvent
             fields:
               error_category: provider_rate_limit
-              error_type: RateLimitError
+              error_type: "<any-string>"
 
   - name: error_type_null_when_no_impl_side_type_available
     description: |

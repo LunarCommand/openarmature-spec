@@ -118,10 +118,15 @@ A `ToolCall` record:
 | `signature` | Optional. An opaque provider-issued reasoning-continuity token, present only when a provider attaches reasoning-continuity signatures to tool calls (e.g. Gemini's `thoughtSignature`). Implementations MUST preserve it verbatim and pass it back to the same provider on round-trip; spec callers MUST NOT construct, modify, or interpret it. Provider-bound (§3.1.7); absent for providers that do not attach signatures to tool calls. |
 
 **Validation timing.** Implementations MUST validate message-shape constraints (per-role required
-fields, `tool_call_id` matching, etc.) at the boundary of `complete()` — before sending to the
-provider, and on the response before returning. Tool argument validation against the parameters
-schema happens at the same boundaries; under non-error responses, a malformed assistant `ToolCall`
-from the provider raises `provider_invalid_response` (§7).
+fields, `tool_call_id` matching, etc.) no later than the `complete()` boundary — before sending to the
+provider, and on the response before returning. A constraint over a single message (e.g. a per-role
+*required field's presence*) MAY be enforced earlier, at message construction, in implementations
+whose message types make it a required field; what MUST hold is that no message-shape-invalid request
+reaches the provider. Constraints that span the message list (e.g. a `tool` message's `tool_call_id`
+matching the `id` of an earlier assistant `ToolCall`) are enforced at the `complete()` boundary and
+raise `provider_invalid_request` (§7). Tool argument validation against the parameters schema happens
+at the same boundaries; under non-error responses, a malformed assistant `ToolCall` from the provider
+raises `provider_invalid_response` (§7).
 
 **Validation under `finish_reason: "error"`.** A degraded response MAY carry `tool_calls`, and
 those tool calls MAY be partially constructed: malformed argument JSON (truncated, syntactically
@@ -584,7 +589,11 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
   the §6 shape (missing required fields, invalid `tool_calls` structure, invalid JSON).
 - `provider_invalid_request` — the request was malformed before sending (per-role message
   constraints violated, `tool_call_id` does not match an earlier `assistant` tool call, duplicate
-  tool names, etc.). This category is raised by the implementation's pre-send validation. The
+  tool names, etc.). This category is raised by the implementation's pre-send validation — except
+  that a per-role *required field's presence* MAY instead be enforced at message construction (a
+  construction-time error, not this category) in implementations whose message types make it
+  required, per §3 *Validation timing*; the cross-message, value, and structural malformations that
+  reach the `complete()` boundary are the `provider_invalid_request` cases. The
   `tool_choice` parameter (§5) adds three validation failure modes routed through this category:
   (1) `tool_choice="required"` supplied with empty / absent `tools`; (2) `tool_choice={type: "tool",
   name: X}` supplied with empty / absent `tools`; (3) `tool_choice={type: "tool", name: X}`
