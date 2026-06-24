@@ -1,8 +1,9 @@
 # 0081: Conformance-Adapter Value-Matcher Vocabulary
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-23
+- **Accepted:** 2026-06-23
 - **Targets:** conformance-adapter/spec.md **§5 Directive vocabulary** — add **§5.10 Value matchers**,
   a normative enumeration of the matcher/placeholder vocabulary fixtures draw on; and update the
   **§3.2** worked-example placeholder list to cite §5.10 as the normative home (the per-directory

@@ -132,7 +132,9 @@ comment block documenting the observability fixture suite's per-capability harne
   `expected.no_global_provider_spans`.
 - Attribute placeholder syntax: `<uuid>` matches any canonical UUIDv4, `<any-string>` matches any
   non-empty string, `<trace_id_X>` matches an opaque trace_id with first-occurrence binding for
-  cross-reference.
+  cross-reference. (These inline value-tokens are normatively enumerated in §5.10 *Value matchers*,
+  alongside the assertion sub-keys and the exact-value+derivation idiom; this list is the
+  observability-suite example of them.)
 
 That comment block is normative for the observability fixture suite even though it isn't part of this
 capability spec. Implementations MUST honor per-directory harness notes when the fixture's YAML
@@ -740,6 +742,44 @@ enumeration to the canonical set below to keep this list maintainable.
 New proposals that add canonical predicates extend this section. Fixture-specific predicates added
 in the course of a per-fixture exercise stay in the fixture's prose; the canonical promotion
 happens when a predicate recurs across multiple fixtures or capabilities.
+
+### 5.10 Value matchers
+
+Several assertion shapes check a field's value by rule rather than against a hard-coded literal —
+either matching it against a pattern, or deriving / injecting the expected value. The vocabulary
+spans three idioms; adapters MUST interpret each uniformly so a fixture means the same thing across
+implementations.
+
+**Inline value-tokens** — a token written in an `expected:` mapping where a literal scalar value
+would go; the adapter matches the runtime field value against the token rather than comparing it to a
+literal:
+
+- **`<uuid>`** — matches any canonical UUIDv4.
+- **`<any-string>`** — matches any **non-empty** string. The empty string `""` does NOT match.
+- **`<trace_id_X>`** — matches an opaque `trace_id` with **first-occurrence binding**, where `X` is
+  an arbitrary identifier suffix (e.g. `<trace_id_parent>`, `<trace_id_main>`, `<trace_id_instance_0>`).
+  The token binds to the value at its first occurrence within a case; every later occurrence of the
+  **exact same token string** MUST equal that bound value, and distinct token strings bind
+  independently. Used for cross-referencing ids within one case.
+
+**Assertion sub-keys** — appear as *keys inside a field's assertion mapping*, not as a bare value
+(used where a field's expected value is a mapping of assertions rather than a scalar):
+
+- **`non_empty_string: true`** — the field is a non-empty string. Semantically identical to
+  `<any-string>`; it is the sub-key spelling for assertion-mapping contexts.
+- **`harness_parameterized: <name>`** — the field equals the harness-injected parameter named
+  `<name>` (e.g. the implementation's own `implementation_name`). This is an **equality check against
+  an injected value**, not a wildcard.
+
+**Exact-value + named derivation invariant** — not a matcher: an exact expected value derived from
+inputs by a documented rule (e.g. a Langfuse `trace.id` equal to a caller UUID's 32-character
+dashes-stripped hex), paired with a named invariant predicate (per §5.9, e.g.
+`langfuse_trace_id_is_uuid_hex_dashes_stripped`). Recorded here as the distinct third idiom so it is
+not conflated with the wildcard matchers above.
+
+This enumeration is the current authoritative set, not a frozen one — future proposals extend §5.10
+the same way they extend the rest of §5. The observability fixture suite's per-directory header
+comment (per §3.2) is a navigational example of the inline tokens; §5.10 is their normative home.
 
 ## 6. Harness primitives
 
