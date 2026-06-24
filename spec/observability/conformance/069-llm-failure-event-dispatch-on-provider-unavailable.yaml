@@ -24,6 +24,7 @@ cases:
       ask:
         calls_llm:
           messages: [{role: user, content: "summarize"}]
+          model: gpt-test
           stores_response_in: answer
     edges:
       - {from: ask, to: END}

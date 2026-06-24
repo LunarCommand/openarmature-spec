@@ -7,10 +7,11 @@
 cases:
   - name: llm_failure_event_dispatched_on_provider_invalid_request
     description: |
-      Graph node sends a malformed message (tool-role message
-      without the required tool_call_id field, per llm-provider §3
-      message-shape rules). The impl's pre-send validation raises
-      provider_invalid_request before contacting the provider. The
+      Graph node sends a malformed message — a tool-role message whose
+      tool_call_id matches no earlier assistant ToolCall (per llm-provider
+      §3). The id is present, so the message is constructible in every
+      impl; the cross-message matching check at the complete() boundary
+      raises provider_invalid_request before contacting the provider. The
       typed event MUST fire with error_category set accordingly.
     state:
       fields:
@@ -21,11 +22,14 @@ cases:
     nodes:
       ask:
         calls_llm:
-          # Malformed: tool-role message MUST carry tool_call_id per
-          # llm-provider §3; the impl's pre-send validation raises
-          # provider_invalid_request before any wire contact.
+          # Malformed: the tool-role message carries a tool_call_id that
+          # matches no earlier assistant ToolCall (per llm-provider §3).
+          # The id is present (so the message is constructible in every
+          # impl), but unmatched — the cross-message matching check at the
+          # complete() boundary raises provider_invalid_request before any
+          # wire contact.
           messages:
-            - {role: tool, content: "result from earlier call"}
+            - {role: tool, content: "result from earlier call", tool_call_id: "call_unmatched"}
           stores_response_in: answer
     edges:
       - {from: ask, to: END}

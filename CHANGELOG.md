@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.76.1] — 2026-06-23
+
+**Fixed**
+
+- **observability conformance fixtures `069` / `070` / `073` — corrected to match the contracts they test.** Wiring these `LlmFailedEvent` fixtures (proposal 0058) into a reference adapter surfaced three a conformant implementation couldn't drive as written: `069` asserted a request `model` it never declared (now declares `model: gpt-test`, like `068`); `070` used an **absent** `tool_call_id` to drive a boundary `provider_invalid_request`, but a typed implementation enforces a required field's presence at construction — reshaped to a present-but-**unmatched** `tool_call_id`, which is constructible everywhere and raises at the `complete()` boundary; `073` asserted the vendor body's `error.type` verbatim, stricter than its own "either style satisfies" contract — relaxed to the permissive contract (`error_type` is a non-empty string, or null). ([proposal 0058](proposals/0058-typed-llm-failure-event.md))
+- **llm-provider §3 / §7 — validation-timing clarification.** Split the message-shape rule's enforcement by layer: a single-message constraint (e.g. a per-role required field's *presence*) MAY be enforced at message construction in implementations whose message types make it required, while constraints that span the message list (e.g. a `tool` message's `tool_call_id` matching an earlier assistant `ToolCall`) are enforced at the `complete()` boundary and raise `provider_invalid_request`. §7's `provider_invalid_request` definition gains the matching caveat so the two sections agree. No behavior change — conformant implementations already do this; the text was imprecise in implying all message-shape validation happens at the boundary.
+
+**Notes**
+
+- **PATCH (pre-1.0).** Conformance-fixture corrections (no contract change — the fixtures were stricter than, or mis-targeted, the behaviors they test) plus a validation-timing clarification documenting existing conformant behavior. No fixture additions; no emitted-key or protocol change.
+
 ## [0.76.0] — 2026-06-23
 
 **Added**
