@@ -757,15 +757,19 @@ literal. They are of two kinds — **format matchers** (match any value of a giv
 
 - **`<uuid>`** — (format) matches any canonical UUIDv4.
 - **`<uuid-hex>`** — (format) matches a 32-character lowercase hex string — a UUID's dashes-stripped
-  hex form (e.g. a derived Langfuse `trace.id`).
+  hex form (e.g. a derived Langfuse `trace.id`). A disambiguating suffix MAY be appended
+  (`<uuid-hex-1>`, `<uuid-hex-5-a>`) to label distinct expected ids within a case for readability;
+  each labeled form independently matches any value of the format (the suffix does not assert
+  cross-equality).
 - **`<any-string>`** — (format) matches any **non-empty** string. The empty string `""` does NOT match.
-- **`<name_X>` first-occurrence-binding tokens** — an opaque-id token whose `<name>` identifies the
-  id being cross-referenced and whose suffix distinguishes independent bindings. It binds to the
-  value at its first occurrence within a case; every later occurrence of the **exact same token
-  string** MUST equal that bound value, and distinct token strings bind independently. Used for id
-  consistency within one case. The `<name>` set is **suite-defined** (per §3.2): the observability
-  suite uses `<trace_id_X>` (`<trace_id_parent>`, `<trace_id_instance_0>`, …), `<corr_id_N>`,
-  `<span_id_X>`, `<invocation_id_X>`, and binding variants of `<uuid-hex>`.
+- **`<name_X>` first-occurrence-binding tokens** — an **opaque** id (no fixed format) whose `<name>`
+  identifies the id being cross-referenced and whose suffix distinguishes independent bindings. It
+  binds to the value at its first occurrence within a case; every later occurrence of the **exact
+  same token string** MUST equal that bound value, and distinct token strings bind independently.
+  Used for id consistency within one case. The concrete `<name>` set is **suite-defined**, documented
+  in the suite's fixture-header notes (the §3.2 per-directory mechanism): the observability suite uses
+  `<trace_id_X>` (`<trace_id_parent>`, `<trace_id_instance_0>`, …), `<corr_id_N>`, `<span_id_X>`, and
+  `<invocation_id_X>`.
 
 **Assertion sub-keys** — appear as *keys inside a field's assertion mapping*, not as a bare value
 (used where a field's expected value is a mapping of assertions rather than a scalar):
