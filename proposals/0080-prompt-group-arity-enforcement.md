@@ -1,8 +1,9 @@
 # 0080: PromptGroup Arity Enforcement
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-23
+- **Accepted:** 2026-06-23
 - **Targets:** prompt-management/spec.md **§10 PromptGroup** (pin the enforcement point —
   constructing a group with fewer than two members MUST raise, at construction) + **§11 Errors**
   (add a `prompt_group_invalid` category). Plus new conformance fixtures under

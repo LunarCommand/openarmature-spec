@@ -1,0 +1,53 @@
+# prompt-management §10 + §11: PromptGroup arity enforcement. Constructing a
+# PromptGroup with fewer than two members (empty or single-member) is
+# spec-invalid per §10 and MUST raise prompt_group_invalid (§11) at
+# construction. Complements 011 (valid N>2). Verifies proposal 0080.
+#
+# The construct_prompt_group call carries an `expected.raises.category`
+# assertion (the same categorized-raise shape the fetch/render fixtures use,
+# e.g. 002/005) — the adapter asserts on the error `category` only, so the
+# host-language exception type is unconstrained.
+
+cases:
+  - name: single_member_group_rejected
+    description: |
+      Constructing a PromptGroup with exactly one member violates §10's
+      two-or-more-members rule. Construction MUST raise prompt_group_invalid
+      (§11) at construction time, before any render or LLM call.
+    backends:
+      - name: local
+        prompts:
+          - name: classify
+            label: production
+            version: v1
+            template: "Classify: {{ input }}"
+            template_hash: "sha256:cls"
+    manager:
+      backends: [local]
+    calls:
+      - target: manager
+        operation: get
+        name: classify
+        label: production
+        variables: {input: "what's the weather?"}
+        capture_as: m1
+      - target: construct_prompt_group
+        group_name: "single_member"
+        members_refs: [m1]
+        expected:
+          raises:
+            category: prompt_group_invalid
+
+  - name: empty_group_rejected
+    description: |
+      Constructing a PromptGroup with zero members violates §10's
+      two-or-more-members rule. Construction MUST raise prompt_group_invalid
+      (§11) at construction. No backend/manager is needed — the group is
+      constructed directly from an empty member list.
+    calls:
+      - target: construct_prompt_group
+        group_name: "empty"
+        members_refs: []
+        expected:
+          raises:
+            category: prompt_group_invalid

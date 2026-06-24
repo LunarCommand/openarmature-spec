@@ -578,9 +578,14 @@ observability attributes in §12 — `openarmature.prompt.name`,
 `openarmature.prompt.version`, `openarmature.prompt.label` —
 without needing a degenerate group-of-one.)
 
+Constructing a `PromptGroup` whose `members` contains fewer than two elements (an empty or
+single-member group) MUST raise `prompt_group_invalid` (§11). Enforcement is at
+**construction time** — the earliest point at which the member set is known — so an invalid
+group never reaches rendering, an LLM call, or observability emission.
+
 ## 11. Errors
 
-Three canonical error categories:
+Four canonical error categories:
 
 - `prompt_not_found` — no prompt matches `(name, label)`. Raised by
   `PromptBackend.fetch()` and propagated by `PromptManager.fetch()` per §9 fallback
@@ -628,6 +633,16 @@ Three canonical error categories:
   `PromptBackend.fetch()`. Transient — the same fetch may succeed when the backend
   recovers. `PromptManager.fetch()` raises this only after ALL composed backends raise
   it (per §9).
+
+- `prompt_group_invalid` — `PromptGroup` construction violated a §10 group-validity rule.
+  Raised at `PromptGroup` construction. Currently raised when:
+  - `members` contains fewer than two elements (an empty or single-member group),
+    violating §10's two-or-more-members rule.
+
+  Non-transient (a caller contract violation; constructing again with the same members
+  will not succeed without changing them). Future group-validity rules (e.g. duplicate or
+  null members) extend this trigger list under the same category rather than minting new
+  ones.
 
 Each error MUST expose a `category` identifier (matching the strings above, per the
 language's idiom — error class, error code, tagged discriminant). Provider-originated
