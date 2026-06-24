@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.75.0] — 2026-06-23
+
+**Added**
+
+- **prompt-management §10 / §11 — `PromptGroup` arity enforcement.** §10's two-or-more-members rule gains teeth: constructing a `PromptGroup` with fewer than two members (empty or single-member) MUST now raise at **construction time**, and §11 adds a `prompt_group_invalid` error category (a general group-construction-validity bucket modeled on `prompt_render_error` — arity is its first trigger). Closes the gap the fixture-066 correction (v0.74.1) exposed: a normative `MUST` with no enforcement point, no error category, and no conformance fixture pinning it. ([proposal 0080](proposals/0080-prompt-group-arity-enforcement.md))
+- New prompt-management conformance fixture `035` (single-member + empty group construction each raise `prompt_group_invalid`), complementing `011` (valid N>2). ([proposal 0080](proposals/0080-prompt-group-arity-enforcement.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Additive: a new error category + the pinned enforcement of an already-stated `MUST` + a new fixture. The valid-group contract is unchanged — no conforming construction starts failing. ([proposal 0080](proposals/0080-prompt-group-arity-enforcement.md))
+
 ## [0.74.1] — 2026-06-23
 
 **Fixed**
