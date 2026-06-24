@@ -750,15 +750,17 @@ either matching it against a pattern, or deriving / injecting the expected value
 spans three idioms; adapters MUST interpret each uniformly so a fixture means the same thing across
 implementations.
 
-**Inline value-tokens** — appear as the expected *scalar value* in an `expected:` mapping (the
-field's value is the token string):
+**Inline value-tokens** — a token written in an `expected:` mapping where a literal scalar value
+would go; the adapter matches the runtime field value against the token rather than comparing it to a
+literal:
 
 - **`<uuid>`** — matches any canonical UUIDv4.
 - **`<any-string>`** — matches any **non-empty** string. The empty string `""` does NOT match.
-- **`<trace_id_X>`** — matches an opaque `trace_id` with **first-occurrence binding**: the token
-  binds to the value at its first occurrence within a case, and every later occurrence of the same
-  token (`<trace_id_0>`, `<trace_id_1>`, …) MUST equal that bound value. Used for cross-referencing
-  ids within one case.
+- **`<trace_id_X>`** — matches an opaque `trace_id` with **first-occurrence binding**, where `X` is
+  an arbitrary identifier suffix (e.g. `<trace_id_parent>`, `<trace_id_main>`, `<trace_id_instance_0>`).
+  The token binds to the value at its first occurrence within a case; every later occurrence of the
+  **exact same token string** MUST equal that bound value, and distinct token strings bind
+  independently. Used for cross-referencing ids within one case.
 
 **Assertion sub-keys** — appear as *keys inside a field's assertion mapping*, not as a bare value
 (used where a field's expected value is a mapping of assertions rather than a scalar):
