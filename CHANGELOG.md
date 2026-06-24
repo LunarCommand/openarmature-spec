@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.76.0] — 2026-06-23
+
+**Added**
+
+- **conformance-adapter §5.10 — *Value matchers*.** Promotes the fixture value-matcher vocabulary into a normative §5 enumeration: inline value-tokens (`<uuid>`, `<any-string>` = **non-empty**, `<trace_id_X>` = first-occurrence binding), assertion sub-keys (`non_empty_string`, `harness_parameterized`), and the exact-value + named-derivation-invariant idiom. Previously the inline tokens lived only in a §3.2 worked example and the sub-keys in fixture prose; §5.10 gives every adapter one defined set to implement uniformly, and §3.2's placeholder list now cites §5.10 as the normative home. ([proposal 0081](proposals/0081-conformance-adapter-value-matcher-vocabulary.md))
+
+**Notes**
+
+- **MINOR bump (pre-1.0).** Extends the §5 directive vocabulary (per the capability's §1 framing). Largely descriptive of matchers already in use; the one substantive tightening is that `<any-string>` = non-empty is now normative (an adapter accepting the empty string becomes non-conforming). No fixture changes. ([proposal 0081](proposals/0081-conformance-adapter-value-matcher-vocabulary.md))
+
 ## [0.75.0] — 2026-06-23
 
 **Added**
