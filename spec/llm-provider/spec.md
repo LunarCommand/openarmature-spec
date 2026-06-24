@@ -118,7 +118,7 @@ A `ToolCall` record:
 | `signature` | Optional. An opaque provider-issued reasoning-continuity token, present only when a provider attaches reasoning-continuity signatures to tool calls (e.g. Gemini's `thoughtSignature`). Implementations MUST preserve it verbatim and pass it back to the same provider on round-trip; spec callers MUST NOT construct, modify, or interpret it. Provider-bound (§3.1.7); absent for providers that do not attach signatures to tool calls. |
 
 **Validation timing.** Implementations MUST validate message-shape constraints (per-role required
-fields, `tool_call_id` matching, etc.) at the boundary of `complete()` — before sending to the
+fields, `tool_call_id` matching, etc.) no later than the `complete()` boundary — before sending to the
 provider, and on the response before returning. A constraint over a single message (e.g. a per-role
 *required field's presence*) MAY be enforced earlier, at message construction, in implementations
 whose message types make it a required field; what MUST hold is that no message-shape-invalid request
