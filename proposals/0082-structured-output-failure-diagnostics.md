@@ -35,10 +35,10 @@ deliberately: it mirrors the request side plus `error_category` / `error_type` /
 absent from the failure variant — no response was received."*
 
 **That premise has exactly one exception, and it is the category that needs response-side data most.**
-Of the nine §7 categories, eight describe a call that produced no usable response — authentication,
-provider-unavailable, invalid-model, model-not-loaded, rate-limit, invalid-request,
-unsupported-content-block, and (wire-shape malformation) invalid-response. For those, "no response was
-received" is correct. But `structured_output_invalid` is structurally a **completion whose final
+Of the nine §7 categories, eight describe a call that produced no usable response —
+`provider_authentication`, `provider_unavailable`, `provider_invalid_model`, `provider_model_not_loaded`,
+`provider_rate_limit`, `provider_invalid_request`, `provider_unsupported_content_block`, and (wire-shape
+malformation) `provider_invalid_response`. For those, "no response was received" is correct. But `structured_output_invalid` is structurally a **completion whose final
 validation gate failed** (§7): the provider returned content, the model produced output, and the parse
 or schema-validation step rejected it. The wire response is intact; everything the success variant
 carries — `output_content`, `finish_reason`, `usage`, `response_id`, `response_model` — genuinely exists
