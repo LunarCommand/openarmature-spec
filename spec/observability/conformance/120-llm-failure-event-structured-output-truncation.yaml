@@ -1,0 +1,104 @@
+# graph-engine §6 LlmFailedEvent response-side surface on a truncated
+# structured-output failure (proposal 0082). The mock provider returns a
+# 200 whose content is TRUNCATED JSON with finish_reason "length" (the
+# model hit max_tokens), validated against a response_schema. The call
+# raises structured_output_invalid (llm-provider §7); the typed event
+# carries the response-side surface populated FROM the received response:
+# output_content (verbatim truncated bytes), finish_reason "length", usage
+# (literal mock token counts, completion_tokens at the max_tokens ceiling),
+# response_id, response_model. NO LlmCompletionEvent fires (0058 mutual
+# exclusion). The exception still raises (asserted via the 069 dispatch
+# pattern: expected_error + the exception_propagates invariant).
+#
+# Harness note (per conformance-adapter §3.2): `calls_llm.response_schema`
+# carries the JSON Schema the node passes to complete() — the same schema
+# shape the llm-provider structured-output fixtures (022/023) put under a
+# call's `response_schema`. With a schema present and the returned content
+# failing to parse/validate, the impl raises structured_output_invalid per
+# llm-provider §7.
+
+cases:
+  - name: llm_failure_event_structured_output_truncation
+    description: |
+      One LLM-calling node passing a response_schema. The mock returns a
+      200 whose assistant content is truncated JSON (cut off mid-output)
+      with finish_reason "length"; usage reports completion_tokens at the
+      configured max_tokens ceiling (16). complete() raises
+      structured_output_invalid. The harness asserts:
+      - exactly one LlmFailedEvent observed, error_category
+        "structured_output_invalid"
+      - finish_reason "length" (the truncation signal)
+      - output_content = the verbatim truncated bytes
+      - usage = the mock's literal token counts
+      - response_id / response_model present (from the received response)
+      - zero LlmCompletionEvent (0058 mutual exclusion)
+      - the exception propagates out of complete()
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+          config:
+            max_tokens: 16
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-120
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test-v2
+          choices:
+            # Truncated JSON — cut off mid-output (max_tokens hit).
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":'}, finish_reason: length}
+          usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              error_category: structured_output_invalid
+              node_name: ask
+              namespace: [ask]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+              # Response-side surface — populated FROM the received response
+              # for structured_output_invalid (proposal 0082).
+              finish_reason: length
+              output_content: '{"name":"Alice","age":'
+              usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
+              response_id: cc-120
+              response_model: gpt-test-v2
+          event_count:
+            event_type: LlmCompletionEvent
+            count: 0
+      invariants:
+        exactly_one_llm_failed_event_observed: true
+        zero_llm_completion_events_on_failed_call: true
+        exception_propagates_alongside_typed_event: true

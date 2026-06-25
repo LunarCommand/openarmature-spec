@@ -4,6 +4,21 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.77.0] — 2026-06-25
+
+**Added**
+
+- **graph-engine §6 — `LlmFailedEvent` response-side surface for structured-output failures.** A `structured_output_invalid` failure is the one llm-provider §7 category where the model *did* return a response (content that failed downstream parse/validation), so `LlmFailedEvent` now carries five of `LlmCompletionEvent`'s response-side fields (all but `output_tool_calls`, which a structured-output failure never has) — `output_content`, `finish_reason`, `usage`, `response_id`, `response_model` — populated for that category and null for every other (no response received). Observers can now triage a truncation (`finish_reason == "length"` — the model hit `max_tokens`) from a model that finished but emitted malformed or schema-violating JSON, and the failed generation renders with its real output, token usage, and stop reason instead of a null, zero-token record. ([proposal 0082](proposals/0082-structured-output-failure-diagnostics.md))
+
+**Changed**
+
+- **llm-provider §7 — the `structured_output_invalid` error additionally exposes the response's normalized `finish_reason` and token `usage`** (both available from the received response, since the failure is a downstream parse/validation step on an intact wire response). This makes the §7-level retry note actionable per-failure and reconciles §8.2.5's existing "surfaces the mapped `finish_reason`" statement with §7's error contract; the non-transient-by-default classification is unchanged. ([proposal 0082](proposals/0082-structured-output-failure-diagnostics.md))
+- **observability — the response-side surface renders on both bundled backends.** §5.5.7 reconciled (response-side fields are absent for the §7 categories with no response, *with the `structured_output_invalid` carve-out*); §8.4.3 — the bundled Langfuse failed Generation populates `output` / `usage` / `metadata.finish_reason` for `structured_output_invalid`, in addition to its `ERROR` level and including the call-level-retry terminal-failure path; §5.5.1 / §5.5.3 — the OTel error span carries the same attributes; §11.2 — a `structured_output_invalid` failure (alone among failures) records the `openarmature.gen_ai.client.token.usage` metric, since it carries a usage record. ([proposal 0082](proposals/0082-structured-output-failure-diagnostics.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Purely additive on the event / error surfaces — observers and callers that do not read the new fields are unaffected. New observability conformance fixtures `120`–`125` (truncation / schema-mismatch / null-on-non-body-failure + Langfuse and OTel rendering + the token-usage metric); llm-provider fixtures `022` / `023` updated to assert the now-required `finish_reason` + `usage`. The observability suite gains a `calls_llm.response_schema` harness directive (documented per conformance-adapter §3.2) so the structured-output cases drive the real failure path. Also tightened a §5.5.7 cross-reference (the `LlmFailedEvent` framing cited §8.7 *Generation rendering* for the Langfuse generation **error**; the error-level mapping is §8.4.2).
+
 ## [0.76.1] — 2026-06-23
 
 **Fixed**

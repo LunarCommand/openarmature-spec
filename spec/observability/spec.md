@@ -1275,11 +1275,18 @@ graph-engine §6) on every LLM call failure that raises one of the llm-provider 
 categories. The typed event carries the same identity / scoping / request-side field surface
 `LlmCompletionEvent` carries, plus the failure-specific `error_category` / `error_type` /
 `error_message` fields sourced from the raised exception. Response-side fields (`response_id`,
-`response_model`, `usage`, `output_content`, `finish_reason`) are absent from the failure variant
-— no response was received.
+`response_model`, `usage`, `output_content`, `finish_reason`) are absent from the failure variant for
+the §7 categories where no response was received — **with one exception: a `structured_output_invalid`
+failure carries the response-side surface (`output_content` — the verbatim content that failed
+validation — plus `finish_reason`, `usage`, `response_id`, `response_model`), because the provider did
+return a response (content that failed downstream parse or validation). The OTel error span and the
+Langfuse failed Generation surface it on the same attributes / fields the success path uses (§5.5.1 /
+§5.5.3 / §8.4.3), so observers see what the model returned, why it stopped (`finish_reason == "length"`
+signals truncation), and what it cost — instead of a null, zero-token record.** (`error_message` carries
+the §7 failure description for this category, per graph-engine §6.)
 
 Observers consuming the typed event for backend-specific rendering (Langfuse generation error per
-§8.7, OTel span error status per §5.5, custom queryable observer accumulators per §9) MAY filter
+§8.4.2, OTel span error status per §5.5, custom queryable observer accumulators per §9) MAY filter
 via type discrimination (`isinstance(event, LlmFailedEvent)` or per-language idiomatic equivalent).
 The success and failure variants are mutually exclusive on a given LLM call; observers needing
 both outcome sides handle them as two separate type-discrimination branches.
@@ -2219,6 +2226,16 @@ condition in the Langfuse UI; this is RECOMMENDED but not MUST (different vendor
 different "soft error" semantics, and the OA error category mechanism in §4.2 covers hard
 failures via the `openarmature.error.category` mapping above).
 
+**Failed Generation for `structured_output_invalid`.** On a `structured_output_invalid` failure (the
+graph-engine §6 `LlmFailedEvent` response-side surface, per §5.5.7), the **failed** Generation populates
+the same Generation fields the table above maps for a success — `generation.output` from `output_content`
+(payload-gated per §5.5.4), `generation.usage` from the usage record, and
+`generation.metadata.finish_reason` / `response_model` / `response_id` — **in addition to** its
+`level = "ERROR"` + `openarmature.error.category` mapping (§8.4.2), not in place of it. The failed
+generation thus shows the raw output, real token usage, and the stop reason (`finish_reason == "length"`
+= truncation) rather than null / zero. Every other failure category carries no response, so its failed
+Generation has `output` / `usage` absent as before.
+
 **Call-level retry — one terminal Generation per call.** §5.5 emits N per-attempt OTel spans under
 call-level retry (llm-provider §7.1, disambiguated by `openarmature.llm.attempt_index`), but the
 Langfuse mapping renders **exactly one Generation per `complete()` call**, not one per attempt — it
@@ -2226,7 +2243,10 @@ maps to the logical call's terminal outcome, so the per-attempt detail stays the
 only. On a successful call (after any retries) the single Generation is the terminal completion the
 typed `LlmCompletionEvent` reports (§5.5.7, fired per completion), carrying the response (usage /
 output / finish_reason); on retry exhaustion it is the terminal failed Generation
-(`observation.level = "ERROR"` + the §4 category, per the §8.4.2 mapping). This differs from **node-level** retry (pipeline-utilities §6.1) —
+(`observation.level = "ERROR"` + the §4 category, per the §8.4.2 mapping — and, when that terminal failure
+is `structured_output_invalid`, additionally carrying `generation.output` / `usage` /
+`metadata.finish_reason` from the `LlmFailedEvent` response-side surface, per the *Failed Generation*
+note above). This differs from **node-level** retry (pipeline-utilities §6.1) —
 where each node attempt is its own logical run and §8.3 renders one observation per attempt, keyed
 by `observation.metadata.attempt_index`.
 
@@ -2724,8 +2744,11 @@ prefix). Recording cadence under call-level retry is covered in *Call-level retr
 **Call-level retry.** Under call-level retry (llm-provider §7.1, surfaced as N attempt spans per §5.5),
 the duration histogram records **once per attempt** — each attempt is a real latency sample, and a
 failed attempt carries `error.type` (§11.3) — matching the per-attempt span model. The token-usage
-histogram records **only for an attempt that returned a usage record**; failed attempts have no
-response and contribute nothing. The attempt index is deliberately NOT a dimension (it would create
+histogram records **only for an attempt that returned a usage record** — failed attempts that received
+no response contribute nothing, **but a `structured_output_invalid` failure carries a usage record (the
+graph-engine §6 `LlmFailedEvent.usage` surface, per §5.5.7) and records token usage like a completion**
+(the response was received; tokens were consumed; the duration histogram and its `error.type` dimension
+per §11.3 are unchanged). The attempt index is deliberately NOT a dimension (it would create
 unbounded cardinality); attempts are disambiguated on the spans, not the metrics.
 
 The instruments use an `openarmature.gen_ai.*` namespace (not `openarmature.llm.*`) because they are

@@ -10,7 +10,9 @@ that is not valid JSON (truncated body). MUST raise
 - §7 `structured_output_invalid` — raised when the provider's content
   cannot be parsed as JSON.
 - §7 error payload — MUST expose the requested schema, the raw response
-  content, and a failure description.
+  content, a failure description, and (per proposal 0082) the response's
+  normalized `finish_reason` and token `usage`, sourced from the received
+  (but unparseable) response.
 
 **What passes:**
 
@@ -18,12 +20,15 @@ that is not valid JSON (truncated body). MUST raise
 - The error payload carries the requested `response_schema`, the raw
   response bytes (`'{"name":"Alice","age":'`), and a parse-failure
   description.
+- The error also carries the response's `finish_reason` (`"stop"`) and
+  `usage` (the body's literal token counts), per proposal 0082.
 
 **What fails:**
 
 - A different error category is raised (e.g.,
   `provider_invalid_response` — but that's wire-shape malformation, not
   schema-content failure).
-- The error payload is missing the schema, raw content, or description.
+- The error payload is missing the schema, raw content, description,
+  `finish_reason`, or `usage`.
 - The call returns normally with `parsed` absent — would mean the
   validation step was skipped.

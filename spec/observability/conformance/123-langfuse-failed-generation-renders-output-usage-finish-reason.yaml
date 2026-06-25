@@ -1,0 +1,164 @@
+# observability §8.4.2 / §8.4.3 (proposal 0082): on a structured_output_invalid
+# terminal failure, the bundled Langfuse observer's FAILED Generation populates
+# the same Generation fields a success would — generation.output (from
+# output_content, payload-gated per §5.5.4), generation.usage (from the usage
+# record), generation.metadata.finish_reason / response_model / response_id —
+# IN ADDITION to its level "ERROR" + openarmature.error.category mapping
+# (§8.4.2), not in place of it. The failed generation thus shows the raw output,
+# real token usage, and stop reason instead of null / zero.
+#
+# Drives the fixture-120 truncation case through the Langfuse observer. Case 1
+# is payload-on; case 2 is the payload-disabled variant (disable_provider_payload
+# True) — generation.output is redacted while usage / finish_reason / ERROR level
+# / statusMessage stay, mirroring the §5.5.4 gating idiom fixtures 108 / 013 use.
+#
+# Harness note (per conformance-adapter §3.2): `calls_llm.response_schema`
+# carries the JSON Schema the node passes to complete(), per the 022/023
+# llm-provider structured-output fixtures.
+
+cases:
+  - name: failed_generation_renders_output_usage_finish_reason_payload_on
+    description: |
+      Truncation failure (mock returns truncated JSON, finish_reason
+      "length", usage with completion_tokens at the max_tokens ceiling)
+      through the Langfuse observer with disable_provider_payload=False.
+      The failed Generation MUST carry level "ERROR" + statusMessage
+      "structured_output_invalid" AND generation.output = the raw truncated
+      bytes, generation.usage = the token counts, and
+      generation.metadata.finish_reason = "length".
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          model: "gpt-test"
+          messages: [{role: user, content: "Generate a person record."}]
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+          config:
+            max_tokens: 16
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-123
+          object: chat.completion
+          model: gpt-test-v2
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":'}, finish_reason: length}
+          usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
+    langfuse_observer:
+      disable_provider_payload: false
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                # Failed Generation: ERROR level + category mapping (§8.4.2)
+                # AND the response-side surface (§8.4.3, proposal 0082).
+                level: ERROR
+                statusMessage: "structured_output_invalid"
+                output: '{"name":"Alice","age":'
+                usage:
+                  input: 20
+                  output: 16
+                  total: 36
+                metadata:
+                  finish_reason: "length"
+                  response_model: "gpt-test-v2"
+                  response_id: "cc-123"
+                children: []
+      invariants:
+        failed_generation_renders_error_level_and_category: true
+        failed_generation_carries_output_usage_finish_reason: true
+
+  - name: failed_generation_payload_disabled_redacts_output_keeps_usage_finish_reason
+    description: |
+      The same truncation failure through the Langfuse observer with
+      disable_provider_payload=True (the §5.5.4 default). generation.output
+      is redacted (null — the payload-gated field), while generation.usage,
+      generation.metadata.finish_reason, the ERROR level, and the
+      statusMessage are UNCHANGED (those four are not payload-gated per
+      proposal 0082).
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          model: "gpt-test"
+          messages: [{role: user, content: "Generate a person record."}]
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+          config:
+            max_tokens: 16
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-123b
+          object: chat.completion
+          model: gpt-test-v2
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":'}, finish_reason: length}
+          usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
+    langfuse_observer:
+      disable_provider_payload: true
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                level: ERROR
+                statusMessage: "structured_output_invalid"
+                # Payload-gated: redacted under disable_provider_payload
+                # (the §5.5.4 default), per fixture 108's null idiom.
+                output: null
+                # Not payload-gated — present regardless of the flag.
+                usage:
+                  input: 20
+                  output: 16
+                  total: 36
+                metadata:
+                  finish_reason: "length"
+                children: []
+      invariants:
+        output_redacted_under_payload_disabled: true
+        usage_finish_reason_and_error_level_unchanged_under_payload_disabled: true

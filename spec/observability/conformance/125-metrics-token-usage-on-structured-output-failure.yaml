@@ -1,0 +1,102 @@
+# observability §11.2 / §11.3 (proposal 0082): a structured_output_invalid
+# failure carries a usage record (the graph-engine §6 LlmFailedEvent.usage
+# surface), so — alone among failure categories — it records a
+# openarmature.gen_ai.client.token.usage observation like a completion, with the
+# §11.3 dimensions. This pins the reconciled §11.2 rule: "failed attempts that
+# received NO response contribute nothing; a structured_output_invalid failure —
+# which carries a usage record — records a token-usage observation like a
+# completion." The operation.duration instrument additionally records its
+# error.type dimension (the failed attempt is still a latency sample, §11.2),
+# carrying the §7 error category.
+#
+# Drives the fixture-120 truncation case with enable_metrics on. Contrast to
+# fixture 090, where a provider_unavailable failure (no usage record) records
+# duration+error.type but NO token.usage. Capture shape per §11.5 / the 088-091
+# metric-capture fixtures.
+#
+# Harness note (per conformance-adapter §3.2): `calls_llm.response_schema`
+# carries the JSON Schema the node passes to complete(), per the 022/023
+# llm-provider structured-output fixtures.
+
+cases:
+  - name: structured_output_failure_records_token_usage_and_duration_with_error_type
+    description: |
+      One LLM-calling node passing a response_schema, enable_metrics=True.
+      The mock returns truncated JSON (finish_reason "length") with usage
+      {input 20, output 16}; complete() raises structured_output_invalid.
+      Because the failure carries a usage record, the metric-capture
+      primitive records token.usage input=20 and output=16 (dimensions:
+      operation "chat", model, system, token.type) — like a completion.
+      The operation.duration instrument records one observation carrying
+      error.type "structured_output_invalid" (dimensions only — value not
+      asserted, §11.4). The exception still propagates (expected_error).
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: test-model
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+          config:
+            max_tokens: 16
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    enable_metrics: true
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-125
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":'}, finish_reason: length}
+          usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      metrics:
+        # Token usage IS recorded for the failed call — the
+        # structured_output_invalid failure carries a usage record (§11.2,
+        # proposal 0082). Two observations, like a completion.
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 20
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "input"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 16
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        # The failed attempt is still a latency sample — duration records
+        # with error.type (the §7 category), value not asserted (§11.4).
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+            error.type: "structured_output_invalid"
+      invariants:
+        token_usage_recorded_on_structured_output_failure: true
+        two_token_usage_observations_input_and_output: true
+        duration_records_error_type_on_failure: true
+        duration_value_not_asserted: true
