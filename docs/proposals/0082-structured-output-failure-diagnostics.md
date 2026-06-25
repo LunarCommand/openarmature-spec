@@ -1,0 +1,1 @@
+../../proposals/0082-structured-output-failure-diagnostics.md
