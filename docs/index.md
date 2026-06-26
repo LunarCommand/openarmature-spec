@@ -101,10 +101,10 @@ just compiled graphs.
 
 !!! abstract "openarmature-python — currently in active development"
 
-    The canonical reference implementation. Ships the full API for graph
-    engine, pipeline utilities, LLM provider, observability, and prompt
-    management — all driven by the conformance fixtures defined in this
-    repo.
+    The canonical reference implementation, building out the full
+    capability set defined in this repo — graph engine, LLM and retrieval
+    providers, pipeline utilities, prompt management, sessions, suspension,
+    and observability — all driven by the conformance fixtures.
 
     [Visit openarmature.ai :octicons-link-external-16:](https://openarmature.ai){ .md-button target="_blank" rel="noopener" }
 
@@ -129,9 +129,9 @@ drift.
 
     ---
 
-    119 conformance fixtures across five capabilities. Implementations run
-    them; if they pass, behavior matches every other conforming runtime.
-    No "implementation-defined" footguns.
+    Over 400 conformance fixtures across ten capabilities. Implementations
+    run them; if they pass, behavior matches every other conforming
+    runtime. No "implementation-defined" footguns.
 
 -   :material-cube-unfolded:{ .lg .middle } &nbsp; __One contract, many runtimes__
 

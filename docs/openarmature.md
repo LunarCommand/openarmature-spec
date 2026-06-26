@@ -217,10 +217,12 @@ handle the exceptional case.
 ### 3.2 Package Structure
 
 ```
-openarmature                  Core: graph, state, LLM, tools, prompts (interfaces), pipeline utilities, logging
+openarmature                  Core: graph, state, LLM + retrieval providers, tool dispatch, prompt interfaces, sessions + suspension, pipeline utilities, harness contract, logging
 openarmature-eval             Eval: test runner, metrics, SQLite persistence, trend charts, CLI
 openarmature-langfuse         Langfuse: prompt loading backend, trace linking, callback handler
 openarmature-otel             OTEL: TracerProvider, LoggerProvider, HyperDX/Jaeger/Grafana exporters
+openarmature-chat             Chat harness: the canonical chat-loop deployment on the core harness contract
+openarmature-<store>          Session / checkpoint backends for production stores (Redis, Postgres, DynamoDB)
 ```
 
 Core dependency footprint: `httpx`, `pydantic`, `structlog`, `jinja2`. No database drivers, no plotting libraries, no
@@ -234,6 +236,9 @@ pip install openarmature openarmature-otel openarmature-eval
 
 # Agent with Langfuse
 pip install openarmature openarmature-langfuse
+
+# Chat harness with sessions + Langfuse
+pip install openarmature openarmature-chat openarmature-langfuse
 
 # Minimal
 pip install openarmature
@@ -278,10 +283,11 @@ This section summarizes each module's scope, core abstractions, and key design d
 ### 4.1 Graph Engine
 
 **Scope.** Typed state, nodes as async functions, static and conditional edges, reducers, middleware, subgraph
-composition, async compilation.
+composition, async compilation. Owns the typed observer event union the observability layer consumes.
 
 **Core abstractions.** `Graph`, `State`, `Message`, `Node`, `Edge`, reducers (`append_messages`, `merge_dict`,
-`last_write_wins`, custom).
+`last_write_wins`, custom). The typed observer event stream — `NodeEvent` plus the LLM, embedding, rerank, tool, and
+token-budget event variants — is emitted from here.
 
 **Key decisions.**
 
@@ -290,6 +296,8 @@ composition, async compilation.
 - Edges are Python callables returning the next node name or `Graph.END`
 - Subgraphs compose as single nodes; parent state flows in and out
 - Middleware wraps nodes (logging, retry, timing) without changing node signatures
+- Execution emits a typed event stream that observers consume — the substrate the observability layer maps onto
+  spans, logs, and metrics
 
 ### 4.2 Pipeline Utilities
 
@@ -316,22 +324,81 @@ audience.
   scope at each call site
 - Resource lifecycle is explicit: per-item (load each call) or per-stage (load once, reuse)
 
-### 4.3 LLM Provider Abstraction
+### 4.3 Sessions
 
-**Scope.** Unified interface over local (vLLM, Ollama, LM Studio) and remote (OpenAI, Anthropic, Google, Bifrost)
-providers. Health checks, config composition, structured output, streaming.
+**Scope.** Named, typed state records that persist across multiple `invoke()` calls under a stable caller-supplied
+identifier — the contract for multi-turn and resumable workloads that outlive a single invocation.
 
-**Core abstractions.** `LLM`, `Message` (system, user, assistant, tool), `ToolCall`, provider presets
-(`LLM.vllm(...)`, `LLM.openai(...)`, `LLM.bifrost(...)`).
+**Core abstractions.** `SessionStore` protocol, `SessionRecord`, per-graph registration (`with_session_store(...)`).
+Reference implementations bundle an in-memory and an embedded-database (SQLite) backend; production stores (Redis,
+Postgres, DynamoDB) layer in as sibling packages.
+
+**Key decisions.**
+
+- Loaded session state REPLACES the supplied initial state; callers needing merge logic do it explicitly
+- Lifecycle hooks, typed schema migration, and a defined concurrency policy are part of the contract
+- Session identity propagates into observability (session grouping on the trace)
+- The protocol is core; production stores are siblings, mirroring the checkpointer pattern
+
+### 4.4 Suspension
+
+**Scope.** How an in-progress invocation intentionally pauses at a node, persists its state under a typed signal
+descriptor, and later resumes — merging a resume payload into state. The load-bearing case is stateless workers:
+suspend on one machine, resume on another with nothing held in worker memory between.
+
+**Core abstractions.** `suspend(...)` invoked from inside a node body; a typed suspension signal descriptor; a
+paused-invocation record reusing the same persistence mechanism as checkpointing.
+
+**Key decisions.**
+
+- The engine recognizes a `suspended` outcome from a node, halts the invocation cleanly, and persists resumable state
+- Resume merges a typed payload into state and continues from the suspension point
+- Designed for stateless deployment: no worker affinity between suspend and resume
+- Composes with sessions and checkpointing; shares their persistence backends
+
+### 4.5 LLM Provider Abstraction
+
+**Scope.** Uniform, intentionally narrow, stateless request/response surface over local (vLLM, Ollama, LM Studio)
+and remote (OpenAI, Anthropic, Google, Bifrost) providers — one `complete()` call, no history, no tool loop, no
+retry or routing. Covers content blocks and multimodal input, structured output, tool-choice, streaming, and
+per-provider wire-format mappings.
+
+**Core abstractions.** `LLM`, `Message` (system, user, assistant, tool), content blocks, `ToolCall`, normalized
+`finish_reason`, provider presets (`LLM.vllm(...)`, `LLM.openai(...)`, `LLM.anthropic(...)`, `LLM.bifrost(...)`).
 
 **Key decisions.**
 
 - Pre-flight health check with explicit `ready()` method — agents and pipelines fail fast on missing models
-- `structured_output(schema=...)` returns parsed Pydantic instance; retries on validation failure
-- No hidden prompts; system messages are always explicit
-- Config overrides compose, not mutate (immutable LLM configs)
+- Structured output returns a parsed instance; a parse-or-validate failure surfaces as a typed failure carrying the
+  raw response and its diagnostics
+- `tool_choice` constrains the request; the response is reported exactly as the provider sent it
+- Normalized `finish_reason` (`stop` / `length` / `tool_calls` / `content_filter` / `error`) is uniform across providers
+- Streaming is a first-class response mode alongside unary completion
+- Per-provider wire-format mappings (OpenAI-compatible, Anthropic, Gemini) are specified in the spec, not reinvented
+  per implementation
+- No hidden prompts; system messages are always explicit. Config overrides compose, not mutate
 
-### 4.4 Tool System and MCP
+### 4.6 Retrieval Provider
+
+**Scope.** Retrieval-primitive provider operations — a sibling capability to LLM Provider, not a subtype: turning
+text into embedding vectors, and re-scoring candidate documents against a query. The first member of the
+`<domain>-provider` family.
+
+**Core abstractions.** `EmbeddingProvider` (`ready()` + `embed(list[str]) -> EmbeddingResponse`) and `RerankProvider`
+(`ready()` + `rerank(query, documents, *, top_k=None) -> RerankResponse` of relevance-sorted `ScoredDocument`
+entries). Paired typed events on the graph-engine event union (`EmbeddingEvent` / `RerankEvent` and their failure
+variants).
+
+**Key decisions.**
+
+- The same narrow, stateless surface as LLM Provider — `ready()` plus a single call, no orchestration
+- A cross-vendor `input_type` knob (query vs document) for embeddings
+- Per-provider wire-format mappings specified in-spec (TEI, Jina, OpenAI-compatible)
+- Provider payloads carry the same privacy posture as LLM payloads, suppressible via the shared provider-payload flag
+- Observability maps onto dedicated Langfuse `Embedding` and `Retriever` observation types and an OTel GenAI
+  semantic-convention subset, with operation-discriminating span names
+
+### 4.7 Tool System and MCP
 
 **Scope.** Unified tool interface for local Python functions and remote MCP tools. Production-grade MCP: discovery,
 retry, cold-start handling, session lifecycle, schema conversion.
@@ -347,27 +414,35 @@ retry, cold-start handling, session lifecycle, schema conversion.
 - Timeouts: separate init, operation, discovery timeouts
 - Error sanitization: framework strips tracebacks from tool errors before returning to LLM
 
-### 4.5 Prompt Management
+### 4.8 Prompt Management
 
 **Scope.** Dual-source prompt loading (Langfuse for production, local Jinja2 for development), variable injection with
-`StrictUndefined`, prompt-group pattern for tracing related prompts together.
+`StrictUndefined`, per-prompt sampling and token-budget config, and the prompt-group pattern for tracing related
+prompts together.
 
-**Core abstractions.** `PromptManager`, `Prompt`, `PromptResult`, `PromptGroup`. Backends implement `PromptBackend`
-interface.
+**Core abstractions.** `PromptManager`, `Prompt`, `PromptResult`, `PromptGroup`, `LabelResolver`. Backends implement
+the `PromptBackend` interface.
 
 **Key decisions.**
 
 - `StrictUndefined` by default — unbound variables raise immediately instead of rendering empty strings
-- Langfuse backend (sibling package) fetches by name and label; local backend reads from filesystem
+- Langfuse backend (sibling package) fetches by name and label; local backend reads from filesystem; a per-fetch
+  cache TTL bounds staleness
+- Each prompt may carry sampling parameters (mirroring `RuntimeConfig`) and an advisory, observability-only
+  `token_budget` (input / total ceilings) that never alters the request
 - Fallback: if Langfuse fetch fails, fall back to local template with warning
 - PromptGroup: an ordered sequence of two or more related prompts (classifier + follow-up, multi-stage classification, RAG with reranking, self-correction loops), traced together under one shared `group_name`
 
-### 4.6 Observability
+### 4.9 Observability
 
-**Scope.** Ambient correlation IDs, structured spans around LLM calls, tool calls, and node execution. Provider
-isolation to avoid Langfuse v3 + OTEL span duplication.
+**Scope.** Maps OA execution onto OpenTelemetry spans, logs, and metrics plus a Langfuse backend mapping: ambient
+correlation IDs, a span hierarchy mirroring graph structure, GenAI semantic-convention attributes, per-operation
+spans (LLM, embedding, rerank, tool), caller-supplied invocation metadata, and metrics histograms. Provider isolation
+avoids Langfuse v3 + OTEL span duplication.
 
-**Core abstractions.** `ObservabilityBackend` interface. Backends: `openarmature-langfuse`, `openarmature-otel`.
+**Core abstractions.** Typed observers over the graph-engine event union; the OTel mapping (`TracerProvider`,
+`LoggerProvider`, metrics instruments) and the Langfuse mapping (`Trace`, `Generation`, `Span`, `Event`, `Embedding`,
+`Retriever`, `Tool` observation types). Backends: `openarmature-langfuse`, `openarmature-otel`.
 
 **Key decisions.**
 
@@ -375,9 +450,16 @@ isolation to avoid Langfuse v3 + OTEL span duplication.
 - `TracerProvider` is isolated (not global) to prevent Langfuse v3 from duplicating spans through the global OTEL
   pipeline
 - Instrumentation happens inside framework calls; user code never touches `set()`/`reset()` on context tokens
+- GenAI semantic-convention attributes are adopted normatively, with a defined policy for upstream-unstable names
+- Caller-supplied invocation metadata propagates cross-cuttingly; recognized session / user keys promote to native
+  trace fields
+- Opt-in GenAI metrics (token usage, operation duration) and a per-prompt token-budget signal (span attribute +
+  WARNING log + metrics) ride the same event stream
+- Structured-output parse failures surface response-side diagnostics (raw content, `finish_reason`, usage) on the
+  failure event, not just an error category
 - Session grouping, flush-on-exit, and callback registration are backend responsibilities
 
-### 4.7 Evaluation
+### 4.10 Evaluation
 
 **Scope.** Deterministic and LLM-judge metrics, persistent history, per-test deltas, trend charts. Lives in
 `openarmature-eval`; base classes live in core.
@@ -392,7 +474,7 @@ isolation to avoid Langfuse v3 + OTEL span duplication.
 - Dual-path evaluation: structured output (tool calls as JSON) and natural language responses stored separately, queried
   by different metric types
 
-### 4.8 Logging
+### 4.11 Logging
 
 **Scope.** Structured logging via structlog, noisy-library suppression, correlation ID enrichment.
 
@@ -404,6 +486,44 @@ development. Correlation IDs auto-injected from observability context.
 - Known noisy loggers (`httpx`, `openai`, `langfuse`, `urllib3`, ...) are suppressed by default; user can override
 - Log records carry correlation ID automatically via `contextvars` integration
 - No configuration required for the common case; one call in `main()` configures everything
+
+### 4.12 Harness and Deployment
+
+**Scope.** The abstract contract a harness follows when wrapping the OA engine to serve a deployment runtime — HTTP
+server, event bus, queue worker, or CLI repl: turn semantics, inbound dispatch-path classification, turn-boundary
+error categorization, and the sessioned-vs-stateless mode distinction. A chat-shaped sub-spec layers the canonical
+chat-loop deployment on top.
+
+**Core abstractions.** The abstract harness contract (turn lifecycle, dispatch classification, composition with
+sessions and suspension); the chat sub-spec's `ChatMessage` shape, conversation-history convention, and
+send-and-reply surface with suspension / HITL handling. Concrete harnesses ship as sibling packages
+(`openarmature-chat`, plus platform integrations for HTTP frameworks, event / queue runtimes, and CLIs).
+
+**Key decisions.**
+
+- The contract is runtime-agnostic: request/response, event-driven, and queue-worker deployments map onto the same
+  turn semantics
+- Sessioned vs stateless is an explicit mode distinction; the chat sub-spec is sessioned-mode only
+- Suspension and human-in-the-loop pauses compose with the harness turn boundary
+- Concrete harnesses and platform adapters are siblings, not core
+
+### 4.13 Conformance Adapter
+
+**Scope.** The language-agnostic conformance system every implementation builds against — the meta-capability that
+makes "same behavior across languages" verifiable rather than aspirational. Defines the fixture file schema, the
+directive vocabulary, the harness primitives an implementation must provide, and the per-language adapter pattern
+that runs the shared fixtures as host-runtime tests.
+
+**Core abstractions.** The fixture file schema and directive vocabulary; the conformance harness primitives (mock
+provider injection, typed-event collectors, span-tree capture, metric capture); the per-language adapter that maps
+fixtures onto a native test runner. Composes with every capability's `conformance/` directory.
+
+**Key decisions.**
+
+- Conformance fixtures are the source of truth for behavior; the prose spec states intent, the fixtures pin it
+- One fixture, many runtimes: a fixture that passes proves behavior matches every other conforming implementation
+- Harness primitives are specified so every implementation exposes the same test seams (mock injection, event and
+  span capture) regardless of language
 
 ---
 
@@ -571,6 +691,11 @@ monorepo. Different language tooling, different contributor pools, different rel
 ## 7. Implementation Plan
 
 ### 7.1 Phasing
+
+> **Status.** The plan below has been followed through spec extraction — the language-agnostic specification
+> and its conformance suite are the artifact this repository holds, and a reference implementation builds
+> against them. The specified surface has grown past the v0–v2 module list (see §4 and the per-capability
+> specs for the current scope); the phases remain as the rationale for the build order.
 
 **v0 — Graph + Pipeline Utilities.** Ship the graph engine and pipeline utilities. Enough to build a working LLM
 pipeline end-to-end with basic LLM provider abstraction. No MCP, no eval, no observability yet. Goal: validate the core

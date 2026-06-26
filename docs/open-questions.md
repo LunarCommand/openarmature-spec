@@ -56,6 +56,13 @@ is just "keep it not-too-stale."
   [still-relevant] — the proposal noted a phase 6.1 investigation would
   potentially surface coverage gaps. Hasn't been swept since.
 
+### 0054 — per-invocation event drain
+
+- **Ambient-scope drain helper (implicit `invocation_id`).**
+  [still-relevant] — v1 chose an explicit `invocation_id` parameter for
+  `drain_events_for`; an ambient-scope helper that infers the current
+  invocation can land later if ergonomics warrant. No signal accumulated.
+
 ## pipeline-utilities
 
 ### 0004 — middleware
@@ -105,6 +112,18 @@ is just "keep it not-too-stale."
   [still-relevant] — deferred at acceptance; users wrap with their own
   middleware or wait for a future timeout-middleware proposal.
 
+### 0050 — retry and degradation primitives
+
+- **Multiplicative retry-budget cap.**
+  [still-relevant] — per-call and per-node retry budgets can compound
+  multiplicatively; v1 leaves this uncapped and documents it in the
+  common-mistakes list rather than enforcing a combined ceiling. Revisit
+  if a real workload is bitten by the compounding.
+- **Typed middleware-event variant.**
+  [still-relevant] — retry / degradation emit a framework-emitted event in
+  v1; a future proposal MAY promote it to a typed variant family (like the
+  LLM / tool event variants) if accumulation warrants.
+
 ### 0068 — failure-isolation event structured cause chain
 
 - **§6.1 retry classification stays single-level while §6.3 cause resolution
@@ -124,6 +143,22 @@ is just "keep it not-too-stale."
   §6.3 (a §6.1 behavior change, its own proposal). 0065's acceptance already
   flagged the §6.1 nested-wrapper wording as a separate §6.1 concern; this
   records the post-0068 shape.
+
+### 0074 — failure-isolation cause-chain catch
+
+- **Richer §6.4 classification surface (predicates over the cause chain).**
+  [still-relevant] — 0074's catch matches against a category set with a
+  predicate escape hatch; a future proposal could promote a richer
+  predicate-over-the-full-chain classification surface if usage
+  accumulates. The category-set + escape hatch suffice for now.
+
+### 0075 — parallel lightweight / conditional branches
+
+- **"At least one branch must dispatch" guard.**
+  [still-relevant] — an all-branches-skipped parallel node is a silent
+  no-op in v1; a small additive follow-on (a node-level flag asserting at
+  least one branch dispatches) can add the guard if workflows want it. Not
+  a v1 concern.
 
 ## llm-provider
 
@@ -221,6 +256,40 @@ response-side clause.
   `OTHER` to `"error"`; image-generation-only variants out of scope and
   fall to the `"error"` fallback.
 
+### 0062 — LLM completion streaming
+
+- **Direct node-body stream consumption.**
+  [still-relevant] — v1 streaming is observer-only (token events on the
+  event stream); a direct consumption mode (incremental parsing, early
+  stop, an async-iterator return shape from `complete()`) is purely
+  additive and deferred until a consumer needs it.
+- **Tool-call argument delta token events.**
+  [still-relevant] — v1 streams content and reasoning deltas only; the
+  `delta_kind = "tool_call"` value is reserved for a follow-on that
+  streams tool-call argument deltas.
+
+## retrieval-provider
+
+### 0059 — embedding provider
+
+- **Tiered payload preview mode.**
+  [still-relevant] — embedding payloads are all-or-nothing under
+  `disable_provider_payload`; a future observability proposal MAY add a
+  tiered preview (truncated input strings + first-N vector dimensions).
+  Out of scope for 0059.
+- **`gen_ai.operation.name` adoption.**
+  [still-relevant] — not adopted in v1 (upstream Development); operation
+  discrimination rides span name + provider. MAY be added in a follow-on
+  when upstream reaches Stable, per the stable-only adoption policy.
+
+### 0078 — Jina wire-format mapping
+
+- **Widening `input_type`'s normative value space.**
+  [still-relevant] — Jina's non-retrieval embedding tasks ride the extras
+  pass-through bag for now; widening the protocol-level `input_type` value
+  set (a §2 protocol change, not a per-mapping one) is deferred until a
+  consumer needs it.
+
 ## observability
 
 ### 0034 — caller-supplied invocation metadata
@@ -277,6 +346,21 @@ response-side clause.
   follow-on proposal 0042 extended the set with `branch_name`,
   `detached`, `detached_from_invocation_id` per the maintenance rule.
 
+### 0051 — Langfuse trace I/O deprecation caveat
+
+- **Langfuse SDK v5 migration.**
+  [still-relevant] — no proposal for a v5 migration ahead of vendor
+  publication, and no placeholder Draft; deferred until Langfuse publishes
+  v5 migration guidance. Tracked against `docs/compatibility.md`. An
+  external trigger, not a planned follow-on.
+
+### 0053 — shared-parent boundary clarification
+
+- **Dedicated pure-serial-lineage conformance fixture.**
+  [still-relevant] — the shared-parent rule is exercised by existing
+  fixtures; an optional follow-on MAY add a dedicated pure-serial-lineage
+  fixture if cross-impl coverage warrants. Minor.
+
 ### 0061 — detached-trace invocation span
 
 - **Detached-trace subgraph-wrapper span naming vs §4.5.**
@@ -294,6 +378,19 @@ response-side clause.
   SubgraphNode name — or reconcile the fixtures the other way. Low-stakes (a
   cosmetic span label, no identity or correlation impact), so it defers
   cleanly until a related observability proposal is in flight.
+
+### 0063 — tool-execution observability
+
+- **Upstream GenAI tool semconv adoption.**
+  [still-relevant] — v1 mirrors tool attributes under the `openarmature.*`
+  namespace (the upstream `execute_tool` span / `gen_ai.tool.*` surface is
+  Development); a follow-on adopts the upstream names when they become
+  recognized-core / Stable, per the stable-only policy. Related to the
+  0073 `gen_ai.system` migration question.
+- **Independent per-operation tool-payload privacy gating.**
+  [still-relevant] — tool payloads reuse `disable_provider_payload` for
+  now; a future proposal can introduce per-operation gating if a consumer
+  demonstrates the need.
 
 ### 0073 — GenAI semconv adoption reconciliation
 
@@ -319,8 +416,8 @@ response-side clause.
   `Chain`, `Retriever`, `Evaluator`, `Embedding`, `Guardrail`. The
   existing `spec/observability/spec.md` §8 mapping uses `Trace`,
   `Generation`, `Span`, `Event`; proposal 0059 adds `Embedding`;
-  proposal 0060 (Draft) adds `Retriever`. The other five
-  (`Agent`, `Tool`, `Chain`, `Evaluator`, `Guardrail`) are unmapped.
+  proposal 0060 adds `Retriever`; proposal 0063 adds `Tool`. The other
+  four (`Agent`, `Chain`, `Evaluator`, `Guardrail`) are unmapped.
 
   **"Full coverage" is not a single mapping proposal.** The structural
   reason: OA's observability types its spans by *execution role*
@@ -331,13 +428,13 @@ response-side clause.
   doesn't exist — it can't be conjured by a Langfuse mapping alone. Per-type
   verdict (after verifying each type's Langfuse semantics against current docs):
 
-  - **Tool** ("a tool call, e.g. to a weather API") — **addressed by
-    proposal 0063 (tool-execution observability, Draft).** 0063 adds the
+  - **Tool** ("a tool call, e.g. to a weather API") — **mapped by
+    proposal 0063 (tool-execution observability), Accepted.** 0063 adds the
     `ToolCallEvent` / `ToolCallFailedEvent` typed variants (graph-engine
     §6) + a node-body instrumentation scope, and maps tool execution onto
     Langfuse's dedicated `Tool` observation type. OA supplies the
     observability primitive; the tool-loop itself stays a user-authored
-    graph (orchestration is not an OA primitive). Closes the `Tool`-type
+    graph (orchestration is not an OA primitive). This closed the `Tool`-type
     gap on 0063's acceptance.
   - **Evaluator** ("assess relevance/correctness/helpfulness") — needs
     an OA **evaluation capability** that doesn't exist. Out of scope until
