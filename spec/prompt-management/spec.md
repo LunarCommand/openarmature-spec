@@ -10,6 +10,7 @@ Canonical behavioral specification for the OpenArmature prompt-management capabi
   - §3 *Prompt shape* gains a new §3.1 *Chat-prompt variant* subsection introducing a Chat-prompt variant alongside the existing Text-prompt variant (Chat-prompt carries `chat_template: list[ChatSegment]` in place of `template`; ChatSegments are either content segments — text-template or content-blocks-template `content`, with content-blocks mirroring llm-provider §3.1 text + image-URL + image-inline block shapes for multimodal user-message authoring, image blocks user-only per §3.1.2 — or placeholder segments naming a slot filled at render time with a `list[Message]`; Chat-prompt `template_hash` covers the canonical chat_template serialization). §6.render gains a `placeholders` parameter, a per-segment / per-block render rule for Chat prompts (text-template segments render to a text Message; content-blocks segments render to a Message with a rendered block sequence; placeholder segments inject the caller-supplied message list, empty injected lists valid), and a narrowing of the Text-prompt render clause to "exactly one Message with text content; multi-message and multimodal MUST use chat_template" (replaces the prior vague "MAY produce multiple messages" line). §8 *Variable injection* gains a per-segment / per-block strict-undefined paragraph. §11 *Errors* extends `prompt_render_error` with five new Chat-prompt triggers (empty content segment, empty content-blocks list, unfilled placeholder, duplicate placeholder name, role-block compatibility violation). §5 *PromptBackend protocol* gains a paragraph noting returned Prompts MAY be either variant. §12 cross-spec touchpoints confirms the §8.4.4 Langfuse Prompt-entity linkage is unaffected by Prompt variant or message count by [proposal 0046](../../proposals/0046-prompt-management-multi-message-rendering.md)
   - §13 *Determinism* tightened with a *Cross-variable substring stability* paragraph (variable substitution MUST be in-place and MUST NOT introduce position-dependent transformations — variable-index numbering, per-variable salts, whole-template-state-dependent normalization — that would shift bytes earlier in the rendered output based on later content; substring-replacing-substring semantics MUST NOT be defeated by template-engine post-processing that reflows the text). New §14 *APC-friendly authoring guidance* added (non-normative): pin high-cardinality stable region at the prompt start; avoid front-loading per-call variables in shared regions; keep substitution in-place (mirroring §13); stabilize multi-value formatting (sorted-key JSON, source-order iteration); prefer the `messages` shape's natural turn boundaries. Existing §14 *Out of scope* renumbered to §15 by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
   - §5 *PromptBackend protocol* `fetch` and §6 *PromptManager* `fetch` / `get` gain an optional `cache_ttl_seconds` parameter (absent / `None` = current behavior; `0` = force a fresh read past any client-side cache; `N > 0` = bound a served entry's staleness to N seconds; negative rejected). A read-side contract — `cache_ttl_seconds` governs only which cached entry MAY be served for *this* fetch, not whether / how the result is cached (those stay implementation-defined); cacheless backends (filesystem, in-memory) no-op it; the manager threads it through the §9 fallback chain; `render` is unchanged (local, no I/O). §5's backend-caching paragraph is amended so the per-fetch TTL is a defined caller lever, and §15's *Cache invalidation policies* bullet now distinguishes the (now-controllable) backend-template cache from the still-out-of-scope user-level result cache. New conformance fixtures `033-prompt-backend-cache-ttl-force-fresh` and `034-prompt-backend-cache-ttl-max-age` (exercising a caching prompt-backend harness primitive, conformance-adapter §6.8) by [proposal 0072](../../proposals/0072-prompt-management-fetch-cache-ttl.md)
+  - §6 *PromptManager interface* construction gains an optional `default_cache_ttl_seconds`; the §6 `fetch` / `get` cache-control resolution becomes a precedence chain (explicit per-call value > manager default > backend implementation-defined), mirroring the label chain. A negative default is rejected at construction; the §5 per-call negative-rejection still applies. §9's backend-fallback `fetch` signature is reconciled to the threaded 3-arg form. §5's backend-caching paragraph notes a backend receives a single resolved `cache_ttl_seconds` per fetch regardless of source; §15's *Cache invalidation policies* bullet now covers both the per-fetch lever and the manager-level standing default. New conformance fixture `036-prompt-manager-default-cache-ttl` (manager default-resolution + per-call override, conformance-adapter §6.8) by [proposal 0086](../../proposals/0086-prompt-default-cache-ttl.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -265,6 +266,10 @@ management — whether a fetched result is written to the cache, eviction, sizin
 invalidation — remain implementation-defined. When a backend serves a cached result, the returned
 `Prompt`'s `template_hash` MUST still be correct for the served template, and `fetched_at` MUST
 reflect the original fetch time, not the cache-hit time (caching MUST NOT break content-addressing).
+A backend receives a single resolved `cache_ttl_seconds` per fetch — the manager having applied its
+`default_cache_ttl_seconds` (§6) when no per-call value was given; the per-fetch semantics above, and
+the cacheless-backend no-op, are unchanged regardless of whether the value originated from a per-call
+argument or the manager default.
 
 The protocol is deliberately small — backends are fetchers, nothing more. Composition,
 fallback, and rendering are the manager's concern.
@@ -315,8 +320,11 @@ the file convention that produces it.
 
 ## 6. PromptManager interface
 
-A `PromptManager` is constructed with one or more `PromptBackend`s and (optionally) a
-`LabelResolver` (per §7). It exposes:
+A `PromptManager` is constructed with one or more `PromptBackend`s, (optionally) a
+`LabelResolver` (per §7), and (optionally) a `default_cache_ttl_seconds`. The default is a
+non-negative integer carrying the same per-fetch semantics as §5's `cache_ttl_seconds`
+(`0` = force fresh, `N > 0` = bound staleness to `N` seconds); a negative value is invalid and
+MUST be rejected at construction (per the language's idiom for an invalid argument). It exposes:
 
 ### `fetch(name, label=None, cache_ttl_seconds=None)`
 
@@ -324,7 +332,7 @@ Async. Fetches a `Prompt` by name and label, consulting backends in order per §
 fallback semantics. Label resolution:
 
 1. If `label` is explicitly supplied (non-`None`), use it verbatim. Manager passes it
-   through to backend `fetch(name, label)` calls.
+   through to the backend `fetch` calls.
 2. If `label` is `None` (or absent) AND the manager has a `LabelResolver` configured,
    consult the resolver per §7: `label = resolver.resolve(name)`. Manager passes the
    resolved label to backends.
@@ -336,10 +344,24 @@ sentinel) rather than the string `"production"`. This makes the resolver / defau
 explicit: callers who want to force-pass `"production"` continue to do so; callers who
 want the resolver to decide simply omit the argument.
 
-`cache_ttl_seconds` (default absent / `None`) is passed verbatim to every backend
-`fetch(name, label, cache_ttl_seconds)` call the manager makes while walking the §9 fallback
-chain, so a `0` (force-fresh) applies to whichever backend ultimately serves the prompt. Its
-per-fetch semantics are defined in §5.
+`cache_ttl_seconds` resolves by the same shape as label resolution:
+
+1. If a per-call `cache_ttl_seconds` is explicitly supplied (including `0`), use it verbatim —
+   subject to the §5 rule that a negative value is rejected.
+2. Else if the manager was constructed with a `default_cache_ttl_seconds`, use that.
+3. Else pass nothing (absent) — the backend's own caching behavior governs (current behavior).
+
+The resolved value is passed verbatim to every backend `fetch(name, label, cache_ttl_seconds)`
+call the manager makes while walking the §9 fallback chain, so a `0` (force-fresh) applies to
+whichever backend ultimately serves the prompt. A per-call value always overrides the manager
+default — an on-demand `0` forces a fresh read even when a positive default is configured. Once a
+`default_cache_ttl_seconds` is configured, an omitted per-call argument resolves to that default
+(step 2), not to the backend's own behavior (step 3); there is therefore no per-call argument
+meaning "defer to the backend's own TTL for this one fetch" while a default is set (a caller
+needing that configures no default, or passes an explicit value). Implementations whose language
+distinguishes an explicit unset sentinel from an omitted argument MUST treat both identically. A
+manager constructed without a default is unaffected — step 3 governs, exactly as before. The
+per-fetch semantics of the resolved value are defined in §5.
 
 Returns a `Prompt`. Raises `prompt_not_found` if no backend produces the prompt; raises
 `prompt_store_unavailable` only when ALL backends are unavailable.
@@ -427,8 +449,9 @@ needlessly couple the operation to the host's event loop.
 
 Async. Convenience equivalent to `render(await fetch(name, label, cache_ttl_seconds), variables)`.
 Same label-resolution rule as `fetch()` (per the three-step chain above): explicit label →
-resolver → spec-fallback `"production"`. `cache_ttl_seconds` (default absent / `None`) governs the
-fetch leg only (per §5); `render` performs no I/O. Implementations SHOULD provide this as a
+resolver → spec-fallback `"production"`. `cache_ttl_seconds` (default absent) governs the
+fetch leg only, resolved by the same precedence chain as `fetch` (per-call > manager default >
+backend — the §6 chain; per-fetch semantics per §5); `render` performs no I/O. Implementations SHOULD provide this as a
 convenience for the common single-shot path; users wanting fetch/render separation use
 `fetch` and `render` directly.
 
@@ -517,7 +540,7 @@ paragraph above) applies per segment and per block.
 A `PromptManager` constructed with multiple backends MUST consult them in order. The
 fallback contract:
 
-- For each backend in order, call `fetch(name, label)`.
+- For each backend in order, call `fetch(name, label, cache_ttl_seconds)` — the manager threads the `cache_ttl_seconds` it resolved per §6 (the per-call value, else its `default_cache_ttl_seconds`, else absent).
 - If the backend returns a `Prompt`, that prompt is the result; further backends are not
   consulted. (First-match semantics.)
 - If the backend raises `prompt_not_found`, **the fallback chain stops**. The error
@@ -816,8 +839,9 @@ benefits flow naturally from author discipline rather than spec enforcement.
 - **Prompt versioning workflows** — how versions are assigned, incremented, pinned,
   promoted. Per project. The spec defines the `version` field; the discipline is the
   user's.
-- **Cache invalidation policies** — the per-fetch backend-template cache is now controllable via
-  the §5 / §6 `cache_ttl_seconds` lever (force-fresh / bounded staleness). What remains out of
+- **Cache invalidation policies** — the backend-template cache is now controllable via the §5 / §6
+  `cache_ttl_seconds` lever, both per fetch (force-fresh / bounded staleness) and as a manager-level
+  `default_cache_ttl_seconds` standing bound. What remains out of
   scope is user-level *result*-cache invalidation — the caller's own cache keyed by
   `template_hash` / `rendered_hash` (which the spec defines for that use) — plus any cross-process
   or eviction-policy machinery; that result cache is a separate capability (potentially a future

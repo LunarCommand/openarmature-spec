@@ -1,0 +1,61 @@
+# prompt-management §6 default_cache_ttl_seconds (proposal 0086): a PromptManager
+# constructed with a service-wide default applies it to fetches that omit a per-call
+# cache_ttl_seconds, and an explicit per-call value overrides it. Exercised via the
+# caching PromptBackend + controllable clock (conformance-adapter §6.8), composed by a
+# manager carrying the default; fetches route through the manager (target: {manager: true}).
+# Precedence: explicit per-call value > manager default > backend.
+
+backends:
+  - name: cached
+    caching: true                      # caching backend (§6.8) with a controllable clock
+    prompts:
+      - name: greeting
+        label: production
+        version: v1
+        template: "Hello, {{ user }}!"
+        template_hash: "sha256:abc123"
+
+manager:
+  default_cache_ttl_seconds: 60        # service-wide default (§6), applied when a fetch omits one
+
+calls:
+  # t=0: manager fetch with NO per-call value -> the default (60) governs -> miss -> source read, caches.
+  - target: {manager: true}
+    operation: fetch
+    name: greeting
+    label: production
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+  # advance the backend's clock to t=30 (< default 60): entry young enough -> served from cache.
+  - target: {backend: cached}
+    operation: advance_clock
+    seconds: 30
+  - target: {manager: true}
+    operation: fetch
+    name: greeting
+    label: production
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+  # advance to t=90 (> default 60): entry too old under the default -> fresh source read.
+  - target: {backend: cached}
+    operation: advance_clock
+    seconds: 60
+  - target: {manager: true}
+    operation: fetch
+    name: greeting
+    label: production
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+  # per-call cache_ttl_seconds: 0 overrides the positive default -> force-fresh source read.
+  - target: {manager: true}
+    operation: fetch
+    name: greeting
+    label: production
+    cache_ttl_seconds: 0
+    expected:
+      prompt: {version: v1, template_hash: "sha256:abc123"}
+
+expected_backend_state:
+  # Source reads: t=0 (default, miss), t=90 (default, aged out), and the per-call 0 (override,
+  # force-fresh). The t=30 fetch was served from cache. Total = 3.
+  cached: {source_read_count: 3}
