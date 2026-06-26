@@ -74,7 +74,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 | Capability | Introduced | Latest | Fixtures | Scope |
 |---|---|---|---|---|
 | [graph-engine](spec/graph-engine/spec.md) | 0.1.0 | 0.78.0 | 38 | Typed state, async nodes, conditional/static edges, 8 canonical reducers, subgraph composition, observer hooks (bounded `drain` + per-invocation `drain_events_for`), three `invoke()` outcomes (completed / errored / suspended), typed `LlmCompletionEvent` + `LlmFailedEvent` + `EmbeddingEvent` + `EmbeddingFailedEvent` + `RerankEvent` + `RerankFailedEvent` + `ToolCallEvent` + `ToolCallFailedEvent` + `LlmTokenEvent` (streaming within-call sub-event) event variants alongside `NodeEvent` on the observer event union (success / failure variants mutually exclusive per call), opt-in tool-call instrumentation scope. |
-| [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.66.0 | 74 | Middleware (canonical retry + timing + failure isolation), parallel fan-out (per-instance resume with success/error discrimination + state migration), checkpointing (shares persistence with suspension), parallel branches. |
+| [pipeline-utilities](spec/pipeline-utilities/spec.md) | 0.5.0 | 0.80.0 | 75 | Middleware (canonical retry + timing + failure isolation), parallel fan-out (per-instance + nested-fan-out resume with success/error discrimination + state migration), checkpointing (shares persistence with suspension), parallel branches. |
 | [llm-provider](spec/llm-provider/spec.md) | 0.4.0 | 0.77.0 | 60 | Stateless LLM-provider abstraction with canonical error categories, image + reasoning content blocks, structured output via `response_schema`, `tool_choice` request-side control, wire-format mapping catalog (OpenAI-compatible / Anthropic / Gemini), `RuntimeConfig` with seven declared sampling params + extras pass-through, optional call-level retry, opt-in response streaming (`complete(stream=...)` emits per-chunk `LlmTokenEvent`s — content + reasoning deltas — via OpenAI-compatible SSE; the atomic `Response` is unchanged). |
 | [observability](spec/observability/spec.md) | 0.7.0 | 0.78.0 | 131 | OpenTelemetry + Langfuse backend mappings (LLM completion spans + Langfuse Generation observations; embedding spans + Langfuse dedicated `Embedding` observations; rerank spans + Langfuse dedicated `Retriever` observations; tool-execution spans + Langfuse dedicated `Tool` observations), GenAI metrics, cross-backend correlation IDs, caller-supplied invocation metadata (`openarmature.user.*` span attributes + symmetric `get_invocation_metadata()` read), provider-payload + GenAI semconv attributes (default-off payload via `disable_provider_payload`), prompt-identity / prompt-group linkage, queryable observer pattern, suspension status mapping. |
 | [prompt-management](spec/prompt-management/spec.md) | 0.15.0 | 0.79.0 | 36 | Named/versioned template fetch + render; composite backends with infrastructure-only fallback; `PromptGroup` tracing primitive; strict-undefined-by-default variable injection; typed `Prompt.sampling` + `Prompt.observability_entities` + advisory `Prompt.token_budget` (observability-only); Chat-prompt variant (`chat_template: list[ChatSegment]` with content-blocks + placeholders for multimodal authoring); `LabelResolver` for deployment-time A/B label override. |
@@ -87,9 +87,8 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-Two proposals are in flight as Drafts: [0084](proposals/0084-orphaned-span-parent-fallback.md)
-(orphaned provider/tool span parent fallback) and
-[0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) (nested-fan-out checkpoint lineage).
+One proposal is in flight as a Draft: [0084](proposals/0084-orphaned-span-parent-fallback.md)
+(orphaned provider/tool span parent fallback).
 New work opens as a numbered Draft proposal under [`proposals/`](proposals/).
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).

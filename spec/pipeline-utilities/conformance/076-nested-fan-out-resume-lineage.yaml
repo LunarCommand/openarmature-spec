@@ -1,0 +1,270 @@
+# Nested-fan-out resume lineage (§10.11 "No mis-skip across enclosing
+# instances" + the `enclosing_fan_out_lineage` field, proposal 0085; §10.7
+# resume-skip decision; §10.2 `fan_out_progress` record shape). An OUTER
+# fan-out (`outer_process`) whose every instance runs an INNER fan-out
+# (`inner_process`); the inner fan-out node recurs once per outer instance,
+# sharing one `(namespace, fan_out_node_name)` and distinguished only by
+# `enclosing_fan_out_lineage`. The record is mid-flight: both outer
+# instances are `in_flight`, each with partial inner progress.
+#
+# Why this fixture SEEDS the record (`seeded_record`, per fixtures 039-047)
+# rather than crash-producing it: a saved record holding TWO distinct
+# lineage-qualified inner entries simultaneously requires two outer
+# instances in flight at once, which is only possible under concurrent
+# outer execution; the exact per-instance states captured at a crash save
+# under concurrency are dispatch-timing-dependent (non-deterministic — cf.
+# fixture 051's `state_one_of` slots), and `crash_injection` boundaries are
+# not lineage-qualified (they cannot pin "crash while outer-0 has inner
+# progress X and outer-1 has inner progress Y"). Seeding the record pins the
+# exact two-entry state deterministically, exactly as the migration suite
+# (043) seeds a precise mid-subgraph record to test resume. This exercises
+# the §10.11 CONSUME-side contract — lineage-matched skip + no-mis-skip +
+# exactly-once accumulator — which is the correctness property 0085 adds.
+# See the .md for the directive gaps a deterministic crash-PRODUCED variant
+# would need.
+#
+# The leaf computes out = input. Arithmetic (spelled out in the .md):
+#   outer item 0 -> inner_items [1, 2, 3] -> inner_results [1, 2, 3]
+#   outer item 1 -> inner_items [4, 5, 6] -> inner_results [4, 5, 6]
+#   all_results (append, outer-index order at fan-in) = [[1,2,3],[4,5,6]]
+
+subgraphs:
+  # Innermost leaf: one node, out = input (multiplier defaults to 1).
+  leaf_scorer:
+    state:
+      fields:
+        input: {type: int, default: 0}
+        out: {type: int, default: 0}
+    entry: score
+    nodes:
+      score:
+        update_from_field: {out: input}
+    edges:
+      - {from: score, to: END}
+
+  # Outer-instance subgraph: runs the INNER fan-out over its projected
+  # inner_items, collecting each leaf's `out` into inner_results.
+  inner_runner:
+    state:
+      fields:
+        inner_items: {type: list<int>, default: []}
+        inner_results: {type: list<int>, reducer: append, default: []}
+    entry: inner_process
+    nodes:
+      inner_process:
+        fan_out:
+          subgraph: leaf_scorer
+          items_field: inner_items
+          item_field: input
+          collect_field: out
+          target_field: inner_results
+          error_policy: fail_fast
+          concurrent_mode: serial
+    edges:
+      - {from: inner_process, to: END}
+
+cases:
+  - name: nested_inner_fan_out_resume_skips_per_enclosing_lineage
+    description: |
+      Two-level fan-out. The outer fan-out `outer_process` runs over two
+      outer items, each an inner-items list; every outer instance runs the
+      inner fan-out `inner_process` over its three projected inner items.
+      Both outer instances are `in_flight` in the seeded record (neither has
+      reached its fan-in), so the inner fan-out node appears as TWO DISTINCT
+      lineage-qualified entries — same (namespace=[outer_process],
+      fan_out_node_name=inner_process), differing only in
+      enclosing_fan_out_lineage — NOT one colliding entry.
+
+      Asymmetric inner progress at the crash:
+        - outer instance 0 (lineage fan_out_index 0): inner instances 0 and 1
+          `completed` (results 1, 2); inner instance 2 `not_started`.
+        - outer instance 1 (lineage fan_out_index 1): inner instance 0
+          `completed` (result 4); inner instances 1 and 2 `not_started`.
+
+      On resume each outer instance re-enters and the engine consults ONLY
+      the inner entry whose enclosing_fan_out_lineage positively matches that
+      outer instance (§10.11 No mis-skip across enclosing instances):
+        - outer instance 0 skips inner 0 and 1; re-runs inner 2 (=3)
+          -> inner_results [1, 2, 3].
+        - outer instance 1 skips inner 0; re-runs inner 1 (=5) and inner 2
+          (=6) -> inner_results [4, 5, 6].
+      Crucially outer instance 1's inner instance 1 is RE-RUN, never skipped
+      on the strength of outer instance 0's inner-1=completed entry. The
+      final accumulator equals a from-scratch run: [[1,2,3],[4,5,6]].
+    state:
+      fields:
+        outer_items:
+          type: list<list<int>>
+          default: [[1, 2, 3], [4, 5, 6]]
+        all_results:
+          type: list<list<int>>
+          reducer: append
+          default: []
+    entry: outer_process
+    nodes:
+      outer_process:
+        fan_out:
+          subgraph: inner_runner
+          items_field: outer_items
+          item_field: inner_items
+          collect_field: inner_results
+          target_field: all_results
+          error_policy: fail_fast
+          concurrent_mode: concurrent
+    edges:
+      - {from: outer_process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    # The seeded record is the §10.2 CheckpointRecord. `fan_out_progress` is
+    # a collection of per-fan-out entries, each keyed by (namespace,
+    # fan_out_node_name, enclosing_fan_out_lineage) per §10.11 — so two
+    # entries may share (namespace, fan_out_node_name) and differ only in
+    # enclosing_fan_out_lineage (the multiplicity §10.11 mandates for a
+    # fan-out nested once per outer instance). namespace segments are
+    # expressed abstractly as node-name paths (cf. fixture 043's
+    # `namespace: [sub]`); the adapter maps them to its runtime namespace
+    # representation so the seeded entry positively matches the re-entering
+    # execution.
+    seeded_record:
+      # Outermost state at the mid-fan-out save point: fan-out contributions
+      # merge into outer state only at fan-in (§9.3 / §10.7), so all_results
+      # is still empty.
+      state:
+        outer_items: [[1, 2, 3], [4, 5, 6]]
+        all_results: []
+      # outer_process has not completed; no outer-graph node is recorded.
+      completed_positions: []
+      fan_out_progress:
+        # The OUTER (top-level) fan-out. Empty enclosing_fan_out_lineage —
+        # not nested inside another fan-out instance. Both instances in_flight.
+        - namespace: []
+          fan_out_node_name: outer_process
+          instance_count: 2
+          enclosing_fan_out_lineage: []
+          instances:
+            - {state: in_flight, result_is_error: false}
+            - {state: in_flight, result_is_error: false}
+        # Inner fan-out as run inside OUTER INSTANCE 0. Inner 0 and 1
+        # completed; inner 2 not started.
+        - namespace: [outer_process]
+          fan_out_node_name: inner_process
+          instance_count: 3
+          enclosing_fan_out_lineage:
+            - {namespace: [], fan_out_node_name: outer_process, fan_out_index: 0}
+          instances:
+            - {state: completed, result: 1, result_is_error: false}
+            - {state: completed, result: 2, result_is_error: false}
+            - {state: not_started, result_is_error: false}
+        # Inner fan-out as run inside OUTER INSTANCE 1. DISTINCT entry — same
+        # (namespace, fan_out_node_name) as above, different
+        # enclosing_fan_out_lineage. Only inner 0 completed.
+        - namespace: [outer_process]
+          fan_out_node_name: inner_process
+          instance_count: 3
+          enclosing_fan_out_lineage:
+            - {namespace: [], fan_out_node_name: outer_process, fan_out_index: 1}
+          instances:
+            - {state: completed, result: 4, result_is_error: false}
+            - {state: not_started, result_is_error: false}
+            - {state: not_started, result_is_error: false}
+    resume:
+      from_seeded_record: true
+      expected:
+        # Deterministic and equal to a from-scratch run: per §10.11.1 the
+        # accumulator entries merge at each fan-in in instance-index order,
+        # independent of completion order, so concurrent outer execution
+        # still yields a fixed final state.
+        final_state:
+          outer_items: [[1, 2, 3], [4, 5, 6]]
+          all_results: [[1, 2, 3], [4, 5, 6]]
+      invariants:
+        # (1) The two same-node inner entries are matched per
+        #     enclosing_fan_out_lineage, not collapsed to one colliding entry.
+        inner_fan_out_progress_matched_per_enclosing_lineage: true
+        # (2) Each outer instance skips ONLY the inner instances marked
+        #     completed under its OWN lineage: outer-0 skips inner 0, 1;
+        #     outer-1 skips inner 0.
+        each_outer_instance_skips_only_its_own_completed_inner_instances: true
+        # (3) No inner instance is skipped on the strength of a different
+        #     enclosing instance's entry: outer-1's inner 1 (=5) and inner 2
+        #     (=6) re-run; outer-0's inner 2 (=3) re-runs.
+        no_inner_instance_skipped_across_enclosing_instances: true
+
+  - name: legacy_unlineaged_nested_entry_forces_full_re_run
+    description: |
+      Companion case pinning the No-mis-skip safety floor (§10.11) directly.
+      The seeded record is LEGACY-shaped: a single inner_process entry with
+      NO enclosing_fan_out_lineage (the pre-0085 colliding shape that a fan-
+      out nested inside an outer instance would have written before the field
+      existed), marking inner instances 0 and 1 completed (results 1, 2).
+
+      On resume each re-entering outer instance carries a NON-EMPTY lineage
+      ([{outer_process, 0}] / [{outer_process, 1}]). Per §10.11 a non-empty
+      re-entering lineage never positively matches an absent/empty saved
+      lineage, so the engine MUST treat each inner fan-out as having NO saved
+      progress and RE-RUN all inner instances — it MUST NOT apply the legacy
+      entry's completed-instance skips to either outer instance. Re-running
+      un-matched work is correctness-preserving (§10.7); applying the legacy
+      entry would roll results 1, 2 into outer instance 1 (whose true inner
+      values are 4, 5, 6), a silent mis-skip.
+
+      Full re-run yields the from-scratch accumulator [[1,2,3],[4,5,6]].
+    state:
+      fields:
+        outer_items:
+          type: list<list<int>>
+          default: [[1, 2, 3], [4, 5, 6]]
+        all_results:
+          type: list<list<int>>
+          reducer: append
+          default: []
+    entry: outer_process
+    nodes:
+      outer_process:
+        fan_out:
+          subgraph: inner_runner
+          items_field: outer_items
+          item_field: inner_items
+          collect_field: inner_results
+          target_field: all_results
+          error_policy: fail_fast
+          concurrent_mode: concurrent
+    edges:
+      - {from: outer_process, to: END}
+    initial_state: {}
+    checkpointer: in_memory
+    seeded_record:
+      state:
+        outer_items: [[1, 2, 3], [4, 5, 6]]
+        all_results: []
+      completed_positions: []
+      fan_out_progress:
+        - namespace: []
+          fan_out_node_name: outer_process
+          instance_count: 2
+          enclosing_fan_out_lineage: []
+          instances:
+            - {state: in_flight, result_is_error: false}
+            - {state: in_flight, result_is_error: false}
+        # LEGACY entry: enclosing_fan_out_lineage is ABSENT for a fan-out
+        # that is in fact nested inside outer_process's instances.
+        - namespace: [outer_process]
+          fan_out_node_name: inner_process
+          instance_count: 3
+          instances:
+            - {state: completed, result: 1, result_is_error: false}
+            - {state: completed, result: 2, result_is_error: false}
+            - {state: not_started, result_is_error: false}
+    resume:
+      from_seeded_record: true
+      expected:
+        final_state:
+          outer_items: [[1, 2, 3], [4, 5, 6]]
+          all_results: [[1, 2, 3], [4, 5, 6]]
+      invariants:
+        # The legacy (no-lineage) entry is NOT applied to either re-entering
+        # outer instance — its skips are discarded.
+        legacy_unlineaged_entry_not_applied_to_nested_fan_out: true
+        # Every inner instance re-runs in every outer instance (full re-run):
+        # outer-0 runs inner 0, 1, 2; outer-1 runs inner 0, 1, 2.
+        all_inner_instances_re_run_in_every_outer_instance: true

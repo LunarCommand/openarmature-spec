@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.80.0] — 2026-06-26
+
+**Added**
+
+- **pipeline-utilities §10.11 — nested-fan-out checkpoint resume.** A `fan_out_progress` entry gains an optional `enclosing_fan_out_lineage` (the outermost→innermost chain of enclosing fan-out instances), so a fan-out nested inside an outer fan-out instance round-trips its per-outer-instance progress across a resume — entries are now keyed by `(namespace, fan_out_node_name, enclosing_fan_out_lineage)`, and §10.11.1's exactly-once guarantee extends to nested fan-outs. A new *No mis-skip across enclosing instances* invariant requires the engine to re-run (treat as `not_started`) rather than apply a saved entry's `completed` skips that don't positively match the re-entering lineage — including a legacy record with no lineage for a nested fan-out — closing a latent cross-implementation hole where an unaware impl could skip inner instances completed by a *different* outer instance and roll the wrong results forward. ([proposal 0085](proposals/0085-nested-fan-out-checkpoint-lineage.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Additive and backward-compatible: a flat (non-nested) fan-out carries an empty lineage and resumes exactly as before. The count-drift check (§10.11) re-resolves per lineage-qualified entry; §10.2's per-fan-out mapping framing, the §10.11 `namespace`-uniqueness claim, and the §10.7 skip decision are reconciled to the same-node multiplicity. New pipeline-utilities conformance fixture `076`. No graph-engine §6 event-shape change — the enclosing lineage is sourced from the engine's save-time context.
+
 ## [0.79.0] — 2026-06-26
 
 **Added**
