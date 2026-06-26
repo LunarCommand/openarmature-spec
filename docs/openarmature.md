@@ -246,32 +246,35 @@ pip install openarmature
 
 ### 3.3 Architecture Diagram
 
-```
-    ┌─────────────────────────────────────────────────────────────────┐
-    │                      openarmature (core)                        │
-    │                                                                 │
-    │   ┌────────┐ ┌──────────┐ ┌────────┐ ┌─────────┐ ┌──────────┐   │
-    │   │ Graph  │ │ Pipeline │ │  LLM   │ │  Tools  │ │ Prompts  │   │
-    │   │ Engine │ │ Utilities│ │Provider│ │ (MCP +  │ │(interface│   │
-    │   │(nodes, │ │(chunks,  │ │ (vLLM, │ │  local) │ │ + local  │   │
-    │   │ edges, │ │ batches, │ │OpenAI, │ │         │ │ template)│   │
-    │   │ state) │ │ resume)  │ │Bifrost)│ │         │ │          │   │
-    │   └────────┘ └──────────┘ └────────┘ └─────────┘ └──────────┘   │
-    │                                                                 │
-    │   Interfaces: ObservabilityBackend, PromptBackend, EvalMetric   │
-    └───────────────────────────────┬─────────────────────────────────┘
-                                    │ implements
-                ┌───────────────────┼────────────────────┐
-                │                   │                    │
-          ┌─────▼──────┐   ┌────────▼────────┐  ┌────────▼────────┐
-          │openarmature│   │  openarmature   │  │  openarmature   │
-          │ -langfuse  │   │     -otel       │  │     -eval       │
-          │            │   │                 │  │                 │
-          │Prompt fetch│   │ TracerProvider  │  │ Test runner     │
-          │Trace link  │   │ LoggerProvider  │  │ SQLite persist  │
-          │Callbacks   │   │ OTLP exporters  │  │ Trend charts    │
-          │Session mgmt│   │HyperDX/Jaeger   │  │ CLI             │
-          └────────────┘   └─────────────────┘  └─────────────────┘
+```mermaid
+flowchart TB
+    subgraph core["openarmature — core"]
+        direction LR
+        subgraph engine["execution · state"]
+            direction TB
+            GE["Graph Engine<br/>nodes · edges · state"]
+            PU["Pipeline Utilities<br/>chunks · batches · resume"]
+            SESS["Sessions<br/>cross-invoke state"]
+            SUSP["Suspension<br/>pause · resume elsewhere"]
+        end
+        subgraph modelio["providers · tools · prompts"]
+            direction TB
+            LLM["LLM Provider<br/>vLLM · OpenAI · Bifrost"]
+            RET["Retrieval Provider<br/>embed · rerank"]
+            TOOLS["Tools<br/>MCP + local"]
+            PROMPTS["Prompts<br/>interface + local template"]
+        end
+        IFACE["Core contracts<br/>ObservabilityBackend · PromptBackend · EvalMetric<br/>SessionStore · Harness"]
+    end
+    subgraph backends["sibling packages — implement the core contracts"]
+        direction LR
+        LF["openarmature-langfuse<br/>prompt fetch · trace link<br/>callbacks · trace groups"]
+        OTEL["openarmature-otel<br/>TracerProvider · LoggerProvider<br/>OTLP · HyperDX / Jaeger"]
+        EVAL["openarmature-eval<br/>test runner · SQLite<br/>trend charts · CLI"]
+        CHAT["openarmature-chat<br/>chat-loop harness"]
+        STORE["openarmature-&lt;store&gt;<br/>session / checkpoint backends"]
+    end
+    core ==>|implemented by| backends
 ```
 
 ---
