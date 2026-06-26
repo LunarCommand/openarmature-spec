@@ -1,0 +1,97 @@
+# observability §8.4.3 (proposal 0083): on a token-budget exceedance the
+# bundled Langfuse observer SHOULD set the generation's observation.level =
+# "WARNING" with a statusMessage naming the exceeded bound, and map the budget
+# values to generation.metadata.token_budget.*. Drives the fixture-126
+# input-exceeded case (a SUCCESSFUL completion whose prompt_tokens exceed the
+# declared input_max_tokens) through the Langfuse observer.
+#
+# The generation otherwise renders normally (a success): level WARNING, not
+# ERROR — token_budget is advisory observability only (§5.5.15), it never fails
+# the call. The exceeded bound is named in statusMessage per the §8.4.3 example
+# format ("token budget exceeded: input <actual> > <max>").
+#
+# Numbers: input_max_tokens 10, mock prompt_tokens 20 -> exceeded, statusMessage
+# "token budget exceeded: input 20 > 10". (Precedence: a hard ERROR-level
+# failure takes precedence over the WARNING when both apply — see the .md; this
+# case is a clean success, so WARNING stands.)
+#
+# Harness note (per conformance-adapter §3.2): the prompt's `token_budget`
+# object in `prompt_backend` carries the budget bounds (prompt-management §3);
+# `renders_prompt:` makes the prompt active.
+
+cases:
+  - name: langfuse_generation_warning_level_on_token_budget_exceed
+    description: |
+      One LLM-calling node that renders a budgeted prompt (input_max_tokens
+      10) and calls the LLM through the bundled Langfuse observer. The mock
+      returns a successful completion with usage {prompt 20, completion 1,
+      total 21}; prompt_tokens 20 > input_max_tokens 10. The Generation MUST
+      carry level "WARNING" + statusMessage naming the exceeded input bound,
+      and generation.metadata.token_budget.input_max_tokens = 10. The
+      generation is otherwise a normal success (the call did not fail).
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          model: "gpt-test"
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          token_budget:
+            input_max_tokens: 10
+    render_variables:
+      topic: "weather"
+    langfuse_observer:
+      disable_provider_payload: false
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-130
+          object: chat.completion
+          model: gpt-test-v2
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          # prompt_tokens 20 > input_max_tokens 10 -> input bound exceeded.
+          usage: {prompt_tokens: 20, completion_tokens: 1, total_tokens: 21}
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                # Over-budget WARNING (§8.4.3): advisory level, NOT ERROR —
+                # the call succeeded; token_budget never fails the request.
+                level: WARNING
+                statusMessage: "token budget exceeded: input 20 > 10"
+                metadata:
+                  # The declared budget maps to metadata.token_budget.*
+                  # (§8.4.3). Only input was declared.
+                  token_budget:
+                    input_max_tokens: 10
+                  # Prompt identity still present (the active prompt).
+                  prompt:
+                    name: "classify"
+                    version: "v7"
+                    label: "production"
+                    template_hash: "abc123"
+                    rendered_hash: "<any-string>"
+                children: []

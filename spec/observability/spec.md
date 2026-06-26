@@ -1553,6 +1553,27 @@ The privacy posture mirrors §5.5.9's embedding-side typed events — `query`, `
 observer-side gating at the rendering boundary honors `disable_provider_payload` per §5.5.4. The
 `ScoredDocument.document` echoes carried in the success event are payload-bearing on the same footing.
 
+#### 5.5.15 Token-budget signal
+
+When the active prompt declares a `token_budget` (prompt-management §3, carried on the graph-engine §6
+`LlmCompletionEvent` / `LlmFailedEvent` `token_budget` field), the LLM provider span carries — beside the
+`openarmature.prompt.*` identity family (§5.5.7 / §8.4.4) — the declared budget and a reactive over-budget
+signal:
+
+- **`openarmature.prompt.token_budget.input_max_tokens`** / **`openarmature.prompt.token_budget.total_max_tokens`** — int. The active prompt's declared budget. Each emitted only when the prompt declared that bound; absent when no active prompt or no budget.
+- **`openarmature.llm.token_budget.exceeded`** — boolean. `true` when the call's actual usage crossed any declared bound — `usage.prompt_tokens > input_max_tokens` (input) or `usage.total_tokens > total_max_tokens` (total; `prompt_tokens + completion_tokens` when the provider omits `total_tokens`). Emitted only when a budget was declared. The per-bound detail (which of input / total was exceeded) lives on the §11.3 metric `kind` dimension, keeping the span surface minimal.
+
+When a budget is declared and exceeded, the implementation MUST set
+`openarmature.llm.token_budget.exceeded = true` (when LLM spans are enabled per §5.5.4) and record the
+§11.2 token-budget instruments (when `enable_metrics`). The signal is **reactive** — evaluated from the actual usage on the terminal typed event
+after the call returns: every §5.5.7 `LlmCompletionEvent`, and a `structured_output_invalid`
+`LlmFailedEvent` (the failure category that carries `usage` per proposal 0082 / §5.5.7); other failure
+categories carry no usage, so no evaluation occurs. It is **advisory observability only** — `token_budget`
+never affects the request (prompt-management §3). On an exceedance the implementation SHOULD also emit a
+`WARNING`-level log record (§7) and set the Langfuse generation's `observation.level = "WARNING"` (§8.4.3);
+those WARNING surfaces are SHOULD, while the span attribute + the §11 metrics are MUST. This is proposal
+0083.
+
 ### 5.6 Cross-cutting attributes
 
 These attributes appear on EVERY span emitted during an invocation, regardless of span type
@@ -1845,6 +1866,10 @@ OTel Logs SDK so that:
    (per §3). This enables cross-backend correlation: a user reading OTel logs in HyperDX,
    Datadog, or another OTel-aware backend can find logs matching a `correlation_id` returned
    from a Langfuse trace or any other backend.
+
+**Token-budget WARNING (proposal 0083).** When an active prompt's `token_budget` is exceeded (§5.5.15),
+the implementation SHOULD emit a `WARNING`-level log record naming the prompt (`openarmature.prompt.*`),
+the exceeded bound, the budget, and the actual usage — carrying the correlation fields below.
 
 **Required log-record fields:**
 
@@ -2225,6 +2250,12 @@ vendor-specific), the implementation MAY also set `observation.level = "WARNING"
 condition in the Langfuse UI; this is RECOMMENDED but not MUST (different vendors carry
 different "soft error" semantics, and the OA error category mechanism in §4.2 covers hard
 failures via the `openarmature.error.category` mapping above).
+
+**Token-budget WARNING (proposal 0083).** Similarly, when an active prompt's `token_budget` is exceeded
+(observability §5.5.15), the implementation SHOULD set `observation.level = "WARNING"` with a
+`statusMessage` naming the exceeded bound (e.g. `"token budget exceeded: input 1500 > 1000"`); the budget
+values map to `generation.metadata.token_budget.*`. A hard `ERROR`-level failure (§4.2 / §8.4.2) takes
+precedence when both apply.
 
 **Failed Generation for `structured_output_invalid`.** On a `structured_output_invalid` failure (the
 graph-engine §6 `LlmFailedEvent` response-side surface, per §5.5.7), the **failed** Generation populates
@@ -2751,11 +2782,35 @@ graph-engine §6 `LlmFailedEvent.usage` surface, per §5.5.7) and records token 
 per §11.3 are unchanged). The attempt index is deliberately NOT a dimension (it would create
 unbounded cardinality); attempts are disambiguated on the spans, not the metrics.
 
-The instruments use an `openarmature.gen_ai.*` namespace (not `openarmature.llm.*`) because they are
-operation-generic — one instrument per signal, dimensioned by operation, covering LLM completions,
-embedding calls, and rerank calls. This mirrors the upstream
-single-instrument model and differs deliberately from the LLM-specific `openarmature.llm.*` attribute
-names of §5.5.3.1, which sit on the LLM span.
+**Token-budget instruments (proposal 0083; opt-in via the same `enable_metrics` flag).** Recorded from a
+terminal typed event carrying both `usage` and a non-null `token_budget` — every §5.5.7
+`LlmCompletionEvent`, and a `structured_output_invalid` `LlmFailedEvent` (per §5.5.7 / proposal 0082) —
+keeping coverage aligned with the `token.usage` instrument above:
+
+- **`openarmature.gen_ai.client.token_budget.exceeded`** — **Counter**, unit `{call}`. Incremented by 1
+  for each declared bound the call's usage exceeded (a call over both input and total budgets increments
+  twice, once per `kind`). Carries the §11.3 dimensions plus **`openarmature.gen_ai.token_budget.kind`** =
+  `"input"` / `"total"`. The clean signal for alerting / over-budget rate without histogram-bucket math.
+- **`openarmature.gen_ai.client.token_budget.utilization`** — **Histogram**, unit `1` (dimensionless
+  ratio). Records `actual / budget` per declared bound — `prompt_tokens / input_max_tokens` (`kind`
+  `"input"`), `total_tokens / total_max_tokens` (`kind` `"total"`) — on **every** call with that bound
+  declared, exceeded or not, so the distribution shows how close prompts run to budget (`> 1.0` is over
+  budget). SHOULD use explicit bucket boundaries `[0.1, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 4.0]`.
+  Recording on every budgeted call is observation volume, not cardinality (the dimensions are bounded; the
+  histogram aggregates), and the sub-`1.0` distribution is the instrument's point.
+
+The exceeded counter is derivable from the histogram's `> 1.0` buckets, but the two serve different needs
+(distribution vs. a monotonic over-budget count split by `kind`); both are recorded. These two are
+LLM-only (`operation` is always `"chat"`); the namespace + `operation` dimension leave room for
+embedding / rerank budgets later.
+
+The `token.usage` and `operation.duration` instruments use an `openarmature.gen_ai.*` namespace (not
+`openarmature.llm.*`) because they are operation-generic — one instrument per signal, dimensioned by
+operation, covering LLM completions, embedding calls, and rerank calls. (The two token-budget instruments
+above share that namespace but are LLM-only today — `operation` is always `"chat"` — leaving room for
+embedding / rerank budgets later.) This mirrors the upstream single-instrument model and differs
+deliberately from the LLM-specific `openarmature.llm.*` attribute names of §5.5.3.1, which sit on the LLM
+span.
 
 ### 11.3 Dimensions
 
@@ -2771,6 +2826,7 @@ free-form per-request values).
 | `gen_ai.system` | both | §5.5.3 / §5.5.8 system identifier | Adopted directly as a recognized-core name and **retained** per the *post-adoption retention* rule (upstream removed it in favor of `gen_ai.provider.name`; §5.5.3). The provider identifier all three spans already emit. |
 | `openarmature.gen_ai.token.type` | token.usage only | `"input"` / `"output"` | Mirrors the **peripheral** Development `gen_ai.token.type`. |
 | `error.type` | duration only, when the call errored | the llm-provider §7 error category (per retrieval-provider §7 for embedding and rerank), carried as `error_category` on the graph-engine §6 typed `LlmFailedEvent` / `EmbeddingFailedEvent` / `RerankFailedEvent` | **Stable** core semantic-conventions attribute (not GenAI-scoped), used directly. Absent on a successful call. |
+| `openarmature.gen_ai.token_budget.kind` | the token-budget instruments only | `"input"` / `"total"` | The budgeted bound a `token_budget.exceeded` / `.utilization` observation pertains to (proposal 0083). Low-cardinality (two values). |
 
 The two `openarmature.*`-mirrored dimensions track the peripheral Development `gen_ai.operation.name` /
 `gen_ai.token.type` attributes; a follow-on adopts the `gen_ai.*` names if they reach Stable or become
@@ -2785,8 +2841,9 @@ order — but NOT the values a node's external call returns: a real provider's t
 vary run to run (graph-engine §5 explicitly excludes node-implementation / external-I/O
 nondeterminism). Per §10, the conformance suite asserts only the deterministic portion under its mocked
 provider — that the expected observations are recorded with the expected dimensions (and, for the
-suite's fixed-usage mock, token counts) — and does NOT assert duration values, histogram bucket
-assignment, or timestamps.
+suite's fixed-usage mock, token counts; and, per proposal 0083, the token-budget `utilization` ratio,
+which the fixed mock usage + a fixture's declared budget make deterministic) — and does NOT assert
+duration values, histogram bucket assignment, or timestamps.
 
 ### 11.5 Conformance support
 
@@ -2794,7 +2851,10 @@ Asserting metrics requires capturing recorded measurements in memory. Implementa
 in-memory **metric-capture** harness primitive (an in-memory `MetricReader`, sibling to the §6.3 OTel
 collector capture for spans), exposed to the conformance adapter per conformance-adapter §6. Fixtures
 assert the token-usage observations (value + dimensions) recorded for a completion, embedding, or
-rerank call, and assert the duration instrument's presence + dimensions (not its value, per §11.4).
+rerank call, and assert the duration instrument's presence + dimensions (not its value, per §11.4). Per
+proposal 0083, fixtures also assert the token-budget instruments — the `token_budget.exceeded` counter
+(dimensions + `kind`) and the `token_budget.utilization` histogram (its deterministic ratio value +
+`kind`, per §11.4).
 
 ## 12. Out of scope
 

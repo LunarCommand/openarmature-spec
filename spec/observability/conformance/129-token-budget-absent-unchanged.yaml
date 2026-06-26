@@ -1,0 +1,129 @@
+# observability §5.5.15 / §11.2 (proposal 0083): the no-budget baseline. The
+# active prompt declares NO token_budget, so the token-budget surface is
+# entirely inert — LlmCompletionEvent.token_budget is null, no
+# openarmature.*.token_budget.* span attributes appear, and neither §11.2
+# token-budget instrument records an observation. enable_metrics is ON, so the
+# ordinary §11 token.usage + duration instruments DO record (per fixture 088),
+# proving the baseline observability path is unperturbed by proposal 0083 — only
+# the new token-budget signals are gated on a declared budget.
+#
+# Numbers: mock usage {prompt 5, completion 1, total 6} — the fixture-088 / 064
+# baseline. No budget means no utilization ratio to compute.
+#
+# Harness note (per conformance-adapter §3.2): the prompt in `prompt_backend`
+# carries NO `token_budget` object (contrast 126-128); `renders_prompt:` makes
+# it active so the active_prompt identity still flows — only the budget surface
+# is absent.
+
+cases:
+  - name: token_budget_absent_leaves_baseline_unperturbed
+    description: |
+      One LLM-calling node that renders a prompt with NO token_budget and
+      then calls the LLM. enable_metrics=True; mock usage {prompt 5,
+      completion 1, total 6}. The harness asserts:
+      - LlmCompletionEvent.token_budget is null
+      - active_prompt still populated (the identity surface is independent
+        of the budget surface)
+      - NO openarmature.prompt.token_budget.* or
+        openarmature.llm.token_budget.* span attributes
+      - the ordinary token.usage (5 input, 1 output) + duration observations
+        still record (baseline unperturbed)
+      - neither token-budget instrument records any observation
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          model: test-model
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: true
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          # No token_budget object — the prompt declares no budget.
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-129
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              active_prompt:
+                name: "classify"
+                version: "v7"
+                label: "production"
+                template_hash: "abc123"
+                rendered_hash: "<any-string>"
+              # No budget declared on the active prompt -> null.
+              token_budget: null
+      span_tree:
+        - name: "openarmature.invocation"
+          children:
+            - name: "ask_llm"
+              children:
+                - name: "openarmature.llm.complete"
+                  attributes_absent:
+                    # No budget declared -> the entire token-budget span
+                    # surface is absent (§5.5.15: each emitted only when
+                    # declared; exceeded emitted only when a budget exists).
+                    - "openarmature.prompt.token_budget.input_max_tokens"
+                    - "openarmature.prompt.token_budget.total_max_tokens"
+                    - "openarmature.llm.token_budget.exceeded"
+                  children: []
+      metrics:
+        # Baseline §11 instruments are unperturbed (fixture 088): token usage
+        # records, duration records. ONLY the token-budget instruments are
+        # gated on a declared budget.
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 5
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "input"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 1
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+      invariants:
+        # Neither token-budget instrument recorded an observation — no budget
+        # was declared, so §11.2's "every budgeted call" set is empty. An
+        # absence predicate over the captured measurement set (the `metrics:`
+        # list shape cannot express it); see the .md §3.2 note.
+        no_token_budget_instrument_observations_when_no_budget: true
+        token_budget_null_on_completion_event: true

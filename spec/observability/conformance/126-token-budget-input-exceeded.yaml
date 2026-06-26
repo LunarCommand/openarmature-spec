@@ -1,0 +1,136 @@
+# observability §5.5.15 / §11.2 / §11.3 (proposal 0083): an active prompt
+# declaring a token_budget whose input_max_tokens sits below the call's
+# actual prompt_tokens. The successful LLM completion's reactive over-budget
+# evaluation (from the graph-engine §6 LlmCompletionEvent.token_budget field,
+# populated via the renders_prompt prompt-context binding) sets the
+# openarmature.llm.token_budget.exceeded span attribute true, emits the
+# declared openarmature.prompt.token_budget.input_max_tokens attribute, and —
+# with enable_metrics on — records the §11.2 token-budget instruments: the
+# token_budget.exceeded counter (kind "input") and a token_budget.utilization
+# observation at the deterministic prompt_tokens / input_max_tokens ratio.
+#
+# Numbers: input_max_tokens 10, mock prompt_tokens 20 -> utilization 2.0 (> 1.0,
+# over budget). The prompt declares ONLY input_max_tokens (total_max_tokens
+# null), so only the "input" kind exists — no "total" observation. §11.4 makes
+# the ratio deterministic (fixed mock usage + the fixture's declared budget);
+# §5.8 asserts the exact value, so 2.0 is a clean exact-equality assertion.
+#
+# Harness note (per conformance-adapter §3.2): the prompt's `token_budget`
+# object in `prompt_backend` carries the {input_max_tokens, total_max_tokens}
+# bounds the backend surfaces on Prompt.token_budget (prompt-management §3),
+# the same config slot the 013 fixture puts `sampling` in. `renders_prompt:`
+# makes the prompt active so LlmCompletionEvent.token_budget is populated.
+
+cases:
+  - name: token_budget_input_exceeded_sets_attr_counter_and_utilization
+    description: |
+      One LLM-calling node that renders a budgeted prompt (input_max_tokens
+      10, no total bound) and then calls the LLM. The mock returns usage
+      {prompt 20, completion 1, total 21}; prompt_tokens 20 > input_max_tokens
+      10, so the input bound is exceeded. enable_metrics=True. The harness
+      asserts:
+      - LlmCompletionEvent.token_budget populated {input_max_tokens 10,
+        total_max_tokens null}
+      - openarmature.llm.token_budget.exceeded = true span attribute
+      - openarmature.prompt.token_budget.input_max_tokens = 10 span attribute
+        (and total_max_tokens absent — the prompt declared no total bound)
+      - the token_budget.exceeded counter records once, kind "input"
+      - a token_budget.utilization observation at 2.0 (20 / 10), kind "input"
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          model: test-model
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: true
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          # Token budget declared on the prompt (prompt-management §3
+          # Prompt.token_budget), the same config slot 013 puts `sampling`
+          # in. Only input_max_tokens declared — total bound absent.
+          token_budget:
+            input_max_tokens: 10
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-126
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          # prompt_tokens 20 > input_max_tokens 10 -> input bound exceeded.
+          usage: {prompt_tokens: 20, completion_tokens: 1, total_tokens: 21}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              active_prompt:
+                name: "classify"
+                version: "v7"
+                label: "production"
+                template_hash: "abc123"
+                rendered_hash: "<any-string>"
+              # Populated from the active prompt's declared budget
+              # (graph-engine §6, proposal 0083). total_max_tokens null —
+              # the prompt declared only the input bound.
+              token_budget:
+                input_max_tokens: 10
+                total_max_tokens: null
+      span_tree:
+        - name: "openarmature.invocation"
+          children:
+            - name: "ask_llm"
+              children:
+                - name: "openarmature.llm.complete"
+                  attributes:
+                    # Declared budget surfaced on the span (§5.5.15).
+                    openarmature.prompt.token_budget.input_max_tokens: 10
+                    # Over-budget signal — input bound crossed (§5.5.15).
+                    openarmature.llm.token_budget.exceeded: true
+                  attributes_absent:
+                    # The prompt declared no total bound, so its attribute
+                    # is absent (each emitted only when declared, §5.5.15).
+                    - "openarmature.prompt.token_budget.total_max_tokens"
+                  children: []
+      metrics:
+        # The exceeded counter increments once for the breached input bound
+        # (§11.2). kind "input" (§11.3).
+        - instrument: "openarmature.gen_ai.client.token_budget.exceeded"
+          value: 1
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token_budget.kind: "input"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        # The utilization histogram records the deterministic input ratio
+        # 20 / 10 = 2.0 (§11.2 / §11.4). Exact value asserted (§5.8 / §11.4).
+        - instrument: "openarmature.gen_ai.client.token_budget.utilization"
+          value: 2.0
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token_budget.kind: "input"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"

@@ -1,0 +1,252 @@
+# observability §5.5.15 / §11.2 (proposal 0083) on the failure path: the
+# token-budget signal evaluates on a structured_output_invalid LlmFailedEvent —
+# the one failure category that carries `usage` (proposal 0082) — exactly as it
+# does on a completion. Case 1: a budgeted prompt (input_max_tokens below the
+# failed call's prompt_tokens) raises structured_output_invalid; the typed
+# LlmFailedEvent.token_budget is populated, openarmature.llm.token_budget.exceeded
+# = true on the (ERROR) span, and the §11.2 exceeded counter + utilization
+# histogram fire ON THE FAILURE EVENT. Case 2 (companion): a provider_unavailable
+# failure (no usage) from the same budgeted prompt populates token_budget but
+# does NO evaluation — no exceeded signal, no token-budget metric — because
+# there is no usage to compare against (§5.5.15 / graph-engine §6).
+#
+# Numbers (case 1): input_max_tokens 10, mock prompt_tokens 20 -> exceeded
+# input, utilization 2.0. Mock modeled on fixture 120 (truncated JSON +
+# finish_reason "length" + response_schema -> structured_output_invalid).
+#
+# Harness note (per conformance-adapter §3.2): `calls_llm.response_schema`
+# carries the JSON Schema the node passes to complete() (per the 022/023
+# structured-output fixtures); with a schema present and the returned content
+# failing to parse/validate, the impl raises structured_output_invalid (per
+# llm-provider §7), and that failure carries the response's usage (proposal
+# 0082). The prompt's `token_budget` object in `prompt_backend` carries the
+# budget bounds (prompt-management §3); `renders_prompt:` makes it active so
+# LlmFailedEvent.token_budget is populated.
+
+cases:
+  - name: structured_output_failure_evaluates_token_budget_on_failure_event
+    description: |
+      One LLM-calling node that renders a budgeted prompt (input_max_tokens
+      10) and passes a response_schema. The mock returns truncated JSON
+      (finish_reason "length") with usage {prompt 20, completion 16, total
+      36}; complete() raises structured_output_invalid. enable_metrics=True.
+      Because this failure category carries usage (proposal 0082), the
+      token-budget signal evaluates on the failure: prompt_tokens 20 >
+      input_max_tokens 10. The harness asserts:
+      - LlmFailedEvent.token_budget populated {input_max_tokens 10,
+        total_max_tokens null}, error_category structured_output_invalid
+      - openarmature.llm.token_budget.exceeded = true on the ERROR span
+      - the token_budget.exceeded counter records once, kind "input"
+      - a token_budget.utilization observation at 2.0 (20 / 10), kind "input"
+      - the exception still propagates (expected_error)
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        renders_prompt: classify
+        calls_llm:
+          model: gpt-test
+          messages: [{role: user, content: "Generate a person record."}]
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+          config:
+            max_tokens: 16
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    enable_metrics: true
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          token_budget:
+            input_max_tokens: 10
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-131
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test-v2
+          choices:
+            # Truncated JSON — cut off mid-output (max_tokens hit).
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":'}, finish_reason: length}
+          # prompt_tokens 20 > input_max_tokens 10 -> input bound exceeded,
+          # evaluated on the failure event (the failure carries usage, 0082).
+          usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              error_category: structured_output_invalid
+              node_name: ask
+              # Response-side surface (proposal 0082) — carried because the
+              # category is structured_output_invalid.
+              finish_reason: length
+              usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
+              # Budget populated from the active prompt (graph-engine §6,
+              # proposal 0083); evaluated because usage is present.
+              token_budget:
+                input_max_tokens: 10
+                total_max_tokens: null
+      span_tree:
+        - name: "openarmature.invocation"
+          status: ERROR
+          children:
+            - name: "ask"
+              status: ERROR
+              children:
+                - name: "openarmature.llm.complete"
+                  status: ERROR
+                  status_description: "structured_output_invalid"
+                  exception_recorded: true
+                  attributes:
+                    openarmature.error.category: "structured_output_invalid"
+                    openarmature.prompt.token_budget.input_max_tokens: 10
+                    # Over-budget signal fires on the failure span (§5.5.15).
+                    openarmature.llm.token_budget.exceeded: true
+                  children: []
+      metrics:
+        # The exceeded counter + utilization histogram fire ON THE FAILURE
+        # EVENT — parity with the completion path (§11.2, proposal 0083),
+        # because the structured_output_invalid failure carries usage (0082).
+        - instrument: "openarmature.gen_ai.client.token_budget.exceeded"
+          value: 1
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token_budget.kind: "input"
+            gen_ai.request.model: "gpt-test"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.token_budget.utilization"
+          value: 2.0
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token_budget.kind: "input"
+            gen_ai.request.model: "gpt-test"
+            gen_ai.system: "openai"
+      invariants:
+        exception_propagates_alongside_typed_event: true
+
+  - name: provider_unavailable_failure_populates_budget_but_no_evaluation
+    description: |
+      The companion no-usage case. The same budgeted prompt (input_max_tokens
+      10), but the mock returns a 503 -> provider_unavailable (llm-provider
+      §7), which carries NO usage record (fixture 122). enable_metrics=True.
+      LlmFailedEvent.token_budget MAY be populated (the active prompt's
+      budget), but NO budget evaluation occurs — there is no usage to compare
+      against (§5.5.15). The harness asserts:
+      - LlmFailedEvent.token_budget populated {input_max_tokens 10,
+        total_max_tokens null}, usage null, error_category provider_unavailable
+      - NO openarmature.llm.token_budget.exceeded span attribute
+      - neither token-budget instrument records any observation
+      - the exception still propagates
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        renders_prompt: classify
+        calls_llm:
+          model: gpt-test
+          messages: [{role: user, content: "summarize"}]
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    enable_metrics: true
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          token_budget:
+            input_max_tokens: 10
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              error_category: provider_unavailable
+              node_name: ask
+              # No response received -> usage null (proposal 0082 / fixture 122).
+              usage: null
+              # Budget populated from the active prompt, but NOT evaluated —
+              # there is no usage to compare against (§5.5.15).
+              token_budget:
+                input_max_tokens: 10
+                total_max_tokens: null
+      span_tree:
+        - name: "openarmature.invocation"
+          status: ERROR
+          children:
+            - name: "ask"
+              status: ERROR
+              children:
+                - name: "openarmature.llm.complete"
+                  status: ERROR
+                  status_description: "provider_unavailable"
+                  exception_recorded: true
+                  attributes:
+                    openarmature.error.category: "provider_unavailable"
+                  attributes_absent:
+                    # No evaluation occurred (no usage) -> the exceeded
+                    # signal is absent, NOT false (§5.5.15: evaluation, hence
+                    # the signal, requires usage).
+                    - "openarmature.llm.token_budget.exceeded"
+                  children: []
+      invariants:
+        # No usage -> no evaluation -> neither token-budget instrument records
+        # (§5.5.15). Absence predicate over the captured measurement set; see
+        # the .md §3.2 note.
+        no_token_budget_instrument_observations_without_usage: true
+        token_budget_populated_but_not_evaluated_without_usage: true
+        exception_propagates_alongside_typed_event: true
