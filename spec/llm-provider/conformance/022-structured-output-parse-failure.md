@@ -1,7 +1,9 @@
 # 022 — Structured Output JSON Parse Failure
 
 `complete()` called with a `response_schema`; provider returns content
-that is not valid JSON (truncated body). MUST raise
+that is not valid JSON — the model finishes normally (`finish_reason`
+`"stop"`) but emits malformed JSON, not a max-tokens truncation (which
+carries `finish_reason: "length"`; see observability fixture 120). MUST raise
 `structured_output_invalid`. Verifies the parse-failure half of §7's
 `structured_output_invalid` semantics.
 
@@ -18,7 +20,7 @@ that is not valid JSON (truncated body). MUST raise
 
 - `complete()` raises `structured_output_invalid`.
 - The error payload carries the requested `response_schema`, the raw
-  response bytes (`'{"name":"Alice","age":'`), and a parse-failure
+  response bytes (`'{"name": "Alice" "age": 30}'`), and a parse-failure
   description.
 - The error also carries the response's `finish_reason` (`"stop"`) and
   `usage` (the body's literal token counts), per proposal 0082.
