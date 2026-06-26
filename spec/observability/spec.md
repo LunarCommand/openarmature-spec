@@ -1563,9 +1563,9 @@ signal:
 - **`openarmature.prompt.token_budget.input_max_tokens`** / **`openarmature.prompt.token_budget.total_max_tokens`** — int. The active prompt's declared budget. Each emitted only when the prompt declared that bound; absent when no active prompt or no budget.
 - **`openarmature.llm.token_budget.exceeded`** — boolean. `true` when the call's actual usage crossed any declared bound — `usage.prompt_tokens > input_max_tokens` (input) or `usage.total_tokens > total_max_tokens` (total; `prompt_tokens + completion_tokens` when the provider omits `total_tokens`). Emitted only when a budget was declared. The per-bound detail (which of input / total was exceeded) lives on the §11.3 metric `kind` dimension, keeping the span surface minimal.
 
-When a budget is declared and exceeded, the implementation MUST set `openarmature.llm.token_budget.exceeded
-= true` (when LLM spans are enabled per §5.5.4) and record the §11.2 token-budget instruments (when
-`enable_metrics`). The signal is **reactive** — evaluated from the actual usage on the terminal typed event
+When a budget is declared and exceeded, the implementation MUST set
+`openarmature.llm.token_budget.exceeded = true` (when LLM spans are enabled per §5.5.4) and record the
+§11.2 token-budget instruments (when `enable_metrics`). The signal is **reactive** — evaluated from the actual usage on the terminal typed event
 after the call returns: every §5.5.7 `LlmCompletionEvent`, and a `structured_output_invalid`
 `LlmFailedEvent` (the failure category that carries `usage` per proposal 0082 / §5.5.7); other failure
 categories carry no usage, so no evaluation occurs. It is **advisory observability only** — `token_budget`
