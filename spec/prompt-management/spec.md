@@ -332,7 +332,7 @@ Async. Fetches a `Prompt` by name and label, consulting backends in order per §
 fallback semantics. Label resolution:
 
 1. If `label` is explicitly supplied (non-`None`), use it verbatim. Manager passes it
-   through to backend `fetch(name, label)` calls.
+   through to the backend `fetch` calls.
 2. If `label` is `None` (or absent) AND the manager has a `LabelResolver` configured,
    consult the resolver per §7: `label = resolver.resolve(name)`. Manager passes the
    resolved label to backends.
