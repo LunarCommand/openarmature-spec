@@ -1,0 +1,100 @@
+# graph-engine §6 LlmFailedEvent response-side surface on a schema-mismatch
+# structured-output failure (proposal 0082) — the contrast to fixture 120's
+# truncation. The mock provider returns a 200 whose content is VALID JSON
+# missing a required field, with finish_reason "stop" (the model finished
+# cleanly but emitted schema-violating content). The call raises
+# structured_output_invalid (llm-provider §7); the typed event carries the
+# response-side surface populated FROM the received response, with
+# finish_reason "stop" — pinning the triage distinction that motivates 0082
+# (length = truncation, may retry larger; stop = genuine schema failure,
+# usually fails the same way on retry).
+#
+# Harness note (per conformance-adapter §3.2): `calls_llm.response_schema`
+# carries the JSON Schema the node passes to complete(), per the 022/023
+# llm-provider structured-output fixtures.
+
+cases:
+  - name: llm_failure_event_structured_output_schema_mismatch
+    description: |
+      One LLM-calling node passing a response_schema. The mock returns a
+      200 whose assistant content is valid JSON but missing the required
+      "age" field, with finish_reason "stop". complete() raises
+      structured_output_invalid. The harness asserts:
+      - exactly one LlmFailedEvent observed, error_category
+        "structured_output_invalid"
+      - finish_reason "stop" (the model finished; not a truncation) — the
+        contrast to fixture 120's "length"
+      - output_content = the verbatim JSON
+      - usage present (the mock's literal token counts)
+      - response_id / response_model present
+      - zero LlmCompletionEvent (0058 mutual exclusion)
+      - the exception propagates out of complete()
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-121
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test-v2
+          choices:
+            # Valid JSON, but missing the required "age" field. The model
+            # finished cleanly, so finish_reason is "stop".
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice"}'}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              error_category: structured_output_invalid
+              node_name: ask
+              namespace: [ask]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+              # Response-side surface — finish_reason "stop" is the contrast
+              # to fixture 120's "length" (proposal 0082 triage distinction).
+              finish_reason: stop
+              output_content: '{"name":"Alice"}'
+              usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+              response_id: cc-121
+              response_model: gpt-test-v2
+          event_count:
+            event_type: LlmCompletionEvent
+            count: 0
+      invariants:
+        exactly_one_llm_failed_event_observed: true
+        zero_llm_completion_events_on_failed_call: true
+        exception_propagates_alongside_typed_event: true
+        finish_reason_is_stop_not_truncation: true

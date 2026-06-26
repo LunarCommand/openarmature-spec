@@ -1,0 +1,164 @@
+# observability §5.5.1 / §5.5.3 (proposal 0082): on a structured_output_invalid
+# failure, the OTel LLM error span carries the same response-side surface a
+# success span carries — openarmature.llm.output.content (from output_content,
+# payload-gated per §5.5.4), openarmature.llm.finish_reason, and the
+# openarmature.llm.usage.* token attributes (§5.5.3) — additively. Span status
+# stays ERROR with the §4.2 exception event + openarmature.error.category; no new
+# attribute names are introduced (the success-path attributes simply populate on
+# the error span).
+#
+# Drives the fixture-120 truncation case through the OTel observer. Case 1 is
+# payload-on; case 2 is the payload-disabled variant (the §5.5.4 default), which
+# redacts openarmature.llm.output.content while keeping finish_reason, usage, the
+# ERROR status, and the exception event — the §5.5.4 gating idiom fixtures 012 /
+# 096 use.
+#
+# Harness note (per conformance-adapter §3.2): `calls_llm.response_schema`
+# carries the JSON Schema the node passes to complete(), per the 022/023
+# llm-provider structured-output fixtures.
+
+cases:
+  - name: otel_error_span_renders_output_usage_finish_reason_payload_on
+    description: |
+      Truncation failure (mock returns truncated JSON, finish_reason
+      "length", usage with completion_tokens at the max_tokens ceiling)
+      through the OTel observer with disable_provider_payload=False. The
+      openarmature.llm.complete span MUST be ERROR with status_description
+      "structured_output_invalid" + a recorded exception, AND carry
+      openarmature.llm.output.content (the raw bytes),
+      openarmature.llm.finish_reason "length", and the
+      openarmature.llm.usage.* token attributes.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          model: "gpt-test"
+          messages: [{role: user, content: "Generate a person record."}]
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+          config:
+            max_tokens: 16
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-124
+          object: chat.completion
+          model: gpt-test-v2
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":'}, finish_reason: length}
+          usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
+    disable_provider_payload: false
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: ERROR
+          children:
+            - name: "ask"
+              status: ERROR
+              children:
+                - name: "openarmature.llm.complete"
+                  status: ERROR
+                  status_description: "structured_output_invalid"
+                  exception_recorded: true
+                  attributes:
+                    openarmature.error.category: "structured_output_invalid"
+                    # Response-side surface on the error span (proposal 0082) —
+                    # the success-path attributes populate on the failure.
+                    openarmature.llm.output.content: '{"name":"Alice","age":'
+                    openarmature.llm.finish_reason: "length"
+                    openarmature.llm.usage.prompt_tokens: 20
+                    openarmature.llm.usage.completion_tokens: 16
+                    openarmature.llm.usage.total_tokens: 36
+                  children: []
+      invariants:
+        error_span_carries_output_usage_finish_reason: true
+        error_status_and_exception_event_unchanged: true
+
+  - name: otel_error_span_payload_disabled_redacts_output_keeps_usage_finish_reason
+    description: |
+      The same truncation failure through the OTel observer with the
+      default disable_provider_payload=True. openarmature.llm.output.content
+      is absent (the payload-gated attribute), while
+      openarmature.llm.finish_reason, the openarmature.llm.usage.*
+      attributes, the ERROR status, and the recorded exception are
+      UNCHANGED (those are not payload-gated per proposal 0082).
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          model: "gpt-test"
+          messages: [{role: user, content: "Generate a person record."}]
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+          config:
+            max_tokens: 16
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-124b
+          object: chat.completion
+          model: gpt-test-v2
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":'}, finish_reason: length}
+          usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: ERROR
+          children:
+            - name: "ask"
+              status: ERROR
+              children:
+                - name: "openarmature.llm.complete"
+                  status: ERROR
+                  status_description: "structured_output_invalid"
+                  exception_recorded: true
+                  attributes:
+                    openarmature.error.category: "structured_output_invalid"
+                    # Not payload-gated — present regardless of the flag.
+                    openarmature.llm.finish_reason: "length"
+                    openarmature.llm.usage.prompt_tokens: 20
+                    openarmature.llm.usage.completion_tokens: 16
+                    openarmature.llm.usage.total_tokens: 36
+                  attributes_absent:
+                    # Payload-gated: suppressed under the default
+                    # disable_provider_payload (§5.5.4), per fixture 012.
+                    - "openarmature.llm.output.content"
+                  children: []
+      invariants:
+        output_content_redacted_under_payload_disabled: true
+        finish_reason_usage_and_error_status_unchanged_under_payload_disabled: true

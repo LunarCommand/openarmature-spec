@@ -1,6 +1,8 @@
 # Structured output — JSON parse failure. complete() called with a
 # response_schema; the provider returns content that is not valid JSON
-# (truncated body). Implementation MUST raise structured_output_invalid
+# (the model finished normally but emitted malformed JSON — NOT a
+# max-tokens truncation, which carries finish_reason: length; see
+# observability fixture 120). Implementation MUST raise structured_output_invalid
 # with the schema, raw content, and a parse-failure description in the
 # error payload.
 
@@ -16,8 +18,8 @@ mock_provider:
           - index: 0
             message:
               role: assistant
-              # Truncated/malformed JSON — missing closing brace and value.
-              content: '{"name":"Alice","age":'
+              # Malformed JSON — missing comma between members (complete but invalid).
+              content: '{"name": "Alice" "age": 30}'
             finish_reason: stop
         usage: {prompt_tokens: 20, completion_tokens: 8, total_tokens: 28}
 
@@ -38,5 +40,9 @@ calls:
         carries:
           # The error MUST expose these so the user can debug.
           response_schema_present: true
-          raw_response_content: '{"name":"Alice","age":'
+          raw_response_content: '{"name": "Alice" "age": 30}'
           failure_description_present: true
+          # finish_reason + usage are now required on the error (proposal 0082)
+          # — sourced from the received (but unparseable) response.
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 8, total_tokens: 28}

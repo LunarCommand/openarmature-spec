@@ -42,3 +42,6 @@ calls:
           # (the missing "age"); implementation-defined wording is
           # acceptable, but the harness asserts the field name appears.
           failure_description_mentions: "age"
+          # finish_reason + usage are now required on the error (proposal 0082).
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}

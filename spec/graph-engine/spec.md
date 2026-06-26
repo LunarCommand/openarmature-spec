@@ -805,8 +805,9 @@ idiomatic equivalent) rather than via a sentinel-namespace string match. The cla
 `LlmFailedEvent` is normative as an identifier shape; implementations MAY use a per-language
 idiomatic name provided the field set + dispatch contract are preserved.
 
-The event mirrors `LlmCompletionEvent`'s identity / scoping / request-side field set 1:1, carries
-failure-specific fields in place of the success-only response-side fields:
+The event mirrors `LlmCompletionEvent`'s identity / scoping / request-side field set 1:1, carries the
+failure-specific fields, and — for `structured_output_invalid` alone — the success-only response-side
+surface (null for every other §7 category):
 
 | Field | Type | Description |
 |---|---|---|
@@ -830,6 +831,32 @@ failure-specific fields in place of the success-only response-side fields:
 | `error_category` | string | The llm-provider §7 normative error category the provider call raised. One of `provider_authentication`, `provider_unavailable`, `provider_invalid_model`, `provider_model_not_loaded`, `provider_rate_limit`, `provider_invalid_response`, `provider_invalid_request`, `provider_unsupported_content_block`, `structured_output_invalid` per the §7 enumeration; new categories added by future llm-provider proposals extend the enum naturally. Always present. |
 | `error_type` | string \| null | OPTIONAL impl-level / vendor-specific error type or code (e.g., the upstream exception class name, or a vendor error code like OpenAI's `rate_limit_exceeded` before normalization to `provider_rate_limit`). Provides per-error-source detail beyond the normative category. Null when no impl-side type is available. |
 | `error_message` | string | The human-readable error message from the raised exception. Always present (the empty string when the exception carried no message). |
+| `output_content` | string \| null | The assistant's response content verbatim per llm-provider §6 `Response.message.content` — the same field the success variant carries. For a `structured_output_invalid` failure this is the content that failed downstream parse/validation; the §7 error exposes the same bytes as its mandated *raw response content* attribute, and the event mirrors them under the completion-event field name. Payload-bearing: populated unconditionally, gated observer-side by `disable_provider_payload` per observability §5.5.4, identical to the success variant's `output_content`. Null for every other §7 category (no response received). |
+| `finish_reason` | string \| null | The normalized §6 finish reason of the response that failed validation — for a `structured_output_invalid` failure, one of `"stop"`, `"length"`, or `"content_filter"` (never `"tool_calls"`, which skips schema validation per §6). `"length"` is the canonical cross-provider truncation signal (the model hit `max_tokens`). Same value space as the success variant's `finish_reason`. Not payload-gated. Null for every other §7 category. |
+| `usage` | mapping \| null | Token usage of the response that failed validation (`prompt_tokens` / `completion_tokens` / `total_tokens` per llm-provider §6), enabling cost attribution on failed calls and truncation corroboration (`completion_tokens` at the configured `max_tokens` ceiling). Same shape as the success variant's `usage`. Not payload-gated. Null for every other §7 category. |
+| `response_id` | string \| null | The provider's response identifier on the failed-validation response, when present. Same semantics as the success variant. Not payload-gated. Null for every other §7 category. |
+| `response_model` | string \| null | The model identifier the provider reported on the failed-validation response, when present. Same semantics as the success variant. Not payload-gated. Null for every other §7 category. |
+
+These five fields are the **response-side surface** of the failure variant — `LlmCompletionEvent`'s
+response-side fields by the same names, **less `output_tool_calls`** (a structured-output failure never
+carries tool calls; its `finish_reason` is never `"tool_calls"`, and the structured-content and tool-call
+paths are mutually exclusive). They are populated **only** for `structured_output_invalid`
+— the one §7 category where the provider returned a response (the model produced content that failed
+downstream parse or validation). For that category, `LlmFailedEvent` is, in effect, a completion whose
+final validation gate failed: it carries `output_content` (the verbatim content that failed),
+`finish_reason`, `usage`, `response_id`, and `response_model` exactly as the success variant would. The
+validated value (`Response.parsed`) is not carried, as on the completion event. For **every other** §7
+category the five fields are null — no response was received.
+
+For a `structured_output_invalid` failure, `error_message` carries the §7 failure description (the
+validation/parse failure description the error exposes — the wrapped exception's message or failing
+locator); implementations populate the exception message with that description, so observers read it from
+`error_message` without a dedicated field.
+
+The sibling failure variants `EmbeddingFailedEvent` / `RerankFailedEvent` keep their identical *"in place
+of the success-only response-side fields"* framing unchanged — they have no structured-output path, so no
+§7 category gives them a response body. `LlmFailedEvent` is the sole failure variant carrying a
+response-side surface.
 
 The event MUST be dispatched on the observer delivery queue at the point of LLM call failure (after
 the §7 category exception is raised — whether by the provider or by the implementation's pre-send
@@ -853,9 +880,11 @@ Like the other typed event variants, `LlmFailedEvent` carries no `phase` discrim
 subject to the `phases` subscription filter. Observers filter via type discrimination
 (`isinstance` or per-language idiomatic equivalent).
 
-The privacy posture for `input_messages` / `request_extras` is identical to
+The privacy posture for `input_messages` / `request_extras` / `output_content` is identical to
 `LlmCompletionEvent`'s — observer-side gating at the rendering boundary per observability §5.5.4
-(implementations populate the fields unconditionally; observers honor `disable_provider_payload`).
+(implementations populate the fields unconditionally; observers honor `disable_provider_payload`). The
+other response-side fields (`finish_reason`, `usage`, `response_id`, `response_model`) are not
+payload-bearing and are not gated.
 Inline image bytes in `input_messages` MUST be redacted per the observability §5.5.5 inline-image
 redaction rule before population. Custom queryable observers (per observability §9) consuming the
 failure variant are responsible for their own redaction posture, identical to the

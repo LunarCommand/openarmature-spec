@@ -608,9 +608,14 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
 - `structured_output_invalid` — `complete()` was called with a `response_schema` (§5), and the
   provider returned content that could not be parsed as JSON OR did not validate against the
   supplied schema. The error MUST expose the requested `response_schema`, the raw response
-  content (the bytes the model produced), and a description of the validation or parse failure
+  content (the bytes the model produced), a description of the validation or parse failure
   (the wrapped exception's message, the failing JSON Pointer, or the language's idiomatic
-  equivalent). Non-transient by default — a model that fails to produce schema-compliant output
+  equivalent), **and the response's normalized `finish_reason` (§6) and token `usage`** — both
+  available from the received response, since the failure is a downstream parse/validation step on an
+  intact wire response, not a transport failure. The `finish_reason` lets callers distinguish a
+  truncation (`"length"` — the model hit `max_tokens`) from a model that finished (`"stop"`) but
+  emitted invalid or schema-violating content, and choose retry policy accordingly (this also
+  reconciles §8.2.5's statement that the mapping surfaces the mapped `finish_reason`). Non-transient by default — a model that fails to produce schema-compliant output
   on a given prompt usually fails the same way on retry. Users wanting retry-on-validation-failure
   semantics MAY include `structured_output_invalid` in a pipeline-utilities `RetryMiddleware`
   classifier's transient set, but the category is NOT transient by default at the spec level.

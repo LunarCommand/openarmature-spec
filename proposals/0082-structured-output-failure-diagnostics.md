@@ -1,9 +1,10 @@
 # 0082: Structured-Output Failure Diagnostics on the LLM Failure Event
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-24
-- **Targets:** spec/graph-engine/spec.md (§6 — the `LlmFailedEvent` typed variant from proposal 0058 gains the **response-side field surface** — `output_content`, `finish_reason`, `usage`, `response_id`, `response_model`, the same five fields `LlmCompletionEvent` carries — populated only for the one llm-provider §7 category that received a response, `structured_output_invalid`, and null for every other category); spec/llm-provider/spec.md (§7 — the `structured_output_invalid` error additionally exposes the response's normalized `finish_reason` and token `usage`, reconciling §8.2.5's existing "surfaces the mapped `finish_reason`" statement with §7's error contract); spec/observability/spec.md (§5.5.7 — reconciles the "response-side fields are absent — no response was received" framing; §8.4.2 / §8.4.3 — the bundled Langfuse failed Generation populates `output` / `usage` / `metadata.finish_reason` / `response_id` / `response_model`; §5.5.1 / §5.5.3 — the OTel error span carries the same surface on its existing `openarmature.llm.*` attributes (`output.content` per §5.5.1; `finish_reason` / `usage.*` per §5.5.3); §11.2 — reconciles the token-usage histogram's "failed attempts ... contribute nothing" rule, since a `structured_output_invalid` failure now carries a usage record); plus new conformance fixtures under `spec/observability/conformance/` and updates to llm-provider fixtures 022 / 023.
+- **Accepted:** 2026-06-25
+- **Targets:** spec/graph-engine/spec.md (§6 — the `LlmFailedEvent` typed variant from proposal 0058 gains the **response-side field surface** — `output_content`, `finish_reason`, `usage`, `response_id`, `response_model` (five of `LlmCompletionEvent`'s response-side fields, all but `output_tool_calls`) — populated only for the one llm-provider §7 category that received a response, `structured_output_invalid`, and null for every other category); spec/llm-provider/spec.md (§7 — the `structured_output_invalid` error additionally exposes the response's normalized `finish_reason` and token `usage`, reconciling §8.2.5's existing "surfaces the mapped `finish_reason`" statement with §7's error contract); spec/observability/spec.md (§5.5.7 — reconciles the "response-side fields are absent — no response was received" framing; §8.4.2 / §8.4.3 — the bundled Langfuse failed Generation populates `output` / `usage` / `metadata.finish_reason` / `response_id` / `response_model`; §5.5.1 / §5.5.3 — the OTel error span carries the same surface on its existing `openarmature.llm.*` attributes (`output.content` per §5.5.1; `finish_reason` / `usage.*` per §5.5.3); §11.2 — reconciles the token-usage histogram's "failed attempts ... contribute nothing" rule, since a `structured_output_invalid` failure now carries a usage record); plus new conformance fixtures under `spec/observability/conformance/` and updates to llm-provider fixtures 022 / 023.
 - **Related:** 0058 (typed LLM failure event — this extends its field set, and its *Motivation* named this follow-on: *"structured-output validation failure events if demand emerges"*), 0049 (typed LLM completion event — its *Out of scope* anticipated the same follow-on; the response-side field semantics this mirrors), 0057 (LlmCompletionEvent field-set extension — the `output_content` privacy posture this mirrors), 0016 (llm-provider structured output — defines the `structured_output_invalid` §7 category and the error's mandated surface; this proposal extends that surface)
 - **Supersedes:**
 
@@ -20,7 +21,7 @@ to observers and to retry logic: a truncated completion (the model hit `max_toke
 schema-violating JSON (`finish_reason == "stop"`).
 
 This proposal carries the full response-side surface for `structured_output_invalid` failures across
-both surfaces. `LlmFailedEvent` gains the same five response-side fields `LlmCompletionEvent` carries —
+both surfaces. `LlmFailedEvent` gains five of `LlmCompletionEvent`'s response-side fields (all but `output_tool_calls`) —
 `output_content`, `finish_reason`, `usage`, `response_id`, `response_model` — populated for
 `structured_output_invalid` (null for every other category), so the failed generation renders with its
 actual output, token usage, and stop reason instead of a null, zero-token record. The §7 error gains
@@ -92,8 +93,8 @@ response-side fields:"*. Reword to:
 > failure-specific fields, and — for `structured_output_invalid` alone — the success-only response-side
 > surface (null for every other §7 category):
 
-Then add five rows to the `LlmFailedEvent` field table (after `error_message`) — the same five fields, by
-the same names, that `LlmCompletionEvent` carries:
+Then add five rows to the `LlmFailedEvent` field table (after `error_message`) — five of
+`LlmCompletionEvent`'s response-side fields by the same names (all but `output_tool_calls`):
 
 > | `output_content` | string \| null | The assistant's response content verbatim per llm-provider §6 `Response.message.content` — the same field the success variant carries. For a `structured_output_invalid` failure this is the content that failed downstream parse/validation; the §7 error exposes the same bytes as its mandated *raw response content* attribute, and the event mirrors them under the completion-event field name (a deliberate cross-surface naming choice — see Alternatives). Payload-bearing: populated unconditionally on the event, gated observer-side by `disable_provider_payload` per observability §5.5.4, identical to the success variant's `output_content`. Null for every other §7 category (no response received). |
 > | `finish_reason` | string \| null | The normalized §6 finish reason of the response that failed validation — for a `structured_output_invalid` failure, one of `"stop"`, `"length"`, or `"content_filter"` (never `"tool_calls"`, which skips schema validation per §6). `"length"` is the canonical cross-provider truncation signal (the model hit `max_tokens`). Same value space as the success variant's `finish_reason`. Not payload-gated. |
@@ -103,8 +104,10 @@ the same names, that `LlmCompletionEvent` carries:
 
 Add a framing paragraph after the table:
 
-> These five fields are the **response-side surface** of the failure variant — the same fields, by the
-> same names, that `LlmCompletionEvent` carries. They are populated **only** for
+> These five fields are the **response-side surface** of the failure variant — `LlmCompletionEvent`'s
+> response-side fields by the same names, **less `output_tool_calls`** (a structured-output failure never
+> carries tool calls; its `finish_reason` is never `"tool_calls"`, and the structured-content and
+> tool-call paths are mutually exclusive). They are populated **only** for
 > `structured_output_invalid` — the one §7 category where the provider returned a response (the model
 > produced content that failed downstream parse or validation). For that category, `LlmFailedEvent` is, in
 > effect, a completion whose final validation gate failed: it carries `output_content` (the verbatim
@@ -217,8 +220,11 @@ is captured on the duration histogram's `error.type` dimension.)
 
 ### New fixtures
 
-New fixtures under `spec/observability/conformance/` (final numbers at acceptance; the 0058 LlmFailedEvent
-dispatch fixtures 069–073 live here):
+New fixtures **120–125** under `spec/observability/conformance/` (in the order listed below; the 0058
+LlmFailedEvent dispatch fixtures 069–073 live here). The structured-output cases drive the **real** failure
+path via `mock_llm` (like 069) plus a **`calls_llm.response_schema`** field — new to the observability
+suite, documented in each fixture's §3.2 header note — so the implementation runs structured-output
+validation and raises `structured_output_invalid` carrying the response-side surface:
 
 1. **`NNN-llm-failure-event-structured-output-truncation`** — **the truncation use case.** Mocked
    provider returns truncated JSON with `finish_reason: "length"` against a `response_schema`. Asserts the

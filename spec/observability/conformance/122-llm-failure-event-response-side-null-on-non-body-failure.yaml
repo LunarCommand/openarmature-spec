@@ -1,0 +1,74 @@
+# graph-engine §6 LlmFailedEvent response-side surface is NULL for every §7
+# category EXCEPT structured_output_invalid (proposal 0082). The mock
+# provider raises provider_unavailable (a 503, no usable response body), so
+# no response was received. The typed event carries the failure-specific
+# fields (error_category), but its five response-side fields —
+# output_content / finish_reason / usage / response_id / response_model —
+# MUST all be null/absent. Locks the "populated only for
+# structured_output_invalid" rule against the companion truncation /
+# schema-mismatch fixtures (120/121).
+
+cases:
+  - name: llm_failure_event_response_side_null_on_non_body_failure
+    description: |
+      One LLM-calling node. The mock returns a 503; the impl classifies it
+      provider_unavailable (llm-provider §7) — no response body. complete()
+      raises. The harness asserts:
+      - exactly one LlmFailedEvent observed, error_category
+        "provider_unavailable"
+      - all five response-side fields null: output_content, finish_reason,
+        usage, response_id, response_model
+      - the exception propagates out of complete()
+      Contrast to fixtures 120/121, where the same five fields ARE
+      populated because the failure category is structured_output_invalid.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "summarize"}]
+          model: gpt-test
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              provider: openai
+              model: gpt-test
+              error_category: provider_unavailable
+              node_name: ask
+              namespace: [ask]
+              attempt_index: 0
+              fan_out_index: null
+              branch_name: null
+              # Response-side surface — NULL for every category except
+              # structured_output_invalid (proposal 0082). No response was
+              # received here, so all five are null.
+              output_content: null
+              finish_reason: null
+              usage: null
+              response_id: null
+              response_model: null
+      invariants:
+        exactly_one_llm_failed_event_observed: true
+        exception_propagates_alongside_typed_event: true
+        response_side_surface_null_for_non_structured_output_failure: true
