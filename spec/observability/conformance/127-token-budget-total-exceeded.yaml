@@ -1,0 +1,125 @@
+# observability §5.5.15 / §11.2 / §11.3 (proposal 0083): the total-bound
+# variant of 126. An active prompt declares a token_budget whose
+# total_max_tokens sits below the call's actual total_tokens. The successful
+# completion's reactive evaluation (total_tokens > total_max_tokens) sets
+# openarmature.llm.token_budget.exceeded true and records the §11.2 instruments
+# with kind "total": the token_budget.exceeded counter and a utilization
+# observation at the deterministic total_tokens / total_max_tokens ratio.
+#
+# Numbers: total_max_tokens 25, mock total_tokens 50 -> utilization 2.0 (> 1.0).
+# The prompt declares ONLY total_max_tokens (input bound null), so only the
+# "total" kind exists. §11.4 makes the ratio deterministic; the exact value 2.0
+# is asserted (§5.8). The mock's prompt_tokens (40) is irrelevant to the total
+# bound — it would only matter against an input bound, which is not declared.
+#
+# Harness note (per conformance-adapter §3.2): the prompt's `token_budget`
+# object in `prompt_backend` carries the budget bounds the backend surfaces on
+# Prompt.token_budget (prompt-management §3); `renders_prompt:` makes the
+# prompt active so LlmCompletionEvent.token_budget is populated.
+
+cases:
+  - name: token_budget_total_exceeded_sets_attr_counter_and_utilization
+    description: |
+      One LLM-calling node that renders a budgeted prompt (total_max_tokens
+      25, no input bound) and then calls the LLM. The mock returns usage
+      {prompt 40, completion 10, total 50}; total_tokens 50 > total_max_tokens
+      25, so the total bound is exceeded. enable_metrics=True. The harness
+      asserts:
+      - LlmCompletionEvent.token_budget populated {input_max_tokens null,
+        total_max_tokens 25}
+      - openarmature.llm.token_budget.exceeded = true span attribute
+      - openarmature.prompt.token_budget.total_max_tokens = 25 span attribute
+        (and input_max_tokens absent — the prompt declared no input bound)
+      - the token_budget.exceeded counter records once, kind "total"
+      - a token_budget.utilization observation at 2.0 (50 / 25), kind "total"
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          model: test-model
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: true
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          # Only total_max_tokens declared — input bound absent.
+          token_budget:
+            total_max_tokens: 25
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-127
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          # total_tokens 50 > total_max_tokens 25 -> total bound exceeded.
+          usage: {prompt_tokens: 40, completion_tokens: 10, total_tokens: 50}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              active_prompt:
+                name: "classify"
+                version: "v7"
+                label: "production"
+                template_hash: "abc123"
+                rendered_hash: "<any-string>"
+              # input_max_tokens null — the prompt declared only total.
+              token_budget:
+                input_max_tokens: null
+                total_max_tokens: 25
+      span_tree:
+        - name: "openarmature.invocation"
+          children:
+            - name: "ask_llm"
+              children:
+                - name: "openarmature.llm.complete"
+                  attributes:
+                    openarmature.prompt.token_budget.total_max_tokens: 25
+                    openarmature.llm.token_budget.exceeded: true
+                  attributes_absent:
+                    # No input bound declared, so its attribute is absent.
+                    - "openarmature.prompt.token_budget.input_max_tokens"
+                  children: []
+      metrics:
+        # Counter increments once for the breached total bound (§11.2),
+        # kind "total" (§11.3).
+        - instrument: "openarmature.gen_ai.client.token_budget.exceeded"
+          value: 1
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token_budget.kind: "total"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        # Utilization records the deterministic total ratio 50 / 25 = 2.0
+        # (§11.2 / §11.4). Exact value asserted.
+        - instrument: "openarmature.gen_ai.client.token_budget.utilization"
+          value: 2.0
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token_budget.kind: "total"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"

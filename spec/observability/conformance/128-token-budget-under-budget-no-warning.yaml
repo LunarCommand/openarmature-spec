@@ -1,0 +1,120 @@
+# observability §5.5.15 / §11.2 (proposal 0083): the under-budget case. An
+# active prompt declares a token_budget the call's usage stays UNDER. No bound
+# is exceeded, so openarmature.llm.token_budget.exceeded is false (and no
+# exceeded counter increments) — but the utilization histogram STILL records
+# the under-budget ratio on every budgeted call (§11.2: "on every call with
+# that bound declared, exceeded or not"), so the distribution shows how close
+# prompts run to budget. The declared-budget span attribute is still present.
+#
+# Numbers: input_max_tokens 40, mock prompt_tokens 20 -> utilization 0.5 (< 1.0,
+# under budget). The prompt declares ONLY input_max_tokens, so only the "input"
+# kind exists. §11.4 makes 0.5 deterministic; the exact value is asserted (§5.8).
+#
+# Harness note (per conformance-adapter §3.2): the prompt's `token_budget`
+# object in `prompt_backend` carries the budget bounds (prompt-management §3);
+# `renders_prompt:` makes the prompt active.
+
+cases:
+  - name: token_budget_under_budget_records_utilization_no_exceeded
+    description: |
+      One LLM-calling node that renders a budgeted prompt (input_max_tokens
+      40, no total bound) and then calls the LLM. The mock returns usage
+      {prompt 20, completion 1, total 21}; prompt_tokens 20 <= input_max_tokens
+      40, so NO bound is exceeded. enable_metrics=True. The harness asserts:
+      - LlmCompletionEvent.token_budget populated {input_max_tokens 40,
+        total_max_tokens null}
+      - openarmature.llm.token_budget.exceeded = false span attribute
+      - openarmature.prompt.token_budget.input_max_tokens = 40 span attribute
+      - NO token_budget.exceeded counter observation (no bound breached)
+      - a token_budget.utilization observation at 0.5 (20 / 40), kind "input"
+        — the distribution records even under budget
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          model: test-model
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: true
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          token_budget:
+            input_max_tokens: 40
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-128
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          # prompt_tokens 20 <= input_max_tokens 40 -> under budget.
+          usage: {prompt_tokens: 20, completion_tokens: 1, total_tokens: 21}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              active_prompt:
+                name: "classify"
+                version: "v7"
+                label: "production"
+                template_hash: "abc123"
+                rendered_hash: "<any-string>"
+              token_budget:
+                input_max_tokens: 40
+                total_max_tokens: null
+      span_tree:
+        - name: "openarmature.invocation"
+          children:
+            - name: "ask_llm"
+              children:
+                - name: "openarmature.llm.complete"
+                  attributes:
+                    # Declared budget still surfaced (§5.5.15).
+                    openarmature.prompt.token_budget.input_max_tokens: 40
+                    # No bound crossed — the signal is false, not absent
+                    # (the budget was declared, so the attribute is emitted).
+                    openarmature.llm.token_budget.exceeded: false
+                  children: []
+      metrics:
+        # The utilization histogram records on EVERY budgeted call, exceeded
+        # or not (§11.2). 20 / 40 = 0.5 (< 1.0, under budget). Exact value
+        # asserted (§5.8 / §11.4).
+        - instrument: "openarmature.gen_ai.client.token_budget.utilization"
+          value: 0.5
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token_budget.kind: "input"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+      invariants:
+        # No bound was breached, so the exceeded counter records NO
+        # observation (it increments per breached bound, §11.2). The
+        # captured measurement set contains the one utilization observation
+        # above and zero token_budget.exceeded observations. This is an
+        # absence predicate the `metrics:` list shape cannot express; see
+        # the .md §3.2 note.
+        no_token_budget_exceeded_observation_when_under_budget: true
+        utilization_records_under_budget: true

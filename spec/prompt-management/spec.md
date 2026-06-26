@@ -98,6 +98,7 @@ A `Prompt` record:
 | `template_hash` | String. A stable content-derived hash of the unrendered template. Implementations SHOULD use a cryptographic hash (e.g., SHA-256 hex) over the canonical serialization of the template. The hash MUST be deterministic for identical template content. |
 | `fetched_at` | Timestamp of when this Prompt was fetched from its backend. Implementation-defined precision. When the backend serves a cached result, `fetched_at` MUST reflect the original fetch time, not the cache hit time (matching §5's "caching MUST NOT break content-addressing" intent). |
 | `sampling` | Optional. A `SamplingConfig` sub-record carrying per-prompt sampling configuration. Field shape mirrors llm-provider §6 `RuntimeConfig`: the seven declared fields (`temperature`, `max_tokens`, `top_p`, `seed`, `frequency_penalty`, `presence_penalty`, `stop_sequences`), all optional, plus an extras mapping for vendor-specific fields per `RuntimeConfig`'s extras-pass-through contract. Per-language implementations SHOULD use the SAME type as `RuntimeConfig` (or a structurally-compatible subtype) so callers can splat `prompt.sampling` directly into `provider.complete(config=...)` without per-field translation. The model identifier is NOT part of `SamplingConfig`; per-prompt model selection is out of scope (the bound provider determines the model). Absent (`None` / `null` / `undefined`, per the language idiom) when the backend doesn't supply sampling config for this prompt. |
+| `token_budget` | Optional. A `TokenBudget` sub-record: `{input_max_tokens?: int, total_max_tokens?: int}`, both optional, non-negative. `input_max_tokens` is the expected ceiling on the call's **input** (prompt) tokens; `total_max_tokens` is the ceiling on **input + output** tokens. The **output** budget is `sampling.max_tokens` and is not duplicated here. **Advisory and observability-only**: unlike `sampling` — which configures the call — `token_budget` has **no effect on the LLM request**; it drives the observability signals in observability §5.5 / §7 / §8.4 / §11 (compared reactively against the provider's reported usage). Sourced from the same §5 config sidecar as `sampling`. Absent (`None` / `null` / `undefined`) when the backend supplies no budget. |
 | `observability_entities` | Optional mapping (`dict[str, Any] \| None`) carrying backend-keyed references to first-class entities the prompt has been registered as in observability backends. Keys follow `<backend>_<entity>` naming. Spec-normative keys: `langfuse_prompt` — the Langfuse SDK Prompt-entity reference, used by observability §8.4.4 to establish the Langfuse Generation → Prompt link. Future observability backend mappings define their own keys. Values are opaque to the spec; per-language implementations determine the concrete type (e.g., the Langfuse Python SDK's `Prompt` class instance, the Langfuse TypeScript SDK's equivalent). Absent / `None` when the backend doesn't expose any such references; absent keys within a populated mapping signal "this backend's reference is not available." |
 | `metadata` | Optional implementation-defined mapping of additional backend-supplied metadata (e.g., Langfuse tags, file path of origin, other backend-attribution metadata). The spec does not constrain shape. Note that the Langfuse Prompt-entity reference moved out of this field as of v0.26.0 (proposal 0033) — it now lives on `observability_entities['langfuse_prompt']` so the observability §8.4.4 lookup has a spec-defined location. |
 
@@ -210,6 +211,7 @@ A `PromptResult` record:
 | `fetched_at` | Timestamp of when the source `Prompt` was fetched. Implementation-defined precision. When the `Prompt` came from a cache (§6), `fetched_at` MUST reflect the original fetch time, not the cache hit time. |
 | `rendered_at` | Timestamp of when this `PromptResult` was rendered. Distinct from `fetched_at`: a single fetched prompt MAY render multiple times. |
 | `sampling` | Propagated from the source `Prompt.sampling`. Same shape as §3's `sampling` field; absent when the source Prompt had no sampling config. |
+| `token_budget` | Propagated from the source `Prompt.token_budget`. Same shape as §3's `token_budget` field; absent when the source Prompt declared no budget. |
 | `observability_entities` | Propagated from the source `Prompt.observability_entities`. Same shape as §3's field; carries the same backend-keyed reference mapping the source Prompt had. Rendering does NOT modify the contents. |
 
 The `rendered_hash` is the cache-key value most useful to downstream consumers — two
@@ -292,7 +294,7 @@ declared `SamplingConfig` shape, placing vendor-specific fields under the extras
 §3's extras-pass-through analog of llm-provider §6.
 
 **Filesystem sidecar conventions (informative).** Filesystem backends MAY adopt either of
-two conventions for sourcing `sampling`:
+two conventions for sourcing `sampling` (and, per proposal 0083, `token_budget`):
 
 - **Per-prompt sidecar:** for a template at `<root>/<name>.j2`, also read
   `<root>/<name>.config.json` (or equivalent extension) and populate `Prompt.sampling`
@@ -302,6 +304,9 @@ two conventions for sourcing `sampling`:
   construction time, keyed by prompt name; populate `Prompt.sampling` from the entry
   matching the fetched name. The file's top-level JSON is a mapping from prompt name to
   `SamplingConfig`.
+
+Either convention MAY also carry a `token_budget` object (`{input_max_tokens?, total_max_tokens?}`)
+alongside the sampling fields, populating `Prompt.token_budget` (proposal 0083).
 
 The conventions are informative; the spec does NOT mandate a specific filesystem layout.
 Implementations are free to use either convention, both, or neither (e.g., loading from a
@@ -674,6 +679,11 @@ etc., per observability §5.5):
 - `openarmature.prompt.group_name` — when the call was part of a `PromptGroup`, the
   group's `group_name` propagates to every member span so trace UIs can render them as
   a single grouping.
+- `openarmature.prompt.token_budget.input_max_tokens` / `.total_max_tokens` — the
+  `PromptResult.token_budget` bounds (proposal 0083), each when declared. **Observed, not applied** —
+  unlike `Prompt.sampling` (wired into the call via the *RuntimeConfig wiring* touchpoint below),
+  `token_budget` never touches the request; it is compared reactively against the provider's reported
+  usage to drive the observability §5.5 / §11 token-budget signal.
 
 The propagation mechanism (e.g., a context variable holding the `PromptResult`, an
 explicit observer event the manager fires on render) is implementation-defined. The

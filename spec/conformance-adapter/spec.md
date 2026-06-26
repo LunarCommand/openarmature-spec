@@ -706,7 +706,11 @@ These directives appear under per-invocation or per-case `expected:` blocks and 
   entry asserts a recorded observation on the named instrument
   (`openarmature.gen_ai.client.token.usage` / `.operation.duration`) carrying the given dimensions;
   `value` asserts the recorded value (used for the fixed-usage mock's token counts) and is omitted for
-  duration observations (value not asserted, per observability §11.4). With the observer's
+  duration observations (value not asserted, per observability §11.4). Per proposal 0083 the directive
+  also covers the token-budget instruments — `.token_budget.exceeded` (counter; the §11.3 dimensions plus
+  the `openarmature.gen_ai.token_budget.kind` dimension, with `value` asserting the per-breach increment
+  count per observability §11.2) and `.token_budget.utilization` (histogram; `value` asserts the
+  deterministic ratio, plus `kind`, per §11.4). With the observer's
   `enable_metrics` off, no measurements are recorded — a `metrics: []` assertion confirms the opt-in
   gate. See §6.9 for the primitive and the `enable_metrics` configuration.
 
@@ -917,7 +921,9 @@ for assertion.
 - After the case runs, the captured observations are asserted via the §5.8 `metrics:` expected-outcome
   directive — instrument name + dimensions for every observation, plus the recorded value for the
   token-usage instrument (the mock returns fixed usage); duration observations assert presence +
-  dimensions only, not the value (observability §11.4).
+  dimensions only, not the value (observability §11.4); and (proposal 0083) the token-budget instruments
+  — the `token_budget.exceeded` counter (dimensions + `kind` + the per-breach increment-count `value`)
+  and the `token_budget.utilization` histogram (deterministic ratio value + `kind`).
 - A case with `enable_metrics: false` (or absent) records no measurements; a `metrics: []` assertion
   confirms the opt-in gate.
 

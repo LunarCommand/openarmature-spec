@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.78.0] — 2026-06-25
+
+**Added**
+
+- **prompt-management §3 / graph-engine §6 / observability — per-prompt token-budget observability.** A `Prompt` gains an optional `token_budget` (`{input_max_tokens?, total_max_tokens?}` — the input and total token ceilings; the output budget stays `sampling.max_tokens`), **advisory and observability-only** — it never touches the LLM request. It rides onto the `LlmCompletionEvent` / `LlmFailedEvent` `token_budget` field and, reactively against the provider's actual reported usage, drives a budget-exceeded signal: the `openarmature.llm.token_budget.exceeded` span attribute (§5.5.15), a SHOULD-level `WARNING` log (§7) and Langfuse `observation.level = "WARNING"` (§8.4.3), and two opt-in §11 metrics — an `openarmature.gen_ai.client.token_budget.exceeded` counter and a `.utilization` histogram (dimensioned by a new `openarmature.gen_ai.token_budget.kind` = input / total, §11.3). Evaluated on every completion and on the usage-bearing `structured_output_invalid` failure (proposal 0082). ([proposal 0083](proposals/0083-prompt-token-budget-observability.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Purely additive across prompt-management (§3 / §4 / §5 / §12), graph-engine (§6), observability (§5.5.15 / §7 / §8.4.3 / §11.2–§11.5), and conformance-adapter (§5.8 / §6.9 — extended for the two new instruments, the `kind` dimension, and the deterministic utilization-ratio asserted value). No behavior change for any prompt without a `token_budget` or any observer with `enable_metrics` off; the budget never affects the request. New observability conformance fixtures `126`–`131`. Sequenced after prerequisite proposal 0082 — the `structured_output_invalid` failure-path coverage builds on 0082's `LlmFailedEvent.usage` and §11.2 reconciliation.
+
 ## [0.77.0] — 2026-06-25
 
 **Added**
