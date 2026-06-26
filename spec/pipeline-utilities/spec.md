@@ -20,6 +20,7 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
   - §10.15 *Composition with suspension* added — notes that the new suspension capability uses the same persistence mechanism as checkpointing for paused-invocation records (single store with discriminator OR separate stores; implementation choice); paused-invocation records and checkpoint records are distinct shapes; resume operations load the correct record type per the resume API in use (`invoke(resume_invocation=...)` per §10.4 → checkpoint record; `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 → paused-invocation record); paused-record lifetime is NOT bound to invocation completion (unlike checkpoint records, persists until resume completes / cancellation / backend retention); error categories are distinct (`suspension_persistence_failed` per suspension §9 does not signal checkpoint failure and vice versa). Refer to the suspension capability spec for the full primitive contract by [proposal 0021](../../proposals/0021-graph-suspension.md)
   - §6.3 *Failure isolation* gained a `catch` configuration field — a set of error categories matched against the caught exception's **cause chain** (via the new §6.4 primitive), so a carrier-wrapped failure at a §9.7 / §11.7 / §9.6 / §11.6 wrapping placement is caught correctly where a surface `predicate` check would miss it and invert an intended degrade into a crash; `catch` matches on the derived category (the outermost-non-carrier value reported as `caught_exception.category`, per the 0068 derivation), composes with `predicate` as a conjunction (both permissive by default), and `predicate` is documented as surface-only with the cause-aware alternatives. New §6.4 *Cause-chain classification* promotes §6.3's carrier-skipping cause-fidelity walk to a public, named classification primitive (cause chain + derived category) shared by §6.1 retry, §6.3 isolation, and consumers. §6.1's default-classifier depth is documented as deliberately single-level (retry re-runs → classifies at re-attempt granularity; the §6.4 primitive is the opt-in for full-chain retry), distinct from §6.3's full-chain degrade classification. New fixture 072; `catch` is additive (default catch-all preserved) and retry behavior is unchanged by [proposal 0074](../../proposals/0074-failure-isolation-catch-classification.md)
   - §11 *Parallel branches* extended — §11.1.1 *Branch spec* gains an inline-callable branch form (`call`, an async function over the parent state returning a parent-shaped partial update, with no subgraph / state schema / `inputs` / `outputs`) as an alternative to the compiled-`subgraph` form (exactly one required, mixing allowed, `parallel_branches_invalid_branch_spec` compile error otherwise); §11.4 defines the callable branch's contribution (the returned partial update, merged via the parent reducer with no projection); new §11.10 *Conditional branches* adds an optional `when` predicate skipping a branch at dispatch (no work / contribution / events / span; all-skipped is a valid no-op distinct from `parallel_branches_no_branches`); §11.7 branch middleware (per-leg failure-isolation) and §11.5 cancellation apply to callable branches unchanged. New fixtures 073–075. Additive; existing subgraph branches unchanged by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
+  - §10.11 *Per-instance fan-out resume* gains an optional `enclosing_fan_out_lineage` field on each `fan_out_progress` entry (the outermost→innermost chain of enclosing fan-out instances, each `{namespace, fan_out_node_name, fan_out_index}`), so a fan-out nested inside an outer fan-out instance resumes correctly — entries keyed by `(namespace, fan_out_node_name, enclosing_fan_out_lineage)`, extending §10.11.1 exactly-once to nested fan-outs — plus a *No mis-skip across enclosing instances* invariant (on resume the engine MUST re-run rather than apply a non-matching or legacy-unlineaged entry's `completed` skips). The count-drift check re-resolves per lineage-qualified entry; §10.2's per-fan-out mapping framing, the §10.11 `namespace`-uniqueness claim, and the §10.7 skip decision are reconciled to the same-node multiplicity. New fixture `076`; the record-format addition is backward-compatible (flat records carry an empty lineage) by [proposal 0085](../../proposals/0085-nested-fan-out-checkpoint-lineage.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -1024,8 +1025,9 @@ The `CheckpointRecord` carries:
   attempt that has been merged. Each position carries `namespace` (per graph-engine §6),
   `node_name`, `step` (monotonic across the invocation, including subgraph-internal nodes),
   `attempt_index`, and `fan_out_index` (when present).
-- `fan_out_progress` — per-fan-out-node mapping populated when one or more fan-outs are in
-  flight at save time. Drives per-instance fan-out resume (per §10.7 and §10.11): on resume,
+- `fan_out_progress` — a per-fan-out mapping populated when one or more fan-outs are in
+  flight at save time (keyed per §10.11 by `(namespace, fan_out_node_name, enclosing_fan_out_lineage)`
+  — a fan-out nested inside an outer fan-out instance has one entry per enclosing instance). Drives per-instance fan-out resume (per §10.7 and §10.11): on resume,
   the engine consults this field to skip already-completed instances and re-run only those
   that did not complete-and-record before the crash. Field shape (per-fan-out entry,
   per-instance status with accumulator `result`, in-flight `completed_inner_positions`) is
@@ -1070,7 +1072,9 @@ The engine fires a save at every graph-engine §6 `completed` event from the fol
 - **Fan-out instance internal nodes.** One save per inner-node completion within an
   instance. `parent_states` is populated per §10.2 (the fan-out instance's outer state is
   the parent); `fan_out_progress` is populated per §10.11 to disambiguate which
-  `fan_out_index` slot the event belongs to. This save granularity is what enables the
+  `fan_out_index` slot the event belongs to — and, for a fan-out nested inside an outer fan-out
+  instance, the engine MUST record the entry's `enclosing_fan_out_lineage` (§10.11) so
+  per-outer-instance progress is distinguishable on resume. This save granularity is what enables the
   per-instance resume contract of §10.7. For high-instance-count or high-inner-node-count
   fan-outs whose internal save volume is a concern, Checkpointer backends MAY support
   configurable batching scoped to fan-out internal saves per §10.11.4.
@@ -1211,7 +1215,10 @@ record's `fan_out_progress` field and treats each instance as one of three state
   bucket, or in `collect` error_policy mode (per §9.5), a recorded error for the
   `errors_field` bucket. On resume, the engine MUST NOT re-run the instance and MUST NOT
   record a second accumulator entry. The instance is skipped; its accumulator entry rolls
-  forward to the fan-out's fan-in step (per §9.3) at fan-out completion.
+  forward to the fan-out's fan-in step (per §9.3) at fan-out completion. This skip applies only
+  when the entry positively matches the re-entering execution's enclosing fan-out instance lineage
+  (§10.11 *No mis-skip across enclosing instances*); a non-matching or legacy-unlineaged entry for a
+  nested fan-out is treated as `not_started` and re-run.
 - **In-flight at save time.** The instance had begun execution (its first inner node fired
   `started`) at the moment of save AND no `completed` event for its terminal inner node
   had fired yet, so no accumulator entry was recorded. On resume, the engine re-runs the
@@ -1279,9 +1286,10 @@ Canonical runtime category: `checkpoint_record_invalid` — raised when
 (state shape mismatch, missing required fields, a post-migration state that fails to
 deserialize against the current state class per §10.12.4, OR a version mismatch on a
 Checkpointer backend that cannot support state migration per §10.12.1). The category also
-covers `fan_out_progress[*].instance_count` drift between save and resume per §10.11 — a
-saved per-instance accumulator shape that is structurally incompatible with the resumed
-run's resolved count. Non-transient. (Prior to proposal 0014, "incompatible
+covers `fan_out_progress[*].instance_count` drift between save and resume per §10.11 (re-resolved
+per lineage-qualified entry, and applied only to a positively lineage-matched entry — an unmatched
+legacy entry re-runs rather than raising) — a saved per-instance accumulator shape that is
+structurally incompatible with the resumed run's resolved count. Non-transient. (Prior to proposal 0014, "incompatible
 `schema_version`" appeared in this list as a generic reason; raw `schema_version`
 mismatches now route through `checkpoint_state_migration_missing` or
 `checkpoint_state_migration_failed` per §10.12 on migration-capable backends, and only
@@ -1339,12 +1347,16 @@ only on backends that can expose the required class-independent intermediate for
 
 ### 10.11 Per-instance fan-out resume
 
-The `CheckpointRecord.fan_out_progress` field is a per-fan-out-node mapping (when one or more
-fan-outs are in flight at save time). Each entry carries:
+The `CheckpointRecord.fan_out_progress` field is a per-fan-out mapping (when one or more
+fan-outs are in flight at save time) — keyed by `(namespace, fan_out_node_name,
+enclosing_fan_out_lineage)` (below), so a fan-out nested inside an outer fan-out instance has one
+entry per enclosing instance. Each entry carries:
 
 - `fan_out_node_name` — the name of the fan-out node in the parent graph.
-- `namespace` — the §6 namespace identifying the fan-out node uniquely (handles nested
-  subgraphs that contain fan-outs).
+- `namespace` — the §6 namespace of the fan-out node (handles nested subgraphs that contain
+  fan-outs). It identifies the entry uniquely only together with `fan_out_node_name` and
+  `enclosing_fan_out_lineage` (below); `namespace` alone does not, for a fan-out nested inside an
+  outer fan-out instance — the same node-name path recurs across the outer instances.
 - `instance_count` — the resolved instance count for this fan-out (per §9 `count` or
   `items_field` mode).
 - `instances` — a sequence of per-instance status entries indexed by `fan_out_index` (`0` to
@@ -1369,6 +1381,19 @@ fan-outs are in flight at save time). Each entry carries:
     the outer graph. Empty when the instance is `in_flight` but no inner node has yet
     completed within this instance's subgraph (e.g., a sibling-triggered save fired right
     after this instance's first `started` event). Unused for `completed` and `not_started`.
+- `enclosing_fan_out_lineage` — an ordered sequence (outermost → innermost) of enclosing fan-out
+  instance identifiers, each `{namespace, fan_out_node_name, fan_out_index}`, identifying the chain
+  of fan-out instances within which this fan-out is running. Empty / absent for a fan-out not nested
+  inside another fan-out instance (a top-level fan-out, or one reached through static subgraph
+  nesting only — backward-compatible with records written before this field existed). When present,
+  it distinguishes the same inner fan-out node executing once per enclosing outer instance: an entry
+  is keyed by `(namespace, fan_out_node_name, enclosing_fan_out_lineage)`, so `fan_out_progress` MAY
+  contain multiple entries sharing a `(namespace, fan_out_node_name)` that differ only in
+  `enclosing_fan_out_lineage`.
+
+With `enclosing_fan_out_lineage` distinguishing each enclosing instance's inner-fan-out progress,
+§10.11.1's exactly-once guarantee extends to nested fan-outs: each inner instance within each
+enclosing instance contributes exactly once across a resume.
 
 **Count drift on resume.** When the engine loads a saved record and finds a
 `fan_out_progress` entry whose `instance_count` does NOT equal the count the resumed run
@@ -1380,8 +1405,12 @@ per-instance accumulator contributions written under one `instance_count` cannot
 reconciled with a different count without risking dropped or duplicated entries at the
 fan-in step, breaking §10.11.1's exactly-once reducer guarantee. The check MUST happen
 before any fan-out instance work runs on the resumed path; a saved record with multiple
-fan-out entries raises on the first mismatch encountered. Users who intentionally change
-a fan-out's input set between runs MUST start a fresh invocation rather than resume.
+fan-out entries raises on the first mismatch among lineage-matching entries. Users who intentionally change
+a fan-out's input set between runs MUST start a fresh invocation rather than resume. The count is
+re-resolved **per lineage-qualified entry** — a nested inner fan-out using `items_field` may resolve
+a different `instance_count` per enclosing instance — and the drift check applies only to entries
+that positively match a re-entering lineage (per *No mis-skip across enclosing instances* below); an
+unmatched legacy entry is re-run, not drift-raised.
 
 `completed` is the load-bearing state. An instance's `completed` status MUST mean: the
 instance produced its durable contribution to the fan-out accumulator AND that contribution
@@ -1396,6 +1425,24 @@ save has succeeded is reflected as `completed`, the instance is skipped, and its
 accumulator entry rolls forward to the fan-in step at fan-out completion. This is the same
 correctness model as the rest of §10 — work that hadn't been recorded as saved at crash
 time re-runs on resume.
+
+**No mis-skip across enclosing instances.** On resume, before applying a saved `fan_out_progress`
+entry's `completed` skips to a re-entering fan-out, the engine MUST verify the entry's
+`enclosing_fan_out_lineage` positively matches the lineage of the re-entering execution (the ordered
+chain of enclosing fan-out instances it is running within). If no saved entry positively matches —
+including a legacy record that carries no `enclosing_fan_out_lineage` for a fan-out that is in fact
+nested inside an outer fan-out instance — the engine MUST treat the re-entering fan-out as having no
+saved progress (all instances `not_started`) and re-run it, rather than apply a non-matching entry's
+skips. Re-running un-matched work is correctness-preserving (§10.7 — no accumulator entry was
+reconciled); applying a non-matching entry's skips is not, as it would roll a different enclosing
+instance's contributions into the wrong accumulator. A positive match requires the saved entry's
+`enclosing_fan_out_lineage` to equal the re-entering execution's lineage element-for-element; an
+**empty or absent** saved lineage positively matches an **empty** re-entering lineage (a flat,
+non-nested fan-out — so existing flat records, which carry no lineage, resume exactly as before),
+and a non-empty re-entering lineage never matches an absent or empty saved lineage, nor the
+reverse. Each lineage element's `fan_out_index` references its enclosing instance positionally;
+this relies on the enclosing fan-out's instance indices being stable across resume, which the
+enclosing entry's own count-drift check guarantees for an unchanged input set.
 
 #### 10.11.1 Reducer interaction
 
