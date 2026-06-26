@@ -8,6 +8,7 @@ Canonical behavioral specification for the OpenArmature conformance-adapter capa
   - created by [proposal 0055](../../proposals/0055-conformance-adapter-capability.md)
   - §6 *Harness primitives* gains §6.8 *Caching prompt backend* — an in-memory `PromptBackend` that caches by `(name, label)`, counts source reads, and honors prompt-management `cache_ttl_seconds` (`0` bypasses the cache; `None` serves cached; `N > 0` serves within a controllable-clock max-age) — plus the `source_read_count` and `advance_clock` fixture shapes it exposes, supporting the prompt-management per-fetch cache-TTL fixtures by [proposal 0072](../../proposals/0072-prompt-management-fetch-cache-ttl.md)
   - §5.8 *Expected-outcome directives* gains a `metrics:` assertion (recorded measurements — instrument + dimensions for every observation, recorded value for token-usage, presence-only for duration); §6 *Harness primitives* gains §6.9 *Metric capture* — an in-memory OTel `MetricReader` (sibling to §6.3 collector capture) recording every observation, gated by an `enable_metrics` observer flag — supporting the observability §11 metrics fixtures by [proposal 0067](../../proposals/0067-observability-genai-metrics.md)
+  - §6.8 *Caching prompt backend* gains a fixture-level `manager: {default_cache_ttl_seconds: <int>}` construction slot and a `target: {manager: true}` fetch, so a fixture can exercise the §6 cache-TTL precedence chain (per-call value > manager default > backend) rather than only a backend-direct call — supporting the prompt-management service-wide-default fixture by [proposal 0086](../../proposals/0086-prompt-default-cache-ttl.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) ships a thin **adapter**
 that ingests the language-agnostic YAML fixtures under `spec/<capability>/conformance/` and executes them
@@ -907,6 +908,13 @@ fixture schema as:
   like any other and carries a `target`.
 - fixture-level `expected_backend_state: {<backend>: {source_read_count: <int>}}` — asserts the
   named backend's cumulative source-read count after all `calls` have run.
+- a fixture-level `manager: {default_cache_ttl_seconds: <int>}` block (proposal 0086) — constructs a
+  `PromptManager` over the declared `backends` (in order) with the given construction-time default
+  (prompt-management §6); absent means no manager default.
+- a `calls` entry `target: {manager: true}` — routes the fetch through that manager, exercising the
+  §6 cache-TTL precedence chain (explicit per-call value > manager default > backend) rather than
+  targeting a backend directly; a per-call `cache_ttl_seconds` on the call overrides the manager
+  default, and omitting it selects the default.
 
 ### 6.9 Metric capture
 

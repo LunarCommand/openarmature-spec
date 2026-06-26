@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.79.0] — 2026-06-26
+
+**Added**
+
+- **prompt-management §6 — service-wide default `cache_ttl_seconds` on `PromptManager`.** A `PromptManager` may be constructed with an optional `default_cache_ttl_seconds`, applied to any `fetch` / `get` that does not supply a per-call `cache_ttl_seconds`. Cache-control now resolves by an explicit precedence chain — per-call value > manager default > backend implementation-defined — mirroring the existing label-resolution chain. A per-call value (including `0` force-fresh) always overrides the default; a manager constructed without a default is unaffected. This is the standing-config counterpart to the per-fetch lever proposal 0072 shipped, and the service-wide default 0072 explicitly deferred. ([proposal 0086](proposals/0086-prompt-default-cache-ttl.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Additive — a new optional construction parameter; an absent default preserves current behavior exactly (the backend's own caching governs). §5's backend-caching paragraph notes a backend receives a single resolved `cache_ttl_seconds` per fetch regardless of source; §15's *Cache invalidation policies* bullet now covers both the per-fetch lever and the standing default. conformance-adapter §6.8 gains a `manager: {default_cache_ttl_seconds}` construction slot and a `target: {manager: true}` fetch; new prompt-management conformance fixture `036`.
+
 ## [0.78.0] — 2026-06-25
 
 **Added**
