@@ -564,7 +564,10 @@ this section, which carry no `phase` — carries the following fields:
   position-by-position to `namespace` (one entry per namespace segment / dispatch boundary): at each
   position, the `fan_out_index` of the fan-out instance entered at that boundary, or null when that
   boundary is not a fan-out instance (a plain subgraph wrapper or a parallel-branch boundary). Empty
-  for an event with no enclosing fan-out / branch lineage. The scalar `fan_out_index` above is
+  only for a top-level event (a node with no enclosing dispatch boundary at all); a node reached only
+  through plain subgraph nesting carries a **null-filled** chain aligned to its `namespace`, not an
+  empty one (consistent with `branch_name_chain` below) — subgraph nesting is disambiguated by
+  `namespace` itself. The scalar `fan_out_index` above is
   retained, carrying the innermost (deepest non-null) value; for a node nested inside multiple fan-out
   instances the scalar alone does not identify the event source — the chain does. At most one of
   `fan_out_index_chain` and `branch_name_chain` is non-null at any one position.

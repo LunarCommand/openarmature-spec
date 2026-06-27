@@ -510,9 +510,12 @@ pipeline-utilities §9 / §11.
     target_field: <field_in_outer_state>
     error_policy: fail_fast | collect
     concurrency: <int>  # optional
-    concurrent_mode: serial | concurrent  # optional conformance-adapter harness knob — forces serial vs concurrent instance dispatch (serial is equivalent to `concurrency: 1`); distinct from `concurrency`, which bounds the degree of parallelism
+    concurrent_mode: serial | concurrent  # optional harness knob — forces serial vs concurrent instance dispatch (distinct from `concurrency`, the parallelism bound; interaction below)
   ```
-  Exercises pipeline-utilities §9 (parallel fan-out).
+  Exercises pipeline-utilities §9 (parallel fan-out). `concurrent_mode` and `concurrency` are
+  normally set separately; if both appear, `serial` dispatches one instance at a time (equivalent to
+  `concurrency: 1`, overriding any larger `concurrency`) and `concurrent` dispatches up to
+  `concurrency` at once (or the §9 default when `concurrency` is absent).
 - **`parallel_branches:`** — parallel-branches dispatcher configuration:
   ```yaml
   parallel_branches:
