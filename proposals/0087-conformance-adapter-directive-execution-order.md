@@ -3,13 +3,13 @@
 - **Status:** Draft
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-27
-- **Targets:** spec/conformance-adapter/spec.md §8.3 *Execution* (add a normative rule that an adapter MUST execute a node's sibling directives in fixture-document / key order); §7 *Nondeterminism handling* (a counterpoint note that within-node directive order IS deterministic, unlike the cross-source interleaving cases it lists); §8.2 *Parsing* (a note that lossless parsing preserves directive order — an order-preserving YAML load). A small new conformance fixture pinning the order-sensitive composition directly.
-- **Related:** 0055 (conformance-adapter capability), 0081 (value-matcher vocabulary — the prior conformance-adapter vocabulary clarification), 0034 / 0048 (caller-supplied invocation metadata — the `set` / `get_invocation_metadata` directives whose composition is order-sensitive). Surfaced by the #188–#194 consolidated review on the `review-fixture-harness-catchup` coord thread.
+- **Targets:** spec/conformance-adapter/spec.md §8.3 *Execution* (add a normative rule that an adapter MUST execute a node's sibling directives in document order — the order they appear in the fixture, i.e. mapping insertion order, not sorted-by-key); §7 *Nondeterminism handling* (a counterpoint note that within-node directive order IS deterministic, unlike the cross-source interleaving cases it lists); §8.2 *Parsing* (a note that lossless parsing preserves directive order — an order-preserving YAML load). A small new conformance fixture pinning the order-sensitive composition directly.
+- **Related:** 0055 (conformance-adapter capability), 0081 (value-matcher vocabulary — the prior conformance-adapter vocabulary clarification), 0034 / 0048 (caller-supplied invocation metadata — the `set_invocation_metadata` / `get_invocation_metadata` primitives that the order-sensitive `augment_metadata` / `capture_invocation_metadata_into` directives wrap). Surfaced by the #188–#194 consolidated review on the `review-fixture-harness-catchup` coord thread.
 - **Supersedes:**
 
 ## Summary
 
-Several conformance fixtures place **multiple directives on a single node** whose effects compose **order-dependently** — most visibly the `get_invocation_metadata` round-trip fixtures, where a node that augments then captures sees the augmented value, while a node that captures then augments does not. The conformance-adapter spec does not state that those directives execute in the order they appear in the fixture document, so a conforming adapter could legitimately execute them in any order and fail these fixtures inconsistently. This proposal ratifies the rule the fixtures already depend on: an adapter MUST execute a node's sibling directives in **fixture-document (key) order**.
+Several conformance fixtures place **multiple directives on a single node** whose effects compose **order-dependently** — most visibly the `get_invocation_metadata` round-trip fixtures, where a node that augments then captures sees the augmented value, while a node that captures then augments does not. The conformance-adapter spec does not state that those directives execute in the order they appear in the fixture document, so a conforming adapter could legitimately execute them in any order and fail these fixtures inconsistently. This proposal ratifies the rule the fixtures already depend on: an adapter MUST execute a node's sibling directives in **document order** — the order they appear in the fixture (mapping insertion order, not sorted-by-key).
 
 ## Motivation
 
@@ -34,7 +34,7 @@ Anticipated bump: **MINOR** (pre-1.0). A new normative conformance-adapter rule;
 
 Add:
 
-> **Directive execution order.** When a node carries more than one directive (sibling keys under `nodes.<node_name>:`), the adapter MUST execute them in the order they appear in the fixture document. Directives whose effects compose order-dependently — e.g. `augment_metadata` / `augment_metadata_from_field` (writes) and `capture_invocation_metadata_into` (a point-in-time read), per observability §3.4 — therefore produce a deterministic result fixed by their document order. (`update` / `update_from_field` partial-update merges are likewise applied in document order.)
+> **Directive execution order.** When a node carries more than one directive (sibling keys under `nodes.<node_name>:`), the adapter MUST execute them in **document order** — the order the directive keys appear under `nodes.<node_name>:` (mapping insertion order, **not** sorted-by-key). Directives whose effects compose order-dependently — e.g. `augment_metadata` / `augment_metadata_from_field` (writes) and `capture_invocation_metadata_into` (a point-in-time read), per observability §3.4 — therefore produce a deterministic result fixed by their document order. (`update` / `update_from_field` partial-update merges are likewise applied in document order.)
 
 ### §7 *Nondeterminism handling* — counterpoint note
 
