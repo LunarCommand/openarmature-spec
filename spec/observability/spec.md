@@ -521,7 +521,7 @@ view of the dispatch — the parent trace records "the dispatch failed," the det
 
 ### 4.3 Parent-child rules
 
-Spans are parented as follows, using the §6 `namespace`, `fan_out_index`, and `branch_name` fields (and, for a node nested inside concurrent enclosing fan-out instances or branches, the `fan_out_index_chain` / `branch_name_chain` lineage — see the disambiguation note below):
+Spans are parented as follows, using the §6 `namespace` and the enclosing-lineage chains `fan_out_index_chain` / `branch_name_chain` (the scalar `fan_out_index` / `branch_name` are the innermost values of those chains — sufficient for a single-level or top-level event, where the chain reduces to the scalar or empty; nested concurrency requires the full chains per §4.1 / §6):
 
 - A node event with `namespace = [name]` and `parent_states = []` corresponds to an outermost-graph
   node. Its span's parent is the invocation span.

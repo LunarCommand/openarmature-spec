@@ -551,6 +551,10 @@ fixture.
     testing the drain primitive's timeout discipline. The two-key form lets the first invocation
     use one pace and subsequent invocations another (graph-engine §6 *Drain* fixture 024).
 
+  - **`phases: [<phase>, ...]`** — phase subscription filter. Defaults to `[started, completed]`
+    when omitted; explicit list restricts the observer to the named phases per graph-engine §6
+    *Per-observer phase subscription*.
+
 - **Case-level observability harness keys** — per-directory extensions (per §3.2) appearing at the case
   top level (siblings of `nodes:` / `expected:`, not under `observers:`): `mock_llm: [{status: <int>,
   body: {...}}, ...]` supplies the canned OpenAI-compatible chat-completion responses (llm-provider §8
@@ -558,9 +562,6 @@ fixture.
   `calls_llm_from_wrapper`); `disable_llm_spans: true` constructs the OTel observer with the §5.5
   LLM-span opt-out; `caller_global_otel_active: true` installs a second exporter on the OTel global
   TracerProvider to exercise the §6 isolation rule.
-  - **`phases: [<phase>, ...]`** — phase subscription filter. Defaults to `[started, completed]`
-    when omitted; explicit list restricts the observer to the named phases per graph-engine §6
-    *Per-observer phase subscription*.
 
 OTel and Langfuse emission are NOT observer behaviors. Observability fixtures that exercise OTel
 span emission OR Langfuse trace/observation emission rely on **harness primitives** the adapter
