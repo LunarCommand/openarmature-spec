@@ -9,6 +9,7 @@ Canonical behavioral specification for the OpenArmature conformance-adapter capa
   - §6 *Harness primitives* gains §6.8 *Caching prompt backend* — an in-memory `PromptBackend` that caches by `(name, label)`, counts source reads, and honors prompt-management `cache_ttl_seconds` (`0` bypasses the cache; `None` serves cached; `N > 0` serves within a controllable-clock max-age) — plus the `source_read_count` and `advance_clock` fixture shapes it exposes, supporting the prompt-management per-fetch cache-TTL fixtures by [proposal 0072](../../proposals/0072-prompt-management-fetch-cache-ttl.md)
   - §5.8 *Expected-outcome directives* gains a `metrics:` assertion (recorded measurements — instrument + dimensions for every observation, recorded value for token-usage, presence-only for duration); §6 *Harness primitives* gains §6.9 *Metric capture* — an in-memory OTel `MetricReader` (sibling to §6.3 collector capture) recording every observation, gated by an `enable_metrics` observer flag — supporting the observability §11 metrics fixtures by [proposal 0067](../../proposals/0067-observability-genai-metrics.md)
   - §6.8 *Caching prompt backend* gains a fixture-level `manager: {default_cache_ttl_seconds: <int>}` construction slot and a `target: {manager: true}` fetch, so a fixture can exercise the §6 cache-TTL precedence chain (per-call value > manager default > backend) rather than only a backend-direct call — supporting the prompt-management service-wide-default fixture by [proposal 0086](../../proposals/0086-prompt-default-cache-ttl.md)
+  - §5.1 *Node behavior directives* gained `calls_llm_from_wrapper` — issues a real `complete()` call from a pre- / post-phase middleware so the calling node's span is not open when the provider span / `LlmCompletionEvent` is emitted, exercising the observability §5.5 *Lineage-resolved parent* orphan fallback — alongside the existing `calls_llm` node directive it complements; §5.5 documents the case-level observability harness keys (`mock_llm`, `disable_llm_spans`, `caller_global_otel_active`); §5.4 *Composition directives* documents the existing `fan_out.concurrent_mode` (serial vs concurrent instance dispatch, distinct from `concurrency`), first surfaced in observability fixtures by the nested-fan-out span-keying tests. Supports proposal 0084's nested-fan-out span-lineage fixtures by [proposal 0084](../../proposals/0084-nested-fan-out-span-lineage.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) ships a thin **adapter**
 that ingests the language-agnostic YAML fixtures under `spec/<capability>/conformance/` and executes them
@@ -337,6 +338,21 @@ These directives appear under `nodes.<node_name>:` and define what the node does
   - `{name: <name>, pre_next_calls_suspend_with_descriptor: {...}}` — middleware itself calls
     `suspend()` from pre-`next()` (rejected per suspension §8.4).
   Exercises pipeline-utilities §6 (middleware) + suspension §8.4 composition.
+- **`calls_llm: {messages: [...], stores_response_in: <state_field>}`** — per-directory observability
+  harness extension (per §3.2). The node body issues one real `complete()` call against the mock
+  provider (configured by the case-level `mock_llm`, §5.5) with the given messages and stores the
+  response content in `<state_field>`. Used by the observability LLM-span fixtures. Exercises
+  observability §5.5 (LLM provider span).
+- **`calls_llm_from_wrapper: {phase: pre|post, messages: [...]}`** — the adapter wraps the node in a
+  middleware that issues exactly one real `complete()` call against the configured mock provider in
+  the named phase: `pre` (before `next()`, so the calling node's span is not yet open) or `post`
+  (after `next()` returns, so the node's span is already closed) — default `pre`. Either way the
+  calling node's span is NOT open when the provider span / `LlmCompletionEvent` is emitted, so the
+  call is orphaned from its calling-node span. The response is NOT written to state (it models a
+  guardrail / classifier side call); the node's own body still runs inside `next()` (the node span
+  still opens, making the orphan provider span a sibling of — not a child of — the node span).
+  Exercises observability §5.5 *Lineage-resolved parent* (the orphan fallback to the nearest
+  enclosing wrapper per §4.3).
 - **`augment_metadata: {<key>: <value>, ...}`** — node calls `set_invocation_metadata(**kwargs)` per
   observability §3.4 with the given key/value pairs. Used in observability fixtures testing
   per-async-context metadata propagation. Exercises observability §3.4.
@@ -494,8 +510,12 @@ pipeline-utilities §9 / §11.
     target_field: <field_in_outer_state>
     error_policy: fail_fast | collect
     concurrency: <int>  # optional
+    concurrent_mode: serial | concurrent  # optional harness knob — forces serial vs concurrent instance dispatch (distinct from `concurrency`, the parallelism bound; interaction below)
   ```
-  Exercises pipeline-utilities §9 (parallel fan-out).
+  Exercises pipeline-utilities §9 (parallel fan-out). `concurrent_mode` and `concurrency` are
+  normally set separately; if both appear, `serial` dispatches one instance at a time (equivalent to
+  `concurrency: 1`, overriding any larger `concurrency`) and `concurrent` dispatches up to
+  `concurrency` at once (or the §9 default when `concurrency` is absent).
 - **`parallel_branches:`** — parallel-branches dispatcher configuration:
   ```yaml
   parallel_branches:
@@ -533,9 +553,18 @@ fixture.
     — observer sleeps the configured milliseconds before processing each event. Used in fixtures
     testing the drain primitive's timeout discipline. The two-key form lets the first invocation
     use one pace and subsequent invocations another (graph-engine §6 *Drain* fixture 024).
+
   - **`phases: [<phase>, ...]`** — phase subscription filter. Defaults to `[started, completed]`
     when omitted; explicit list restricts the observer to the named phases per graph-engine §6
     *Per-observer phase subscription*.
+
+- **Case-level observability harness keys** — per-directory extensions (per §3.2) appearing at the case
+  top level (siblings of `nodes:` / `expected:`, not under `observers:`): `mock_llm: [{status: <int>,
+  body: {...}}, ...]` supplies the canned OpenAI-compatible chat-completion responses (llm-provider §8
+  wire shape) the mock provider returns to successive `complete()` calls (paired with `calls_llm` /
+  `calls_llm_from_wrapper`); `disable_llm_spans: true` constructs the OTel observer with the §5.5
+  LLM-span opt-out; `caller_global_otel_active: true` installs a second exporter on the OTel global
+  TracerProvider to exercise the §6 isolation rule.
 
 OTel and Langfuse emission are NOT observer behaviors. Observability fixtures that exercise OTel
 span emission OR Langfuse trace/observation emission rely on **harness primitives** the adapter

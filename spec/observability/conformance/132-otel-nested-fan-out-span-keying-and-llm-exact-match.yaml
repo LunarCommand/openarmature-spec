@@ -1,0 +1,248 @@
+# OTel nested-fan-out span keying + nested-LLM exact-match (proposal 0084).
+# An inner fan-out nested inside an outer fan-out instance, run under
+# CONCURRENT outer execution. Two assertions in one span_tree:
+#
+#   (a) Span keying / no dropped spans (§4.1 / §6). The driving-span key is
+#       (namespace, attempt_index, fan_out_index_chain, branch_name_chain).
+#       The two outer instances each contain inner instances 0 and 1, so the
+#       inner instances / inner nodes / LLM spans share the same INNERMOST
+#       scalar fan_out_index across the outer instances. Under concurrent
+#       outer execution both are in-flight on the serial event queue at once;
+#       keying by the innermost scalar would collide and drop the second
+#       outer instance's inner subtree. The chain key keeps all four inner
+#       subtrees distinct -> all four appear.
+#
+#   (b) Nested-LLM exact-match (§5.5 *Lineage-resolved parent*). Each
+#       openarmature.llm.complete span parents under ITS OWN lineage-
+#       disambiguated calling-node (`ask`) span, never a sibling `ask` that
+#       shares the same innermost fan_out_index in the other outer instance.
+#
+# `concurrent_mode: concurrent` on the outer fan-out forces the concurrency
+# that makes (a) discriminate the bug (under serial execution the scalar key
+# never collides). It is the same fan_out directive pipeline-utilities 076
+# uses for nested concurrent outer execution.
+#
+# Topology (standard fan_out form, cf. fixtures 006 / 076):
+#   outer_fan_out  -- fan-out over outer_seeds (2 lists) --> subgraph `mid`
+#     inner_fan_out -- fan-out over inner_seeds (2 ints) --> subgraph `leaf_sg`
+#       ask         -- calls_llm, stores_response_in score
+#
+# Span lineage (encoded by the tree, not a new attribute):
+#   outer instance 0 / inner instance 0 -> chain [0, 0]
+#   outer instance 0 / inner instance 1 -> chain [0, 1]
+#   outer instance 1 / inner instance 0 -> chain [1, 0]
+#   outer instance 1 / inner instance 1 -> chain [1, 1]
+# Fan-out NODE spans carry item_count / error_policy; instance spans carry
+# the scalar fan_out_index (innermost) + parent_node_name (cf. 006).
+
+subgraphs:
+  leaf_sg:
+    state:
+      fields:
+        seed: {type: int, default: 0}
+        score: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "score it"}]
+          stores_response_in: score
+    edges:
+      - {from: ask, to: END}
+
+  mid:
+    state:
+      fields:
+        inner_seeds: {type: list<int>, default: []}
+        inner_scores: {type: list<string>, reducer: append, default: []}
+    entry: inner_fan_out
+    nodes:
+      inner_fan_out:
+        fan_out:
+          subgraph: leaf_sg
+          items_field: inner_seeds
+          item_field: seed
+          collect_field: score
+          target_field: inner_scores
+          error_policy: collect
+    edges:
+      - {from: inner_fan_out, to: END}
+
+cases:
+  - name: nested_fan_out_no_dropped_spans_and_llm_exact_match
+    description: |
+      Outer fan-out over two seed lists, run concurrent; each outer instance
+      runs the inner fan-out over its two projected seeds; each inner instance
+      issues one LLM call. All four inner subtrees (ask + llm.complete) appear,
+      each under its own outer-instance lineage, and each llm.complete parents
+      under its own `ask` span.
+    state:
+      fields:
+        outer_seeds:
+          type: list<list<int>>
+          default: [[0, 1], [2, 3]]
+        all_scores:
+          type: list<list<string>>
+          reducer: append
+          default: []
+    entry: outer_fan_out
+    nodes:
+      outer_fan_out:
+        fan_out:
+          subgraph: mid
+          items_field: outer_seeds
+          item_field: inner_seeds
+          collect_field: inner_scores
+          target_field: all_scores
+          error_policy: collect
+          concurrent_mode: concurrent
+    edges:
+      - {from: outer_fan_out, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-132-1
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-132-2
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-132-3
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-132-4
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "outer_fan_out"                 # outer fan-out NODE span
+              status: OK
+              attributes:
+                openarmature.fan_out.item_count: 2
+                openarmature.fan_out.error_policy: "collect"
+              children:
+                - name: "outer_fan_out"             # outer instance 0 (chain [0])
+                  status: OK
+                  attributes:
+                    openarmature.node.fan_out_index: 0
+                    openarmature.fan_out.parent_node_name: "outer_fan_out"
+                  children:
+                    - name: "inner_fan_out"         # inner fan-out NODE span (inside outer 0)
+                      status: OK
+                      attributes:
+                        openarmature.fan_out.item_count: 2
+                        openarmature.fan_out.error_policy: "collect"
+                      children:
+                        - name: "inner_fan_out"     # inner instance 0 -> chain [0, 0]
+                          status: OK
+                          attributes:
+                            openarmature.node.fan_out_index: 0
+                            openarmature.fan_out.parent_node_name: "inner_fan_out"
+                          children:
+                            - name: "ask"
+                              status: OK
+                              children:
+                                - name: "openarmature.llm.complete"
+                                  status: OK
+                                  attributes:
+                                    openarmature.llm.model: "test-model"
+                                    openarmature.llm.finish_reason: "stop"
+                                  children: []
+                        - name: "inner_fan_out"     # inner instance 1 -> chain [0, 1]
+                          status: OK
+                          attributes:
+                            openarmature.node.fan_out_index: 1
+                            openarmature.fan_out.parent_node_name: "inner_fan_out"
+                          children:
+                            - name: "ask"
+                              status: OK
+                              children:
+                                - name: "openarmature.llm.complete"
+                                  status: OK
+                                  attributes:
+                                    openarmature.llm.model: "test-model"
+                                    openarmature.llm.finish_reason: "stop"
+                                  children: []
+                - name: "outer_fan_out"             # outer instance 1 (chain [1])
+                  status: OK
+                  attributes:
+                    openarmature.node.fan_out_index: 1
+                    openarmature.fan_out.parent_node_name: "outer_fan_out"
+                  children:
+                    - name: "inner_fan_out"         # inner fan-out NODE span (inside outer 1)
+                      status: OK
+                      attributes:
+                        openarmature.fan_out.item_count: 2
+                        openarmature.fan_out.error_policy: "collect"
+                      children:
+                        - name: "inner_fan_out"     # inner instance 0 -> chain [1, 0]
+                          status: OK
+                          attributes:
+                            openarmature.node.fan_out_index: 0
+                            openarmature.fan_out.parent_node_name: "inner_fan_out"
+                          children:
+                            - name: "ask"
+                              status: OK
+                              children:
+                                - name: "openarmature.llm.complete"
+                                  status: OK
+                                  attributes:
+                                    openarmature.llm.model: "test-model"
+                                    openarmature.llm.finish_reason: "stop"
+                                  children: []
+                        - name: "inner_fan_out"     # inner instance 1 -> chain [1, 1]
+                          status: OK
+                          attributes:
+                            openarmature.node.fan_out_index: 1
+                            openarmature.fan_out.parent_node_name: "inner_fan_out"
+                          children:
+                            - name: "ask"
+                              status: OK
+                              children:
+                                - name: "openarmature.llm.complete"
+                                  status: OK
+                                  attributes:
+                                    openarmature.llm.model: "test-model"
+                                    openarmature.llm.finish_reason: "stop"
+                                  children: []
+      invariants:
+        # (a) No dropped spans: all four inner instances appear despite the
+        # two concurrent outer instances sharing inner fan_out_index 0 and 1.
+        # Under the pre-0084 innermost-scalar key the second outer instance's
+        # inner subtree would collide and drop.
+        no_inner_spans_dropped_under_concurrent_nesting: true
+        # Four ask spans and four llm.complete spans total.
+        inner_node_span_count: 4
+        llm_provider_span_count: 4
+        # (b) Each llm.complete parents under its own lineage-disambiguated
+        # `ask` span, never a sibling `ask` sharing the same innermost
+        # fan_out_index in the other outer instance.
+        llm_span_parents_under_own_lineage_calling_node: true
+        # Per-instance disambiguation sanity (cf. 006): instance indices are
+        # unique within EACH inner_fan_out node span (there are two — one per
+        # outer instance — so the check is per-parent-span, not global) and
+        # cover 0..count-1.
+        unique_fan_out_indices_per_node_span_under: "inner_fan_out"
+        fan_out_index_range: [0, 1]

@@ -9,7 +9,7 @@ lifecycle and the proposal template.
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
 | [0086](proposals/0086-prompt-default-cache-ttl.md) | Service-wide default cache-TTL | prompt-management | Accepted | Pending         | —          |
 | [0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) | Nested fan-out checkpoint lineage | pipeline-utilities | Accepted | Pending         | —          |
-| [0084](proposals/0084-orphaned-span-parent-fallback.md) | Orphaned provider/tool span parent fallback | observability | Draft | —               | —          |
+| [0084](proposals/0084-nested-fan-out-span-lineage.md) | Nested-fan-out span lineage chain | observability | Accepted | Pending         | —          |
 | [0083](proposals/0083-prompt-token-budget-observability.md) | Per-prompt token-budget observability | observability | Accepted | Pending         | —          |
 | [0082](proposals/0082-structured-output-failure-diagnostics.md) | Structured-output failure diagnostics | graph-engine | Accepted | Pending         | —          |
 | [0081](proposals/0081-conformance-adapter-value-matcher-vocabulary.md) | Value-matcher vocabulary | conformance-adapter | Accepted | Pending         | —          |
