@@ -25,6 +25,7 @@ Canonical behavioral specification for the OpenArmature graph engine.
   - §6 observer event union extended with two paired typed variants — `ToolCallEvent` (success) + `ToolCallFailedEvent` (failure) — for tool *execution* (the caller running a tool the model requested via `output_tool_calls`), per the 0049 → 0058 → 0059 success+failure precedent; plus an opt-in node-body **tool-call instrumentation scope** the caller wraps a single tool execution in (OA observes — emits the terminal event at outcome time and re-raises on failure — it does NOT select, run, retry, or loop tools). Events carry the identity / scoping baseline + `tool_name` / `tool_call_id` (linking to the requesting `LlmCompletionEvent.output_tool_calls` entry, the §5.5.10 `.ids` projection) / `arguments` / `result` (success) and `error_type` + `error_message` (failure — **no `error_category`**, the deliberate departure: arbitrary tool code has no closed llm-provider §7 taxonomy). Event-driven start/complete split carries the scope-entry identity; payload gated observer-side by `disable_provider_payload` (§5.5.4) by [proposal 0063](../../proposals/0063-tool-execution-observability.md)
   - §6 observer event union extended with two new typed event variants — `RerankEvent` (success) and `RerankFailedEvent` (failure) — paired from launch per the 0049 → 0058 success+failure pairing precedent, the rerank sibling to the embedding pair. Both carry the identity / scoping / request-side field set established by `EmbeddingEvent` (with `query` + `documents` in place of `input_strings` and the rerank-specific runtime-config shape), with capability-appropriate success-side fields (`response_id`, `response_model`, `usage`, `result_count`) plus `document_count` / `top_k`, and the three failure-specific fields (`error_category`, `error_type`, `error_message`) on the failure variant. Mutual exclusion + exception-flow + dispatch-timing rules mirror the embedding pair; `query` / `documents` / `request_extras` and the `ScoredDocument.document` result echoes are payload-bearing, gated observer-side by `disable_provider_payload` (§5.5.4) by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
   - §6 observer event union gained `LlmTokenEvent` — an **unpaired within-call sub-event** (not a call outcome; no `LlmTokenFailedEvent`) carrying one streamed delta per chunk when `complete()` is called with `stream` set (llm-provider §5). Mirrors `LlmCompletionEvent`'s identity / scoping baseline plus `chunk_index`, `delta_kind` (`"content"` / `"reasoning"`; `"tool_call"` reserved, not emitted), and `delta`; correlated to the terminal `LlmCompletionEvent` / `LlmFailedEvent` by shared `call_id`, dispatched in `chunk_index` order before the terminal event. `attempt_index` is node-level (does not advance across llm-provider §7.1 call-level wire attempts). Bundled OTel / Langfuse observers do not render it — it is payload for custom forwarding observers by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
+  - §6 observer event surface gained `fan_out_index_chain` and `branch_name_chain` — the enclosing fan-out instance / parallel-branch lineage (outermost→innermost, aligned to `namespace`, null at non-applicable depths) — on `NodeEvent` and the provider/tool events (`LlmCompletionEvent`, `LlmFailedEvent`, `LlmTokenEvent`, `EmbeddingEvent` / `EmbeddingFailedEvent`, `RerankEvent` / `RerankFailedEvent`, `ToolCallEvent`, with `ToolCallFailedEvent` inheriting by reference), plus the framework metadata-augmentation event (so its observer scoping stays consistent with the chain-keyed span stack). The existing scalar `fan_out_index` / `branch_name` are retained as the innermost values; the chains disambiguate the same node nested in concurrent enclosing instances, which the scalars alone cannot. Additive by [proposal 0084](../../proposals/0084-nested-fan-out-span-lineage.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -534,14 +535,20 @@ this section, which carry no `phase` — carries the following fields:
 - `fan_out_index` — optional non-negative integer. Populated only for events from nodes that execute
   inside a fan-out instance (pipeline-utilities §9). The 0-based index of this fan-out instance among
   its siblings (in `items_field` mode, matching the position of the corresponding item; in `count`
-  mode, `0..count-1`). When the same node name appears in multiple fan-out instances, the
+  mode, `0..count-1`). When the same node name appears in multiple sibling fan-out instances, the
   combination of `namespace`, `branch_name`, `fan_out_index`, `attempt_index`, and `phase` uniquely
-  identifies the event source. Absent for events from nodes that are not inside any fan-out instance.
+  identifies the event source; for a node nested inside multiple fan-out instances the scalars can
+  coincide across concurrent enclosing instances — `fan_out_index_chain` (below) carries the full
+  lineage that disambiguates (see the `branch_name` bullet). Absent for events from nodes that are
+  not inside any fan-out instance.
 - `branch_name` — optional non-empty string. Populated only for events from nodes that execute inside
   a parallel-branches branch (pipeline-utilities §11). Carries the branch's name as declared in the
   parallel-branches node's `branches` mapping. When the same node name appears in multiple branches'
   subgraphs, the combination of `namespace`, `branch_name`, `fan_out_index`, `attempt_index`, and
-  `phase` uniquely identifies the event source. `branch_name` and `fan_out_index` are independent and
+  `phase` uniquely identifies the event source — except for a node nested inside multiple fan-out
+  instances or parallel branches, where the scalars can coincide across concurrent enclosing instances;
+  `fan_out_index_chain` / `branch_name_chain` (below) carry the full lineage that disambiguates those.
+  `branch_name` and `fan_out_index` are independent and
   MAY both be present simultaneously when a fan-out node executes inside a parallel-branches branch
   (or a parallel-branches node executes inside a fan-out instance). Absent for events from nodes that
   are not inside any parallel-branches branch. In the uniqueness tuple, an absent field participates
@@ -553,6 +560,21 @@ this section, which carry no `phase` — carries the following fields:
   `namespace` set to the branch's name (the `branches`-mapping key) — a synthetic identity standing
   in for the registered-node `node_name` defined above — and `branch_name` carrying the same value.
   A `when`-skipped branch (§11.10) emits no events.
+- `fan_out_index_chain` — the enclosing fan-out instance lineage, outermost→innermost, aligned
+  position-by-position to `namespace` (one entry per namespace segment / dispatch boundary): at each
+  position, the `fan_out_index` of the fan-out instance entered at that boundary, or null when that
+  boundary is not a fan-out instance (a plain subgraph wrapper or a parallel-branch boundary). Empty
+  for an event with no enclosing fan-out / branch lineage. The scalar `fan_out_index` above is
+  retained, carrying the innermost (deepest non-null) value; for a node nested inside multiple fan-out
+  instances the scalar alone does not identify the event source — the chain does. At most one of
+  `fan_out_index_chain` and `branch_name_chain` is non-null at any one position.
+- `branch_name_chain` — the enclosing parallel-branch lineage, the same shape and `namespace`-alignment
+  as `fan_out_index_chain` (the same length — the two chains are parallel, one entry per namespace
+  depth): at each position, the `branch_name` of the parallel branch entered at that boundary, or null
+  when that boundary is not a parallel branch. Both chains are empty only for a top-level event; for any
+  nested event `branch_name_chain` has the same length as `fan_out_index_chain`, carrying null at each
+  non-branch depth (so a purely fan-out-nested event carries an all-null `branch_name_chain` of that
+  length, not an empty one).
 - `fan_out_config` — optional structured value, populated on EVERY `started` and `completed`
   event for a fan-out node (i.e., events whose `node_name` resolves to a fan-out node per
   pipeline-utilities §9), including retried attempts of the fan-out node itself
@@ -715,7 +737,7 @@ carrying an explicit `kind` discriminator, a separate observer callback, equival
 `phase` — the `phase` field and its `started` / `completed` enumeration (per *Node event shape* above)
 are properties of node-boundary events only — and none of the node-only fields (`pre_state`,
 `post_state`, `error`); it carries the added metadata entries plus the lineage-identity fields it reuses
-from the node event (`namespace`, `attempt_index`, `fan_out_index`, `branch_name`). Augmentation events
+from the node event (`namespace`, `attempt_index`, `fan_out_index`, `branch_name`, plus the `fan_out_index_chain` / `branch_name_chain` lineage so an observer can scope the augmentation correctly under nested concurrency, per observability §6). Augmentation events
 are delivered in the same strict-serial order as node-boundary events, at the point the augmentation
 occurs. Because the `phases` subscription filter governs node-boundary phases, augmentation events are
 not subject to it: they are delivered to every registered observer, which ignores them if it does not
@@ -740,8 +762,10 @@ The event carries the following typed fields:
 | `node_name` | string | The user-defined node that issued the call. |
 | `namespace` | sequence of strings | The calling node's namespace, per the *Node event shape* above. |
 | `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
-| `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling fan-out instances. |
-| `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11, with the resolved `branch_names` per proposal 0044 governing the value space). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling parallel branches. |
+| `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling fan-out instances; `fan_out_index_chain` disambiguates the nested case. |
+| `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11, with the resolved `branch_names` per proposal 0044 governing the value space). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling parallel branches; `branch_name_chain` disambiguates the nested case. |
+| `fan_out_index_chain` | sequence of (int \| null) | The enclosing fan-out instance lineage, outermost→innermost, aligned position-by-position to `namespace` (per the *Node event shape*): at each namespace depth, the `fan_out_index` of the fan-out instance entered there, or null when that boundary is not a fan-out instance. Empty for a top-level event. Disambiguates the same node nested in concurrent enclosing instances, which the scalar `fan_out_index` cannot. |
+| `branch_name_chain` | sequence of (string \| null) | The enclosing parallel-branch lineage, same shape and `namespace`-alignment as `fan_out_index_chain`: at each depth, the `branch_name` entered there, or null when that boundary is not a parallel branch. Empty for a top-level event. |
 | `provider` | string | The LLM provider identifier (matches `gen_ai.system` per observability §5.5.3). |
 | `model` | string | The model identifier the request was made against (matches `gen_ai.request.model` / `openarmature.llm.model` per observability §5.5 / §5.5.3). The provider-returned model identifier — which MAY be more specific — is carried separately on `response_model` below. |
 | `response_model` | string \| null | The model identifier the provider returned in the response (matches `gen_ai.response.model` per observability §5.5.3). Distinct from `model` because providers MAY return a more specific identifier than the one requested (e.g., requested `gpt-4o`, response carries `gpt-4o-2024-08-06`). Null when the provider does not return a response model. |
@@ -817,8 +841,10 @@ surface (null for every other §7 category):
 | `node_name` | string | The user-defined node that issued the call. |
 | `namespace` | sequence of strings | The calling node's namespace, per the *Node event shape* above. |
 | `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
-| `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling fan-out instances. |
-| `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11, with the resolved `branch_names` per proposal 0044 governing the value space). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling parallel branches. |
+| `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling fan-out instances; `fan_out_index_chain` disambiguates the nested case. |
+| `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11, with the resolved `branch_names` per proposal 0044 governing the value space). Null otherwise. Part of the event-source identity tuple; required for disambiguating sibling parallel branches; `branch_name_chain` disambiguates the nested case. |
+| `fan_out_index_chain` | sequence of (int \| null) | The enclosing fan-out instance lineage, outermost→innermost, aligned position-by-position to `namespace` (per the *Node event shape*): at each namespace depth, the `fan_out_index` of the fan-out instance entered there, or null when that boundary is not a fan-out instance. Empty for a top-level event. Disambiguates the same node nested in concurrent enclosing instances, which the scalar `fan_out_index` cannot. |
+| `branch_name_chain` | sequence of (string \| null) | The enclosing parallel-branch lineage, same shape and `namespace`-alignment as `fan_out_index_chain`: at each depth, the `branch_name` entered there, or null when that boundary is not a parallel branch. Empty for a top-level event. |
 | `provider` | string | The LLM provider identifier (matches `gen_ai.system` per observability §5.5.3). |
 | `model` | string | The model identifier the request was made against (matches `gen_ai.request.model` / `openarmature.llm.model` per observability §5.5 / §5.5.3). |
 | `latency_ms` | float \| null | Wall-clock latency from `provider.complete()` entry to the point the failure was raised, in milliseconds. May be null when latency is not measured. Per-attempt under call-level retry. Provider-reported latency rarely applies on failure (no full response received); implementations MAY use a provider-surfaced latency value on the rare error response that includes one, documenting which source is in use. |
@@ -916,6 +942,8 @@ stream and live on the terminal `LlmCompletionEvent`; consumers correlate via `c
 | `attempt_index` | int | The **node-level** retry-attempt index (0 on the first attempt), sourced from the same per-node retry context as `LlmCompletionEvent.attempt_index`. It does NOT vary across llm-provider §7.1 *call-level* wire attempts (those share one `call_id` and one node-level index); the per-wire-attempt index lives on the §7.1 OTel span, not here. |
 | `fan_out_index` | int \| null | The fan-out instance index (per pipeline-utilities §9). Null otherwise. |
 | `branch_name` | string \| null | The parallel-branches branch name (per pipeline-utilities §11). Null otherwise. |
+| `fan_out_index_chain` | sequence of (int \| null) | The enclosing fan-out instance lineage, outermost→innermost, aligned position-by-position to `namespace` (per the *Node event shape*): at each namespace depth, the `fan_out_index` of the fan-out instance entered there, or null when that boundary is not a fan-out instance. Empty for a top-level event. Disambiguates the same node nested in concurrent enclosing instances, which the scalar `fan_out_index` cannot. |
+| `branch_name_chain` | sequence of (string \| null) | The enclosing parallel-branch lineage, same shape and `namespace`-alignment as `fan_out_index_chain`: at each depth, the `branch_name` entered there, or null when that boundary is not a parallel branch. Empty for a top-level event. |
 | `provider` | string | The LLM provider identifier. |
 | `model` | string | The model identifier the request was made against. |
 | `call_id` | string | The per-call disambiguator minted by the implementation for this `complete()` call. **Matches the `call_id` on the terminal `LlmCompletionEvent` / `LlmFailedEvent` for the same call** — the linkage observers use to associate a token stream with its eventual completion. |
@@ -958,6 +986,8 @@ embedding-specific runtime-config in place of the LLM `RuntimeConfig`):
 | `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
 | `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. |
 | `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11, with the resolved `branch_names` per proposal 0044 governing the value space). Null otherwise. |
+| `fan_out_index_chain` | sequence of (int \| null) | The enclosing fan-out instance lineage, outermost→innermost, aligned position-by-position to `namespace` (per the *Node event shape*): at each namespace depth, the `fan_out_index` of the fan-out instance entered there, or null when that boundary is not a fan-out instance. Empty for a top-level event. Disambiguates the same node nested in concurrent enclosing instances, which the scalar `fan_out_index` cannot. |
+| `branch_name_chain` | sequence of (string \| null) | The enclosing parallel-branch lineage, same shape and `namespace`-alignment as `fan_out_index_chain`: at each depth, the `branch_name` entered there, or null when that boundary is not a parallel branch. Empty for a top-level event. |
 | `provider` | string | The embedding provider identifier (matches `gen_ai.system` per observability §5.5.3). |
 | `model` | string | The model identifier the request was made against. |
 | `response_model` | string \| null | The model identifier the provider returned in the response (matches `gen_ai.response.model`). May be more specific than requested; null when the provider doesn't return a response model. |
@@ -1001,6 +1031,8 @@ failure-specific fields in place of the success-only response-side fields:
 | `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
 | `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. |
 | `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11). Null otherwise. |
+| `fan_out_index_chain` | sequence of (int \| null) | The enclosing fan-out instance lineage, outermost→innermost, aligned position-by-position to `namespace` (per the *Node event shape*): at each namespace depth, the `fan_out_index` of the fan-out instance entered there, or null when that boundary is not a fan-out instance. Empty for a top-level event. Disambiguates the same node nested in concurrent enclosing instances, which the scalar `fan_out_index` cannot. |
+| `branch_name_chain` | sequence of (string \| null) | The enclosing parallel-branch lineage, same shape and `namespace`-alignment as `fan_out_index_chain`: at each depth, the `branch_name` entered there, or null when that boundary is not a parallel branch. Empty for a top-level event. |
 | `provider` | string | The embedding provider identifier. |
 | `model` | string | The model identifier the request was made against. |
 | `latency_ms` | float \| null | Wall-clock latency from `embed()` entry to the point the failure was raised, in milliseconds. May be null when latency is not measured. |
@@ -1047,6 +1079,8 @@ rerank-specific substitutions (`query` + `documents` in place of `input_strings`
 | `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
 | `fan_out_index` | int \| null | The fan-out instance index when the calling node ran inside a fan-out instance (per pipeline-utilities §9). Null otherwise. |
 | `branch_name` | string \| null | The parallel-branches branch name when the calling node ran inside a parallel-branches branch (per pipeline-utilities §11). Null otherwise. |
+| `fan_out_index_chain` | sequence of (int \| null) | The enclosing fan-out instance lineage, outermost→innermost, aligned position-by-position to `namespace` (per the *Node event shape*): at each namespace depth, the `fan_out_index` of the fan-out instance entered there, or null when that boundary is not a fan-out instance. Empty for a top-level event. Disambiguates the same node nested in concurrent enclosing instances, which the scalar `fan_out_index` cannot. |
+| `branch_name_chain` | sequence of (string \| null) | The enclosing parallel-branch lineage, same shape and `namespace`-alignment as `fan_out_index_chain`: at each depth, the `branch_name` entered there, or null when that boundary is not a parallel branch. Empty for a top-level event. |
 | `provider` | string | The rerank provider identifier (matches `gen_ai.system` per observability §5.5.3). |
 | `model` | string | The model identifier the request was made against. |
 | `response_model` | string \| null | The model identifier the provider returned in the response (matches `gen_ai.response.model`). May be more specific than requested; null when the provider doesn't return a response model. |
@@ -1092,6 +1126,8 @@ failure-specific fields in place of the success-only response-side fields (`resp
 | `attempt_index` | int | The retry-attempt index (0 on the first attempt). |
 | `fan_out_index` | int \| null | The fan-out instance index (per pipeline-utilities §9). Null otherwise. |
 | `branch_name` | string \| null | The parallel-branches branch name (per pipeline-utilities §11). Null otherwise. |
+| `fan_out_index_chain` | sequence of (int \| null) | The enclosing fan-out instance lineage, outermost→innermost, aligned position-by-position to `namespace` (per the *Node event shape*): at each namespace depth, the `fan_out_index` of the fan-out instance entered there, or null when that boundary is not a fan-out instance. Empty for a top-level event. Disambiguates the same node nested in concurrent enclosing instances, which the scalar `fan_out_index` cannot. |
+| `branch_name_chain` | sequence of (string \| null) | The enclosing parallel-branch lineage, same shape and `namespace`-alignment as `fan_out_index_chain`: at each depth, the `branch_name` entered there, or null when that boundary is not a parallel branch. Empty for a top-level event. |
 | `provider` | string | The rerank provider identifier. |
 | `model` | string | The model identifier the request was made against. |
 | `latency_ms` | float \| null | Wall-clock latency from `rerank()` entry to the point the failure was raised, in milliseconds. May be null when latency is not measured. |
@@ -1164,7 +1200,8 @@ surface shape is per-language / per-runtime.
 
 **Identity under deferred execution.** When the start and the outcome fall in different invocations /
 turns, the emitted event carries the **scope-entry identity** — the `node_name`, `namespace`,
-`invocation_id`, `correlation_id`, `attempt_index`, `fan_out_index`, and `branch_name` captured when
+`invocation_id`, `correlation_id`, `attempt_index`, `fan_out_index`, `branch_name`, and the
+`fan_out_index_chain` / `branch_name_chain` lineage captured when
 the scope was *entered* (the node that initiated the execution), NOT the ambient identity of the later
 turn where the outcome landed. The tool execution belongs to the node that requested it; attributing
 it to a downstream turn's context would mislocate it in the trace. This mirrors suspension §7's
@@ -1193,6 +1230,8 @@ tool-specific fields:
 | `attempt_index` | int | The node-level retry-attempt index (0 on the first attempt). |
 | `fan_out_index` | int \| null | The fan-out instance index (per pipeline-utilities §9). Null otherwise. |
 | `branch_name` | string \| null | The parallel-branches branch name (per pipeline-utilities §11). Null otherwise. |
+| `fan_out_index_chain` | sequence of (int \| null) | The enclosing fan-out instance lineage, outermost→innermost, aligned position-by-position to `namespace` (per the *Node event shape*): at each namespace depth, the `fan_out_index` of the fan-out instance entered there, or null when that boundary is not a fan-out instance. Empty for a top-level event. Disambiguates the same node nested in concurrent enclosing instances, which the scalar `fan_out_index` cannot. |
+| `branch_name_chain` | sequence of (string \| null) | The enclosing parallel-branch lineage, same shape and `namespace`-alignment as `fan_out_index_chain`: at each depth, the `branch_name` entered there, or null when that boundary is not a parallel branch. Empty for a top-level event. |
 | `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `LlmCompletionEvent` (per observability §3.4). Default absent / null. |
 | `call_id` | string | A per-execution disambiguator minted by the implementation when the scope is entered. **Always present**; freshly minted per tool execution. Distinct from `tool_call_id` — `call_id` is OA's own correlation token for this execution, `tool_call_id` is the provider's id from the model's request. |
 | `tool_name` | string | The name of the tool / function executed. Matches the `Tool.name` (llm-provider §4) when the execution satisfies a model request. |

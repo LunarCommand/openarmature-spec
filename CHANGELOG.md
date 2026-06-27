@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.81.0] — 2026-06-27
+
+**Added**
+
+- **graph-engine §6 + observability — nested-fan-out span lineage chain.** The observer event surface gains `fan_out_index_chain` / `branch_name_chain` on `NodeEvent` and the provider/tool events (`LlmCompletionEvent`, `LlmFailedEvent`, `LlmTokenEvent`, the embedding / rerank / tool events) — the enclosing fan-out instance / parallel-branch lineage (outermost→innermost, aligned to `namespace`), with the existing scalar `fan_out_index` / `branch_name` retained as the innermost values. The OTel driving-span key (observability §4.1 / §4.3 / §6) now keys by the chains rather than the innermost scalar, so the inner spans of two concurrent fan-out instances nested in an outer fan-out no longer collide and drop. §5.5 gains a *Lineage-resolved parent* clause (shared by the embedding §5.5.8 / tool §5.5.11 / rerank §5.5.13 spans): a provider span exact-matches its lineage-disambiguated calling-node span, and — when that span is not open (a wrapper / middleware-issued call) — parents under the nearest enclosing wrapper per §4.3, resolved via the chain to the correct *inner* instance (not the top-level one, not a coincidentally-indexed sibling). §8.4.3 / §8.4.6 confirm the Langfuse observation parent follows the same resolution. ([proposal 0084](proposals/0084-nested-fan-out-span-lineage.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Additive: the scalars and the common single-level case are unchanged (a top-level event carries empty chains, keying identically to before). conformance-adapter §5.1 gains a wrapper-issued-LLM-call primitive for the orphan-fallback fixture. New graph-engine + observability conformance fixtures (OTel + Langfuse) pin the chain on the event surface, the no-dropped-spans keying, nested-LLM exact-match, and the orphan fallback inside a nested instance.
+
 ## [0.80.0] — 2026-06-26
 
 **Added**

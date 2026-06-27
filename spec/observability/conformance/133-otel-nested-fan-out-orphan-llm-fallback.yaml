@@ -1,0 +1,210 @@
+# OTel orphan LLM-span fallback inside a nested fan-out instance
+# (proposal 0084, §5.5 *Lineage-resolved parent* orphan fallback). The LLM
+# call is issued from a node WRAPPER (middleware pre-phase), not the node
+# body, so the calling node's span is NOT open when the provider span is
+# emitted. Per the fallback the span parents under the nearest enclosing
+# wrapper per §4.3, resolved via the chain to the correct INNER fan-out
+# instance span -- not the top-level fan-out node / invocation, and not a
+# coincidentally-indexed sibling inner instance.
+#
+# Orphan-call primitive (NEW; defined here, reported for normative addition
+# to conformance-adapter §5.1):
+#
+#   calls_llm_from_wrapper:
+#     phase: pre            # pre | post (default pre)
+#     messages: [ ... ]
+#
+# The adapter wraps the node in a middleware that issues exactly one real
+# complete() call against the mock provider in the named phase:
+#   - pre:  before next() -- the node's span is not yet open;
+#   - post: after next() returns -- the node's span has already closed.
+# Either way the calling node's span is NOT open when the provider span /
+# LlmCompletionEvent is emitted, exercising the §5.5 orphan fallback. The
+# call's response is NOT written to state (it models a wrapper-issued side
+# call such as a guardrail / classifier). The node's own body still runs
+# inside next() (here a trivial `update` so the fan-out collect_field has a
+# value). This fixture uses phase: pre.
+#
+# Topology (standard fan_out form; 2 outer x 1 inner each):
+#   outer_fan_out  -- fan-out over outer_seeds (2 single-element lists),
+#                     concurrent --> subgraph `mid`
+#     inner_fan_out -- fan-out over inner_seeds (1 int) --> subgraph `leaf_sg`
+#       guard       -- body: update marker=1; wrapper: orphan LLM call (pre)
+#
+# Both inner instances have inner fan_out_index 0 (each outer has ONE inner),
+# so the two inner instance spans share the innermost scalar -- the chain
+# ([0,0] vs [1,0]) is what routes each orphan span to the correct one.
+#   outer instance 0 / inner instance 0 -> chain [0, 0]
+#   outer instance 1 / inner instance 0 -> chain [1, 0]
+
+subgraphs:
+  leaf_sg:
+    state:
+      fields:
+        seed: {type: int, default: 0}
+        marker: {type: int, default: 0}
+    entry: guard
+    nodes:
+      guard:
+        update: {marker: 1}
+        calls_llm_from_wrapper:
+          phase: pre
+          messages: [{role: user, content: "guardrail check"}]
+    edges:
+      - {from: guard, to: END}
+
+  mid:
+    state:
+      fields:
+        inner_seeds: {type: list<int>, default: []}
+        inner_markers: {type: list<int>, reducer: append, default: []}
+    entry: inner_fan_out
+    nodes:
+      inner_fan_out:
+        fan_out:
+          subgraph: leaf_sg
+          items_field: inner_seeds
+          item_field: seed
+          collect_field: marker
+          target_field: inner_markers
+          error_policy: collect
+    edges:
+      - {from: inner_fan_out, to: END}
+
+cases:
+  - name: orphan_llm_call_parents_under_correct_inner_fan_out_instance
+    description: |
+      Outer fan-out over two single-element seed lists, run concurrent; each
+      outer instance runs the inner fan-out over its one projected seed; the
+      single inner instance's `guard` node issues one LLM call from its
+      wrapper's pre-phase (node span not open). Each orphan llm.complete
+      parents under its OWN inner fan-out instance span -- chain [0,0] for
+      outer 0, chain [1,0] for outer 1 -- never the other (which shares inner
+      fan_out_index 0), never the outer node / invocation, and never the
+      `guard` node span (which opens only after the pre-phase).
+    state:
+      fields:
+        outer_seeds:
+          type: list<list<int>>
+          default: [[0], [0]]
+        all_markers:
+          type: list<list<int>>
+          reducer: append
+          default: []
+    entry: outer_fan_out
+    nodes:
+      outer_fan_out:
+        fan_out:
+          subgraph: mid
+          items_field: outer_seeds
+          item_field: inner_seeds
+          collect_field: inner_markers
+          target_field: all_markers
+          error_policy: collect
+          concurrent_mode: concurrent
+    edges:
+      - {from: outer_fan_out, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-133-1
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-133-2
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "outer_fan_out"                 # outer fan-out NODE span
+              status: OK
+              attributes:
+                openarmature.fan_out.item_count: 2
+                openarmature.fan_out.error_policy: "collect"
+              children:
+                - name: "outer_fan_out"             # outer instance 0 (chain [0])
+                  status: OK
+                  attributes:
+                    openarmature.node.fan_out_index: 0
+                    openarmature.fan_out.parent_node_name: "outer_fan_out"
+                  children:
+                    - name: "inner_fan_out"         # inner fan-out NODE span (inside outer 0)
+                      status: OK
+                      attributes:
+                        openarmature.fan_out.item_count: 1
+                        openarmature.fan_out.error_policy: "collect"
+                      children:
+                        - name: "inner_fan_out"     # inner instance 0 -> chain [0, 0]
+                          status: OK
+                          attributes:
+                            openarmature.node.fan_out_index: 0
+                            openarmature.fan_out.parent_node_name: "inner_fan_out"
+                          children:
+                            # Orphan provider span: parents under THIS inner
+                            # instance span (nearest enclosing wrapper), a
+                            # SIBLING of the `guard` node span -- not its child.
+                            - name: "openarmature.llm.complete"
+                              status: OK
+                              attributes:
+                                openarmature.llm.model: "test-model"
+                                openarmature.llm.finish_reason: "stop"
+                              children: []
+                            - name: "guard"          # leaf node span (sibling of the orphan span)
+                              status: OK
+                              children: []
+                - name: "outer_fan_out"             # outer instance 1 (chain [1])
+                  status: OK
+                  attributes:
+                    openarmature.node.fan_out_index: 1
+                    openarmature.fan_out.parent_node_name: "outer_fan_out"
+                  children:
+                    - name: "inner_fan_out"         # inner fan-out NODE span (inside outer 1)
+                      status: OK
+                      attributes:
+                        openarmature.fan_out.item_count: 1
+                        openarmature.fan_out.error_policy: "collect"
+                      children:
+                        - name: "inner_fan_out"     # inner instance 0 -> chain [1, 0]
+                          status: OK
+                          attributes:
+                            openarmature.node.fan_out_index: 0
+                            openarmature.fan_out.parent_node_name: "inner_fan_out"
+                          children:
+                            # Orphan span routes via the chain to THIS inner
+                            # instance ([1,0]), NOT outer 0's inner instance
+                            # ([0,0]) which shares inner fan_out_index 0.
+                            - name: "openarmature.llm.complete"
+                              status: OK
+                              attributes:
+                                openarmature.llm.model: "test-model"
+                                openarmature.llm.finish_reason: "stop"
+                              children: []
+                            - name: "guard"
+                              status: OK
+                              children: []
+      invariants:
+        # The wrapper-issued call has no open calling-node (`guard`) span; its
+        # provider span falls back to the nearest enclosing wrapper per §5.5
+        # *Lineage-resolved parent* -- the inner fan-out instance span.
+        orphan_llm_span_parents_under_inner_fan_out_instance: true
+        # Chain-resolved: outer 1's orphan span parents under outer-1's inner
+        # instance ([1,0]), not outer-0's inner instance ([0,0]) sharing the
+        # same innermost fan_out_index.
+        orphan_llm_span_not_under_coincidentally_indexed_sibling: true
+        # Never the top-level fan-out node span or the invocation span.
+        orphan_llm_span_not_under_fan_out_node_or_invocation: true
+        # The orphan span is a SIBLING of the calling-node span, not its child
+        # (the node span opens only after the pre-phase wrapper call fires).
+        orphan_llm_span_sibling_of_calling_node_span: true
+        llm_provider_span_count: 2

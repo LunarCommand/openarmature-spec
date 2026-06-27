@@ -1,0 +1,384 @@
+# Langfuse nested-fan-out observation parent resolution (proposal 0084,
+# §8.4.3 / §8.4.6). The Langfuse observation tree MUST resolve the
+# Generation's parent by the SAME chain-aware §5.5 *Lineage-resolved parent*
+# rule as the OTel span tree -- both the nested exact-match case and the
+# orphan fallback case -- so the two backends produce the same parent.
+#
+# Case 1 mirrors OTel fixture 132 (nested-LLM exact-match): each Generation
+# parents under its own lineage-disambiguated `ask` Span observation.
+# Case 2 mirrors OTel fixture 133 (orphan fallback): a wrapper-issued call's
+# Generation parents under the inner fan-out instance Span observation (the
+# calling node's Span observation is not open), chain-resolved to the correct
+# inner instance.
+#
+# Observation shape per fixture 032: fan-out NODE -> Span observation
+# carrying fan_out_item_count / fan_out_error_policy; fan-out instance ->
+# Span observation child carrying fan_out_index / fan_out_parent_node_name /
+# subgraph_name (the instance span IS the subgraph wrapper). LLM call ->
+# Generation observation. `concurrent_mode: concurrent` on the outer fan-out
+# matches 132 / 133 (forces the concurrency the chain keying resolves).
+#
+# The `calls_llm_from_wrapper` orphan-call primitive used in case 2 is
+# defined and documented in OTel fixture 133 (reported for normative
+# addition to conformance-adapter §5.1).
+
+cases:
+  # ------------------------------------------------------------------
+  # Case 1: nested-LLM exact-match (mirrors OTel 132).
+  # ------------------------------------------------------------------
+  - name: generation_parents_under_own_lineage_calling_node_observation
+    description: |
+      Outer fan-out (2 instances, concurrent) x inner fan-out (2 instances),
+      each inner instance's `ask` node issues an in-body LLM call. Each
+      Generation observation parents under its OWN lineage-disambiguated `ask`
+      Span observation -- chains [0,0]/[0,1]/[1,0]/[1,1] -- never the `ask`
+      observation of the other outer instance's inner instance with the same
+      innermost fan_out_index. All four inner subtrees appear (no dropped
+      observations under concurrent nesting).
+    subgraphs:
+      leaf_sg:
+        state:
+          fields:
+            seed: {type: int, default: 0}
+            score: {type: string, default: ""}
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "score it"}]
+              stores_response_in: score
+        edges:
+          - {from: ask, to: END}
+      mid:
+        state:
+          fields:
+            inner_seeds: {type: list<int>, default: []}
+            inner_scores: {type: list<string>, reducer: append, default: []}
+        entry: inner_fan_out
+        nodes:
+          inner_fan_out:
+            fan_out:
+              subgraph: leaf_sg
+              items_field: inner_seeds
+              item_field: seed
+              collect_field: score
+              target_field: inner_scores
+              error_policy: collect
+        edges:
+          - {from: inner_fan_out, to: END}
+    state:
+      fields:
+        outer_seeds:
+          type: list<list<int>>
+          default: [[0, 1], [2, 3]]
+        all_scores:
+          type: list<list<string>>
+          reducer: append
+          default: []
+    entry: outer_fan_out
+    nodes:
+      outer_fan_out:
+        fan_out:
+          subgraph: mid
+          items_field: outer_seeds
+          item_field: inner_seeds
+          collect_field: inner_scores
+          target_field: all_scores
+          error_policy: collect
+          concurrent_mode: concurrent
+    edges:
+      - {from: outer_fan_out, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-134-1-1
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-134-1-2
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-134-1-3
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-134-1-4
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        name: "outer_fan_out"
+        observations:
+          - type: span
+            name: "outer_fan_out"               # outer fan-out NODE (dispatch container)
+            metadata:
+              fan_out_item_count: 2
+              fan_out_error_policy: "collect"
+            children:
+              - type: span
+                name: "outer_fan_out"           # outer instance 0 (chain [0])
+                metadata:
+                  fan_out_index: 0
+                  fan_out_parent_node_name: "outer_fan_out"
+                  subgraph_name: "mid"
+                children:
+                  - type: span
+                    name: "inner_fan_out"       # inner fan-out NODE (inside outer 0)
+                    metadata:
+                      fan_out_item_count: 2
+                      fan_out_error_policy: "collect"
+                    children:
+                      - type: span
+                        name: "inner_fan_out"   # inner instance 0 -> chain [0, 0]
+                        metadata:
+                          fan_out_index: 0
+                          fan_out_parent_node_name: "inner_fan_out"
+                          subgraph_name: "leaf_sg"
+                        children:
+                          - type: span
+                            name: "ask"
+                            children:
+                              - type: generation
+                                name: "openarmature.llm.complete"
+                                children: []
+                      - type: span
+                        name: "inner_fan_out"   # inner instance 1 -> chain [0, 1]
+                        metadata:
+                          fan_out_index: 1
+                          fan_out_parent_node_name: "inner_fan_out"
+                          subgraph_name: "leaf_sg"
+                        children:
+                          - type: span
+                            name: "ask"
+                            children:
+                              - type: generation
+                                name: "openarmature.llm.complete"
+                                children: []
+              - type: span
+                name: "outer_fan_out"           # outer instance 1 (chain [1])
+                metadata:
+                  fan_out_index: 1
+                  fan_out_parent_node_name: "outer_fan_out"
+                  subgraph_name: "mid"
+                children:
+                  - type: span
+                    name: "inner_fan_out"       # inner fan-out NODE (inside outer 1)
+                    metadata:
+                      fan_out_item_count: 2
+                      fan_out_error_policy: "collect"
+                    children:
+                      - type: span
+                        name: "inner_fan_out"   # inner instance 0 -> chain [1, 0]
+                        metadata:
+                          fan_out_index: 0
+                          fan_out_parent_node_name: "inner_fan_out"
+                          subgraph_name: "leaf_sg"
+                        children:
+                          - type: span
+                            name: "ask"
+                            children:
+                              - type: generation
+                                name: "openarmature.llm.complete"
+                                children: []
+                      - type: span
+                        name: "inner_fan_out"   # inner instance 1 -> chain [1, 1]
+                        metadata:
+                          fan_out_index: 1
+                          fan_out_parent_node_name: "inner_fan_out"
+                          subgraph_name: "leaf_sg"
+                        children:
+                          - type: span
+                            name: "ask"
+                            children:
+                              - type: generation
+                                name: "openarmature.llm.complete"
+                                children: []
+      invariants:
+        # Mirrors OTel 132 in the observation tree.
+        no_inner_observations_dropped_under_concurrent_nesting: true
+        generation_count: 4
+        # Each Generation parents under its own lineage-disambiguated `ask`
+        # Span observation, never a sibling sharing the innermost fan_out_index.
+        generation_parents_under_own_lineage_calling_node_observation: true
+        # The Langfuse parent matches the OTel span parent for every Generation.
+        langfuse_parent_matches_otel_parent: true
+
+  # ------------------------------------------------------------------
+  # Case 2: orphan fallback (mirrors OTel 133).
+  # ------------------------------------------------------------------
+  - name: orphan_generation_parents_under_inner_fan_out_instance_observation
+    description: |
+      Outer fan-out (2 instances, concurrent) each with ONE inner instance;
+      the inner instance's `guard` node issues its LLM call from the wrapper
+      pre-phase (calling node's Span observation not open). Each orphan
+      Generation parents under its OWN inner fan-out instance Span observation
+      -- chain [0,0] for outer 0, [1,0] for outer 1 -- never the other (which
+      shares inner fan_out_index 0), never the outer NODE / Trace, and as a
+      SIBLING of the `guard` Span observation (not its child). Matches the
+      OTel 133 parent resolution.
+    subgraphs:
+      leaf_sg:
+        state:
+          fields:
+            seed: {type: int, default: 0}
+            marker: {type: int, default: 0}
+        entry: guard
+        nodes:
+          guard:
+            update: {marker: 1}
+            calls_llm_from_wrapper:
+              phase: pre
+              messages: [{role: user, content: "guardrail check"}]
+        edges:
+          - {from: guard, to: END}
+      mid:
+        state:
+          fields:
+            inner_seeds: {type: list<int>, default: []}
+            inner_markers: {type: list<int>, reducer: append, default: []}
+        entry: inner_fan_out
+        nodes:
+          inner_fan_out:
+            fan_out:
+              subgraph: leaf_sg
+              items_field: inner_seeds
+              item_field: seed
+              collect_field: marker
+              target_field: inner_markers
+              error_policy: collect
+        edges:
+          - {from: inner_fan_out, to: END}
+    state:
+      fields:
+        outer_seeds:
+          type: list<list<int>>
+          default: [[0], [0]]
+        all_markers:
+          type: list<list<int>>
+          reducer: append
+          default: []
+    entry: outer_fan_out
+    nodes:
+      outer_fan_out:
+        fan_out:
+          subgraph: mid
+          items_field: outer_seeds
+          item_field: inner_seeds
+          collect_field: inner_markers
+          target_field: all_markers
+          error_policy: collect
+          concurrent_mode: concurrent
+    edges:
+      - {from: outer_fan_out, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-134-2-1
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-134-2-2
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        name: "outer_fan_out"
+        observations:
+          - type: span
+            name: "outer_fan_out"               # outer fan-out NODE
+            metadata:
+              fan_out_item_count: 2
+              fan_out_error_policy: "collect"
+            children:
+              - type: span
+                name: "outer_fan_out"           # outer instance 0 (chain [0])
+                metadata:
+                  fan_out_index: 0
+                  fan_out_parent_node_name: "outer_fan_out"
+                  subgraph_name: "mid"
+                children:
+                  - type: span
+                    name: "inner_fan_out"       # inner fan-out NODE (inside outer 0)
+                    metadata:
+                      fan_out_item_count: 1
+                      fan_out_error_policy: "collect"
+                    children:
+                      - type: span
+                        name: "inner_fan_out"   # inner instance 0 -> chain [0, 0]
+                        metadata:
+                          fan_out_index: 0
+                          fan_out_parent_node_name: "inner_fan_out"
+                          subgraph_name: "leaf_sg"
+                        children:
+                          # Orphan Generation parents under THIS inner instance
+                          # Span observation -- sibling of the `guard` Span.
+                          - type: generation
+                            name: "openarmature.llm.complete"
+                            children: []
+                          - type: span
+                            name: "guard"
+                            children: []
+              - type: span
+                name: "outer_fan_out"           # outer instance 1 (chain [1])
+                metadata:
+                  fan_out_index: 1
+                  fan_out_parent_node_name: "outer_fan_out"
+                  subgraph_name: "mid"
+                children:
+                  - type: span
+                    name: "inner_fan_out"       # inner fan-out NODE (inside outer 1)
+                    metadata:
+                      fan_out_item_count: 1
+                      fan_out_error_policy: "collect"
+                    children:
+                      - type: span
+                        name: "inner_fan_out"   # inner instance 0 -> chain [1, 0]
+                        metadata:
+                          fan_out_index: 0
+                          fan_out_parent_node_name: "inner_fan_out"
+                          subgraph_name: "leaf_sg"
+                        children:
+                          # Chain-resolved to [1,0], NOT outer 0's [0,0]
+                          # (same innermost fan_out_index).
+                          - type: generation
+                            name: "openarmature.llm.complete"
+                            children: []
+                          - type: span
+                            name: "guard"
+                            children: []
+      invariants:
+        # Mirrors OTel 133 in the observation tree.
+        orphan_generation_parents_under_inner_fan_out_instance_observation: true
+        orphan_generation_not_under_coincidentally_indexed_sibling: true
+        orphan_generation_not_under_fan_out_node_or_trace: true
+        orphan_generation_sibling_of_calling_node_observation: true
+        generation_count: 2
+        # The Langfuse parent matches the OTel span parent for every Generation.
+        langfuse_parent_matches_otel_parent: true

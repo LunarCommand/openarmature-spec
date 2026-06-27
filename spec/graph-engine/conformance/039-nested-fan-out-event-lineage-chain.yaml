@@ -1,0 +1,139 @@
+# graph-engine §6 — fan_out_index_chain / branch_name_chain on NodeEvent
+# for a node nested inside a fan-out nested in an outer fan-out instance
+# (proposal 0084). The leaf node runs TWO fan-out boundaries deep: outer
+# fan-out instance -> inner fan-out instance. Its NodeEvent carries
+# fan_out_index_chain = [outer_index, inner_index] (outermost->innermost,
+# aligned to the namespace path), branch_name_chain = [null, null] (neither
+# boundary is a parallel branch), and the RETAINED scalar fan_out_index =
+# the innermost value (inner_index). The scalars alone collide across the
+# two outer instances (each outer instance has an inner instance 0 and 1);
+# the chain disambiguates them.
+#
+# Topology (standard fan_out form, cf. graph-engine fixture 017 and
+# pipeline-utilities 076):
+#   outer_fan_out  -- fan-out over outer_items (2 lists)  --> subgraph `mid`
+#     inner_fan_out -- fan-out over inner_items (2 ints)  --> subgraph `leaf_sg`
+#       leaf        -- out = input  (update_from_field, multiplier defaults to 1)
+#
+# Arithmetic (spelled out):
+#   outer item 0 = [10, 11] -> inner instances 0,1 -> out 10,11 -> inner_results [10, 11]
+#   outer item 1 = [20, 21] -> inner instances 0,1 -> out 20,21 -> inner_results [20, 21]
+#   all_results (append at the outer fan-in, merged in instance-index order
+#   per pipeline-utilities §9.3) = [[10, 11], [20, 21]]
+#
+# Per-(outer,inner)-instance leaf chains (the load-bearing assertion):
+#   outer 0 / inner 0 -> fan_out_index_chain [0, 0], scalar fan_out_index 0
+#   outer 0 / inner 1 -> fan_out_index_chain [0, 1], scalar fan_out_index 1
+#   outer 1 / inner 0 -> fan_out_index_chain [1, 0], scalar fan_out_index 0
+#   outer 1 / inner 1 -> fan_out_index_chain [1, 1], scalar fan_out_index 1
+# branch_name_chain is [null, null] on every leaf event (no parallel branch
+# at either boundary). The scalar fan_out_index repeats (0 and 1 each appear
+# under BOTH outer instances), so it cannot identify the source; the chain can.
+
+subgraphs:
+  # Innermost leaf: one node, out = input.
+  leaf_sg:
+    state:
+      fields:
+        input: {type: int, default: 0}
+        out: {type: int, default: 0}
+    entry: leaf
+    nodes:
+      leaf:
+        update_from_field: {out: input}
+    edges:
+      - {from: leaf, to: END}
+
+  # Outer-instance subgraph: runs the INNER fan-out over its projected
+  # inner_items, collecting each leaf's `out` into inner_results.
+  mid:
+    state:
+      fields:
+        inner_items: {type: list<int>, default: []}
+        inner_results: {type: list<int>, reducer: append, default: []}
+    entry: inner_fan_out
+    nodes:
+      inner_fan_out:
+        fan_out:
+          subgraph: leaf_sg
+          items_field: inner_items
+          item_field: input
+          collect_field: out
+          target_field: inner_results
+          error_policy: collect
+    edges:
+      - {from: inner_fan_out, to: END}
+
+state:
+  fields:
+    outer_items:
+      type: list<list<int>>
+      default: [[10, 11], [20, 21]]
+    all_results:
+      type: list<list<int>>
+      reducer: append
+      default: []
+
+entry: outer_fan_out
+
+nodes:
+  outer_fan_out:
+    fan_out:
+      subgraph: mid
+      items_field: outer_items
+      item_field: inner_items
+      collect_field: inner_results
+      target_field: all_results
+      error_policy: collect
+
+edges:
+  - {from: outer_fan_out, to: END}
+
+initial_state: {}
+
+observers:
+  - {name: obs, attach: graph, target: outer, behavior: record}
+
+expected:
+  final_state:
+    outer_items: [[10, 11], [20, 21]]
+    all_results: [[10, 11], [20, 21]]
+  execution_order: [outer_fan_out]
+
+  # The full event list depends on inner-instance scheduling order (observable
+  # but not uniquely determined, per conformance-adapter §7), so the harness
+  # asserts invariants on the event stream rather than enumerating events.
+  # Fixture-specific predicates documented in the paired .md.
+  observer_event_invariants:
+    # --- Outer fan-out node: top-level, no enclosing lineage. ---
+    # outer_fan_out runs once at the outermost graph: empty chains, and the
+    # scalar fan_out_index absent (it is the fork point, not inside an instance).
+    outer_fan_out_node_events_count: 2                 # started + completed
+    outer_fan_out_node_fan_out_index_chain_empty: true # fan_out_index_chain == []
+    outer_fan_out_node_fan_out_index_absent: true      # scalar fan_out_index absent
+
+    # --- Inner fan-out node: one boundary deep (inside the outer instance). ---
+    # inner_fan_out recurs once per outer instance; its events carry a length-1
+    # chain holding the OUTER index, and the scalar fan_out_index = the outer
+    # index (it is a node running inside the outer fan-out instance).
+    inner_fan_out_node_events_count: 4                 # 2 outer instances x 2 phases
+    inner_fan_out_node_fan_out_index_chains_seen: [[0], [1]]   # set; one per outer instance
+    inner_fan_out_node_branch_name_chains_seen: [[null]]       # every event: [null]
+    # Retained scalar on the inner-fan-out node = the outer index (the innermost
+    # non-null chain element); scalar branch_name absent (no enclosing branch).
+    inner_fan_out_node_scalar_fan_out_index_equals_innermost_chain_element: true
+    inner_fan_out_node_scalar_branch_name_absent: true
+
+    # --- Leaf node: TWO boundaries deep (the load-bearing assertion). ---
+    leaf_node_events_count: 8                           # 4 instances x 2 phases
+    # Every (outer, inner) chain appears as a source identity (set of chains).
+    leaf_fan_out_index_chains_seen: [[0, 0], [0, 1], [1, 0], [1, 1]]
+    # No parallel branch at either boundary: every leaf event's chain is [null, null].
+    leaf_branch_name_chains_seen: [[null, null]]
+    # Retained scalar equals the innermost (deepest non-null) chain element.
+    leaf_scalar_fan_out_index_equals_innermost_chain_element: true
+    leaf_scalar_branch_name_absent: true
+    # The chain disambiguates the event source; the scalar alone does NOT —
+    # scalar fan_out_index 0 and 1 each occur under BOTH outer instances.
+    leaf_event_identities_unique_by_chain: true
+    leaf_scalar_fan_out_index_not_unique_across_outer_instances: true
