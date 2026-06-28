@@ -4,23 +4,6 @@ Canonical behavioral specification for the OpenArmature pipeline-utilities capab
 
 - **Capability:** pipeline-utilities
 - **Introduced:** spec version 0.5.0
-- **History:**
-  - created by [proposal 0004](../../proposals/0004-pipeline-utilities-middleware.md)
-  - §9 Parallel fan-out added; §6.1 Retry middleware simplified (manual event dispatch removed in coordination with graph-engine §6's pair model) by [proposal 0005](../../proposals/0005-pipeline-utilities-parallel-fan-out.md)
-  - §10 Checkpointing added by [proposal 0008](../../proposals/0008-pipeline-utilities-checkpointing.md)
-  - §11 Parallel branches added by [proposal 0011](../../proposals/0011-pipeline-utilities-parallel-branches.md)
-  - §10.2 `schema_version` reframed as user-facing; §10.10 `checkpoint_record_invalid` description amended and two new error categories (`checkpoint_state_migration_missing`, `checkpoint_state_migration_failed`) added; §10.12 State migrations added by [proposal 0014](../../proposals/0014-pipeline-utilities-state-migration.md)
-  - §10.10 gained canonical configuration-time category `checkpoint_state_migration_chain_ambiguous`; §10.12.1 and §10.12.2 updated to reference the category by name; mutual-exclusion paragraph rewritten for four migration-related categories by [proposal 0018](../../proposals/0018-state-migration-chain-ambiguity.md)
-  - §10.2 `fan_out_progress` field promoted from reserved to populated; §10.3 save-granularity rule extended to fan-out instance internal nodes (the "engine does NOT save during fan-out instance execution" rule is removed); §10.7 atomic-restart fan-out resume replaced with per-instance resume; §10.11 added (per-instance fan-out resume contract — accumulator semantics, reducer interaction, error_policy / instance_middleware composition, configurable Checkpointer-level batching for fan-out internal saves); existing §10.11 (Reference implementations and backend layering) renumbered to §10.13 by [proposal 0009](../../proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md)
-  - §10.11 per-instance entry shape gained `result_is_error: bool` field (success vs `collect`-mode-error discriminator for resume routing); §10.11.2 `collect` bullet amended to name the field as the discrimination mechanism and forbid heuristic inspection of `result` shape by [proposal 0027](../../proposals/0027-fan-out-instance-progress-result-is-error.md)
-  - §10.2 `schema_version` paragraph clarified: the outermost declared graph state class is the canonical source for the value written onto saved records; implementations MUST NOT source `schema_version` from the runtime instance's class when a State subclass shadows the declared value by [proposal 0028](../../proposals/0028-schema-version-canonical-source.md)
-  - §10.11 gained a "Count drift on resume" rule: when a saved `fan_out_progress` entry's `instance_count` differs from the resumed run's resolved count, the engine MUST raise `checkpoint_record_invalid` (per §10.10); silent pad/truncate of the saved `instances` list is not permitted. §10.10 `checkpoint_record_invalid` description extended to enumerate count drift as a failure mode by [proposal 0029](../../proposals/0029-count-drift-strict.md)
-  - §10.14 *Composition with sessions* added — notes that the new sessions capability is an orthogonal cross-invoke persistence layer; checkpointing and sessions register independently, MAY share a backend, but resume / session-load and the respective error categories surface independently by [proposal 0020](../../proposals/0020-sessions-capability.md)
-  - §6.3 *Failure isolation* middleware added as the third canonical primitive in the §6 bundled set (alongside §6.1 Retry and §6.2 Timing) — packages the §2 third-MAY-bullet catch-and-recover pattern with a four-field configuration record (`degraded_update` [static or callable], `event_name` [required, no default — naming decision at construction site], `predicate` [single-arg `(exception) -> bool`, defaults to always-true], `on_caught` [optional async callback]); catches `Exception` (not `BaseException`); on catch dispatches a framework-emitted failure-isolation event onto the observer delivery queue (parallels proposal 0040's metadata-augmentation event mechanism — distinct from `NodeEvent`, carries `event_name` + wrapped-node lineage tuple + `pre_state` / `post_state` + `caught_exception` record; not promoted to a typed variant on the observer event union for v1) and returns the configured degraded update so the engine continues edge resolution normally; documents the three-piece composition pattern with §6.1 retry (outer-to-inner: transient-aware node body + inner Retry + outer FailureIsolation) with outer-to-inner ordering load-bearing by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
-  - §10.15 *Composition with suspension* added — notes that the new suspension capability uses the same persistence mechanism as checkpointing for paused-invocation records (single store with discriminator OR separate stores; implementation choice); paused-invocation records and checkpoint records are distinct shapes; resume operations load the correct record type per the resume API in use (`invoke(resume_invocation=...)` per §10.4 → checkpoint record; `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 → paused-invocation record); paused-record lifetime is NOT bound to invocation completion (unlike checkpoint records, persists until resume completes / cancellation / backend retention); error categories are distinct (`suspension_persistence_failed` per suspension §9 does not signal checkpoint failure and vice versa). Refer to the suspension capability spec for the full primitive contract by [proposal 0021](../../proposals/0021-graph-suspension.md)
-  - §6.3 *Failure isolation* gained a `catch` configuration field — a set of error categories matched against the caught exception's **cause chain** (via the new §6.4 primitive), so a carrier-wrapped failure at a §9.7 / §11.7 / §9.6 / §11.6 wrapping placement is caught correctly where a surface `predicate` check would miss it and invert an intended degrade into a crash; `catch` matches on the derived category (the outermost-non-carrier value reported as `caught_exception.category`, per the 0068 derivation), composes with `predicate` as a conjunction (both permissive by default), and `predicate` is documented as surface-only with the cause-aware alternatives. New §6.4 *Cause-chain classification* promotes §6.3's carrier-skipping cause-fidelity walk to a public, named classification primitive (cause chain + derived category) shared by §6.1 retry, §6.3 isolation, and consumers. §6.1's default-classifier depth is documented as deliberately single-level (retry re-runs → classifies at re-attempt granularity; the §6.4 primitive is the opt-in for full-chain retry), distinct from §6.3's full-chain degrade classification. New fixture 072; `catch` is additive (default catch-all preserved) and retry behavior is unchanged by [proposal 0074](../../proposals/0074-failure-isolation-catch-classification.md)
-  - §11 *Parallel branches* extended — §11.1.1 *Branch spec* gains an inline-callable branch form (`call`, an async function over the parent state returning a parent-shaped partial update, with no subgraph / state schema / `inputs` / `outputs`) as an alternative to the compiled-`subgraph` form (exactly one required, mixing allowed, `parallel_branches_invalid_branch_spec` compile error otherwise); §11.4 defines the callable branch's contribution (the returned partial update, merged via the parent reducer with no projection); new §11.10 *Conditional branches* adds an optional `when` predicate skipping a branch at dispatch (no work / contribution / events / span; all-skipped is a valid no-op distinct from `parallel_branches_no_branches`); §11.7 branch middleware (per-leg failure-isolation) and §11.5 cancellation apply to callable branches unchanged. New fixtures 073–075. Additive; existing subgraph branches unchanged by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
-  - §10.11 *Per-instance fan-out resume* gains an optional `enclosing_fan_out_lineage` field on each `fan_out_progress` entry (the outermost→innermost chain of enclosing fan-out instances, each `{namespace, fan_out_node_name, fan_out_index}`), so a fan-out nested inside an outer fan-out instance resumes correctly — entries keyed by `(namespace, fan_out_node_name, enclosing_fan_out_lineage)`, extending §10.11.1 exactly-once to nested fan-outs — plus a *No mis-skip across enclosing instances* invariant (on resume the engine MUST re-run rather than apply a non-matching or legacy-unlineaged entry's `completed` skips). The count-drift check re-resolves per lineage-qualified entry; §10.2's per-fan-out mapping framing, the §10.11 `namespace`-uniqueness claim, and the §10.7 skip decision are reconciled to the same-node multiplicity. New fixture `076`; the record-format addition is backward-compatible (flat records carry an empty lineage) by [proposal 0085](../../proposals/0085-nested-fan-out-checkpoint-lineage.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -51,7 +34,7 @@ and is invisible to nodes that don't opt into middleware.
 
 **Middleware.** An async callable with the shape:
 
-```
+```python
 async def middleware(state, next) -> partial_update
 ```
 
@@ -92,13 +75,14 @@ second, and so on, with the original node at the inner end.
 
 For a chain `[m1, m2, m3]` wrapping node `n`, execution proceeds:
 
-```
-m1 sees state, calls next(s) ────► m2 sees state, calls next(s) ────► m3 sees state, calls next(s)
-                                                                                  │
-                                                                                  ▼
-                                                                                 n(state) → partial_update
-                                                                                  │
-m1 returns partial_update ◄──── m2 returns partial_update ◄──── m3 returns partial_update
+```mermaid
+flowchart LR
+    m1["m1 sees state,<br/>calls next(s)"] --> m2["m2 sees state,<br/>calls next(s)"]
+    m2 --> m3["m3 sees state,<br/>calls next(s)"]
+    m3 --> n["n(state) produces<br/>partial_update"]
+    n --> r3["m3 returns<br/>partial_update"]
+    r3 --> r2["m2 returns<br/>partial_update"]
+    r2 --> r1["m1 returns<br/>partial_update"]
 ```
 
 Each middleware's return value flows back through the previous layer's `next` call return.
@@ -113,7 +97,7 @@ The two phases are tied to a single position in the chain: if `m1` is outermost,
 runs first AND `m1`'s post-phase runs last. Pre-order and post-order are not configured
 independently. Concretely, a middleware function carries both phases:
 
-```
+```python
 async def my_middleware(state, next):
     # ── pre-node phase: runs on the way IN ──
     started_at = time.time()
@@ -141,8 +125,10 @@ Implementations MUST support two registration modes:
 
 When a node has both, **per-graph middleware composes outside per-node middleware**:
 
-```
-[per_graph_outer_to_inner...] → [per_node_outer_to_inner...] → node
+```mermaid
+flowchart LR
+    pg["per-graph middleware<br/>(outer to inner)"] --> pn["per-node middleware<br/>(outer to inner)"]
+    pn --> node["node"]
 ```
 
 Rationale: per-graph middleware is more general (timing, logging) and should observe the *full*
@@ -233,7 +219,7 @@ The retry middleware configuration record:
 
 Behavior:
 
-```
+```python
 attempt = 0
 while True:
     try:
@@ -332,7 +318,7 @@ A `TimingRecord`:
 
 Behavior:
 
-```
+```python
 started_at = monotonic()
 try:
     partial_update = await next(state)
@@ -404,7 +390,7 @@ The failure-isolation middleware configuration record:
 
 Behavior:
 
-```
+```python
 try:
     return await next(state)
 except Exception as exc:
@@ -875,14 +861,16 @@ Per-graph and per-node middleware (§3) compose with fan-out as follows:
 
 The composition layering, from outermost to innermost for an event flowing through the fan-out:
 
-```
-parent per-graph middleware    (outer graph; wraps fan-out as one dispatch)
-└─ per-node middleware on fan-out node    (same scope, inside per-graph)
-   └─ fan-out node iterates instances; for each instance:
-      └─ instance_middleware    (wraps this instance's subgraph invoke as a unit)
-         └─ subgraph's per-graph middleware    (wraps each inner node)
-            └─ per-node middleware on inner-subgraph nodes    (per inner node)
-               └─ inner node
+```mermaid
+flowchart TB
+    a["parent per-graph middleware<br/>(outer graph; wraps fan-out as one dispatch)"]
+    b["per-node middleware on fan-out node<br/>(same scope, inside per-graph)"]
+    c["fan-out node iterates instances;<br/>for each instance:"]
+    d["instance_middleware<br/>(wraps this instance subgraph invoke as a unit)"]
+    e["subgraph per-graph middleware<br/>(wraps each inner node)"]
+    f["per-node middleware on inner-subgraph nodes"]
+    g["inner node"]
+    a --> b --> c --> d --> e --> f --> g
 ```
 
 This locality matches §6 observer hook composition (graph-engine spec §6) and §4 middleware
@@ -894,8 +882,10 @@ subgraph composition (this spec).
 invocation. It is fan-out-specific — neither a per-node nor per-graph middleware mode. The
 fan-out node iterates instances, and for each instance constructs the chain:
 
-```
-instance_middleware[0] → instance_middleware[1] → … → subgraph.invoke(initial_state)
+```mermaid
+flowchart LR
+    im0["instance_middleware[0]"] --> im1["instance_middleware[1]"]
+    im1 --> dots["..."] --> sg["subgraph.invoke(initial_state)"]
 ```
 
 `subgraph.invoke(initial_state)` is the wrapped target. Each middleware sees the per-instance
@@ -1973,3 +1963,22 @@ completes as a no-op (contributes nothing) — valid, and distinct from the comp
 `when` is a deterministic function of dispatch-time parent state, so graph-engine §5 determinism
 holds — the same input yields the same skipped set. (A `when` that consults nondeterministic
 sources is the same caveat §7 documents for conditional middleware.)
+
+## History
+
+- created by [proposal 0004](../../proposals/0004-pipeline-utilities-middleware.md)
+- §9 Parallel fan-out added; §6.1 Retry middleware simplified (manual event dispatch removed in coordination with graph-engine §6's pair model) by [proposal 0005](../../proposals/0005-pipeline-utilities-parallel-fan-out.md)
+- §10 Checkpointing added by [proposal 0008](../../proposals/0008-pipeline-utilities-checkpointing.md)
+- §11 Parallel branches added by [proposal 0011](../../proposals/0011-pipeline-utilities-parallel-branches.md)
+- §10.2 `schema_version` reframed as user-facing; §10.10 `checkpoint_record_invalid` description amended and two new error categories (`checkpoint_state_migration_missing`, `checkpoint_state_migration_failed`) added; §10.12 State migrations added by [proposal 0014](../../proposals/0014-pipeline-utilities-state-migration.md)
+- §10.10 gained canonical configuration-time category `checkpoint_state_migration_chain_ambiguous`; §10.12.1 and §10.12.2 updated to reference the category by name; mutual-exclusion paragraph rewritten for four migration-related categories by [proposal 0018](../../proposals/0018-state-migration-chain-ambiguity.md)
+- §10.2 `fan_out_progress` field promoted from reserved to populated; §10.3 save-granularity rule extended to fan-out instance internal nodes (the "engine does NOT save during fan-out instance execution" rule is removed); §10.7 atomic-restart fan-out resume replaced with per-instance resume; §10.11 added (per-instance fan-out resume contract — accumulator semantics, reducer interaction, error_policy / instance_middleware composition, configurable Checkpointer-level batching for fan-out internal saves); existing §10.11 (Reference implementations and backend layering) renumbered to §10.13 by [proposal 0009](../../proposals/0009-pipeline-utilities-per-instance-fan-out-resume.md)
+- §10.11 per-instance entry shape gained `result_is_error: bool` field (success vs `collect`-mode-error discriminator for resume routing); §10.11.2 `collect` bullet amended to name the field as the discrimination mechanism and forbid heuristic inspection of `result` shape by [proposal 0027](../../proposals/0027-fan-out-instance-progress-result-is-error.md)
+- §10.2 `schema_version` paragraph clarified: the outermost declared graph state class is the canonical source for the value written onto saved records; implementations MUST NOT source `schema_version` from the runtime instance's class when a State subclass shadows the declared value by [proposal 0028](../../proposals/0028-schema-version-canonical-source.md)
+- §10.11 gained a "Count drift on resume" rule: when a saved `fan_out_progress` entry's `instance_count` differs from the resumed run's resolved count, the engine MUST raise `checkpoint_record_invalid` (per §10.10); silent pad/truncate of the saved `instances` list is not permitted. §10.10 `checkpoint_record_invalid` description extended to enumerate count drift as a failure mode by [proposal 0029](../../proposals/0029-count-drift-strict.md)
+- §10.14 *Composition with sessions* added — notes that the new sessions capability is an orthogonal cross-invoke persistence layer; checkpointing and sessions register independently, MAY share a backend, but resume / session-load and the respective error categories surface independently by [proposal 0020](../../proposals/0020-sessions-capability.md)
+- §6.3 *Failure isolation* middleware added as the third canonical primitive in the §6 bundled set (alongside §6.1 Retry and §6.2 Timing) — packages the §2 third-MAY-bullet catch-and-recover pattern with a four-field configuration record (`degraded_update` [static or callable], `event_name` [required, no default — naming decision at construction site], `predicate` [single-arg `(exception) -> bool`, defaults to always-true], `on_caught` [optional async callback]); catches `Exception` (not `BaseException`); on catch dispatches a framework-emitted failure-isolation event onto the observer delivery queue (parallels proposal 0040's metadata-augmentation event mechanism — distinct from `NodeEvent`, carries `event_name` + wrapped-node lineage tuple + `pre_state` / `post_state` + `caught_exception` record; not promoted to a typed variant on the observer event union for v1) and returns the configured degraded update so the engine continues edge resolution normally; documents the three-piece composition pattern with §6.1 retry (outer-to-inner: transient-aware node body + inner Retry + outer FailureIsolation) with outer-to-inner ordering load-bearing by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
+- §10.15 *Composition with suspension* added — notes that the new suspension capability uses the same persistence mechanism as checkpointing for paused-invocation records (single store with discriminator OR separate stores; implementation choice); paused-invocation records and checkpoint records are distinct shapes; resume operations load the correct record type per the resume API in use (`invoke(resume_invocation=...)` per §10.4 → checkpoint record; `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 → paused-invocation record); paused-record lifetime is NOT bound to invocation completion (unlike checkpoint records, persists until resume completes / cancellation / backend retention); error categories are distinct (`suspension_persistence_failed` per suspension §9 does not signal checkpoint failure and vice versa). Refer to the suspension capability spec for the full primitive contract by [proposal 0021](../../proposals/0021-graph-suspension.md)
+- §6.3 *Failure isolation* gained a `catch` configuration field — a set of error categories matched against the caught exception's **cause chain** (via the new §6.4 primitive), so a carrier-wrapped failure at a §9.7 / §11.7 / §9.6 / §11.6 wrapping placement is caught correctly where a surface `predicate` check would miss it and invert an intended degrade into a crash; `catch` matches on the derived category (the outermost-non-carrier value reported as `caught_exception.category`, per the 0068 derivation), composes with `predicate` as a conjunction (both permissive by default), and `predicate` is documented as surface-only with the cause-aware alternatives. New §6.4 *Cause-chain classification* promotes §6.3's carrier-skipping cause-fidelity walk to a public, named classification primitive (cause chain + derived category) shared by §6.1 retry, §6.3 isolation, and consumers. §6.1's default-classifier depth is documented as deliberately single-level (retry re-runs → classifies at re-attempt granularity; the §6.4 primitive is the opt-in for full-chain retry), distinct from §6.3's full-chain degrade classification. New fixture 072; `catch` is additive (default catch-all preserved) and retry behavior is unchanged by [proposal 0074](../../proposals/0074-failure-isolation-catch-classification.md)
+- §11 *Parallel branches* extended — §11.1.1 *Branch spec* gains an inline-callable branch form (`call`, an async function over the parent state returning a parent-shaped partial update, with no subgraph / state schema / `inputs` / `outputs`) as an alternative to the compiled-`subgraph` form (exactly one required, mixing allowed, `parallel_branches_invalid_branch_spec` compile error otherwise); §11.4 defines the callable branch's contribution (the returned partial update, merged via the parent reducer with no projection); new §11.10 *Conditional branches* adds an optional `when` predicate skipping a branch at dispatch (no work / contribution / events / span; all-skipped is a valid no-op distinct from `parallel_branches_no_branches`); §11.7 branch middleware (per-leg failure-isolation) and §11.5 cancellation apply to callable branches unchanged. New fixtures 073–075. Additive; existing subgraph branches unchanged by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
+- §10.11 *Per-instance fan-out resume* gains an optional `enclosing_fan_out_lineage` field on each `fan_out_progress` entry (the outermost→innermost chain of enclosing fan-out instances, each `{namespace, fan_out_node_name, fan_out_index}`), so a fan-out nested inside an outer fan-out instance resumes correctly — entries keyed by `(namespace, fan_out_node_name, enclosing_fan_out_lineage)`, extending §10.11.1 exactly-once to nested fan-outs — plus a *No mis-skip across enclosing instances* invariant (on resume the engine MUST re-run rather than apply a non-matching or legacy-unlineaged entry's `completed` skips). The count-drift check re-resolves per lineage-qualified entry; §10.2's per-fan-out mapping framing, the §10.11 `namespace`-uniqueness claim, and the §10.7 skip decision are reconciled to the same-node multiplicity. New fixture `076`; the record-format addition is backward-compatible (flat records carry an empty lineage) by [proposal 0085](../../proposals/0085-nested-fan-out-checkpoint-lineage.md)

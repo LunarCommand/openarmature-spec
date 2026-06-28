@@ -4,8 +4,6 @@ Canonical behavioral specification for the OpenArmature chat harness sub-spec.
 
 - **Capability:** harness-chat
 - **Introduced:** spec version 0.50.0
-- **History:**
-  - created by [proposal 0056](../../proposals/0056-harness-chat.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -151,7 +149,7 @@ correctly-shaped field; the construction mechanism is per-language.
 
 The chat harness exposes a higher-level callable surface above raw `invoke()`:
 
-```
+```python
 send(session_id: <string>, message: ChatMessage) -> ChatTurnOutcome
 ```
 
@@ -361,7 +359,7 @@ for); it fires only on the post-resume completion.
 The chat sub-spec defines the API-surface contract for a streaming variant of `send()` without
 prescribing the engine-side hook implementation:
 
-```
+```python
 send_streaming(session_id: <string>, message: ChatMessage) -> <streaming-return-shape>
 ```
 
@@ -503,3 +501,7 @@ non-deterministic message-interleaving in history.
   boundaries, backpressure, cancellation) lives in the planned streaming proposal.
 - **Stateless completion harness.** "Send one message, get one reply, no memory" is a different
   harness type; if anyone wants it, it gets its own sub-spec ("harness-completion" or similar).
+
+## History
+
+- created by [proposal 0056](../../proposals/0056-harness-chat.md)

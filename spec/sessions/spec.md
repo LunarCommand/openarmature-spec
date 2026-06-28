@@ -4,9 +4,6 @@ Canonical behavioral specification for the OpenArmature sessions capability.
 
 - **Capability:** sessions
 - **Introduced:** spec version 0.33.0
-- **History:**
-  - created by [proposal 0020](../../proposals/0020-sessions-capability.md)
-  - §3 *Identity scoping* gained a *Harness threading* paragraph noting that deployments wrapping the engine via a harness (per the harness capability spec) are responsible for resolving `session_id` from inbound traffic and threading it into every `invoke()` call in sessioned mode; stateless-mode harnesses never thread a `session_id`. Documentary cross-reference; no behavior change at the sessions layer (the omit-and-skip rule was already normative) by [proposal 0022](../../proposals/0022-harness-contract.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -370,3 +367,8 @@ determinism.
 - **Migration chain compile-time validation.** Same disposition as checkpoints (pipeline-utilities §10.12):
   implementations SHOULD detect ambiguity at compile time when feasible; load-time detection is the
   spec-mandated minimum.
+
+## History
+
+- created by [proposal 0020](../../proposals/0020-sessions-capability.md)
+- §3 *Identity scoping* gained a *Harness threading* paragraph noting that deployments wrapping the engine via a harness (per the harness capability spec) are responsible for resolving `session_id` from inbound traffic and threading it into every `invoke()` call in sessioned mode; stateless-mode harnesses never thread a `session_id`. Documentary cross-reference; no behavior change at the sessions layer (the omit-and-skip rule was already normative) by [proposal 0022](../../proposals/0022-harness-contract.md)

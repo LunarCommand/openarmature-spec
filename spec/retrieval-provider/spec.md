@@ -4,9 +4,6 @@ Canonical behavioral specification for the OpenArmature retrieval-provider abstr
 
 - **Capability:** retrieval-provider
 - **Introduced:** spec version 0.54.0
-- **History:**
-  - created by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
-  - rerank protocol added by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -531,3 +528,8 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - **`gen_ai.operation.name` adoption for rerank.** Deferred per the stable-only upstream adoption
   policy; a follow-on proposal adds it when upstream reaches Stable with a rerank-applicable
   well-known value.
+
+## History
+
+- created by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
+- rerank protocol added by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)

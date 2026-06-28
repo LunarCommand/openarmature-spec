@@ -4,9 +4,6 @@ Canonical behavioral specification for the OpenArmature suspension capability.
 
 - **Capability:** suspension
 - **Introduced:** spec version 0.47.0
-- **History:**
-  - created by [proposal 0021](../../proposals/0021-graph-suspension.md)
-  - §8.7 *Deployment runtime / harness contract* paragraph tightened from a forward-looking placeholder ("formalized by the harness capability when its spec lands") to a concrete cross-reference into the now-existing harness capability spec — points at its §6 *Signal coordinator*, §3.3 *Signal-resume inbound dispatch path*, §5.3 *Suspended outcome handling* (harness MUST NOT block on suspended turns), and §7 *Error categorization at the turn boundary*. Suspension itself stays runtime-neutral; this is a documentary tightening of the cross-spec touchpoint by [proposal 0022](../../proposals/0022-harness-contract.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -509,3 +506,8 @@ resume events carry timestamps from the resume time, not the suspend time.
   for N concurrent signals" pattern is achievable via a single outer suspend with runtime-side
   fan-in (per §8.2 / §8.3). Engine-level multi-suspend is deferred to a future proposal if real
   demand surfaces.
+
+## History
+
+- created by [proposal 0021](../../proposals/0021-graph-suspension.md)
+- §8.7 *Deployment runtime / harness contract* paragraph tightened from a forward-looking placeholder ("formalized by the harness capability when its spec lands") to a concrete cross-reference into the now-existing harness capability spec — points at its §6 *Signal coordinator*, §3.3 *Signal-resume inbound dispatch path*, §5.3 *Suspended outcome handling* (harness MUST NOT block on suspended turns), and §7 *Error categorization at the turn boundary*. Suspension itself stays runtime-neutral; this is a documentary tightening of the cross-spec touchpoint by [proposal 0022](../../proposals/0022-harness-contract.md)
