@@ -4,8 +4,6 @@ Canonical behavioral specification for the OpenArmature harness capability.
 
 - **Capability:** harness
 - **Introduced:** spec version 0.49.0
-- **History:**
-  - created by [proposal 0022](../../proposals/0022-harness-contract.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -481,3 +479,7 @@ correct and expected.
 - **Mixing sessioned + stateless modes within one harness instance.** Mode is fixed at harness
   construction. An application needing both shapes constructs two harness instances, one per
   mode.
+
+## History
+
+- created by [proposal 0022](../../proposals/0022-harness-contract.md)

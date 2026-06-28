@@ -4,19 +4,6 @@ Canonical behavioral specification for the OpenArmature LLM provider abstraction
 
 - **Capability:** llm-provider
 - **Introduced:** spec version 0.4.0
-- **History:**
-  - created by [proposal 0006](../../proposals/0006-llm-provider-core.md)
-  - §3 Message shape extended (user content MAY be a sequence of content blocks); §3.1 Content blocks added (text and image blocks; image input only on user messages); §7 gained `provider_unsupported_content_block` error category; §8.1 user-row updated and §8.1.1 content-block wire mapping added; §10 multi-modal entry split (image input now covered; audio/video and image outputs remain deferred) by [proposal 0015](../../proposals/0015-llm-provider-multimodal-images.md)
-  - §5 `complete()` extended with optional `response_schema` parameter; §6 Response gained `parsed` field; §7 gained `structured_output_invalid` error category (non-transient by default); §8.5 structured output wire mapping added (with §8.5.1 prompt-augmentation fallback and §8.5.2 response mapping); §10 structured output deferral removed by [proposal 0016](../../proposals/0016-llm-provider-structured-output.md)
-  - §8 renamed from "OpenAI-compatible wire format" to "Wire-format mappings" and reorganized as a catalog of provider mappings; existing OpenAI-compatible body nested under new §8.1 "OpenAI-compatible mapping" (subsections §8.1 through §8.5 → §8.1.1 through §8.1.5); §8 framing paragraph added establishing the default placement rule (in-spec for any mapping with multi-language ambition; out-of-tree allowed only for single-language / opt-out / experimental cases) by [proposal 0019](../../proposals/0019-llm-provider-multi-provider-extension.md)
-  - §5 `complete()` extended with optional `tool_choice` parameter (four modes: `"auto"` / `"required"` / `"none"` / `{type: "tool", name: X}`) with pre-send validation routing through `provider_invalid_request`; §7 clarified to enumerate the three new validation failure modes; §8.1.1 gained a `tool_choice` mapping row by [proposal 0025](../../proposals/0025-llm-provider-tool-choice.md)
-  - §8 framing gained a *Per-mapping subsection structure* paragraph recommending the canonical §8.X template (Request mapping / Response mapping / Error mapping / Concurrency / Structured output) with allowance for sub-subsections, provider-specific top-level additions, and SHOULD-level divergence-explanation requirement; resolves 0019's open-question #2 by [proposal 0026](../../proposals/0026-llm-provider-wire-format-mapping-template.md)
-  - §6 `RuntimeConfig` extended with three new declared fields (`frequency_penalty`, `presence_penalty`, `stop_sequences`) matching the cross-vendor OpenTelemetry GenAI semconv naming; existing "MAY accept additional provider-specific fields" line replaced with an explicit extras-pass-through contract (undeclared fields MUST reach the wire untouched) and a null-skip contract (declared fields with `None` MUST be omitted from the wire body); §8.1 OpenAI-compatible mapping extended to cover the three new declared-field mappings (with `stop_sequences` → OpenAI body `stop` rename) and formally specify undeclared-field placement at the OpenAI request-body root by [proposal 0032](../../proposals/0032-llm-provider-runtime-config-refinements.md)
-  - §8.2 Anthropic Messages wire-format mapping added (sibling to §8.1) with §8.2.1 request mapping / §8.2.1.1 content-block mapping (including spec `ThinkingBlock` round-trip and §3 opaque `signature` field) / §8.2.1.2 tool-result content blocks / §8.2.2 response mapping / §8.2.3 error mapping; §3 Message gained opaque `signature` fields on `TextBlock` / `ThinkingBlock` / `ToolCall` for round-trip preservation of provider-side reasoning signatures by [proposal 0037](../../proposals/0037-llm-provider-anthropic-messages-mapping.md)
-  - §8.3 Google Gemini wire-format mapping added (sibling to §8.1 / §8.2) with §8.3.1 request mapping / §8.3.1.1 parts wire mapping (including thought-summary capture into `ThinkingBlock.text` and `thoughtSignature` round-trip into the §3 opaque `signature` field) / §8.3.1.2 `tool` role bidirectional translation / §8.3.2 response mapping / §8.3.3 error mapping; undeclared `RuntimeConfig` fields nest under Gemini's `generationConfig` (not the request root) to match Gemini's parameter location by [proposal 0038](../../proposals/0038-llm-provider-google-gemini-mapping.md)
-  - §6 `Response.usage` extended with two optional fields (`cached_tokens?` for prefix-cache hit input tokens, `cache_creation_tokens?` for input tokens written to the cache during the call); §8 framing gained an *Intra-impl wire-byte stability* paragraph (canonical sorted-key serialization of JSON-schema, content-block, and RuntimeConfig-extras payloads — within a single implementation; cross-impl byte equality is non-normative); per-mapping *Wire-byte stability* sub-paragraphs added to §8.1.1 / §8.2.1 / §8.3.1 anchoring the rule to that mapping's payloads; §8.1.2 gained cache-stat source rows (`usage.cached_tokens` ← `usage.prompt_tokens_details.cached_tokens` with the OpenAI Responses API alternate path and a vLLM dual-flag caveat; `cache_creation_tokens` left absent for OpenAI); §8.2.2 gained the Anthropic-implicit-not-supported caveat (Anthropic implicit-cache fields left absent because Anthropic only supports explicit `cache_control`-driven caching, out of scope for §6's implicit-cache surface); §8.3.2 maps `usage.cached_tokens` ← Gemini's `usageMetadata.cachedContentTokenCount` (Gemini 2.5+ implicit caching) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
-  - §5 `complete()` signature extended with an optional `retry` kwarg accepting an instance of pipeline-utilities §6.1's retry middleware configuration record (or `None` / absent default preserving the v0.4.0 no-retry behavior); the "does NOT retry" operation-semantics bullet amended to note retry policy lives at the per-node layer (pipeline-utilities §6.1) OR the per-call layer (this kwarg per §7.1); new §7.1 *Call-level retry* sub-section defining the in-call retry loop semantics (transient classification reuses §6.1's default categories, backoff reuses §6.1's exponential-with-jitter default, cancellation propagation rule preserved, per-attempt span emission produces N spans for N attempts), reuses the §6.1 framework-agnostic four-field configuration record (cross-spec reference direction is the inverse of §6.1's existing dependency on §7 transient categories — bidirectional acceptable because the shared record is framework-agnostic), plus a *Two-level retry lane separation* table comparing per-call vs per-node layers and a *Common mistakes* list (multiplicative budget pitfall `3 × 5 × 3 = 45` worst-case, inline try/except defeating per-attempt attribution, classifier widening to mask real errors) by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
-  - §5 `complete()` gained an optional `stream` flag (default off; return type unchanged — still `Response`), a *Streaming* rule (consume the wire incrementally + emit per-chunk `LlmTokenEvent`s; observably identical to the atomic path when no observer is attached), and a *Provider streaming support* rule (a mapping without streaming rejects `stream`-set calls with `provider_invalid_request`); §6 gained a *Streaming assembly* contract (content concatenation, reasoning-block assembly, tool-call-delta reassembly, terminal usage / finish_reason, structural identity with the atomic path); §8.1 gained §8.1.6 *Streaming* (OpenAI-compatible SSE: `stream_options.include_usage`, `[DONE]`, content / tool-call deltas, and the OpenAI-compatible reasoning-delta extension recognizing both `reasoning_content` and `reasoning`); §10 *Out of scope* lifted the blanket streaming deferral, replaced by narrower deferrals (node-body iterator consumption, tool-call-delta token events, Anthropic / Gemini streaming wire, non-completion streaming) by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -834,7 +821,7 @@ The §3 message list maps onto the OpenAI `messages` field:
 | `tool` | `tool` | `content` becomes OpenAI's `content`. `tool_call_id` becomes OpenAI's `tool_call_id`. |
 
 A spec `ToolCall` `{id, name, arguments}` maps to an OpenAI tool call entry as:
-```
+```json
 {
   "id": <id>,
   "type": "function",
@@ -849,7 +836,7 @@ The spec stores `arguments` as a deserialized mapping; the wire format requires 
 string. Implementations MUST serialize on send and deserialize on receive.
 
 A §4 `Tool` `{name, description, parameters}` maps to an OpenAI `tools` entry as:
-```
+```json
 {
   "type": "function",
   "function": {
@@ -991,7 +978,7 @@ pipeline-utilities rate limiter or middleware, not this layer.
 When `complete()` is called with a `response_schema`, the OpenAI-compatible request body includes
 a `response_format` field:
 
-```
+```json
 {
   "response_format": {
     "type": "json_schema",
@@ -1280,7 +1267,7 @@ Claude models) via the top-level `output_config.format` request field.
 **Native: `output_config.format`.** When `complete()` is called with a `response_schema`, the
 mapping sets:
 
-```
+```json
 {
   "output_config": {
     "format": {
@@ -1360,7 +1347,7 @@ send and back to `assistant` on receive.
 **Tool definitions.** A §4 `Tool` `{name, description, parameters}`
 maps into Gemini's `tools[].functionDeclarations[]`:
 
-```
+```json
 {
   "tools": [
     {
@@ -1480,7 +1467,7 @@ messages collapses into a single Gemini `user`-role `Content`
 whose `parts` are `functionResponse` entries — one per spec `tool`
 message, preserving order:
 
-```
+```json
 {
   "role": "user",
   "parts": [
@@ -1601,7 +1588,7 @@ Gemini natively supports schema-constrained decoding. When
 `complete()` is called with a `response_schema`, the §8.3 mapping
 sets:
 
-```
+```json
 {
   "generationConfig": {
     "responseMimeType": "application/json",
@@ -1685,3 +1672,18 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - **Retry and rate-limit policy** — pipeline-utilities concern.
 - **Prompt template rendering** — prompt-management capability (charter §4.5).
 - **Embeddings** — separate API surface; separate capability if/when needed.
+
+## History
+
+- created by [proposal 0006](../../proposals/0006-llm-provider-core.md)
+- §3 Message shape extended (user content MAY be a sequence of content blocks); §3.1 Content blocks added (text and image blocks; image input only on user messages); §7 gained `provider_unsupported_content_block` error category; §8.1 user-row updated and §8.1.1 content-block wire mapping added; §10 multi-modal entry split (image input now covered; audio/video and image outputs remain deferred) by [proposal 0015](../../proposals/0015-llm-provider-multimodal-images.md)
+- §5 `complete()` extended with optional `response_schema` parameter; §6 Response gained `parsed` field; §7 gained `structured_output_invalid` error category (non-transient by default); §8.5 structured output wire mapping added (with §8.5.1 prompt-augmentation fallback and §8.5.2 response mapping); §10 structured output deferral removed by [proposal 0016](../../proposals/0016-llm-provider-structured-output.md)
+- §8 renamed from "OpenAI-compatible wire format" to "Wire-format mappings" and reorganized as a catalog of provider mappings; existing OpenAI-compatible body nested under new §8.1 "OpenAI-compatible mapping" (subsections §8.1 through §8.5 → §8.1.1 through §8.1.5); §8 framing paragraph added establishing the default placement rule (in-spec for any mapping with multi-language ambition; out-of-tree allowed only for single-language / opt-out / experimental cases) by [proposal 0019](../../proposals/0019-llm-provider-multi-provider-extension.md)
+- §5 `complete()` extended with optional `tool_choice` parameter (four modes: `"auto"` / `"required"` / `"none"` / `{type: "tool", name: X}`) with pre-send validation routing through `provider_invalid_request`; §7 clarified to enumerate the three new validation failure modes; §8.1.1 gained a `tool_choice` mapping row by [proposal 0025](../../proposals/0025-llm-provider-tool-choice.md)
+- §8 framing gained a *Per-mapping subsection structure* paragraph recommending the canonical §8.X template (Request mapping / Response mapping / Error mapping / Concurrency / Structured output) with allowance for sub-subsections, provider-specific top-level additions, and SHOULD-level divergence-explanation requirement; resolves 0019's open-question #2 by [proposal 0026](../../proposals/0026-llm-provider-wire-format-mapping-template.md)
+- §6 `RuntimeConfig` extended with three new declared fields (`frequency_penalty`, `presence_penalty`, `stop_sequences`) matching the cross-vendor OpenTelemetry GenAI semconv naming; existing "MAY accept additional provider-specific fields" line replaced with an explicit extras-pass-through contract (undeclared fields MUST reach the wire untouched) and a null-skip contract (declared fields with `None` MUST be omitted from the wire body); §8.1 OpenAI-compatible mapping extended to cover the three new declared-field mappings (with `stop_sequences` → OpenAI body `stop` rename) and formally specify undeclared-field placement at the OpenAI request-body root by [proposal 0032](../../proposals/0032-llm-provider-runtime-config-refinements.md)
+- §8.2 Anthropic Messages wire-format mapping added (sibling to §8.1) with §8.2.1 request mapping / §8.2.1.1 content-block mapping (including spec `ThinkingBlock` round-trip and §3 opaque `signature` field) / §8.2.1.2 tool-result content blocks / §8.2.2 response mapping / §8.2.3 error mapping; §3 Message gained opaque `signature` fields on `TextBlock` / `ThinkingBlock` / `ToolCall` for round-trip preservation of provider-side reasoning signatures by [proposal 0037](../../proposals/0037-llm-provider-anthropic-messages-mapping.md)
+- §8.3 Google Gemini wire-format mapping added (sibling to §8.1 / §8.2) with §8.3.1 request mapping / §8.3.1.1 parts wire mapping (including thought-summary capture into `ThinkingBlock.text` and `thoughtSignature` round-trip into the §3 opaque `signature` field) / §8.3.1.2 `tool` role bidirectional translation / §8.3.2 response mapping / §8.3.3 error mapping; undeclared `RuntimeConfig` fields nest under Gemini's `generationConfig` (not the request root) to match Gemini's parameter location by [proposal 0038](../../proposals/0038-llm-provider-google-gemini-mapping.md)
+- §6 `Response.usage` extended with two optional fields (`cached_tokens?` for prefix-cache hit input tokens, `cache_creation_tokens?` for input tokens written to the cache during the call); §8 framing gained an *Intra-impl wire-byte stability* paragraph (canonical sorted-key serialization of JSON-schema, content-block, and RuntimeConfig-extras payloads — within a single implementation; cross-impl byte equality is non-normative); per-mapping *Wire-byte stability* sub-paragraphs added to §8.1.1 / §8.2.1 / §8.3.1 anchoring the rule to that mapping's payloads; §8.1.2 gained cache-stat source rows (`usage.cached_tokens` ← `usage.prompt_tokens_details.cached_tokens` with the OpenAI Responses API alternate path and a vLLM dual-flag caveat; `cache_creation_tokens` left absent for OpenAI); §8.2.2 gained the Anthropic-implicit-not-supported caveat (Anthropic implicit-cache fields left absent because Anthropic only supports explicit `cache_control`-driven caching, out of scope for §6's implicit-cache surface); §8.3.2 maps `usage.cached_tokens` ← Gemini's `usageMetadata.cachedContentTokenCount` (Gemini 2.5+ implicit caching) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
+- §5 `complete()` signature extended with an optional `retry` kwarg accepting an instance of pipeline-utilities §6.1's retry middleware configuration record (or `None` / absent default preserving the v0.4.0 no-retry behavior); the "does NOT retry" operation-semantics bullet amended to note retry policy lives at the per-node layer (pipeline-utilities §6.1) OR the per-call layer (this kwarg per §7.1); new §7.1 *Call-level retry* sub-section defining the in-call retry loop semantics (transient classification reuses §6.1's default categories, backoff reuses §6.1's exponential-with-jitter default, cancellation propagation rule preserved, per-attempt span emission produces N spans for N attempts), reuses the §6.1 framework-agnostic four-field configuration record (cross-spec reference direction is the inverse of §6.1's existing dependency on §7 transient categories — bidirectional acceptable because the shared record is framework-agnostic), plus a *Two-level retry lane separation* table comparing per-call vs per-node layers and a *Common mistakes* list (multiplicative budget pitfall `3 × 5 × 3 = 45` worst-case, inline try/except defeating per-attempt attribution, classifier widening to mask real errors) by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
+- §5 `complete()` gained an optional `stream` flag (default off; return type unchanged — still `Response`), a *Streaming* rule (consume the wire incrementally + emit per-chunk `LlmTokenEvent`s; observably identical to the atomic path when no observer is attached), and a *Provider streaming support* rule (a mapping without streaming rejects `stream`-set calls with `provider_invalid_request`); §6 gained a *Streaming assembly* contract (content concatenation, reasoning-block assembly, tool-call-delta reassembly, terminal usage / finish_reason, structural identity with the atomic path); §8.1 gained §8.1.6 *Streaming* (OpenAI-compatible SSE: `stream_options.include_usage`, `[DONE]`, content / tool-call deltas, and the OpenAI-compatible reasoning-delta extension recognizing both `reasoning_content` and `reasoning`); §10 *Out of scope* lifted the blanket streaming deferral, replaced by narrower deferrals (node-body iterator consumption, tool-call-delta token events, Anthropic / Gemini streaming wire, non-completion streaming) by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
