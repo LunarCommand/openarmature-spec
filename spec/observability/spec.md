@@ -2014,7 +2014,7 @@ below.
 | Subgraph span (§4.3) | Span observation, child of the surrounding parent Span; contains the subgraph's nested node Span observations |
 | Fan-out node span (§4) | Span observation (the dispatch span; contains the per-instance Span observations) |
 | Fan-out instance span (§4.3) | Span observation, child of the fan-out node Span |
-| Parallel-branches node span (§4.3) | Span observation (contains the per-branch dispatch Span observations) |
+| Parallel-branches node span (§4) | Span observation (contains the per-branch dispatch Span observations) |
 | Per-branch dispatch span (§4.3 / §5.7; synthesized per §8.4.8) | Span observation, child of the parallel-branches node Span (one per `branch_name`); `observation.name` = the `branch_name` |
 | LLM provider span (§5.5) | Generation observation — **one per `complete()` call**; under call-level retry (§5.5 / llm-provider §7.1) the N per-attempt spans collapse to this single terminal Generation (§8.4.3) |
 | Node-level retry attempt spans (§4 / pipeline-utilities §6.1) | Sibling Span / Generation observations (one per attempt) under the same parent; per-attempt attribution uses the metadata.attempt_index key (§8.4). Distinct from call-level LLM retry (row above), which renders one terminal Generation. |
