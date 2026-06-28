@@ -1,0 +1,177 @@
+# Langfuse parallel-branches dispatch-span synthesis (§8.4.8, §8.3, §8.4.2,
+# §5.7, per proposal 0088). Asserts that the Langfuse observer synthesizes the
+# same three-level Observation subtree the OTel observer produces (§4.3 / §6):
+# the parallel-branches NODE Span observation -> a per-branch dispatch Span
+# observation for each branch (one per `branch_name`, `observation.name` =
+# the `branch_name`) -> the branch's inner-node observations. The Langfuse
+# analog of the fan-out fixture `032-langfuse-fan-out-per-instance-spans` and
+# the parallel-branches OTel fixture `038-otel-parallel-branches-dispatch-span`
+# (the cross-backend reference shape this tree must match). Brings the Langfuse
+# parallel-branches mapping to first-class parity with the OTel side, replacing
+# the incidental coverage that previously rode on fixture `030`.
+
+cases:
+  - name: parallel_branches_dispatch_span_synthesized_per_branch
+    description: |
+      Two-branch parallel-branches node (`dispatcher` with branches
+      `fraud_check` and `policy_audit`, each a one-node `ask` subgraph that
+      makes an LLM call). The Langfuse observer MUST render a three-level
+      Observation subtree per §8.4.8: the parallel-branches NODE's Span
+      observation `dispatcher`, a synthesized per-branch dispatch Span
+      observation for each branch (`observation.name` = the `branch_name`,
+      per §8.3), and each branch's inner-node observations beneath its
+      dispatch Span. Per §8.4.2 the node Span carries
+      `metadata.parallel_branches_branch_count` and
+      `metadata.parallel_branches_error_policy`; each per-branch dispatch
+      Span carries `metadata.parallel_branches_parent_node_name` and
+      `metadata.branch_name` (the latter per proposal 0042); the inner `ask`
+      span and its Generation carry `metadata.branch_name` matching their
+      branch. Generation output content is not asserted because the two
+      branches dispatch concurrently and consume the mock responses in a
+      nondeterministic order.
+    subgraphs:
+      fraud_check:
+        state:
+          fields:
+            fraud_score:
+              type: string
+              default: ""
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "score for fraud"}]
+              stores_response_in: fraud_score
+        edges:
+          - {from: ask, to: END}
+      policy_audit:
+        state:
+          fields:
+            audit_summary:
+              type: string
+              default: ""
+        entry: ask
+        nodes:
+          ask:
+            calls_llm:
+              messages: [{role: user, content: "audit the policy"}]
+              stores_response_in: audit_summary
+        edges:
+          - {from: ask, to: END}
+    state:
+      fields:
+        fraud_result:
+          type: string
+          default: ""
+        audit_result:
+          type: string
+          default: ""
+    entry: dispatcher
+    nodes:
+      dispatcher:
+        parallel_branches:
+          branches:
+            fraud_check:
+              subgraph: fraud_check
+              outputs:
+                fraud_result: fraud_score
+            policy_audit:
+              subgraph: policy_audit
+              outputs:
+                audit_result: audit_summary
+          error_policy: fail_fast
+    edges:
+      - {from: dispatcher, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-136-fraud
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "low"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-136-audit
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "compliant"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        name: "dispatcher"
+        metadata:
+          correlation_id: "<corr_id_1>"
+          entry_node: "dispatcher"
+          spec_version: "<any-string>"
+        observations:
+          # Parallel-branches NODE span -> Span observation (contains the
+          # per-branch dispatch Spans); carries the §5.7 node-level attributes
+          # flattened with the `parallel_branches_` prefix per §8.4.2.
+          - type: span
+            name: "dispatcher"
+            metadata:
+              parallel_branches_branch_count: 2
+              parallel_branches_error_policy: "fail_fast"
+              correlation_id: "<corr_id_1>"
+            level: DEFAULT
+            children:
+              # Synthesized per-branch dispatch Span; observation.name = the
+              # branch_name (§8.3 / §8.4.8). Carries the §5.7 dispatch-span
+              # attributes per §8.4.2: parallel_branches_parent_node_name +
+              # branch_name (the latter per proposal 0042).
+              - type: span
+                name: "fraud_check"
+                metadata:
+                  branch_name: "fraud_check"
+                  parallel_branches_parent_node_name: "dispatcher"
+                  correlation_id: "<corr_id_1>"
+                level: DEFAULT
+                children:
+                  # Inner node beneath the dispatch Span; branch_name
+                  # propagates onto every inner observation per §5.7.
+                  - type: span
+                    name: "ask"
+                    metadata:
+                      branch_name: "fraud_check"
+                      correlation_id: "<corr_id_1>"
+                    level: DEFAULT
+                    children:
+                      - type: generation
+                        name: "openarmature.llm.complete"
+                        metadata:
+                          branch_name: "fraud_check"
+                          correlation_id: "<corr_id_1>"
+                        level: DEFAULT
+                        children: []
+              - type: span
+                name: "policy_audit"
+                metadata:
+                  branch_name: "policy_audit"
+                  parallel_branches_parent_node_name: "dispatcher"
+                  correlation_id: "<corr_id_1>"
+                level: DEFAULT
+                children:
+                  - type: span
+                    name: "ask"
+                    metadata:
+                      branch_name: "policy_audit"
+                      correlation_id: "<corr_id_1>"
+                    level: DEFAULT
+                    children:
+                      - type: generation
+                        name: "openarmature.llm.complete"
+                        metadata:
+                          branch_name: "policy_audit"
+                          correlation_id: "<corr_id_1>"
+                        level: DEFAULT
+                        children: []
+      invariants:
+        # §8.5: correlation_id MUST appear on the Trace metadata AND on every Observation metadata.
+        correlation_id_consistency: true
+        # §8.4.1: Trace.id MUST equal the invocation_id (dashes stripped) for cross-system lookup.
+        trace_id_equals_invocation_id_dashes_stripped: true

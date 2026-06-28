@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.83.0] — 2026-06-28
+
+**Added**
+
+- **observability §8 — Langfuse parallel-branches mapping parity.** The Langfuse mapping reaches parity with the OTel side (§4.3 / §5.7 / §6) and the fan-out Langfuse mapping for parallel branches: new §8.4.8 *Parallel-branches dispatch-span mapping* (the Langfuse observer synthesizes the per-branch dispatch Span observation — the three-level tree, with `observation.name` = `branch_name`, resolving §5.7's dangling forward-reference); §8.3 gains observation-type rows for the parallel-branches node span + per-branch dispatch span; §8.4.2 gains the `parallel_branches_branch_count` / `_error_policy` / `_parent_node_name` attribute rows (the §5.7 attributes, flattened like `fan_out_*`); §3.4's reserved caller-metadata-key set gains those three keys (26 → 29). ([proposal 0088](proposals/0088-observability-langfuse-parallel-branches-parity.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Additive — brings the spec into line with already-conformant Langfuse behavior; the one behavior touch is the §3.4 reservation (a caller passing one of the three new `parallel_branches_*` keys as invocation metadata is now rejected at the `invoke()` boundary). New observability conformance fixture `136` (the Langfuse parallel-branches dispatch-span tree).
+
 ## [0.82.0] — 2026-06-27
 
 **Added**

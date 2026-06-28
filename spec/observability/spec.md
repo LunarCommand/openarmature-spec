@@ -36,6 +36,7 @@ Canonical behavioral specification for the OpenArmature observability capability
   - §5.5 gained §5.5.13 *Rerank provider attributes* (the OTel rerank span `openarmature.rerank.complete` for `RerankProvider.rerank()`: the core GenAI semconv subset per the §5.5 de-facto-standard carve-out — with `gen_ai.usage.input_tokens` conditionally emitted since rerank providers vary on reporting it — plus OA-namespace `openarmature.rerank.*` attributes including the conditionally-emitted `search_units`; `gen_ai.operation.name` deferred, no upstream rerank coverage) and §5.5.14 *Typed rerank events* (the `RerankEvent` / `RerankFailedEvent` structured-form note, paralleling §5.5.9); §8.4.7 *Rerank-specific mapping* (Langfuse dedicated `Retriever` observation via `asType: "retriever"`, payload-gated `input` / `output`, the OA `usageDetails.searchUnits` convention). The §5.5.4 `disable_provider_payload` flag (proposal 0059) already gates the rerank payload attributes. §11 metrics: rerank joins the operation-generic GenAI instruments (the `openarmature.gen_ai.operation` value `rerank`; `RerankFailedEvent` as a duration / `error.type` source; token-usage records rerank `input_tokens` only — no output tokens, `search_units` is not a token), completing the rerank hook 0067 left in §11.2 / §11.3. New fixtures 099–109 by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
   - §5.5.7 (OTel) and §8.4.3 (Langfuse) gained notes that the bundled observers do NOT render the graph-engine §6 `LlmTokenEvent` (streaming, proposal 0062): no per-token spans / observations; trace recording stays atomic at the terminal `LlmCompletionEvent` (the `openarmature.llm.complete` span and the Langfuse Generation collapse the streamed deltas back into one input / output payload). `LlmTokenEvent` (including its `delta_kind` content / reasoning split) is for custom forwarding observers (§9) by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
   - §4.1 / §4.3 / §6 span keying and §5.5 provider-span parenting made lineage-chain-aware for nested fan-out (proposal 0084): the driving-span key and the §4.3 parent-child rules key by the §6 `fan_out_index_chain` / `branch_name_chain` rather than the innermost scalar, so concurrent nested fan-out instances' inner spans no longer collide and drop; §5.5 gained a *Lineage-resolved parent* clause (shared by the embedding §5.5.8 / tool §5.5.11 / rerank §5.5.13 spans) — a provider span exact-matches its lineage-disambiguated calling-node span, and falls back to the nearest enclosing wrapper (the correct inner instance via the chain) when that span is not open; §8.4.3 / §8.4.6 note the Langfuse observation parent follows the same resolution by [proposal 0084](../../proposals/0084-nested-fan-out-span-lineage.md)
+  - §8 *Langfuse mapping* brought to parallel-branches parity with the OTel side and the fan-out mapping (proposal 0088): new §8.4.8 *Parallel-branches dispatch-span mapping* (the Langfuse observer synthesizes the per-branch dispatch Span observation — the three-level tree mirroring the OTel §4.3 / §6 synthesis — with `observation.name` = `branch_name`, resolving §5.7's dangling forward-reference); §8.3 gains observation-type rows for the parallel-branches node span + per-branch dispatch span; §8.4.2 gains the `parallel_branches_branch_count` / `_error_policy` / `_parent_node_name` attribute rows (the §5.7 attributes, flattened like `fan_out_*`); §3.4's reserved caller-metadata-key set gains those three keys (26 → 29). New fixture `136`. Additive — brings the spec into line with already-conformant Langfuse behavior by [proposal 0088](../../proposals/0088-observability-langfuse-parallel-branches-parity.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
@@ -209,7 +210,9 @@ outermost `invoke()` call, alongside the correlation ID. Implementations MUST:
   `subgraph_name`, `fan_out_item_count`, `fan_out_concurrency`, `fan_out_error_policy`,
   `fan_out_parent_node_name`, `prompt_group_name`, `request_extras`, `finish_reason`, `system`,
   `response_model`, `response_id`, `prompt`, `invocation_id`, `branch_name`, `detached`,
-  `detached_from_invocation_id`, `implementation_name`, `implementation_version`.
+  `detached_from_invocation_id`, `implementation_name`, `implementation_version`,
+  `parallel_branches_branch_count`, `parallel_branches_error_policy`,
+  `parallel_branches_parent_node_name`.
   Implementations MUST reject a caller key that exactly
   matches a reserved name at the `invoke()` API boundary, before any work begins, with the same
   per-language error idiom as the `openarmature.*` / `gen_ai.*` reservation above. The match is
@@ -1686,7 +1689,7 @@ fields, preserving the two-span-category distinction above:
 
 **Per-branch dispatch span name.** The OTel observer MUST set the per-branch dispatch span's
 `name` attribute to the branch's `branch_name` value (e.g., `"fraud_check"`, `"policy_audit"`).
-This matches the Langfuse mapping's per-branch Span observation naming and gives operators a
+This matches the Langfuse mapping's per-branch Span observation naming (§8.4.8) and gives operators a
 directly meaningful span name in the trace tree.
 
 ### 5.8 Suspension span attributes
@@ -2011,6 +2014,8 @@ below.
 | Subgraph span (§4.3) | Span observation, child of the surrounding parent Span; contains the subgraph's nested node Span observations |
 | Fan-out node span (§4) | Span observation (the dispatch span; contains the per-instance Span observations) |
 | Fan-out instance span (§4.3) | Span observation, child of the fan-out node Span |
+| Parallel-branches node span (§4.3) | Span observation (contains the per-branch dispatch Span observations) |
+| Per-branch dispatch span (§4.3 / §5.7; synthesized per §8.4.8) | Span observation, child of the parallel-branches node Span (one per `branch_name`); `observation.name` = the `branch_name` |
 | LLM provider span (§5.5) | Generation observation — **one per `complete()` call**; under call-level retry (§5.5 / llm-provider §7.1) the N per-attempt spans collapse to this single terminal Generation (§8.4.3) |
 | Node-level retry attempt spans (§4 / pipeline-utilities §6.1) | Sibling Span / Generation observations (one per attempt) under the same parent; per-attempt attribution uses the metadata.attempt_index key (§8.4). Distinct from call-level LLM retry (row above), which renders one terminal Generation. |
 
@@ -2257,6 +2262,9 @@ either.
 | `openarmature.fan_out.concurrency` | `observation.metadata.fan_out_concurrency` (fan-out node Span observation only) |
 | `openarmature.fan_out.error_policy` | `observation.metadata.fan_out_error_policy` (fan-out node Span observation only) |
 | `openarmature.fan_out.parent_node_name` | `observation.metadata.fan_out_parent_node_name` (fan-out instance Span observation only) |
+| `openarmature.parallel_branches.branch_count` | `observation.metadata.parallel_branches_branch_count` (parallel-branches node Span observation only) |
+| `openarmature.parallel_branches.error_policy` | `observation.metadata.parallel_branches_error_policy` (parallel-branches node Span observation only) |
+| `openarmature.parallel_branches.parent_node_name` | `observation.metadata.parallel_branches_parent_node_name` (per-branch dispatch Span observation only) |
 | §4.4 detached-mode: dispatching observation marks itself when it fires a detached child | `observation.metadata.detached` — boolean `true` on the parent-side dispatching observation that dispatches a detached subgraph or fan-out instance. Absent (or `false`) on non-dispatch observations and on observations that dispatch non-detached children. |
 | `openarmature.correlation_id` | `observation.metadata.correlation_id` (cross-cutting per §8.5) |
 | Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at the observation's emission time (per §3.4) | `observation.metadata.<key>` on EVERY Observation (top level, same propagation rationale as `correlation_id`; lets users filter across observations from detached subgraphs / fan-outs in one Langfuse UI query). For the fan-out per-instance use case, each instance's observations carry that instance's augmented metadata (per §3.4 per-async-context scoping), so adopters can filter Langfuse by the per-instance identifier (e.g., `productId`) to find that specific instance's subtree. |
@@ -2497,6 +2505,33 @@ only; `input` and `output` are NOT populated. When `False`, both fields populate
 convention adds `searchUnits` to the `usageDetails` shape for rerank; Langfuse's open `usageDetails`
 mapping permits the extension. Costs from rerank calls roll into the same `trace.totalCost`
 aggregation as LLM completion and embedding costs.
+
+#### 8.4.8 Parallel-branches dispatch-span mapping
+
+A parallel-branches node renders a three-level Observation subtree, mirroring the OTel synthesis
+(§4.3 / §6): the parallel-branches NODE's Span observation, a synthesized **per-branch dispatch Span
+observation** for each branch (one per `branch_name`), and the branch's inner-node observations
+beneath the dispatch Span. The Langfuse observer synthesizes the per-branch dispatch Span as the OTel
+observer synthesizes its OTel counterpart — lazily, on the first inner observation of each branch,
+closed children-before-parents on the parallel-branches NODE's completion; the contract is the
+emitted Observation tree, not the driver mechanism (per §6's framing). The synthesized Span's
+`observation.name` is the `branch_name` (resolving §5.7's forward-reference to "the Langfuse mapping's
+per-branch Span observation naming"). Its parent is the parallel-branches node Span observation,
+resolved lineage-aware per §4.3 / §6 (so concurrent parallel-branches nested in an outer fan-out
+instance do not collide). The §5.7 attributes map per §8.4.2: `parallel_branches_branch_count` /
+`parallel_branches_error_policy` on the parallel-branches node Span observation;
+`parallel_branches_parent_node_name` and `branch_name` on each per-branch dispatch Span observation.
+On the dispatch Span, `branch_name` therefore surfaces both as `observation.name` (§8.3) and as
+`observation.metadata.branch_name` (§8.4.2) — the Langfuse mirror of its OTel dual role (the span
+name and `openarmature.node.branch_name`); it also propagates onto every observation inside the
+branch (the inner-node Span observations and their Generations) per §5.7, so a
+`metadata.branch_name` query returns the whole branch subtree.
+
+Two §5.7 branch forms carry over to the Langfuse synthesis: an inline-callable (`call`) branch
+(pipeline-utilities §11.1.1) renders a per-branch dispatch Span observation with no inner-node
+observations beneath it — the branch is the single emitting unit, so the Span is synthesized on the
+branch's own observation rather than a distinct inner one — and a `when`-skipped branch (§11.10)
+produces no observation.
 
 ### 8.5 Correlation ID realization
 
