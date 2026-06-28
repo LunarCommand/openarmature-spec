@@ -1,8 +1,9 @@
 # 0088: Observability — Langfuse Parallel-Branches Mapping Parity
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-27
+- **Accepted:** 2026-06-28
 - **Targets:** spec/observability/spec.md §8 (a Langfuse **per-branch dispatch-span synthesis** statement — including the synthesized span's `observation.name`, resolving §5.7's dangling forward-reference to "the Langfuse mapping's per-branch Span observation naming"; likely a new §8.4 subsection); §8.3 *Observation-type mapping* (a row for the synthesized **per-branch dispatch span**, plus a parallel-branches **node-span** row for symmetry with the Fan-out node row); §8.4.2 *Observation-level mapping* (rows for the §5.7 parallel-branches attributes — node-span `branch_count` / `error_policy` and dispatch-span `parent_node_name` — flattened with the `parallel_branches_` prefix, mirroring the `fan_out_*` rows; `branch_name` already exists per 0042); §3.4 *reserved caller-metadata-key set* (reserve the new `parallel_branches_*` metadata keys, as the `fan_out_*` keys and `branch_name` are reserved). A new dedicated Langfuse parallel-branches dispatch-span conformance fixture.
 - **Related:** 0044 (parallel-branches dispatch span — the OTel synthesis §4.3 / §5.7 / §6 + fixtures `030`/`038` this brings the Langfuse side level with), 0011 (parallel branches), 0042 (the §8.4.2 `branch_name` metadata row + its §3.4 reservation — the precedent this follows), 0075 (callable-branch §5.7 note), 0084 (added the §8.4.3 / §8.4.6 lineage-parent notes; a cross-implementation conformance review during that work surfaced this asymmetry).
 - **Supersedes:**
