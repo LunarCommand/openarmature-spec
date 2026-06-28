@@ -1,0 +1,70 @@
+# Within-node directive execution order (conformance-adapter §8.3): a node's
+# sibling directives execute in fixture-document order. The two cases place the
+# SAME two order-sensitive directives — augment_metadata (a §3.4 write) and
+# capture_invocation_metadata_into (a §3.4 point-in-time read) — in opposite
+# document order, and the captured snapshot diverges. That divergence is
+# reproducible only if the adapter honors document order (not sorted-by-key,
+# not arbitrary). Pins directly what fixtures 043/045 exercise incidentally.
+# Exercises conformance-adapter §8.3 + observability §3.4.
+
+cases:
+  - name: augment_then_capture_sees_the_write
+    description: |
+      Document order: augment_metadata {marker: set} THEN
+      capture_invocation_metadata_into. The capture runs after the write, so
+      the snapshot contains marker (plus the caller baseline).
+    state:
+      fields:
+        captured:
+          type: dict
+          default: {}
+    entry: ordered
+    nodes:
+      ordered:
+        augment_metadata:
+          marker: "set"
+        capture_invocation_metadata_into: captured
+    edges:
+      - {from: ordered, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "T1"
+    expected:
+      final_state:
+        captured:
+          tenantId: "T1"
+          marker: "set"
+      invariants:
+        # The capture ran AFTER the augment (document order) -> sees marker.
+        capture_after_augment_sees_write: true
+
+  - name: capture_then_augment_misses_the_write
+    description: |
+      The SAME two directives in the opposite document order:
+      capture_invocation_metadata_into THEN augment_metadata {marker: set}.
+      The capture is a point-in-time read taken BEFORE the augment, so the
+      snapshot has only the caller baseline; marker is written afterward and
+      not seen. The divergence from case 1 is what proves document order.
+    state:
+      fields:
+        captured:
+          type: dict
+          default: {}
+    entry: ordered
+    nodes:
+      ordered:
+        capture_invocation_metadata_into: captured
+        augment_metadata:
+          marker: "set"
+    edges:
+      - {from: ordered, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "T1"
+    expected:
+      final_state:
+        captured:
+          tenantId: "T1"
+      invariants:
+        # The capture ran BEFORE the augment (document order) -> omits marker.
+        capture_before_augment_misses_write: true

@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.82.0] — 2026-06-27
+
+**Added**
+
+- **conformance-adapter §8.3 — within-node directive execution order.** A node's sibling directives (the keys under `nodes.<node_name>:`) execute in fixture-document order (mapping insertion order, not sorted-by-key), so order-sensitive compositions — e.g. `augment_metadata` then `capture_invocation_metadata_into` (observability §3.4) — produce a deterministic result. §7 *Nondeterminism handling* gains a counterpoint note (within-node order is deterministic, unlike the cross-source interleaving cases it lists); §8.2 *Parsing* notes lossless parsing preserves directive order. Ratifies the rule fixtures 043/045 already depended on but that the spec never stated. ([proposal 0087](proposals/0087-conformance-adapter-directive-execution-order.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** A new normative conformance-adapter rule; no adapter already passing 043/045 changes. New observability conformance fixture `135` pins the rule directly (the same two order-sensitive directives in opposite document order, with diverging captured snapshots).
+
 ## [0.81.0] — 2026-06-27
 
 **Added**

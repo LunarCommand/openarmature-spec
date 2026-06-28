@@ -10,6 +10,7 @@ Canonical behavioral specification for the OpenArmature conformance-adapter capa
   - §5.8 *Expected-outcome directives* gains a `metrics:` assertion (recorded measurements — instrument + dimensions for every observation, recorded value for token-usage, presence-only for duration); §6 *Harness primitives* gains §6.9 *Metric capture* — an in-memory OTel `MetricReader` (sibling to §6.3 collector capture) recording every observation, gated by an `enable_metrics` observer flag — supporting the observability §11 metrics fixtures by [proposal 0067](../../proposals/0067-observability-genai-metrics.md)
   - §6.8 *Caching prompt backend* gains a fixture-level `manager: {default_cache_ttl_seconds: <int>}` construction slot and a `target: {manager: true}` fetch, so a fixture can exercise the §6 cache-TTL precedence chain (per-call value > manager default > backend) rather than only a backend-direct call — supporting the prompt-management service-wide-default fixture by [proposal 0086](../../proposals/0086-prompt-default-cache-ttl.md)
   - §5.1 *Node behavior directives* gained `calls_llm_from_wrapper` — issues a real `complete()` call from a pre- / post-phase middleware so the calling node's span is not open when the provider span / `LlmCompletionEvent` is emitted, exercising the observability §5.5 *Lineage-resolved parent* orphan fallback — alongside the existing `calls_llm` node directive it complements; §5.5 documents the case-level observability harness keys (`mock_llm`, `disable_llm_spans`, `caller_global_otel_active`); §5.4 *Composition directives* documents the existing `fan_out.concurrent_mode` (serial vs concurrent instance dispatch, distinct from `concurrency`), first surfaced in observability fixtures by the nested-fan-out span-keying tests. Supports proposal 0084's nested-fan-out span-lineage fixtures by [proposal 0084](../../proposals/0084-nested-fan-out-span-lineage.md)
+  - §8.3 *Execution* gained a **Directive execution order** rule — a node's sibling directives (the keys under `nodes.<node_name>:`) execute in fixture-document order (mapping insertion order, not sorted-by-key), so order-sensitive compositions like `augment_metadata` → `capture_invocation_metadata_into` (observability §3.4) are deterministic; §7 *Nondeterminism handling* gains a counterpoint note (within-node order is deterministic, unlike the cross-source interleaving cases); §8.2 *Parsing* notes lossless parsing preserves directive order. New fixture `135` pins it; ratifies behavior fixtures 043/045 already depended on by [proposal 0087](../../proposals/0087-conformance-adapter-directive-execution-order.md)
 
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) ships a thin **adapter**
 that ingests the language-agnostic YAML fixtures under `spec/<capability>/conformance/` and executes them
@@ -996,6 +997,11 @@ observer_event_invariants:
 The adapter MUST honor invariant predicates by name (per §5.9). Adapters MUST NOT impose an exact
 ordering on events that the spec doesn't determine.
 
+Within-node directive order is, by contrast, **deterministic**: a node's sibling directives execute
+in fixture-document order (§8.3). The nondeterminism above is across *sources* (sibling fan-out
+instances, parallel branches, distinct event sources within a phase), not within a single node's
+directive list.
+
 ## 8. Adapter responsibility
 
 A language adapter ships in its implementation's repository (e.g., openarmature-python,
@@ -1012,6 +1018,8 @@ fixtures."
 Translate each fixture's YAML into native graph-construction calls in the host language. Parsing
 MUST be lossless against the §5 directive vocabulary; unknown directives MUST raise
 `fixture_directive_unknown` (per §9) rather than being silently skipped or treated as defaults.
+Lossless parsing preserves the document order of a node's directives (an order-preserving load), so
+§8.3's execution-order rule has a well-defined order to honor.
 
 ### 8.3 Execution
 
@@ -1019,6 +1027,14 @@ Construct the graph, instantiate harness primitives per §6, run each invocation
 implementation's real runtime. The adapter MUST NOT simulate any spec-defined behavior — every
 construct the fixture exercises (suspend, drain, middleware, fan-out, parallel-branches, sessions,
 checkpointing, observability emission) MUST be the real implementation primitive.
+
+**Directive execution order.** When a node carries more than one directive (sibling keys under
+`nodes.<node_name>:`), the adapter MUST execute them in **document order** — the order the directive
+keys appear under `nodes.<node_name>:` (mapping insertion order, **not** sorted-by-key). Directives
+whose effects compose order-dependently — e.g. `augment_metadata` / `augment_metadata_from_field`
+(writes) and `capture_invocation_metadata_into` (a point-in-time read), per observability §3.4 —
+therefore produce a deterministic result fixed by their document order. (`update` /
+`update_from_field` partial-update merges are likewise applied in document order.)
 
 ### 8.4 Assertion
 

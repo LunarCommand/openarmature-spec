@@ -1,8 +1,9 @@
 # 0087: Conformance-Adapter — Within-Node Directive Execution Order
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-27
+- **Accepted:** 2026-06-27
 - **Targets:** spec/conformance-adapter/spec.md §8.3 *Execution* (add a normative rule that an adapter MUST execute a node's sibling directives in document order — the order they appear in the fixture, i.e. mapping insertion order, not sorted-by-key); §7 *Nondeterminism handling* (a counterpoint note that within-node directive order IS deterministic, unlike the cross-source interleaving cases it lists); §8.2 *Parsing* (a note that lossless parsing preserves directive order — an order-preserving YAML load). A small new conformance fixture pinning the order-sensitive composition directly.
 - **Related:** 0055 (conformance-adapter capability), 0081 (value-matcher vocabulary — the prior conformance-adapter vocabulary clarification), 0034 / 0048 (caller-supplied invocation metadata — the `set_invocation_metadata` / `get_invocation_metadata` primitives that the order-sensitive `augment_metadata` / `capture_invocation_metadata_into` directives wrap). Surfaced by the #188–#194 consolidated review on the `review-fixture-harness-catchup` coord thread.
 - **Supersedes:**
