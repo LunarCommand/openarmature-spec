@@ -1,0 +1,136 @@
+# observability §8.4.5 (proposal 0089): an EmbeddingFailedEvent renders an
+# ERROR-level `Embedding` observation (NOT a Generation, NOT a success). Via the
+# generic §4.2 / §8.4.2 error mapping, the failure observation carries
+# observation.level = ERROR and observation.statusMessage = the §7 error_category,
+# with error_type / error_message in metadata — mirroring §8.4.6's tool failure
+# (fixture 098). The failure observation carries NO `output` (no response was
+# received), regardless of the payload flag. The request-side identity metadata
+# known at dispatch (openarmature_input_count) survives; the response-derived
+# metadata (openarmature_dimensions / openarmature_response_id) does not.
+#
+# Two cases gate disable_provider_payload to show that `output` is absent because
+# no response was received — not merely payload-gated: it stays null even with the
+# flag off, while the request-side `input` populates as in the success fixture 083.
+#
+# Failure trigger: mock_embedding returns HTTP 503, which the implementation
+# classifies as provider_unavailable (per fixtures 075's directive vocabulary).
+# The mock body supplies a vendor `type` + `message`, so error_type / error_message
+# surface non-empty in metadata (asserted by format, not literal, per the
+# fixture-073 vendor-error-type idiom — error_type's value is impl-derived).
+
+cases:
+  - name: embedding_failure_renders_error_level_observation_payload_suppressed
+    description: |
+      One embedding call that fails (mock returns 503 ->
+      provider_unavailable). Default Langfuse observer config
+      (disable_provider_payload=True). The Embedding observation MUST emit
+      at ERROR level with statusMessage = "provider_unavailable" (the §7
+      error_category), error_type / error_message in metadata, and the
+      request-side openarmature_input_count; input is suppressed (payload
+      gated) and there is NO output (no response received). The observation
+      type is "embedding" (NOT "generation").
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query one", "query two"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 503
+        body:
+          error:
+            message: "service unavailable"
+            type: "server_error"
+    langfuse_observer:
+      disable_provider_payload: true
+    expected_error:
+      category: provider_unavailable
+      raised_from: embed_node
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "embed_node"
+            children:
+              - type: embedding
+                name: "openarmature.embedding.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"
+                input: null
+                output: null
+                metadata:
+                  openarmature_input_count: 2
+                  error_type: "<any-string>"
+                  error_message: "<any-string>"
+                children: []
+      invariants:
+        embedding_failure_renders_error_level: true
+        error_category_is_status_message: true
+        error_type_and_message_in_metadata: true
+        failure_observation_carries_no_output: true
+        renders_as_embedding_observation_not_generation: true
+
+  - name: embedding_failure_no_output_even_with_payload_flag_off
+    description: |
+      The same embedding failure with disable_provider_payload=False. The
+      request-side `input` populates (the strings list, as in success fixture
+      083's flag-off case), but `output` is STILL null — no response was
+      received, so the absence is intrinsic, not a payload-gating artifact.
+      ERROR level, statusMessage, and the error metadata are unchanged by the
+      flag.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query one", "query two"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 503
+        body:
+          error:
+            message: "service unavailable"
+            type: "server_error"
+    langfuse_observer:
+      disable_provider_payload: false
+    expected_error:
+      category: provider_unavailable
+      raised_from: embed_node
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "embed_node"
+            children:
+              - type: embedding
+                name: "openarmature.embedding.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"
+                input: ["query one", "query two"]
+                output: null
+                metadata:
+                  openarmature_input_count: 2
+                  error_type: "<any-string>"
+                  error_message: "<any-string>"
+                children: []
+      invariants:
+        no_output_even_with_payload_flag_off: true
+        request_side_input_populated_when_payload_flag_disabled: true
+        error_level_and_status_message_unchanged_by_payload_flag: true

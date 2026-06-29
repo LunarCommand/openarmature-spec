@@ -549,6 +549,27 @@ short-horizon roadmap below.
   [resolved-by-acceptance] — per-graph registration, consistent with
   `with_checkpointer` from proposal 0008.
 
+## conformance-adapter
+
+### 0089 — embedding / rerank failure-mock error-field vocabulary
+
+- **No `raises: {error_type, message}` equivalent for embedding / rerank failure
+  mocks.** [candidate-for-new-proposal] — surfaced authoring 0089's
+  failure-observation fixtures (137 / 138). The tool failure mock supplies literal
+  `error_type` / `error_message` via a `raises: {error_type, message}` directive,
+  so the tool failure fixture pins those values literally; the embedding / rerank
+  failure path is HTTP-mock-triggered (a status code mapped to a §7
+  `error_category`), with no directive to supply a literal `error_type` /
+  `error_message`. So fixtures 137 / 138 assert those two fields by format
+  (`<any-string>`) rather than literal — the deterministic `error_category` (via the
+  observation `statusMessage`) is the literal-pinned contract. A follow-on could
+  either add an embedding / rerank failure-mock directive carrying literal
+  `error_type` / `error_message`, or state normatively that the provider error
+  body's `type` / `message` map deterministically onto the event's `error_type` /
+  `error_message` — either enables cross-impl literal assertion of those fields.
+  Neither exists today; deferred to a dedicated conformance-adapter follow-on
+  after 0089.
+
 ---
 
 ## How to use this page

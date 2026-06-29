@@ -1375,9 +1375,10 @@ enrichment per §5.5.8, Langfuse embedding observation rendering per §8, custom
 observer accumulators per §9) filter via type discrimination
 (`isinstance(event, EmbeddingEvent)` / `isinstance(event, EmbeddingFailedEvent)`).
 
-The privacy posture mirrors §5.5.7's LLM-side typed events — `input_strings` and
-`request_extras` are populated by the implementation unconditionally on every typed event;
-observer-side gating at the rendering boundary honors `disable_provider_payload` per §5.5.4.
+The privacy posture mirrors §5.5.7's LLM-side typed events — `input_strings`, `output_vectors`
+(on the success `EmbeddingEvent`), and `request_extras` are populated by the implementation
+unconditionally on every typed event; observer-side gating at the rendering boundary honors
+`disable_provider_payload` per §5.5.4.
 
 #### 5.5.10 Tool-call request attributes
 
@@ -1514,7 +1515,7 @@ completion span (`openarmature.llm.complete`) and the embedding span
 | `openarmature.rerank.search_units` | int | The provider-reported search-units billed for this call (sourced from `RerankResponse.usage.search_units`). Conditionally emitted: present only when the source field is non-null. Flat namespace matches §5.5.8's `openarmature.embedding.*` convention (no `.usage.` infix). |
 | `openarmature.rerank.query` | string | The query string. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract. |
 | `openarmature.rerank.documents` | string (JSON-encoded list of strings) | The input documents list. Subject to `disable_provider_payload` and the §5.5.5 truncation contract. |
-| `openarmature.rerank.results` | string (JSON-encoded list of records) | The scored results (each record carrying `index` + `relevance_score` + optional `document` echo). Subject to `disable_provider_payload` and the §5.5.5 truncation contract. |
+| `openarmature.rerank.results` | string (JSON-encoded list of records) | The scored results (each record carrying `index` + `relevance_score` + optional `document` echo), sourced from `RerankEvent.output_results` (graph-engine §6). Subject to `disable_provider_payload` and the §5.5.5 truncation contract. |
 
 **Operation-name attribute — deferred (no upstream coverage).** The upstream OTel GenAI semconv has
 no rerank operation or attribute coverage — `gen_ai.operation.name` has no rerank-applicable
@@ -1548,10 +1549,11 @@ typed events for backend-specific rendering (OTel rerank span enrichment per §5
 `Retriever` observation rendering per §8.4.7, custom queryable observer accumulators per §9) filter
 via type discrimination (`isinstance(event, RerankEvent)` / `isinstance(event, RerankFailedEvent)`).
 
-The privacy posture mirrors §5.5.9's embedding-side typed events — `query`, `documents`, and
-`request_extras` are populated by the implementation unconditionally on every typed event;
-observer-side gating at the rendering boundary honors `disable_provider_payload` per §5.5.4. The
-`ScoredDocument.document` echoes carried in the success event are payload-bearing on the same footing.
+The privacy posture mirrors §5.5.9's embedding-side typed events — `query`, `documents`,
+`output_results` (on the success `RerankEvent`), and `request_extras` are populated by the
+implementation unconditionally on every typed event; observer-side gating at the rendering boundary
+honors `disable_provider_payload` per §5.5.4. The `ScoredDocument.document` echoes carried in
+`output_results` are payload-bearing on the same footing.
 
 #### 5.5.15 Token-budget signal
 
@@ -2376,13 +2378,13 @@ Field mappings:
 
 | Embedding observation field | Source |
 |---|---|
-| `embedding.model` | `EmbeddingResponse.model` (per retrieval-provider §4). |
-| `embedding.input` | The input strings list passed to `embed()`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), this field is NOT populated. |
-| `embedding.output` | `EmbeddingResponse.vectors` (the actual embedding vectors). Privacy-gated per `disable_provider_payload`. |
-| `embedding.usageDetails.input` | `EmbeddingResponse.usage.input_tokens`. |
+| `embedding.model` | `EmbeddingEvent.response_model` (the provider's returned model; falls back to `EmbeddingEvent.model`, the requested model, when the provider returns none). |
+| `embedding.input` | The `EmbeddingEvent.input_strings`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), this field is NOT populated. |
+| `embedding.output` | The `EmbeddingEvent.output_vectors` (the embedding vectors, themselves sourced from `EmbeddingResponse.vectors` at dispatch). Privacy-gated per `disable_provider_payload`. |
+| `embedding.usageDetails.input` | `EmbeddingEvent.usage.input_tokens`. |
 | `embedding.metadata.openarmature_input_count` | The length of `input_strings`. |
 | `embedding.metadata.openarmature_dimensions` | The output vector dimensionality. |
-| `embedding.metadata.openarmature_response_id` | `EmbeddingResponse.response_id` when present. |
+| `embedding.metadata.openarmature_response_id` | `EmbeddingEvent.response_id` when present. |
 
 **Privacy posture for embedding observations.** Both `input` strings and `output` vectors are
 payload-bearing data on the same footing — both gated by `disable_provider_payload` (default
@@ -2406,6 +2408,11 @@ exposure. Out of scope for the v0.54.0 mapping.
 `Embedding` observations uniformly via the per-observation `usageDetails` field. No metadata
 discriminator is needed; the observation type itself discriminates. Costs from embedding calls
 roll into the same `trace.totalCost` aggregation as LLM completion costs.
+
+**Failure observations.** An `EmbeddingFailedEvent` (graph-engine §6) renders an `Embedding`
+observation at `ERROR` level — the §7 `error_category` as the observation's status message and
+`error_type` / `error_message` in `metadata`, via the generic §4.2 / §8.4.2 error mapping (mirroring
+§8.4.6's tool failure). The failure observation carries no `output` (no response was received).
 
 #### 8.4.6 Tool-execution mapping (sourced from tool span attributes)
 
@@ -2453,16 +2460,16 @@ Field mappings:
 
 | Retriever observation field | Source |
 |---|---|
-| `retriever.model` | `RerankResponse.model` (per retrieval-provider §6). |
-| `retriever.input` | The query + documents list, serialized as `{query, documents}`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), NOT populated. |
-| `retriever.output` | The scored results list (each entry as `{index, relevance_score, document?}`). Privacy-gated per `disable_provider_payload`. When the flag is `True` (default), NOT populated. |
-| `retriever.usageDetails.input` | `RerankResponse.usage.input_tokens` when populated. |
-| `retriever.usageDetails.searchUnits` | `RerankResponse.usage.search_units` when populated. Langfuse's `usageDetails` is an open-shape mapping; the spec defines the OA convention for the rerank-specific `searchUnits` key here. |
+| `retriever.model` | `RerankEvent.response_model` (the provider's returned model; falls back to `RerankEvent.model`, the requested model, when the provider returns none). |
+| `retriever.input` | The `RerankEvent.query` + `documents`, serialized as `{query, documents}`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), NOT populated. |
+| `retriever.output` | The `RerankEvent.output_results` (the scored results, each `{index, relevance_score, document?}`; themselves sourced from `RerankResponse.results` at dispatch). Privacy-gated per `disable_provider_payload`. When the flag is `True` (default), NOT populated. |
+| `retriever.usageDetails.input` | `RerankEvent.usage.input_tokens` when populated. |
+| `retriever.usageDetails.searchUnits` | `RerankEvent.usage.search_units` when populated. Langfuse's `usageDetails` is an open-shape mapping; the spec defines the OA convention for the rerank-specific `searchUnits` key here. |
 | `retriever.metadata.openarmature_query_length` | The byte length of the query (UTF-8). |
 | `retriever.metadata.openarmature_document_count` | The input documents count. |
 | `retriever.metadata.openarmature_top_k` | The caller-supplied `top_k` when supplied; omitted otherwise. |
 | `retriever.metadata.openarmature_result_count` | The returned results count. |
-| `retriever.metadata.openarmature_response_id` | `RerankResponse.response_id` when present. |
+| `retriever.metadata.openarmature_response_id` | `RerankEvent.response_id` when present. |
 
 **Privacy posture for rerank observations.** Query, input documents, and result document echoes are
 all payload-bearing data, gated by `disable_provider_payload` (default `True` per §5.5.4). When the
@@ -2474,6 +2481,11 @@ only; `input` and `output` are NOT populated. When `False`, both fields populate
 convention adds `searchUnits` to the `usageDetails` shape for rerank; Langfuse's open `usageDetails`
 mapping permits the extension. Costs from rerank calls roll into the same `trace.totalCost`
 aggregation as LLM completion and embedding costs.
+
+**Failure observations.** A `RerankFailedEvent` (graph-engine §6) renders a `Retriever` observation
+at `ERROR` level — the §7 `error_category` as the observation's status message and `error_type` /
+`error_message` in `metadata`, via the generic §4.2 / §8.4.2 error mapping (mirroring §8.4.6's tool
+failure). The failure observation carries no `output`.
 
 #### 8.4.8 Parallel-branches dispatch-span mapping
 
@@ -2971,3 +2983,4 @@ spec:
 - §5.5.7 (OTel) and §8.4.3 (Langfuse) gained notes that the bundled observers do NOT render the graph-engine §6 `LlmTokenEvent` (streaming, proposal 0062): no per-token spans / observations; trace recording stays atomic at the terminal `LlmCompletionEvent` (the `openarmature.llm.complete` span and the Langfuse Generation collapse the streamed deltas back into one input / output payload). `LlmTokenEvent` (including its `delta_kind` content / reasoning split) is for custom forwarding observers (§9) by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
 - §4.1 / §4.3 / §6 span keying and §5.5 provider-span parenting made lineage-chain-aware for nested fan-out (proposal 0084): the driving-span key and the §4.3 parent-child rules key by the §6 `fan_out_index_chain` / `branch_name_chain` rather than the innermost scalar, so concurrent nested fan-out instances' inner spans no longer collide and drop; §5.5 gained a *Lineage-resolved parent* clause (shared by the embedding §5.5.8 / tool §5.5.11 / rerank §5.5.13 spans) — a provider span exact-matches its lineage-disambiguated calling-node span, and falls back to the nearest enclosing wrapper (the correct inner instance via the chain) when that span is not open; §8.4.3 / §8.4.6 note the Langfuse observation parent follows the same resolution by [proposal 0084](../../proposals/0084-nested-fan-out-span-lineage.md)
 - §8 *Langfuse mapping* brought to parallel-branches parity with the OTel side and the fan-out mapping (proposal 0088): new §8.4.8 *Parallel-branches dispatch-span mapping* (the Langfuse observer synthesizes the per-branch dispatch Span observation — the three-level tree mirroring the OTel §4.3 / §6 synthesis — with `observation.name` = `branch_name`, resolving §5.7's dangling forward-reference); §8.3 gains observation-type rows for the parallel-branches node span + per-branch dispatch span; §8.4.2 gains the `parallel_branches_branch_count` / `_error_policy` / `_parent_node_name` attribute rows (the §5.7 attributes, flattened like `fan_out_*`); §3.4's reserved caller-metadata-key set gains those three keys (26 → 29). New fixture `136`. Additive — brings the spec into line with already-conformant Langfuse behavior by [proposal 0088](../../proposals/0088-observability-langfuse-parallel-branches-parity.md)
+- §8.4.5 / §8.4.7 output mappings (`embedding.output` / `retriever.output`) and the OTel §5.5.13 `openarmature.rerank.results` attribute re-sourced from the new graph-engine §6 `EmbeddingEvent.output_vectors` / `RerankEvent.output_results` (the observer's input is the typed event, not the response object) — making the existing fixtures `083` / `108` satisfiable; §8.4.5 / §8.4.7 gained *Failure observations* paragraphs (`ERROR`-level `Embedding` / `Retriever` observation on `EmbeddingFailedEvent` / `RerankFailedEvent`, mirroring §8.4.6 tool); §5.5.9 / §5.5.14 privacy-posture notes list the new fields; the §8.4.5 / §8.4.7 input rows re-sourced from the event. The `disable_llm_spans` scoping (§5.5.8 / §5.5.13) is unchanged by [proposal 0089](../../proposals/0089-embedding-rerank-typed-event-output.md)

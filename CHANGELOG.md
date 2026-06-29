@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.84.0] — 2026-06-28
+
+**Added**
+
+- **Embedding / rerank typed-event output (graph-engine §6 + observability).** `EmbeddingEvent` gains `output_vectors` and `RerankEvent` gains `output_results` — the output-payload counterparts to their input fields, paralleling `LlmCompletionEvent.output_content`; populated on the success event, privacy-gated at the rendering boundary. The observability output mappings re-source from these fields — Langfuse `embedding.output` (§8.4.5) / `retriever.output` (§8.4.7) and the OTel rerank `openarmature.rerank.results` attribute (§5.5.13) — making the existing fixtures `083` / `108` satisfiable (an observer's only input is the typed event, which previously carried only the output *count*). §8.4.5 / §8.4.7 also gain *Failure observations* paragraphs (`ERROR`-level rendering of `EmbeddingFailedEvent` / `RerankFailedEvent`, mirroring §8.4.6's tool failure). ([proposal 0089](proposals/0089-embedding-rerank-typed-event-output.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Additive typed-event fields + observability-mapping reconciliations + a failure-rendering specification; the embedding OTel span stays output-less (the rerank OTel attribute is re-sourced, not added). The `disable_llm_spans` scoping (§5.5.8 / §5.5.13) is unchanged. New conformance fixtures for the embedding / rerank failure observations.
+
 ## [0.83.0] — 2026-06-28
 
 **Added**
