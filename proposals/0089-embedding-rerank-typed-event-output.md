@@ -1,8 +1,9 @@
 # 0089: Embedding / Rerank Typed-Event Output
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-28
+- **Accepted:** 2026-06-28
 - **Targets:** graph-engine §6 — `EmbeddingEvent` gains `output_vectors`, `RerankEvent` gains `output_results`, and each event's *Privacy and observer-side gating* enumeration lists the new payload field. observability §8.4.5 / §8.4.7 — re-source `embedding.output` / `retriever.output` from the event fields and specify the failure-observation rendering. observability §5.5.13 / §5.5.14 — re-source the OTel rerank `openarmature.rerank.results` attribute from `RerankEvent.output_results`; the §5.5.9 / §5.5.14 typed-event privacy-posture notes list the new fields. New + existing conformance fixtures.
 - **Related:** 0049 (typed `LlmCompletionEvent`), 0059 (embedding protocol), 0060 (rerank protocol), 0063 (tool-execution observability — the failure-rendering precedent in §8.4.6), 0076 (`output_tool_calls` on `LlmCompletionEvent`), 0082 (`LlmFailedEvent` response-side surface).
 - **Supersedes:**

@@ -984,6 +984,7 @@ embedding-specific runtime-config in place of the LLM `RuntimeConfig`):
 | `call_id` | string | A per-call disambiguator minted by the implementation. **Always present** (never null); freshly minted per `embed()` call. |
 | `input_count` | int | The number of input strings the call was made with (equals `len(input_strings)`). Derivable but kept for ergonomics + cross-vendor consistency. |
 | `dimensions` | int \| null | The dimensionality of the returned vectors (equals the inner-vector length from the response). May be null when the response does not surface a determinate dimensionality. |
+| `output_vectors` | list of list of float | The embedding vectors the call returned (`EmbeddingResponse.vectors`, retrieval-provider §4). Populated unconditionally on the success event; observer-side privacy gating applies at the rendering boundary per the privacy paragraph below, the same posture as `input_strings`. |
 
 The event MUST be dispatched on the observer delivery queue at the point of `embed()` completion
 (after the response is parsed and validated per retrieval-provider §4, before `embed()` returns
@@ -1035,8 +1036,8 @@ caller). The §7 category exception still raises out of `embed()`; the typed eve
 alongside the exception, not in place of it.
 
 `EmbeddingEvent` and `EmbeddingFailedEvent` are mutually exclusive on a given `embed()` call.
-Implementations MUST NOT emit both for the same call. The privacy posture for `input_strings` /
-`request_extras` is identical to `EmbeddingEvent`'s — observer-side gating at the rendering
+Implementations MUST NOT emit both for the same call. The privacy posture for `input_strings` / `output_vectors` (only on the success `EmbeddingEvent`) /
+`request_extras` is identical across the embedding variants — observer-side gating at the rendering
 boundary per observability §5.5.4 (implementations populate the fields unconditionally; observers
 honor `disable_provider_payload`). Custom queryable observers (per observability §9) consuming
 either embedding-variant are responsible for their own redaction posture, identical to the
@@ -1079,6 +1080,7 @@ rerank-specific substitutions (`query` + `documents` in place of `input_strings`
 | `document_count` | int | The number of input documents the call was made with (equals `len(documents)`). Derivable but kept for ergonomics + cross-vendor consistency. |
 | `top_k` | int \| null | The caller-supplied `top_k` value (or null when the caller passed `None`). |
 | `result_count` | int | The number of `ScoredDocument` entries the provider returned (equals `len(response.results)`). |
+| `output_results` | list of scored-document records | The scored results the call returned (`RerankResponse.results`; each `{index, relevance_score, document?}` per retrieval-provider §6 `ScoredDocument`). Populated unconditionally on the success event; observer-side privacy gating at the rendering boundary per the privacy paragraph below, same posture as `query` / `documents`. |
 
 The event MUST be dispatched on the observer delivery queue at the point of `rerank()` completion
 (after the response is parsed and validated per retrieval-provider §6, before `rerank()` returns to
@@ -1133,10 +1135,10 @@ caller). The §7 category exception still raises out of `rerank()`; the typed ev
 alongside the exception, not in place of it.
 
 `RerankEvent` and `RerankFailedEvent` are mutually exclusive on a given `rerank()` call.
-Implementations MUST NOT emit both for the same call. The privacy posture for `query` / `documents` /
-`request_extras` is identical to `EmbeddingEvent`'s — observer-side gating at the rendering boundary
+Implementations MUST NOT emit both for the same call. The privacy posture for `query` / `documents` / `output_results` (only on the success `RerankEvent`) /
+`request_extras` is identical across the rerank variants — observer-side gating at the rendering boundary
 per observability §5.5.4 (implementations populate the fields unconditionally; observers honor
-`disable_provider_payload`). The `ScoredDocument.document` echoes in the response are payload-bearing
+`disable_provider_payload`). The `ScoredDocument.document` echoes carried in `output_results` are payload-bearing
 on the same footing. Custom queryable observers (per observability §9) consuming either rerank-variant
 are responsible for their own redaction posture, identical to the embedding-variant posture.
 
@@ -1294,3 +1296,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §6 observer event union extended with two new typed event variants — `RerankEvent` (success) and `RerankFailedEvent` (failure) — paired from launch per the 0049 → 0058 success+failure pairing precedent, the rerank sibling to the embedding pair. Both carry the identity / scoping / request-side field set established by `EmbeddingEvent` (with `query` + `documents` in place of `input_strings` and the rerank-specific runtime-config shape), with capability-appropriate success-side fields (`response_id`, `response_model`, `usage`, `result_count`) plus `document_count` / `top_k`, and the three failure-specific fields (`error_category`, `error_type`, `error_message`) on the failure variant. Mutual exclusion + exception-flow + dispatch-timing rules mirror the embedding pair; `query` / `documents` / `request_extras` and the `ScoredDocument.document` result echoes are payload-bearing, gated observer-side by `disable_provider_payload` (§5.5.4) by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
 - §6 observer event union gained `LlmTokenEvent` — an **unpaired within-call sub-event** (not a call outcome; no `LlmTokenFailedEvent`) carrying one streamed delta per chunk when `complete()` is called with `stream` set (llm-provider §5). Mirrors `LlmCompletionEvent`'s identity / scoping baseline plus `chunk_index`, `delta_kind` (`"content"` / `"reasoning"`; `"tool_call"` reserved, not emitted), and `delta`; correlated to the terminal `LlmCompletionEvent` / `LlmFailedEvent` by shared `call_id`, dispatched in `chunk_index` order before the terminal event. `attempt_index` is node-level (does not advance across llm-provider §7.1 call-level wire attempts). Bundled OTel / Langfuse observers do not render it — it is payload for custom forwarding observers by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
 - §6 observer event surface gained `fan_out_index_chain` and `branch_name_chain` — the enclosing fan-out instance / parallel-branch lineage (outermost→innermost, aligned to `namespace`, null at non-applicable depths) — on `NodeEvent` and the provider/tool events (`LlmCompletionEvent`, `LlmFailedEvent`, `LlmTokenEvent`, `EmbeddingEvent` / `EmbeddingFailedEvent`, `RerankEvent` / `RerankFailedEvent`, `ToolCallEvent`, with `ToolCallFailedEvent` inheriting by reference), plus the framework metadata-augmentation event (so its observer scoping stays consistent with the chain-keyed span stack). The existing scalar `fan_out_index` / `branch_name` are retained as the innermost values; the chains disambiguate the same node nested in concurrent enclosing instances, which the scalars alone cannot. Additive by [proposal 0084](../../proposals/0084-nested-fan-out-span-lineage.md)
+- §6 `EmbeddingEvent` gained `output_vectors` (`list of list of float`, `EmbeddingResponse.vectors`) and `RerankEvent` gained `output_results` (the `ScoredDocument` list, `RerankResponse.results`) — the output-payload counterparts to `input_strings` / `query` + `documents`, paralleling `LlmCompletionEvent.output_content`; populated unconditionally on the success event, observer-side privacy-gated at the rendering boundary (the events' privacy-posture paragraphs extended to list them). The failure events carry no output. Lets observers render the embedding/rerank output the §8.4.5 / §8.4.7 Langfuse mappings and the OTel `openarmature.rerank.results` attribute require by [proposal 0089](../../proposals/0089-embedding-rerank-typed-event-output.md)
