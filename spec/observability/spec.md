@@ -2378,13 +2378,13 @@ Field mappings:
 
 | Embedding observation field | Source |
 |---|---|
-| `embedding.model` | `EmbeddingResponse.model` (per retrieval-provider §4). |
+| `embedding.model` | `EmbeddingEvent.response_model` (the provider's returned model; falls back to `EmbeddingEvent.model`, the requested model, when the provider returns none). |
 | `embedding.input` | The `EmbeddingEvent.input_strings`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), this field is NOT populated. |
 | `embedding.output` | The `EmbeddingEvent.output_vectors` (the embedding vectors, themselves sourced from `EmbeddingResponse.vectors` at dispatch). Privacy-gated per `disable_provider_payload`. |
-| `embedding.usageDetails.input` | `EmbeddingResponse.usage.input_tokens`. |
+| `embedding.usageDetails.input` | `EmbeddingEvent.usage.input_tokens`. |
 | `embedding.metadata.openarmature_input_count` | The length of `input_strings`. |
 | `embedding.metadata.openarmature_dimensions` | The output vector dimensionality. |
-| `embedding.metadata.openarmature_response_id` | `EmbeddingResponse.response_id` when present. |
+| `embedding.metadata.openarmature_response_id` | `EmbeddingEvent.response_id` when present. |
 
 **Privacy posture for embedding observations.** Both `input` strings and `output` vectors are
 payload-bearing data on the same footing — both gated by `disable_provider_payload` (default
@@ -2460,16 +2460,16 @@ Field mappings:
 
 | Retriever observation field | Source |
 |---|---|
-| `retriever.model` | `RerankResponse.model` (per retrieval-provider §6). |
+| `retriever.model` | `RerankEvent.response_model` (the provider's returned model; falls back to `RerankEvent.model`, the requested model, when the provider returns none). |
 | `retriever.input` | The `RerankEvent.query` + `documents`, serialized as `{query, documents}`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), NOT populated. |
 | `retriever.output` | The `RerankEvent.output_results` (the scored results, each `{index, relevance_score, document?}`; themselves sourced from `RerankResponse.results` at dispatch). Privacy-gated per `disable_provider_payload`. When the flag is `True` (default), NOT populated. |
-| `retriever.usageDetails.input` | `RerankResponse.usage.input_tokens` when populated. |
-| `retriever.usageDetails.searchUnits` | `RerankResponse.usage.search_units` when populated. Langfuse's `usageDetails` is an open-shape mapping; the spec defines the OA convention for the rerank-specific `searchUnits` key here. |
+| `retriever.usageDetails.input` | `RerankEvent.usage.input_tokens` when populated. |
+| `retriever.usageDetails.searchUnits` | `RerankEvent.usage.search_units` when populated. Langfuse's `usageDetails` is an open-shape mapping; the spec defines the OA convention for the rerank-specific `searchUnits` key here. |
 | `retriever.metadata.openarmature_query_length` | The byte length of the query (UTF-8). |
 | `retriever.metadata.openarmature_document_count` | The input documents count. |
 | `retriever.metadata.openarmature_top_k` | The caller-supplied `top_k` when supplied; omitted otherwise. |
 | `retriever.metadata.openarmature_result_count` | The returned results count. |
-| `retriever.metadata.openarmature_response_id` | `RerankResponse.response_id` when present. |
+| `retriever.metadata.openarmature_response_id` | `RerankEvent.response_id` when present. |
 
 **Privacy posture for rerank observations.** Query, input documents, and result document echoes are
 all payload-bearing data, gated by `disable_provider_payload` (default `True` per §5.5.4). When the

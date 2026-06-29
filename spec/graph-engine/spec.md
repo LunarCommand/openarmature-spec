@@ -1036,10 +1036,10 @@ caller). The §7 category exception still raises out of `embed()`; the typed eve
 alongside the exception, not in place of it.
 
 `EmbeddingEvent` and `EmbeddingFailedEvent` are mutually exclusive on a given `embed()` call.
-Implementations MUST NOT emit both for the same call. The privacy posture for `input_strings` / `output_vectors` (only on the success `EmbeddingEvent`) /
-`request_extras` is identical across the embedding variants — observer-side gating at the rendering
-boundary per observability §5.5.4 (implementations populate the fields unconditionally; observers
-honor `disable_provider_payload`). Custom queryable observers (per observability §9) consuming
+Implementations MUST NOT emit both for the same call. The payload fields are gated identically across the embedding variants: `input_strings` and
+`request_extras` (both variants) and `output_vectors` (the success `EmbeddingEvent` only) are
+populated by the implementation where present and gated observer-side at the rendering boundary per
+observability §5.5.4 (`disable_provider_payload`). Custom queryable observers (per observability §9) consuming
 either embedding-variant are responsible for their own redaction posture, identical to the
 `LlmCompletionEvent` / `LlmFailedEvent` posture.
 
@@ -1135,10 +1135,10 @@ caller). The §7 category exception still raises out of `rerank()`; the typed ev
 alongside the exception, not in place of it.
 
 `RerankEvent` and `RerankFailedEvent` are mutually exclusive on a given `rerank()` call.
-Implementations MUST NOT emit both for the same call. The privacy posture for `query` / `documents` / `output_results` (only on the success `RerankEvent`) /
-`request_extras` is identical across the rerank variants — observer-side gating at the rendering boundary
-per observability §5.5.4 (implementations populate the fields unconditionally; observers honor
-`disable_provider_payload`). The `ScoredDocument.document` echoes carried in `output_results` are payload-bearing
+Implementations MUST NOT emit both for the same call. The payload fields are gated identically across the rerank variants: `query`, `documents`, and
+`request_extras` (both variants) and `output_results` (the success `RerankEvent` only) are populated
+by the implementation where present and gated observer-side at the rendering boundary per
+observability §5.5.4 (`disable_provider_payload`). The `ScoredDocument.document` echoes carried in `output_results` are payload-bearing
 on the same footing. Custom queryable observers (per observability §9) consuming either rerank-variant
 are responsible for their own redaction posture, identical to the embedding-variant posture.
 
