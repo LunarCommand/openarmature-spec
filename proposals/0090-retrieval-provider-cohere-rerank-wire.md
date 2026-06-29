@@ -13,7 +13,7 @@
   same accept removes Cohere rerank and corrects the stale inclusions. Plus new conformance fixtures
   under `spec/retrieval-provider/conformance/`.
 - **Related:** 0060 (rerank protocol — this realizes it on a concrete wire and **backs 0060's
-  Cohere-shaped reference reranker**, which currently rests on an un-backed stand-in), 0078 (Jina — the
+  Cohere-shaped reference reranker**, which currently rests on an unbacked stand-in), 0078 (Jina — the
   sibling hosted rerank wire mapping this most closely mirrors), 0079 (OpenAI-compatible embeddings —
   the "rerank analogue of 0079" framing, and the **no-op-knob precedent** this reuses for
   `return_documents`), 0077 (introduces §8 *Wire-format mappings*), 0006 (llm-provider per-vendor
@@ -60,8 +60,8 @@ being embeddings-only).
 **Closes the rerank reference-provider gap and restores embed/rerank symmetry.** After 0077 / 0078 /
 0079, every embedding reference path is backed by a wire proposal, but 0060's rerank reference rests on
 a Cohere-shaped stand-in that no §8.x mapping pins. That is the same shape of gap 0079 closed for
-embeddings (the reference OpenAI-compatible `EmbeddingProvider` was un-backed until 0079). Backing the
-rerank reference is the direct unblock — the reference reranker stops resting on an un-pinned stand-in
+embeddings (the reference OpenAI-compatible `EmbeddingProvider` was unbacked until 0079). Backing the
+rerank reference is the direct unblock — the reference reranker stops resting on an unpinned stand-in
 wire and gains the real-wire backing 0077 / 0078 / 0079 already gave every embedding reference path.
 
 **Cohere is the canonical hosted reranker.** Cohere's rerank model family is the de-facto reference
@@ -101,7 +101,8 @@ emit). The `/v2/rerank` wire shapes below were **verified against the Cohere v2 
   `RerankResponse.response_id` (pinning, for Cohere, the per-vendor `response_id` source that 0060 left
   position-agnostic). Cohere returns results ranked, but the mapping applies §6's "sort if the
   provider didn't" invariant regardless, and enforces §6's valid-`index` / no-duplicate-`index` /
-  `len(results) <= top_k` invariants against the response.
+  result-count (`len(results) <= top_k` when `top_k` is supplied, else `<= len(documents)`) invariants
+  against the response.
 - **`return_documents` (not realized — a silent no-op).** The `/v2/rerank` wire has **no
   `return_documents` parameter and never echoes document text** (results carry `index` +
   `relevance_score` only). So OA's `RerankRuntimeConfig.return_documents` (§2) is **not realized** on
