@@ -1,0 +1,184 @@
+# retrieval-provider §8.4 Cohere /v2/rerank — return_documents is a NO-OP
+# (the wire has no return_documents field and never echoes document text).
+#
+# This is the rerank negative-space companion to 026 (0079's "input_type
+# is a no-op on the symmetric OpenAI wire"): where the Cohere /v2/rerank
+# wire has NO return_documents parameter at all, OA's
+# RerankRuntimeConfig.return_documents (§2) is NOT realized on the wire
+# (§8.4 *return_documents (not realized — a silent no-op)*). The fixture
+# asserts both halves of the contract:
+#
+#   1. WIRE: rerank(config={return_documents: True}) produces a wire
+#      request with NO return_documents field — byte-identical to the
+#      default (no-config) request (case 2). The mapping does NOT add a
+#      wire field for return_documents and does NOT error.
+#
+#   2. RESPONSE: every ScoredDocument.document is null REGARDLESS of the
+#      config value, because Cohere v2 never echoes document text (results
+#      carry index + relevance_score only). The mapping MUST NOT fabricate
+#      the echo from the input documents list (§6); callers recover the
+#      text via documents[result.index].
+#
+# Contrast with Jina §8.2 (fixture 019), where return_documents IS realized
+# (sent explicitly on the wire) and the True case surfaces the Jina-echoed
+# document verbatim. Cohere has neither surface, so the knob is inert.
+#
+# Both cases return the mocked response UNSORTED to keep the §6 sort
+# invariant load-bearing.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 006's header (calls_rerank /
+# mock_rerank), 013's / 014's / 018's headers (mapping: <name>,
+# expected_wire_request, expected_wire_request_absent_keys,
+# expected_wire_request_count, expected_wire_headers), and 028's header
+# (mapping: cohere, the cohere_rerank_provider construction block, and
+# Cohere's /v2/rerank request + response shapes). Assertion vocabulary:
+#
+# - wire_body_byte_identical_to_default_path: the with-return_documents
+#   body is byte-identical to the no-config body (the no-op proof), reused
+#   from 026's wire_body_byte_identical_to_symmetric_path pattern.
+
+mapping: cohere
+
+cohere_rerank_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-rerank-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: return_documents_true_is_noop_on_wire
+    description: |
+      3 documents with config return_documents=True. The wire request MUST
+      NOT carry a return_documents field — the Cohere v2 wire has no such
+      parameter, so the OA knob is a silent no-op (§8.4). The body is
+      exactly {model, query, documents: [...3...]} — byte-identical to the
+      no-config request (case return_documents_absent_same_body below).
+      The mapping MUST NOT error. The mocked Cohere response echoes NO
+      document (Cohere v2 never echoes), so EVERY ScoredDocument.document
+      MUST be null even though return_documents=True was requested — the
+      mapping MUST NOT fabricate the echo from the input documents (§6).
+      Response UNSORTED ([{0, 0.42}, {1, 0.91}, {2, 0.08}]) => sorted
+      descending.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          config:
+            return_documents: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-rerank-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+    expected_wire_request_absent_keys: [top_n, return_documents, truncation]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_rerank:
+      - status: 200
+        body:
+          id: cohere-rerank-029a-id
+          results:
+            - {index: 0, relevance_score: 0.42}
+            - {index: 1, relevance_score: 0.91}
+            - {index: 2, relevance_score: 0.08}
+          meta:
+            api_version: {version: "2"}
+            billed_units:
+              search_units: 1
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.91, document: null}
+            - {index: 0, relevance_score: 0.42, document: null}
+            - {index: 2, relevance_score: 0.08, document: null}
+          model: cohere-rerank-test
+          response_id: cohere-rerank-029a-id
+          usage:
+            search_units: 1
+            input_tokens: null
+      invariants:
+        wire_request_omits_return_documents_field: true
+        wire_request_omits_truncation: true
+        wire_body_byte_identical_to_default_path: true
+        mapping_does_not_error_on_return_documents: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        every_document_null_when_cohere_omits_echo: true
+        echo_not_fabricated_from_input_documents: true
+
+  - name: return_documents_absent_same_body
+    description: |
+      Same 3 documents with NO config (return_documents absent => OA
+      default False). The wire body MUST be exactly {model, query,
+      documents: [...3...]} — establishing the byte-identical baseline the
+      return_documents=True case is compared against (proving
+      return_documents is a true wire no-op on Cohere, not merely "also
+      sent"). The Cohere response again echoes NO document, so every
+      ScoredDocument.document is null. Response UNSORTED to exercise the
+      sort.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-rerank-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+    expected_wire_request_absent_keys: [top_n, return_documents, truncation]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_rerank:
+      - status: 200
+        body:
+          id: cohere-rerank-029b-id
+          results:
+            - {index: 0, relevance_score: 0.42}
+            - {index: 1, relevance_score: 0.91}
+            - {index: 2, relevance_score: 0.08}
+          meta:
+            api_version: {version: "2"}
+            billed_units:
+              search_units: 1
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.91, document: null}
+            - {index: 0, relevance_score: 0.42, document: null}
+            - {index: 2, relevance_score: 0.08, document: null}
+          model: cohere-rerank-test
+          response_id: cohere-rerank-029b-id
+          usage:
+            search_units: 1
+            input_tokens: null
+      invariants:
+        wire_request_omits_return_documents_field: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        every_document_null_when_cohere_omits_echo: true

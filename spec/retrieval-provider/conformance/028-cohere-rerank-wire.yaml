@@ -1,0 +1,145 @@
+# retrieval-provider §8.4 Cohere /v2/rerank — the /v2/rerank wire round-trip.
+#
+# Verifies the §8.4 Cohere rerank mapping on the request and response wire
+# surfaces (the return_documents no-op is fixture 029; the top_k -> top_n
+# mapping is 030; the rate-limit path is 031). Locks:
+#   - the /v2/rerank request shape {model, query, documents: [str]}
+#     (Cohere v2 takes STRING documents only — no per-document object
+#     wrapping, no rank_fields), with top_n ABSENT when top_k is not
+#     supplied, and NO return_documents / truncation keys on the wire (the
+#     Cohere v2 wire has NEITHER — the inverse of Jina §8.2, which sends
+#     return_documents and truncation explicitly)
+#   - the Authorization: Bearer <api_key> header on the wire (hosted-vendor
+#     auth, §8.4 *Construction*)
+#   - the Cohere response {id, results: [{index, relevance_score}],
+#     meta: {billed_units: {search_units}}} mapping onto results: each
+#     entry's index -> ScoredDocument.index, relevance_score ->
+#     relevance_score. Results carry NO document echo (Cohere v2 never
+#     echoes), so EVERY ScoredDocument.document is null (§6 — MUST NOT
+#     fabricate from the input documents list). Returned UNSORTED so the §6
+#     "sort if the provider didn't" invariant is genuinely exercised.
+#   - results sorted by relevance_score descending with valid indices
+#     (§6 / 0060 invariants)
+#   - meta.billed_units.search_units -> RerankUsage.search_units;
+#     RerankUsage.input_tokens stays null (Cohere meters by search units,
+#     not tokens — the INVERSE of Jina §8.2); top-level id ->
+#     RerankResponse.response_id
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives (per conformance-adapter §3.2). Base
+# calls_rerank / mock_rerank directives are defined in 006's header; the
+# §8.X wire-mapping vocabulary (mapping: <name>, expected_wire_request,
+# expected_wire_request_absent_keys, expected_wire_request_count) is
+# defined in 013's / 014's headers (TEI), and expected_wire_headers in
+# 018's header (Jina). THIS fixture introduces the Cohere (§8.4)
+# realization of that vocabulary. New directives:
+#
+# - mapping: cohere — selects the §8.4 Cohere wire mapping for the fixture
+#   (parallel to 018's `mapping: jina`; mirrors the per-vendor mapping
+#   selectors). Pins Cohere's real /v2/rerank wire shape (the request the
+#   mapping MUST send, the response it MUST consume). This mapping is
+#   rerank-only — Cohere's embeddings wire is a separate future mapping.
+#
+# - cohere_rerank_provider: {base_url, model, api_key} — suite-level
+#   construction block for the bound Cohere RerankProvider (§8.4
+#   *Construction*). Cohere is one hosted API: the provider binds the
+#   api_key (sent as Authorization: Bearer <key>) + the bound model, with
+#   base_url defaulting to the Cohere endpoint (overridden here to a
+#   generic placeholder — no real Cohere host or key). base_url is
+#   origin-only; the mapping appends /v2/rerank.
+#
+# - mock_rerank entries under `mapping: cohere` use Cohere's real
+#   /v2/rerank response shape: {id, results: [{index, relevance_score}],
+#   meta: {billed_units: {search_units}}}. UNLIKE the 006-012 mock_rerank
+#   shape — the harness-internal Cohere-FLAVOURED stand-in, which carries
+#   an optional `document` echo and a return_documents knob — under
+#   `mapping: cohere` the body is what Cohere ACTUALLY returns: NO document
+#   echo on any result (Cohere v2 never echoes), and search-unit metering
+#   (meta.billed_units.search_units), NOT tokens.
+
+mapping: cohere
+
+cohere_rerank_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-rerank-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: rerank_wire_round_trip_sorted_results
+    description: |
+      3 documents, default config, no top_k. The mapping issues ONE POST
+      to {base_url}/v2/rerank carrying {model, query, documents: [...3...]}
+      with top_n ABSENT (no top_k supplied) and NO return_documents /
+      truncation keys (the Cohere v2 wire has neither), and the
+      Authorization: Bearer <api_key> header present. The mocked Cohere
+      response is UNSORTED ([{0, 0.42}, {1, 0.91}, {2, 0.08}]); the adapter
+      MUST return results sorted by relevance_score descending
+      ([{1, 0.91}, {0, 0.42}, {2, 0.08}]) with each index valid into the
+      3-document input. Cohere echoes NO document, so EVERY
+      ScoredDocument.document MUST be null (§6 — MUST NOT fabricate from
+      the input documents). meta.billed_units.search_units 1 ->
+      RerankUsage.search_units 1; RerankUsage.input_tokens null (Cohere
+      meters by search units, not tokens); top-level id -> response_id.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-rerank-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+    expected_wire_request_absent_keys: [top_n, return_documents, truncation]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_rerank:
+      - status: 200
+        body:
+          id: cohere-rerank-028-id
+          results:
+            - {index: 0, relevance_score: 0.42}
+            - {index: 1, relevance_score: 0.91}
+            - {index: 2, relevance_score: 0.08}
+          meta:
+            api_version: {version: "2"}
+            billed_units:
+              search_units: 1
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.91, document: null}
+            - {index: 0, relevance_score: 0.42, document: null}
+            - {index: 2, relevance_score: 0.08, document: null}
+          model: cohere-rerank-test
+          response_id: cohere-rerank-028-id
+          usage:
+            search_units: 1
+            input_tokens: null
+      invariants:
+        exactly_one_rerank_request_issued: true
+        wire_request_carries_model: true
+        wire_request_documents_match_in_order: true
+        wire_request_documents_sent_as_string_array: true
+        wire_request_omits_return_documents: true
+        wire_request_omits_truncation: true
+        wire_request_omits_top_n_when_top_k_absent: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        result_count_matches_response: true
+        every_document_null_when_cohere_omits_echo: true
+        search_units_maps_to_search_units: true
+        input_tokens_null_when_cohere_omits: true
+        response_id_from_top_level_id: true

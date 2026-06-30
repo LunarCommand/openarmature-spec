@@ -1,0 +1,77 @@
+# retrieval-provider §8.4 Cohere — HTTP 429 -> provider_rate_limit.
+#
+# Locks the §8.4 *Errors* mapping: a Cohere HTTP 429 (rate limit) MUST map
+# to provider_rate_limit (§7), NOT provider_unavailable. Parallel to the
+# Jina rate-limit fixture (022), but single-case — the Cohere mapping is
+# rerank-only (no EmbeddingProvider counterpart), so there is no embedding
+# surface to cover. The §7 category exception MUST raise out of the rerank
+# call (the adapter MUST NOT loop / retry — that is a pipeline-utilities
+# concern per §5 / §10).
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 006's header (calls_rerank /
+# mock_rerank), 016's header (expected_error error-assertion shape, non-2xx
+# mock entries), and 028's header (mapping: cohere, the
+# cohere_rerank_provider construction block). Error-assertion shape:
+#
+# - expected_error: {category, raised_from} — the conformance-adapter §5.8
+#   compact error-assertion shape (retrieval fixtures 002, 007, 016, 021,
+#   022). Asserts the §7 category and the raising node.
+#
+# - mock_rerank non-2xx entries under `mapping: cohere` carry Cohere's
+#   v2 error body shape ({message}) at HTTP 429 (§8.4 *Errors*:
+#   429 -> provider_rate_limit). The error body is non-load-bearing:
+#   classification keys off the HTTP status, so the message string is a
+#   plausible stand-in, not a pinned wire field.
+
+mapping: cohere
+
+cohere_rerank_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-rerank-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: rerank_429_maps_to_provider_rate_limit
+    description: |
+      A /v2/rerank call where Cohere returns HTTP 429 (rate limit). The
+      adapter MUST classify it as provider_rate_limit (§8.4 *Errors*:
+      429 -> provider_rate_limit) and raise out of the rerank node — NOT
+      provider_unavailable, and NOT a retry loop. The wire request still
+      carries the Authorization: Bearer header and the {model, query,
+      documents} body (no return_documents / truncation keys, no top_n).
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-rerank-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+    expected_wire_request_absent_keys: [top_n, return_documents, truncation]
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_rerank:
+      - status: 429
+        body:
+          message: "rate limit exceeded, please retry your request later"
+    expected_error:
+      category: provider_rate_limit
+      raised_from: rerank_node
+    expected:
+      invariants:
+        exception_raised_out_of_rerank_call: true
+        rate_limit_not_misclassified_as_unavailable: true
+        authorization_bearer_header_present: true
+        no_retry_loop: true

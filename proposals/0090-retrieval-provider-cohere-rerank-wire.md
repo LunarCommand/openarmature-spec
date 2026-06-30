@@ -1,8 +1,9 @@
 # 0090: Cohere Rerank Wire Mapping
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-29
+- **Accepted:** 2026-06-29
 - **Targets:** spec/retrieval-provider/spec.md **§8 Wire-format mappings** (the section introduced by
   0077) — add **§8.4 Cohere** covering `POST /v2/rerank` on the hosted Cohere API, the rerank analogue of
   0079 (OpenAI-compatible embeddings) and the **rerank-only** counterpart to the Jina mapping (§8.2).
