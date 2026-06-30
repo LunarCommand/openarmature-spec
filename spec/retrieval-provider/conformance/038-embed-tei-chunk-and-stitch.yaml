@@ -1,0 +1,169 @@
+# retrieval-provider §8 Batch chunking — TEI /embed MANDATORY
+# chunk-and-stitch (max-client-batch-size cap). The SECOND embedding
+# chunk-and-stitch fixture after Cohere 037, proving the general §8 rule
+# GENERALIZES across mappings.
+#
+# Verifies the §8 *Batch chunking* rule on the TEI /embed mapping (§8.1):
+# when a caller's input list exceeds the provider's per-call input cap, the
+# mapping MUST
+#   1. split the inputs into CONSECUTIVE <=cap slices, preserving order,
+#   2. issue ONE /embed request per chunk with IDENTICAL per-call params,
+#   3. stitch — concatenate the per-chunk vectors IN INPUT ORDER so §4's
+#      one-vector-per-input and input-order invariants hold across the
+#      whole call, and
+#   4. sum the per-chunk EmbeddingUsage.input_tokens;
+#      EmbeddingResponse.response_id is the FIRST chunk's response id.
+# A mapping MUST NOT silently send an over-cap request.
+#
+# Where 037 exercised this rule on Cohere's FIXED VENDOR cap (96), this
+# fixture exercises it on TEI /embed, whose cap is the genuinely
+# CONFIGURABLE `max-client-batch-size` — surfaced here as the construction
+# `chunk_size` (§8.1 /embed: "bounded by TEI's max-client-batch-size (the
+# construction chunk_size); an over-cap embed call chunk-and-stitches per
+# the §8 Batch chunking rule"). A small chunk_size is therefore realistic,
+# not synthetic. It also fills a gap: TEI's existing chunk fixture (015)
+# covers /rerank only, not /embed.
+#
+# chunk_size 2 over 5 inputs => ceil(5/2) = 3 requests with `inputs` sizes
+# 2, 2, 1 (the consecutive slices input[0:2], input[2:4], input[4:5]). Each
+# chunk's mocked TEI /embed response is the BARE vector array (TEI surfaces
+# no `{data:[...]}` wrapper, no usage, no id — see 017). The stitched
+# EmbeddingResponse.vectors MUST be those vectors concatenated IN INPUT
+# ORDER (vector i == the embedding the mock returned for input i, ACROSS the
+# chunk boundaries). Each vector's first component is its input index / 10
+# (0.0 .. 0.4) so a mis-ordered or boundary-swapped stitch produces wrong
+# vectors and fails on the pinned data itself.
+#
+# §8 facets exercised here vs. deferred to 037: this fixture exercises
+# consecutive <=chunk_size chunking, the request count, identical per-call
+# params across chunks, vectors stitched IN INPUT ORDER, and the
+# MUST-NOT-send-over-cap rule. It does NOT assert the §8 "sum input_tokens"
+# facet: TEI /embed carries no usage object (017), and §4 holds
+# EmbeddingUsage.input_tokens is "Int. Always reported." — so pinning
+# input_tokens here (e.g. to null) would contradict §4. Like 017, the
+# fixture omits the usage assertion entirely; the "sum input_tokens" facet
+# is exercised by the Cohere instance (037), whose /v2/embed reports
+# meta.billed_units and sums to 500. TEI also surfaces no response id, so
+# the §8 "first chunk's id" => null (the one §8-nullable stitch field this
+# fixture does assert, matching 017).
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 015's header (the chunk-and-stitch
+# path — expected_wire_request as a LIST of request bodies one per chunk in
+# arrival order, expected_wire_request_count pinning the request count,
+# mock_* entries dispatched one per request in arrival order) and 017's
+# header (mapping: tei, tei_embedding_provider construction block, the TEI
+# /embed request `{"inputs": [str]}` + BARE vector-array response shapes,
+# expected_wire_request_absent_keys for prompt_name / dimensions). The
+# harness MUST capture every outbound /embed request, assert the count
+# matches the list length, and compare each captured body key-by-key
+# against the corresponding list entry; mock_embedding entries are
+# dispatched one per /embed request in arrival order, each a bare TEI vector
+# array for that chunk.
+
+mapping: tei
+
+tei_embedding_provider:
+  base_url: "http://tei-embed.invalid"
+  model: tei-embed-test
+  chunk_size: 2
+
+cases:
+  - name: five_inputs_three_chunks_stitched_in_input_order
+    description: |
+      5 inputs, TEI's construction chunk_size 2 (the max-client-batch-size
+      cap). The mapping issues exactly 3 /embed requests with `inputs` sizes
+      [2, 2, 1] over the consecutive slices input[0:2], input[2:4],
+      input[4:5], with IDENTICAL per-call params on each — here the bare
+      array form {"inputs": [...]} with NO prompt_name and NO dimensions (no
+      input_type and no config supplied, per 017's §8.1 /embed default).
+      Each chunk's mocked TEI response is the bare vector array for that
+      chunk (dimension 2; first component == input index / 10). The adapter
+      MUST stitch: concatenate the per-chunk vectors IN INPUT ORDER (5
+      vectors, vector i == the embedding for input i across the chunk
+      boundaries). EmbeddingResponse.model is the bound id (TEI echoes
+      none). TEI surfaces no response id, so the §8 "first chunk's id" is
+      null. input_tokens is NOT asserted: TEI /embed carries no usage
+      object, and §4 holds it is "Int. Always reported.", so pinning it
+      here would contradict §4 — like 017, the fixture omits the usage
+      assertion (the §8 sum-input_tokens facet is exercised by Cohere 037).
+      A mapping that sent all 5 inputs in one over-cap request, split into
+      the wrong sizes, mis-ordered the stitch, or leaked a prompt_name /
+      dimensions param fails.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["e0", "e1", "e2", "e3", "e4"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    # One /embed body per chunk, in arrival order. `inputs` sizes 2, 2, 1;
+    # identical per-call params on each (bare array form, prompt_name and
+    # dimensions absent on every chunk).
+    expected_wire_request:
+      - inputs: ["e0", "e1"]
+      - inputs: ["e2", "e3"]
+      - inputs: ["e4"]
+    expected_wire_request_count: 3
+    expected_wire_request_absent_keys: [prompt_name, dimensions]
+    # One bare TEI vector array per chunk, in arrival order. First component
+    # == absolute input index / 10 so a mis-ordered stitch surfaces a wrong
+    # vector at a chunk boundary.
+    mock_embedding:
+      - status: 200
+        body:
+          - [0.0, 0.5]
+          - [0.1, 0.5]
+      - status: 200
+        body:
+          - [0.2, 0.5]
+          - [0.3, 0.5]
+      - status: 200
+        body:
+          - [0.4, 0.5]
+    expected:
+      final_state:
+        embedding_response:
+          # Concrete stitched vectors, full 5-element list IN INPUT ORDER:
+          # vector i == the value the mock returns for input i (chunk-A
+          # vectors [0:2], chunk-B vectors [2:4], chunk-C vector [4:5]
+          # concatenated). Pinning the data — not only the named order
+          # invariant — makes a permuting or boundary-swapped stitch fail on
+          # the assertion itself (the full-required-set standard; matches
+          # 037 pinning vectors).
+          vectors:
+            - [0.0, 0.5]
+            - [0.1, 0.5]
+            - [0.2, 0.5]
+            - [0.3, 0.5]
+            - [0.4, 0.5]
+          vectors_length: 5
+          dimensions: 2
+          inner_vector_lengths_all_equal: 2
+          model: tei-embed-test
+          # TEI surfaces no response id; the §8 "first chunk's id" is null.
+          response_id: null
+          # input_tokens is NOT asserted: TEI /embed carries no usage object,
+          # and §4 holds EmbeddingUsage.input_tokens is "Int. Always
+          # reported." — so pinning input_tokens: null would contradict §4.
+          # Like 017 (TEI embed wire), this fixture omits the usage assertion;
+          # the §8 "sum input_tokens" facet is exercised by Cohere 037.
+      invariants:
+        exactly_three_embed_requests_issued: true
+        chunk_inputs_sizes_2_2_1_consecutive_slices: true
+        identical_per_call_params_across_chunks: true
+        chunk_requests_omit_prompt_name_and_dimensions: true
+        over_cap_request_chunked_not_sent_whole: true
+        vectors_concatenated_in_input_order: true
+        vectors_length_matches_input_length: true
+        all_vectors_same_dimensionality: true
+        dimensions_field_matches_inner_vector_length: true
+        model_is_bound_id_when_tei_omits_echo: true
+        response_id_null_tei_surfaces_none: true

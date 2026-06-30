@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.87.0] — 2026-06-30
+
+**Added**
+
+- **retrieval-provider §8 — embedding-mapping batch chunking (general rule).** A new §8 *Batch chunking* rule: when an embedding mapping's provider enforces a maximum input count per request and a caller's input exceeds it, the mapping MUST split into consecutive ≤cap chunks, issue one request per chunk with identical per-call parameters, concatenate the per-chunk vectors **in input order** (preserving §4's one-vector-per-input + input-order invariants), and **sum** `EmbeddingUsage.input_tokens` (`response_id` = the first chunk's id); a provider with **no** cap (server-side batching) does not chunk. This generalizes — across every embedding mapping — the per-item-independence chunk-and-stitch §8.1 already specs for TEI rerank. The per-mapping caps are recorded in `docs/compatibility.md` (TEI `max-client-batch-size` default 32, OpenAI 2048, Cohere 96; Jina cap-free). §8.4 Cohere's 0091 chunk-and-stitch paragraph is reduced to defer to the general rule, and §8.1 / §8.2 / §8.3 gain per-mapping cap notes. Resolves the cross-mapping open question logged at 0091. ([proposal 0092](proposals/0092-retrieval-provider-embedding-batch-chunking.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Additive — defines the previously-undefined over-cap behavior in §8.1 / §8.3 and generalizes 0091's Cohere instance; no protocol surface change. New conformance fixture for the TEI `/embed` over-cap chunk-and-stitch (the rule exercised on a second mapping).
+
 ## [0.86.0] — 2026-06-30
 
 **Added**

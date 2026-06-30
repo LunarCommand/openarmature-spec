@@ -314,6 +314,20 @@ pins the wire shapes, the construction parameters (e.g. `base_url`), and the per
 cross-vendor knobs (`input_type`). Mappings are normative: a conforming implementation of a given
 mapping MUST produce the wire requests and consume the wire responses described here.
 
+**Batch chunking.** When an embedding mapping's provider enforces a maximum input count per request and a
+caller's input list exceeds it, the mapping MUST: (1) split the inputs into consecutive chunks of at most
+the provider's per-call cap, preserving order; (2) issue one request per chunk with **every request field
+other than the chunked input list identical** across chunks (model, the `input_type` realization,
+dimensions / `output_dimension`, `embedding_types`, truncation, and any extras-bag fields); (3) stitch the
+responses — concatenate the per-chunk vectors in the original input order, so §4's one-vector-per-input
+and input-order invariants hold across the whole call; and (4) sum the per-chunk
+`EmbeddingUsage.input_tokens` (per §4's usage contract). `EmbeddingResponse.response_id` is the first chunk's response id (a
+single-request call uses that request's id). A mapping MUST NOT silently send an over-cap request. When a
+provider enforces **no** per-call cap (it batches server-side), no client-side chunking is required. This
+generalizes to the embedding side, across all mappings, the per-item-independence chunk-and-stitch §8.1
+applies to TEI rerank; each mapping's cap is the provider's documented per-call limit, noted in that
+mapping's section and recorded in `docs/compatibility.md`.
+
 ### 8.1 TEI (Text Embeddings Inference)
 
 HuggingFace Text Embeddings Inference is a self-hosted serving runtime. Its `gen_ai.system` identifier
@@ -326,10 +340,11 @@ cross-encoder rerankers are different model families — so a TEI `EmbeddingProv
 `RerankProvider` are distinct provider instances against distinct TEI deployments, each binding its own
 `base_url` (§3 / §5 per-instance binding):
 
-- the **TEI `EmbeddingProvider`** binds `base_url` (the embedding instance) + the bound model + an
-  `input_type` → `prompt_name` map (e.g. `{query: "query", document: "passage"}`) realizing asymmetric
-  embedding via TEI's native server-side prompts, with OPTIONAL client-side `query_prefix` /
-  `document_prefix` strings as the fallback for models without configured prompts;
+- the **TEI `EmbeddingProvider`** binds `base_url` (the embedding instance) + the bound model +
+  `chunk_size` (the embed client-batch chunk size, default `32` — TEI's `max-client-batch-size`, per the
+  §8 *Batch chunking* rule) + an `input_type` → `prompt_name` map (e.g. `{query: "query", document: "passage"}`)
+  realizing asymmetric embedding via TEI's native server-side prompts, with OPTIONAL client-side
+  `query_prefix` / `document_prefix` strings as the fallback for models without configured prompts;
 - the **TEI `RerankProvider`** binds `base_url` (the reranker instance) + the bound model + `chunk_size`
   (the rerank client-batch chunk size, default `32` — see *Mandatory rerank batch chunking*).
 
@@ -338,7 +353,9 @@ operator-supplied at construction.
 
 **`/embed`.** `POST {base_url}/embed` with `{"inputs": [str]}` (TEI accepts a string or array; the
 mapping always sends the array form per §3's "always a list"); `EmbeddingRuntimeConfig.dimensions` maps
-to TEI's `dimensions` field when set. The response is the vector array, in input order.
+to TEI's `dimensions` field when set. The response is the vector array, in input order. Like `/rerank`,
+`/embed` is bounded by TEI's `max-client-batch-size` (the construction `chunk_size`, default 32); an
+over-cap embed call chunk-and-stitches per the §8 *Batch chunking* rule.
 
 `input_type` realization: the mapping sends TEI's native `prompt_name` field, looked up from the
 construction `input_type → prompt_name` map, so TEI applies the model's configured query/document
@@ -414,7 +431,9 @@ server-side; `input_type` absent ⇒ `task` omitted. The mapping recognizes a **
 the extras-pass-through bag, not `input_type` (widening `input_type`'s normative value space is a
 protocol-level change, deferred until a consumer needs it). `EmbeddingRuntimeConfig.dimensions` → Jina's
 `dimensions` (Matryoshka) when set. The response `{model, usage, data: [{index, embedding}]}` maps to the
-`EmbeddingResponse` vectors in input order.
+`EmbeddingResponse` vectors in input order. Jina enforces **no** per-call input cap (it batches
+server-side by token count), so the §8 *Batch chunking* rule's no-cap branch applies — the embed mapping
+does not chunk client-side.
 
 **`truncation` / `truncate` (fail-loud).** Jina names the flag `truncation` on `/v1/rerank` and
 `truncate` on `/v1/embeddings` (vendor inconsistency); the mapping sends the per-endpoint flag `false`
@@ -451,7 +470,9 @@ when set. The mapping does **not** send `encoding_format` by default (OpenAI's w
 `{object: "list", data: [{object: "embedding", index, embedding}], model, usage: {prompt_tokens, total_tokens}}`
 maps to the `EmbeddingResponse` vectors in input order — the mapping consumes `data` + `usage` (the
 `object` fields are OpenAI wire metadata); `usage.prompt_tokens` → `EmbeddingUsage.input_tokens`
-(embedding has no output tokens, so `total_tokens` equals `prompt_tokens`).
+(embedding has no output tokens, so `total_tokens` equals `prompt_tokens`). OpenAI `/v1/embeddings`
+enforces a per-call cap of 2048 inputs (plus a summed-token ceiling); an over-cap call chunk-and-stitches
+per the §8 *Batch chunking* rule.
 
 **`input_type` (symmetric base wire; client-side prefix for asymmetric).** The OpenAI `/v1/embeddings`
 wire has no query/document parameter, so on the base wire `input_type` is **not realized** — an absent
@@ -546,14 +567,10 @@ so an over-length input **errors** (surfacing `provider_invalid_request` per §7
 silently truncated — the §8.2 Jina embed fail-loud posture, and the point where §8.4's embed half
 diverges from its rerank half (which has no fail-loud option).
 
-**Mandatory batch chunking (96-input cap).** Cohere `/v2/embed` accepts at most **96 inputs per
-request**. When `len(input)` exceeds 96, the mapping MUST split the inputs into consecutive ≤96 chunks,
-issue one `/v2/embed` request per chunk (identical `model` / `input_type` / `embedding_types` /
-`truncate` / `output_dimension`), and stitch: concatenate the per-chunk `embeddings.float` arrays **in
-input order** and sum `meta.billed_units.input_tokens` into `EmbeddingUsage.input_tokens`.
-`EmbeddingResponse.response_id` is the first chunk's `id`. A mapping MUST NOT silently send an over-cap
-request; chunking is required, not optional. This is the embedding analogue of §8.1's rerank
-chunk-and-stitch, resting on the same per-input-independence property.
+**Batch chunking.** Cohere `/v2/embed` enforces a **96-input per-call cap**; an over-cap call
+chunk-and-stitches per the §8 *Batch chunking* rule (consecutive ≤96 chunks, identical per-call
+parameters, the per-chunk `embeddings.float` concatenated in input order, `meta.billed_units.input_tokens`
+summed, `response_id` the first chunk's `id`).
 
 **Errors.** Cohere HTTP failures map to the §7 categories per the shared enumeration: `401` →
 `provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`;
@@ -628,3 +645,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - rerank protocol added by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
 - Cohere rerank wire mapping (§8.4) added by [proposal 0090](../../proposals/0090-retrieval-provider-cohere-rerank-wire.md)
 - Cohere `/v2/embed` endpoint (extends §8.4) added by [proposal 0091](../../proposals/0091-retrieval-provider-cohere-embeddings-wire.md)
+- §8 general embedding-mapping batch-chunking rule added by [proposal 0092](../../proposals/0092-retrieval-provider-embedding-batch-chunking.md)

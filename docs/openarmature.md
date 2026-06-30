@@ -396,7 +396,7 @@ variants).
 
 - The same narrow, stateless surface as LLM Provider — `ready()` plus a single call, no orchestration
 - A cross-vendor `input_type` knob (query vs document) for embeddings
-- Per-provider wire-format mappings specified in-spec (TEI, Jina, OpenAI-compatible)
+- Per-provider wire-format mappings specified in-spec (TEI, Jina, OpenAI-compatible, Cohere), with a cross-mapping batch-chunking rule for over-cap embedding calls
 - Provider payloads carry the same privacy posture as LLM payloads, suppressible via the shared provider-payload flag
 - Observability maps onto dedicated Langfuse `Embedding` and `Retriever` observation types and an OTel GenAI
   semantic-convention subset, with operation-discriminating span names

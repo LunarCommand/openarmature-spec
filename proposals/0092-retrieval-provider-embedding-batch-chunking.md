@@ -1,8 +1,9 @@
 # 0092: Embedding-Mapping Batch Chunking (general §8 rule)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-29
+- **Accepted:** 2026-06-30
 - **Targets:** spec/retrieval-provider/spec.md **§8 Wire-format mappings** — add a **general
   batch-chunking rule** to the §8 preamble governing every embedding mapping: when a provider enforces a
   maximum input count per request, the mapping MUST chunk-and-stitch rather than send an over-cap
