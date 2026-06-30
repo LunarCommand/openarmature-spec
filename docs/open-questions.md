@@ -290,6 +290,22 @@ response-side clause.
   set (a §2 protocol change, not a per-mapping one) is deferred until a
   consumer needs it.
 
+### Cross-cutting — §8 embedding-mapping per-call input caps
+
+- **Chunk-and-stitch when input exceeds the vendor per-call cap.**
+  [candidate-for-new-proposal] — surfaced drafting 0091 (Cohere embeddings).
+  Cohere `/v2/embed` caps inputs at 96 per request, and 0091 specs mandatory
+  client-side chunk-and-stitch for it (the §8.1 TEI rerank-chunking argument
+  applied to embeddings, where each vector is independent of the others in its
+  batch). But the other accepted embedding mappings — §8.1 TEI `/embed`, §8.2
+  Jina, §8.3 OpenAI — do not address their own per-call input caps (OpenAI's
+  ~2048-input limit, Jina's batch limits, TEI's `max-client-batch-size`), so a
+  caller embedding more inputs than a mapping's cap has undefined behavior
+  there. A follow-on could settle this uniformly — either a general §8 rule
+  ("an embedding mapping MUST chunk-and-stitch when input exceeds the vendor
+  per-call cap, preserving input order") or per-mapping additions — rather than
+  each vendor mapping re-deriving it. 0091 closes only the Cohere instance.
+
 ## observability
 
 ### 0034 — caller-supplied invocation metadata
