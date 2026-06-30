@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.85.0] — 2026-06-29
+
+**Added**
+
+- **retrieval-provider §8.4 — Cohere rerank wire mapping.** The first rerank-only §8 wire mapping, and the one that backs 0060's Cohere-shaped reference reranker: `POST /v2/rerank` (`gen_ai.system: "cohere"`). `documents` is the string-array form, `top_n` ← `top_k`; the response `{id, results: [{index, relevance_score}], meta.billed_units.search_units}` maps onto §6 — `search_units` → `RerankUsage.search_units` (the inverse of Jina's token metering; `input_tokens` stays null), top-level `id` → `response_id`. `return_documents` is a **silent no-op** (Cohere v2 has no such field and never echoes documents, so `ScoredDocument.document` stays null — the §8.3 `input_type`-no-op precedent), and there is **no fail-loud** truncation (Cohere truncates server-side to `max_tokens_per_doc`, which rides the extras-pass-through bag). The accept also reconciles §11 *Out of scope* — dropping Cohere rerank from the deferred list and correcting the stale already-shipped Jina / OpenAI entries. ([proposal 0090](proposals/0090-retrieval-provider-cohere-rerank-wire.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Additive — a new §8 wire mapping appended after §8.3; no protocol surface change. New conformance fixtures for the Cohere `/v2/rerank` round-trip, the `return_documents` no-op, `top_k` → `top_n`, and the `429` → `provider_rate_limit` mapping.
+
 ## [0.84.0] — 2026-06-28
 
 **Added**

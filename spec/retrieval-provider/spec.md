@@ -97,7 +97,7 @@ the provider-assigned relevance score, and (optionally) an echo of the document 
 rerank-specific caller-supplied request parameters. Initially minimal: one declared field,
 `return_documents` (boolean, default `False`), controlling whether the provider echoes document text
 on each `ScoredDocument` in the response. The field name + default match the major rerank vendors'
-wire-shape parameter (Cohere and Voyage AI expose `return_documents` defaulting `False`; Jina AI's wire default is `True`, so the §8.2 Jina mapping sends the OA value explicitly);
+wire-shape parameter (Voyage AI exposes `return_documents` defaulting `False`; Jina AI's wire default is `True`, so the §8.2 Jina mapping sends the OA value explicitly; Cohere's `/v2/rerank` has no `return_documents` field, so the §8.4 mapping treats the OA knob as a silent no-op);
 per-vendor wire-format mappings pin the source-side translation where a vendor diverges. Plus the
 extras-pass-through bag for vendor-specific knobs.
 
@@ -468,6 +468,57 @@ extras-pass-through bag.
 unknown model (`404`) → `provider_invalid_model`; malformed / oversized request (`400`) →
 `provider_invalid_request`; malformed response → `provider_invalid_response`.
 
+### 8.4 Cohere
+
+Cohere is a hosted retrieval API; this mapping covers **rerank only** (`/v2/rerank`). Its `gen_ai.system`
+identifier is `"cohere"` (per observability §5.5.8 / §5.5.13 — identify the wire surface, not the model
+developer). The wire shapes below were verified against the Cohere v2 API reference; `docs/compatibility.md`
+records the verified version. Cohere also exposes an embeddings API; a Cohere embeddings wire is a
+separate future mapping (see §11 *Out of scope*).
+
+**Construction.** A Cohere `RerankProvider` binds an **API key** (sent as `Authorization: Bearer <key>`)
++ the bound rerank model identifier (§3 / §5 per-instance binding), with `base_url` defaulting to
+`https://api.cohere.com` (origin only — the `/v2` version stays in the route, consistent with §8.2 /
+§8.3; override for a proxy / private gateway). This mapping has **no `EmbeddingProvider` counterpart**.
+
+**`/v2/rerank`.** `POST {base_url}/v2/rerank` with `{"model": str, "query": str, "documents": [str], "top_n"?: int}`.
+`documents` ← `documents` (§5), sent as the **string-array** form (Cohere v2 takes strings only — the v1
+list-of-objects / `rank_fields` form is not used); `top_n` ← `top_k` (§5), omitted when the caller passed
+`None`. The response
+`{"id": str, "results": [{"index": int, "relevance_score": float}], "meta": {"billed_units": {"search_units": int}}}`
+maps onto §6: each `results` entry's `index` → `ScoredDocument.index`, `relevance_score` →
+`ScoredDocument.relevance_score`; `meta.billed_units.search_units` → `RerankUsage.search_units`
+(`RerankUsage.input_tokens` stays null — Cohere does not report a token count); top-level `id` →
+`RerankResponse.response_id`. Cohere's rerank response echoes no `model` field, so `RerankResponse.model`
+is the bound model identifier. Cohere returns results ranked, but the mapping applies §6's "sort if the
+provider didn't" invariant regardless, and enforces §6's valid-`index` / no-duplicate-`index` /
+result-count (`len(results) <= top_k` when `top_k` is supplied, else `<= len(documents)`) invariants
+against the response.
+
+**`return_documents` (not realized — a silent no-op).** The `/v2/rerank` wire has **no `return_documents`
+parameter and never echoes document text** (results carry `index` + `relevance_score` only). So
+`RerankRuntimeConfig.return_documents` (§2) is **not realized** on this wire: the mapping does not add any
+wire field for it, leaves `ScoredDocument.document` **null on every result regardless of the config
+value**, and does **not** error when `return_documents=True` is requested — the same "knob with no wire to
+land on is a silent no-op" path §8.3 takes for `input_type` on the symmetric OpenAI wire. This is
+consistent with §6's rule that an implementation MUST NOT fabricate the echo from the input `documents`
+list when the provider omits it; callers recover the document text via `documents[result.index]` (the
+`index` field is the load-bearing lookup key).
+
+**`max_tokens_per_doc` / truncation (no fail-loud).** Unlike §8.1 (TEI) and §8.2 (Jina), which send a
+`truncate: false` / `truncation: false` flag so an over-length input **errors** rather than being
+silently truncated, the Cohere `/v2/rerank` wire has **no fail-loud option** — Cohere truncates each
+over-length document server-side to `max_tokens_per_doc` (Cohere's wire default `4096`). The mapping
+therefore does not realize §8.1 / §8.2's fail-loud posture (the wire cannot express it); OA has no
+declared truncation field, so `max_tokens_per_doc` rides the **extras-pass-through bag** (absent ⇒
+Cohere's `4096` default applies). This vendor divergence is stated explicitly per charter §3.1 principle 8
+(transparency over abstraction).
+
+**Errors.** Cohere HTTP failures map to the §7 categories per the shared enumeration: `401` →
+`provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`;
+unknown model (`404`) → `provider_invalid_model`; malformed / invalid request (`400`) →
+`provider_invalid_request`; malformed response → `provider_invalid_response`.
+
 ## 9. Determinism
 
 Embedding model determinism guarantees vary by provider. This specification MUST NOT assume
@@ -508,10 +559,11 @@ detail) unless the provider documents a tie-breaking rule; the spec MUST NOT ass
 Not covered by this specification; deferred to follow-on capabilities or proposals:
 
 - **Multi-modal embedding and rerank** — image / audio documents. Text-only in v1.
-- **Further per-vendor and per-runtime wire-format mappings.** Beyond §8.1 (TEI), follow-on proposals
-  add concrete vendor / runtime mappings — embedding (OpenAI, Cohere, Voyage, Jina) and rerank
-  (Cohere, Voyage, Jina hosted) — each pinning the per-vendor wire sourcing for fields the protocol
-  leaves position-agnostic (e.g., where `response_id` is surfaced in that vendor's response shape).
+- **Further per-vendor and per-runtime wire-format mappings.** Beyond §8.1 (TEI), §8.2 (Jina), §8.3
+  (OpenAI-compatible embeddings), and §8.4 (Cohere rerank), follow-on proposals add the remaining vendor
+  mappings — Cohere embeddings and Voyage AI (embedding + rerank) — each pinning the per-vendor wire
+  sourcing for fields the protocol leaves position-agnostic (e.g., where `response_id` is surfaced in
+  that vendor's response shape).
 - **Per-SDK implementation details** — httpx batching strategies, provider-layer retry timing,
   SDK-specific error mapping. Provider-internal choices.
 - **Caller-supplied determinism / seeding.** Embedding and rerank models rarely expose seeds; not v1.
@@ -533,3 +585,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 
 - created by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
 - rerank protocol added by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
+- Cohere rerank wire mapping (§8.4) added by [proposal 0090](../../proposals/0090-retrieval-provider-cohere-rerank-wire.md)

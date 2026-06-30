@@ -1,0 +1,103 @@
+# retrieval-provider §8.4 Cohere /v2/rerank — top_k maps to the wire top_n.
+#
+# Verifies the §8.4 Cohere top_n mapping: a supplied top_k MUST appear on
+# the wire as top_n (Cohere's parameter name); the 028 round-trip already
+# locks the absent-top_k -> top_n-OMITTED arm. Locks:
+#   - rerank(top_k=2) over 3 documents => wire request carries top_n: 2
+#     (top_k -> top_n, §8.4)
+#   - the request still carries {model, query, documents: [str]} with NO
+#     return_documents / truncation keys, and the Authorization: Bearer
+#     header
+#   - the mocked Cohere response (UNSORTED, 2 results, no document echo)
+#     sorts descending; meta.billed_units.search_units ->
+#     RerankUsage.search_units; input_tokens null; id -> response_id
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 006's header (calls_rerank /
+# mock_rerank), 013's / 014's / 018's headers (mapping: <name>,
+# expected_wire_request, expected_wire_request_absent_keys,
+# expected_wire_request_count, expected_wire_headers), and 028's header
+# (mapping: cohere, the cohere_rerank_provider construction block, and
+# Cohere's /v2/rerank request + response shapes). No new directive — top_n
+# is asserted via expected_wire_request (present-with-value), mirroring the
+# 018 family's wire-key assertions.
+
+mapping: cohere
+
+cohere_rerank_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-rerank-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: top_k_maps_to_wire_top_n
+    description: |
+      rerank(top_k=2) over 3 documents. The wire request MUST carry
+      top_n: 2 (top_k -> Cohere's top_n parameter), alongside {model,
+      query, documents: [...3...]} with NO return_documents / truncation
+      keys and the Authorization: Bearer <api_key> header. The mocked
+      Cohere response returns 2 results UNSORTED ([{0, 0.55}, {1, 0.88}],
+      no document echo); the adapter MUST sort descending
+      ([{1, 0.88}, {0, 0.55}]) with each index valid into the 3-document
+      input and len(results) <= top_k (§6). meta.billed_units.search_units
+      1 -> RerankUsage.search_units 1; input_tokens null; top-level id ->
+      response_id.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-rerank-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+      top_n: 2
+    expected_wire_request_absent_keys: [return_documents, truncation]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_rerank:
+      - status: 200
+        body:
+          id: cohere-rerank-030-id
+          results:
+            - {index: 0, relevance_score: 0.55}
+            - {index: 1, relevance_score: 0.88}
+          meta:
+            api_version: {version: "2"}
+            billed_units:
+              search_units: 1
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.88, document: null}
+            - {index: 0, relevance_score: 0.55, document: null}
+          model: cohere-rerank-test
+          response_id: cohere-rerank-030-id
+          usage:
+            search_units: 1
+            input_tokens: null
+      invariants:
+        wire_request_carries_top_n_from_top_k: true
+        wire_request_omits_return_documents: true
+        wire_request_omits_truncation: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        result_count_at_most_top_k: true
+        every_document_null_when_cohere_omits_echo: true
+        search_units_maps_to_search_units: true
+        input_tokens_null_when_cohere_omits: true
+        response_id_from_top_level_id: true
