@@ -51,7 +51,7 @@ a general rule, the next embedding mapping (and the already-accepted OpenAI and 
 — or silently omit — the same behavior. A single §8 rule defines it once for all mappings, present and
 future, and turns "undefined over-cap behavior" into a conformance-checkable contract.
 
-**The cap spread makes a per-mapping-only approach worst.** The caps differ by nearly two orders of
+**The cap spread makes a per-mapping-only approach worse.** The caps differ by nearly two orders of
 magnitude (TEI 32 ↔ OpenAI 2048) and one mapping (Jina) has none. A caller composing a graph against
 several providers shouldn't have to know each mapping's over-cap behavior; the protocol-level contract
 ("`embed()` takes any-length list") should hold uniformly, with chunking an invisible wire concern.
