@@ -1,0 +1,1 @@
+../../proposals/0091-retrieval-provider-cohere-embeddings-wire.md
