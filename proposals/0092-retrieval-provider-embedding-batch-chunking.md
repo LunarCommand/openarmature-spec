@@ -133,7 +133,7 @@ spec version target deferred to Accept (sequenced **after 0091**, since the §8.
    (each provider's request schema), not protocol semantics; the chunking that hides them is a
    wire-mapping concern, so §8 is the right home (the protocol contract simply stays "any-length list").
 4. **Cover rerank in the same rule (general retrieval chunking).** Reject for this proposal — the rerank
-   side is largely already handled (§8.1 specs TEI rerank chunk-and-stitch), and the one un-handled
+   side is largely already handled (§8.1 specs TEI rerank chunk-and-stitch), and the one unhandled
    hosted rerank cap (Cohere `/v2/rerank`'s ~1000-document figure) is a **soft recommendation**, not a
    hard per-call cap that errors, so it does not need mandatory chunking. Rerank stitching also differs
    (re-base indices, re-apply the §6 sort + `top_k`) and is better kept in the rerank-specific text.
