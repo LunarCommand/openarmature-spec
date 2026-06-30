@@ -470,16 +470,17 @@ unknown model (`404`) → `provider_invalid_model`; malformed / oversized reques
 
 ### 8.4 Cohere
 
-Cohere is a hosted retrieval API; this mapping covers **rerank only** (`/v2/rerank`). Its `gen_ai.system`
-identifier is `"cohere"` (per observability §5.5.8 / §5.5.13 — identify the wire surface, not the model
-developer). The wire shapes below were verified against the Cohere v2 API reference; `docs/compatibility.md`
-records the verified version. Cohere also exposes an embeddings API; a Cohere embeddings wire is a
-separate future mapping (see §11 *Out of scope*).
+Cohere is a hosted retrieval API; this mapping covers both Cohere endpoints — rerank (`/v2/rerank`) and
+embeddings (`/v2/embed`). Its `gen_ai.system` identifier is `"cohere"` (per observability §5.5.8 /
+§5.5.13 — identify the wire surface, not the model developer). The wire shapes below were verified
+against the Cohere v2 API reference; `docs/compatibility.md` records the verified version.
 
-**Construction.** A Cohere `RerankProvider` binds an **API key** (sent as `Authorization: Bearer <key>`)
-+ the bound rerank model identifier (§3 / §5 per-instance binding), with `base_url` defaulting to
+**Construction.** A Cohere provider instance binds an **API key** (sent as `Authorization: Bearer <key>`)
++ the bound model identifier (§3 / §5 per-instance binding), with `base_url` defaulting to
 `https://api.cohere.com` (origin only — the `/v2` version stays in the route, consistent with §8.2 /
-§8.3; override for a proxy / private gateway). This mapping has **no `EmbeddingProvider` counterpart**.
+§8.3; override for a proxy / private gateway). A Cohere `EmbeddingProvider` (`/v2/embed`) and a Cohere
+`RerankProvider` (`/v2/rerank`) are distinct instances (one model each) sharing the hosted endpoint —
+the §8.2 Jina pattern.
 
 **`/v2/rerank`.** `POST {base_url}/v2/rerank` with `{"model": str, "query": str, "documents": [str], "top_n"?: int}`.
 `documents` ← `documents` (§5), sent as the **string-array** form (Cohere v2 takes strings only — the v1
@@ -513,6 +514,46 @@ therefore does not realize §8.1 / §8.2's fail-loud posture (the wire cannot ex
 declared truncation field, so `max_tokens_per_doc` rides the **extras-pass-through bag** (absent ⇒
 Cohere's `4096` default applies). This vendor divergence is stated explicitly per charter §3.1 principle 8
 (transparency over abstraction).
+
+**`/v2/embed`.** `POST {base_url}/v2/embed` with
+`{"model": str, "input_type": str, "texts": [str], "embedding_types": ["float"], "truncate": "NONE", "output_dimension"?: int}`.
+`texts` ← the input strings (always the array form per §3's "always a list"; the multimodal `inputs` /
+`images` form is out of scope — §11). The response
+`{"id": str, "embeddings": {"float": [[float, …], …]}, "texts": [str], "meta": {"billed_units": {"input_tokens": int}}}`
+maps onto §4: `embeddings.float` → the `EmbeddingResponse` vectors **in input order**;
+`meta.billed_units.input_tokens` → `EmbeddingUsage.input_tokens`; top-level `id` →
+`EmbeddingResponse.response_id`. Cohere's embed response echoes no `model` field, so
+`EmbeddingResponse.model` is the bound model identifier. The §4 cross-impl invariants (one vector per
+input, input-order keying, uniform dimensionality) are enforced against `embeddings.float`.
+
+**`input_type` (mandatory wire field).** Cohere v2 `/v2/embed` **requires** `input_type`, so — unlike
+§8.1 / §8.2 (where an absent `input_type` omits the wire field) and §8.3 (symmetric no-op) — this mapping
+MUST always send a value. It recognizes the **closed `input_type` set** (`query` / `document`, per §8.2's
+treatment): `query` → `search_query`, `document` → `search_document`. An absent `input_type` MUST map to
+`search_document` — the conventional bulk-indexing default (the wire requires a value; storing document
+vectors is the dominant case). An unrecognized OA `input_type` value is a pre-send
+`provider_invalid_request` (§7). Cohere's other `input_type` values (`classification` / `clustering` /
+`image`) are reached via the extras-pass-through bag, not OA's `input_type` (widening `input_type`'s
+normative value space is a §2 / 0077 protocol-level change, deferred until a consumer needs it).
+
+**`output_dimension` / `embedding_types` / `truncate` (fail-loud).** `EmbeddingRuntimeConfig.dimensions` →
+Cohere's **`output_dimension`** (Cohere's name for the Matryoshka knob; supported on `embed-v4` and newer
+models) when set; omitted otherwise (Cohere's model default applies). The mapping requests
+`embedding_types: ["float"]` **explicitly** (so the type-keyed response is guaranteed to carry the
+`embeddings.float` key the mapping reads) and consumes `embeddings.float`; other precisions (`int8` /
+`uint8` / `binary` / `ubinary` / `base64`) ride the extras-pass-through bag. It sends `truncate: "NONE"`
+so an over-length input **errors** (surfacing `provider_invalid_request` per §7) rather than being
+silently truncated — the §8.2 Jina embed fail-loud posture, and the point where §8.4's embed half
+diverges from its rerank half (which has no fail-loud option).
+
+**Mandatory batch chunking (96-input cap).** Cohere `/v2/embed` accepts at most **96 inputs per
+request**. When `len(input)` exceeds 96, the mapping MUST split the inputs into consecutive ≤96 chunks,
+issue one `/v2/embed` request per chunk (identical `model` / `input_type` / `embedding_types` /
+`truncate` / `output_dimension`), and stitch: concatenate the per-chunk `embeddings.float` arrays **in
+input order** and sum `meta.billed_units.input_tokens` into `EmbeddingUsage.input_tokens`.
+`EmbeddingResponse.response_id` is the first chunk's `id`. A mapping MUST NOT silently send an over-cap
+request; chunking is required, not optional. This is the embedding analogue of §8.1's rerank
+chunk-and-stitch, resting on the same per-input-independence property.
 
 **Errors.** Cohere HTTP failures map to the §7 categories per the shared enumeration: `401` →
 `provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`;
@@ -560,8 +601,8 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 
 - **Multi-modal embedding and rerank** — image / audio documents. Text-only in v1.
 - **Further per-vendor and per-runtime wire-format mappings.** Beyond §8.1 (TEI), §8.2 (Jina), §8.3
-  (OpenAI-compatible embeddings), and §8.4 (Cohere rerank), follow-on proposals add the remaining vendor
-  mappings — Cohere embeddings and Voyage AI (embedding + rerank) — each pinning the per-vendor wire
+  (OpenAI-compatible embeddings), and §8.4 (Cohere rerank + embeddings), follow-on proposals add the
+  remaining vendor mappings — Voyage AI (embedding + rerank) — each pinning the per-vendor wire
   sourcing for fields the protocol leaves position-agnostic (e.g., where `response_id` is surfaced in
   that vendor's response shape).
 - **Per-SDK implementation details** — httpx batching strategies, provider-layer retry timing,
@@ -586,3 +627,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - created by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
 - rerank protocol added by [proposal 0060](../../proposals/0060-retrieval-provider-rerank.md)
 - Cohere rerank wire mapping (§8.4) added by [proposal 0090](../../proposals/0090-retrieval-provider-cohere-rerank-wire.md)
+- Cohere `/v2/embed` endpoint (extends §8.4) added by [proposal 0091](../../proposals/0091-retrieval-provider-cohere-embeddings-wire.md)

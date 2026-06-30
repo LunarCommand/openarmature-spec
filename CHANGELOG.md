@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.86.0] — 2026-06-30
+
+**Added**
+
+- **retrieval-provider §8.4 — Cohere embeddings wire mapping (`/v2/embed`).** Extends §8.4 Cohere to cover both Cohere endpoints (the §8.2 Jina pattern), adding the embedding half: `POST /v2/embed` maps `texts` ← input strings and consumes the **type-keyed** `embeddings.float` response in input order; `meta.billed_units.input_tokens` → `EmbeddingUsage.input_tokens`, top-level `id` → `response_id`, `EmbeddingResponse.model` the bound id. It's the **third realization of the cross-vendor `input_type` knob and the first where the wire field is mandatory**: `query` / `document` → `search_query` / `search_document`, and an absent `input_type` MUST map to `search_document` (Cohere v2 requires the field; bulk-indexing default); an unrecognized value is a pre-send `provider_invalid_request`. `EmbeddingRuntimeConfig.dimensions` → Cohere's `output_dimension` (embed-v4+); `truncate: "NONE"` is **fail-loud** (unlike the §8.4 rerank half); the **96-input per-call cap** is handled by mandatory client-side chunk-and-stitch (the §8.1 argument). The accept reconciles 0090's "rerank-only / separate future mapping" framing in §8.4 and the §11 deferred list (only Voyage AI remains). ([proposal 0091](proposals/0091-retrieval-provider-cohere-embeddings-wire.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Additive — extends the existing §8.4 with a new endpoint; no protocol surface change. New conformance fixtures for the `/v2/embed` round-trip, the `input_type` mandatory-default mapping, unrecognized-`input_type` rejection, `output_dimension` passthrough, `truncate: "NONE"` fail-loud, and the >96-input chunk-and-stitch.
+
 ## [0.85.0] — 2026-06-29
 
 **Added**

@@ -1,0 +1,77 @@
+# retrieval-provider §8.4 Cohere /v2/embed — unrecognized input_type
+# rejected PRE-SEND.
+#
+# Locks the §8.4 *input_type (mandatory wire field)* closed-set behavior:
+# the mapping recognizes a CLOSED input_type set (query / document, per the
+# §8.2 closed-set treatment). An OA input_type value OUTSIDE that set is a
+# pre-send provider_invalid_request (§7) — raised by the implementation's
+# pre-send validation layer BEFORE any /v2/embed request is issued (the §7
+# exception-flow contract: the category exception MUST raise out of embed()
+# whether from the provider or from pre-send validation).
+#
+# This is the embed analogue of the §8.2 closed-set reject; it exercises a
+# corner unique to Cohere's mandatory-wire-field design — the mapping must
+# pick a value for absent input_type (search_document, fixture 033), but an
+# UNRECOGNIZED supplied value is rejected, not silently coerced to the
+# default. (Cohere's own non-query/document values — classification /
+# clustering / image — are likewise OUTSIDE OA's closed set and ride the
+# extras-pass-through bag, not OA's input_type; widening input_type's
+# normative value space is a §2 / 0077 protocol-level change, deferred.)
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 001's header (calls_embed), 016's
+# header (expected_error: {category, raised_from} — the conformance-adapter
+# §5.8 compact error-assertion shape), and 032's header (mapping: cohere,
+# cohere_embedding_provider). Pre-send-reject convention:
+#
+# - NO mock_embedding entry and NO expected_wire_request: the rejection
+#   happens at the pre-send validation layer, so NO wire request is ever
+#   issued (nothing to mock). This differs from the wire-error fixtures
+#   (002 model-binding 404, 036 over-length 400), which DO drive a mock
+#   because the provider returns the error over the wire. Here the §7
+#   category is raised client-side before any request leaves; the
+#   no_embed_request_issued invariant asserts that no /v2/embed call was
+#   made.
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: unrecognized_input_type_rejected_pre_send
+    description: |
+      embed(config={input_type: "summarization"}) — an OA input_type value
+      OUTSIDE the closed query / document set §8.4 recognizes. The mapping
+      MUST raise provider_invalid_request (§7) at the pre-send validation
+      layer and MUST NOT issue any /v2/embed request (no silent coercion to
+      the search_document default — that default is ONLY for the ABSENT
+      case, fixture 033). The §7 category exception raises out of the embed
+      node.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha"]
+          config:
+            input_type: summarization
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        exception_raised_out_of_embed_call: true
+        unrecognized_input_type_rejected_pre_send: true
+        no_embed_request_issued: true
+        not_silently_coerced_to_search_document_default: true
