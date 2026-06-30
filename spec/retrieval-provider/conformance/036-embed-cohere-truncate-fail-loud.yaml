@@ -1,0 +1,88 @@
+# retrieval-provider §8.4 Cohere /v2/embed — truncate: "NONE" fail-loud.
+#
+# Verifies the §8.4 *output_dimension / embedding_types / truncate
+# (fail-loud)* contract on the embed endpoint: the mapping sends
+# truncate: "NONE" explicitly, so an over-length input makes Cohere ERROR
+# (HTTP 400) rather than silently truncating. The resulting Cohere error
+# MUST map to provider_invalid_request (§7 / §8.4 *Errors*: malformed /
+# over-length request 400 -> provider_invalid_request); the adapter MUST
+# raise that category, NOT return a (silently truncated) vector.
+#
+# This is the point where §8.4's EMBED half diverges from its RERANK half:
+# /v2/rerank has NO fail-loud option (Cohere truncates rerank documents
+# server-side to max_tokens_per_doc), but /v2/embed exposes truncate, and
+# the mapping picks "NONE" — the §8.2 Jina embed fail-loud posture (and the
+# embed analogue of the TEI/Jina rerank fail-loud fixtures 016 / 021).
+#
+# Cohere uses HTTP 400 for an invalid body, NOT the 422 Jina §8.2 returns
+# (verified against the Cohere errors reference). The over-length case is
+# asserted by the §7 CATEGORY (provider_invalid_request), not a pinned wire
+# code beyond the 400 status the mock carries.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 001's header (calls_embed /
+# mock_embedding), 016's header (expected_error: {category, raised_from} —
+# the conformance-adapter §5.8 compact error-assertion shape; non-2xx mock
+# entries drive the error path), and 032's header (mapping: cohere,
+# cohere_embedding_provider, the Cohere /v2/embed request shape).
+#
+# - mock_embedding non-2xx entries under `mapping: cohere` carry Cohere's
+#   v2 error body shape ({message}) at HTTP 400 (§8.4 *Errors*). The error
+#   body is non-load-bearing: classification keys off the HTTP status, so
+#   the message string is a plausible stand-in, not a pinned wire field.
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: over_length_400_maps_to_provider_invalid_request
+    description: |
+      An input exceeds the embedding model's context. Because the mapping
+      sends truncate: "NONE", Cohere returns HTTP 400 for the over-length
+      input. The adapter MUST classify it as provider_invalid_request (§8.4
+      *Errors*: 400 -> provider_invalid_request) and raise out of the embed
+      node — NOT return a truncated vector. The wire request still carries
+      truncate: "NONE" (the fail-loud directive), input_type
+      "search_document" (the mandatory default), embedding_types ["float"],
+      and the Authorization: Bearer header.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["a very long document that exceeds the embedding model context window"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["a very long document that exceeds the embedding model context window"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 400
+        body:
+          message: "invalid request: one of the input texts exceeds the maximum token length for this model"
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        exception_raised_out_of_embed_call: true
+        wire_request_truncate_none: true
+        wire_request_embedding_types_float: true
+        authorization_bearer_header_present: true
+        no_truncated_vector_returned: true

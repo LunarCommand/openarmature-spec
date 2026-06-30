@@ -1,0 +1,145 @@
+# retrieval-provider §8.4 Cohere /v2/embed — the /v2/embed wire round-trip.
+#
+# Verifies the §8.4 Cohere EMBEDDING mapping on the request and response
+# wire surfaces (the input_type realization is fixture 033; the
+# output_dimension passthrough is 035; the truncate fail-loud path is 036;
+# the 96-input chunk-and-stitch is 037). This is §8.4's embed half — the
+# companion to 028's /v2/rerank round-trip, the second endpoint on the same
+# vendor section (the §8.2 Jina embed+rerank pattern). Locks:
+#   - the /v2/embed request shape {model, input_type, texts: [str],
+#     embedding_types: ["float"], truncate: "NONE"} with output_dimension
+#     ABSENT (no dimensions supplied). input_type is a MANDATORY wire field
+#     (Cohere v2 requires it): with no OA input_type the mapping MUST send
+#     the search_document default (the bulk-indexing default — the case no
+#     other embed mapping has, since §8.1/§8.2 omit the field when absent
+#     and §8.3 has no field at all; see 033 for the full input_type set).
+#   - embedding_types: ["float"] sent EXPLICITLY (so the type-keyed
+#     response is guaranteed to carry the embeddings.float key the mapping
+#     reads) and truncate: "NONE" on every request (fail-loud; see 036).
+#   - the Authorization: Bearer <api_key> header (hosted-vendor auth, §8.4
+#     *Construction*).
+#   - the Cohere response {id, embeddings: {float: [[...], ...]}, texts,
+#     meta: {billed_units: {input_tokens}}} mapping onto §4: embeddings.float
+#     assembles to EmbeddingResponse.vectors IN INPUT ORDER (one per input);
+#     meta.billed_units.input_tokens -> EmbeddingUsage.input_tokens;
+#     top-level id -> EmbeddingResponse.response_id. Cohere echoes NO model
+#     field, so EmbeddingResponse.model is the BOUND model identifier (the
+#     §8.4 bound-model fallback — asserted explicitly).
+#   - the §4 cross-impl invariants: one vector per input, input-order
+#     keying, uniform dimensionality, dimensions field == inner length.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives (per conformance-adapter §3.2). Base
+# calls_embed / mock_embedding directives are defined in 001's header; the
+# §8.X wire-mapping vocabulary (mapping: <name>, expected_wire_request,
+# expected_wire_request_absent_keys, expected_wire_request_count) is defined
+# in 013's / 015's headers (TEI), and expected_wire_headers in 020's header
+# (Jina). 028's header introduces the Cohere (§8.4) realization for rerank;
+# THIS fixture introduces the Cohere EMBEDDING realization. New directives:
+#
+# - cohere_embedding_provider: {base_url, model, api_key} — suite-level
+#   construction block for the bound Cohere EmbeddingProvider (§8.4
+#   *Construction*; sibling to 028's cohere_rerank_provider — distinct
+#   instances sharing the hosted endpoint, the §8.2 Jina pattern). The
+#   provider binds the api_key (sent as Authorization: Bearer <key>) + the
+#   bound model; base_url is origin-only (no real Cohere host or key) — the
+#   mapping appends /v2/embed.
+#
+# - mock_embedding entries under `mapping: cohere` use Cohere's real
+#   /v2/embed response shape: {id, embeddings: {float: [[...], ...]}, texts,
+#   meta: {billed_units: {input_tokens}}}. UNLIKE the 001-012 mock_embedding
+#   shape (the harness-internal OpenAI-compatible stand-in with a top-level
+#   `data` array and a `model` echo), under `mapping: cohere` the body is
+#   what Cohere ACTUALLY returns: embeddings KEYED BY TYPE (the mapping
+#   consumes embeddings.float), token metering via
+#   meta.billed_units.input_tokens, and NO top-level model echo.
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: embed_wire_round_trip_input_order
+    description: |
+      2 inputs ["alpha", "beta"], default config (no input_type, no
+      dimensions). The mapping issues ONE POST to {base_url}/v2/embed
+      carrying {model, input_type: "search_document", texts: ["alpha",
+      "beta"], embedding_types: ["float"], truncate: "NONE"} with
+      output_dimension ABSENT, and the Authorization: Bearer <api_key>
+      header present. input_type is the mandatory-field default
+      (search_document — no OA input_type supplied). The mocked Cohere
+      response carries embeddings.float as two 4-d vectors in input order;
+      the adapter MUST assemble EmbeddingResponse.vectors from
+      embeddings.float IN INPUT ORDER (vector i == embedding of input i).
+      meta.billed_units.input_tokens 6 -> EmbeddingUsage.input_tokens 6;
+      top-level id -> response_id. Cohere echoes NO model, so
+      EmbeddingResponse.model is the bound id "cohere-embed-test".
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha", "beta"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha", "beta"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-032-id
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04]
+              - [0.11, 0.12, 0.13, 0.14]
+          texts: ["alpha", "beta"]
+          meta:
+            api_version: {version: "2"}
+            billed_units:
+              input_tokens: 6
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+            - [0.11, 0.12, 0.13, 0.14]
+          vectors_length: 2
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          response_id: cohere-embed-032-id
+          usage:
+            input_tokens: 6
+      invariants:
+        exactly_one_embed_request_issued: true
+        wire_request_carries_model: true
+        wire_request_input_type_search_document_default: true
+        wire_request_texts_match_in_order: true
+        wire_request_embedding_types_float: true
+        wire_request_truncate_none: true
+        wire_request_omits_output_dimension_when_dimensions_absent: true
+        authorization_bearer_header_present: true
+        vectors_assembled_from_embeddings_float_in_input_order: true
+        vectors_length_matches_input_length: true
+        all_vectors_same_dimensionality: true
+        dimensions_field_matches_inner_vector_length: true
+        billed_units_input_tokens_maps_to_input_tokens: true
+        response_id_from_top_level_id: true
+        model_is_bound_id_when_cohere_omits_echo: true

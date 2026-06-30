@@ -1,0 +1,168 @@
+# retrieval-provider §8.4 Cohere /v2/embed — output_dimension passthrough
+# (Matryoshka).
+#
+# Verifies that EmbeddingRuntimeConfig.dimensions maps onto Cohere's
+# `output_dimension` wire field (§8.4 *output_dimension / embedding_types /
+# truncate*: "EmbeddingRuntimeConfig.dimensions -> Cohere's output_dimension
+# ... when set; omitted otherwise"). This is the Cohere realization of the
+# dimensions passthrough that 017 (TEI dimensions), 020/024 (Jina / OpenAI
+# `dimensions`) assert on their wires — Cohere names the SAME Matryoshka
+# knob `output_dimension`, so the source field is OA's declared `dimensions`
+# (NOT the extras bag).
+#   - embed(config={dimensions: 8}) MUST send output_dimension: 8 alongside
+#     {model, input_type: "search_document", texts, embedding_types:
+#     ["float"], truncate: "NONE"}.
+#   - embed() with no dimensions MUST OMIT output_dimension (Cohere's model
+#     default applies).
+#   - the §4 dimensions cross-check holds: EmbeddingResponse.dimensions ==
+#     inner vector length.
+#   - the Authorization: Bearer header is present on both.
+#
+# Dimension value note: 8 (not Cohere's documented 256/512/... values) is
+# used so the mocked response vector length matches the requested
+# output_dimension and stays within the corpus's tiny-vector convention
+# (sibling fixtures use 4-d); the wire-mapping assertion (dimensions ->
+# output_dimension) is identical regardless of the numeric value.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 001's header (calls_embed /
+# mock_embedding) and 032's header (mapping: cohere,
+# cohere_embedding_provider, the Cohere /v2/embed request + keyed-by-type
+# response shapes, expected_wire_request / expected_wire_request_absent_keys
+# / expected_wire_headers).
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: dimensions_maps_to_output_dimension_field
+    description: |
+      embed(config={dimensions: 8}) — the §8.4 mapping sends Cohere's
+      `output_dimension` field (Matryoshka truncation) alongside {model,
+      input_type: "search_document", texts, embedding_types: ["float"],
+      truncate: "NONE"}. No input_type supplied, so the mandatory-field
+      default search_document is sent (fixture 033). Single input; the
+      response carries one 8-d vector under embeddings.float. Confirms the
+      dimensions request-param reaches the wire as output_dimension and the
+      EmbeddingResponse.dimensions field matches the inner vector length.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            dimensions: 8
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha string"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+      output_dimension: 8
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-035d-id
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08]
+          texts: ["alpha string"]
+          meta:
+            billed_units:
+              input_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08]
+          vectors_length: 1
+          dimensions: 8
+          inner_vector_lengths_all_equal: 8
+          model: cohere-embed-test
+          response_id: cohere-embed-035d-id
+          usage:
+            input_tokens: 2
+      invariants:
+        wire_request_carries_output_dimension_field: true
+        wire_request_truncate_none: true
+        wire_request_embedding_types_float: true
+        authorization_bearer_header_present: true
+        vectors_length_matches_input_length: true
+        dimensions_field_matches_inner_vector_length: true
+
+  - name: no_dimensions_omits_output_dimension
+    description: |
+      embed() with NO dimensions config. The wire request MUST OMIT
+      output_dimension (Cohere's model default applies); the body is exactly
+      {model, input_type: "search_document", texts, embedding_types:
+      ["float"], truncate: "NONE"}. The response carries one 4-d vector
+      (the model default). Establishes the omitted-when-absent baseline the
+      dimensions case is contrasted against.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha string"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-035n-id
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04]
+          texts: ["alpha string"]
+          meta:
+            billed_units:
+              input_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          response_id: cohere-embed-035n-id
+          usage:
+            input_tokens: 2
+      invariants:
+        wire_request_omits_output_dimension_when_dimensions_absent: true
+        wire_request_truncate_none: true
+        wire_request_embedding_types_float: true
+        authorization_bearer_header_present: true
+        vectors_length_matches_input_length: true
+        dimensions_field_matches_inner_vector_length: true

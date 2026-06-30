@@ -1,8 +1,9 @@
 # 0091: Cohere Embeddings Wire Mapping
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-29
+- **Accepted:** 2026-06-30
 - **Targets:** spec/retrieval-provider/spec.md **§8 Wire-format mappings** — **extend §8.4 Cohere** (the
   section created by 0090) to add the **`POST /v2/embed`** endpoint alongside the existing `/v2/rerank`
   half, so §8.4 covers both Cohere endpoints the way §8.2 Jina covers `/v1/rerank` + `/v1/embeddings`.

@@ -1,0 +1,248 @@
+# retrieval-provider §8.4 Cohere /v2/embed + §2/§3 input_type — the
+# input_type -> wire input_type realization on Cohere's /v2/embed, the
+# THIRD realization of 0077's input_type knob (after TEI's prompt_name,
+# fixture 013, and Jina's task, fixture 020) and the FIRST where the wire
+# field is MANDATORY.
+#
+# Verifies the §8.4 Cohere embedding mapping's input_type contract:
+#   - input_type: query    -> wire input_type "search_query"
+#   - input_type: document -> wire input_type "search_document"
+#   - input_type ABSENT    -> wire input_type "search_document" (the
+#     MANDATORY-field default — the case NO other embed mapping has: §8.1
+#     (prompt_name) and §8.2 (task) OMIT the field when input_type is
+#     absent, and §8.3 has no field at all, but Cohere v2 /v2/embed REQUIRES
+#     a value, so the mapping MUST send one. search_document is the
+#     bulk-indexing default — storing document vectors is the dominant case.)
+# Also (§3 + graph-engine §6) input_type flows into
+# EmbeddingEvent.request_params with absence-is-meaningful semantics — the
+# protocol knob is observable on the event REGARDLESS of how the wire
+# realizes it (so the absent case still carries the EMPTY request_params
+# even though the wire carries search_document).
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 001's header (calls_embed /
+# mock_embedding), 013's header (typed_observers / contains_event asserting
+# EmbeddingEvent.request_params), and 032's header (mapping: cohere,
+# cohere_embedding_provider, the Cohere /v2/embed request + keyed-by-type
+# response shapes, expected_wire_request / expected_wire_request_absent_keys
+# / expected_wire_headers).
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: input_type_query_sends_search_query
+    description: |
+      embed(config={input_type: "query"}) against a Cohere
+      EmbeddingProvider. The §8.4 closed-set mapping translates input_type
+      "query" to Cohere's "search_query", so the wire request to /v2/embed
+      MUST carry input_type "search_query" alongside {model, texts,
+      embedding_types: ["float"], truncate: "NONE"}. input_type MUST also
+      reach EmbeddingEvent.request_params as "query". The Authorization:
+      Bearer header is present.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["how tall is the eiffel tower?"]
+          config:
+            input_type: query
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_query"
+      texts: ["how tall is the eiffel tower?"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-033q-id
+          embeddings:
+            float:
+              - [0.10, 0.20, 0.30, 0.40]
+          texts: ["how tall is the eiffel tower?"]
+          meta:
+            billed_units:
+              input_tokens: 8
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: query
+      invariants:
+        wire_request_carries_input_type_search_query: true
+        wire_request_embedding_types_float: true
+        wire_request_truncate_none: true
+        authorization_bearer_header_present: true
+        input_type_in_embedding_event_request_params: true
+        vectors_length_matches_input_length: true
+
+  - name: input_type_document_sends_search_document
+    description: |
+      embed(config={input_type: "document"}) against the same provider:
+      document -> "search_document" per the §8.4 closed-set mapping, so the
+      wire request MUST carry input_type "search_document". input_type MUST
+      reach EmbeddingEvent.request_params as "document".
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["the eiffel tower is 330 metres tall."]
+          config:
+            input_type: document
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["the eiffel tower is 330 metres tall."]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-033d-id
+          embeddings:
+            float:
+              - [0.50, 0.60, 0.70, 0.80]
+          texts: ["the eiffel tower is 330 metres tall."]
+          meta:
+            billed_units:
+              input_tokens: 9
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: document
+      invariants:
+        wire_request_carries_input_type_search_document: true
+        wire_request_embedding_types_float: true
+        wire_request_truncate_none: true
+        authorization_bearer_header_present: true
+        input_type_in_embedding_event_request_params: true
+        vectors_length_matches_input_length: true
+
+  - name: input_type_absent_sends_search_document_mandatory_default
+    description: |
+      embed() with NO config (input_type absent) against the same provider.
+      Unlike §8.1 (prompt_name omitted) / §8.2 (task omitted) and §8.3 (no
+      field), Cohere v2 /v2/embed REQUIRES input_type, so the mapping MUST
+      send a value — the search_document default (bulk-indexing default).
+      The wire request MUST carry input_type "search_document". This is the
+      case no other embed mapping exercises (a wire that cannot omit the
+      field). Per the absence-is-meaningful contract, the protocol knob is
+      still ABSENT from the caller's perspective, so
+      EmbeddingEvent.request_params MUST be the EMPTY mapping (no input_type
+      key) EVEN THOUGH the wire carries search_document — the wire default
+      MUST NOT be reflected back onto the event as if the caller set it.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["the eiffel tower is 330 metres tall."]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["the eiffel tower is 330 metres tall."]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-033a-id
+          embeddings:
+            float:
+              - [0.50, 0.60, 0.70, 0.80]
+          texts: ["the eiffel tower is 330 metres tall."]
+          meta:
+            billed_units:
+              input_tokens: 9
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params: {}
+      invariants:
+        wire_request_carries_input_type_search_document_when_input_type_absent: true
+        wire_request_embedding_types_float: true
+        wire_request_truncate_none: true
+        authorization_bearer_header_present: true
+        request_params_empty_when_input_type_absent: true
+        wire_mandatory_default_not_reflected_onto_event: true
+        vectors_length_matches_input_length: true
