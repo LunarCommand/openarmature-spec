@@ -316,11 +316,12 @@ mapping MUST produce the wire requests and consume the wire responses described 
 
 **Batch chunking.** When an embedding mapping's provider enforces a maximum input count per request and a
 caller's input list exceeds it, the mapping MUST: (1) split the inputs into consecutive chunks of at most
-the provider's per-call cap, preserving order; (2) issue one request per chunk with identical per-call
-parameters (model, the `input_type` realization, `dimensions`, `embedding_types`, truncation); (3) stitch
-the responses — concatenate the per-chunk vectors in the original input order, so §4's one-vector-per-input
+the provider's per-call cap, preserving order; (2) issue one request per chunk with **every request field
+other than the chunked input list identical** across chunks (model, the `input_type` realization,
+dimensions / `output_dimension`, `embedding_types`, truncation, and any extras-bag fields); (3) stitch the
+responses — concatenate the per-chunk vectors in the original input order, so §4's one-vector-per-input
 and input-order invariants hold across the whole call; and (4) sum the per-chunk
-`EmbeddingUsage.input_tokens`. `EmbeddingResponse.response_id` is the first chunk's response id (a
+`EmbeddingUsage.input_tokens` (per §4's usage contract). `EmbeddingResponse.response_id` is the first chunk's response id (a
 single-request call uses that request's id). A mapping MUST NOT silently send an over-cap request. When a
 provider enforces **no** per-call cap (it batches server-side), no client-side chunking is required. This
 generalizes to the embedding side, across all mappings, the per-item-independence chunk-and-stitch §8.1
