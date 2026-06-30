@@ -293,7 +293,7 @@ response-side clause.
 ### Cross-cutting — §8 embedding-mapping per-call input caps
 
 - **Chunk-and-stitch when input exceeds the vendor per-call cap.**
-  [candidate-for-new-proposal] — surfaced drafting 0091 (Cohere embeddings).
+  [resolved-by-0092] — surfaced drafting 0091 (Cohere embeddings).
   Cohere `/v2/embed` caps inputs at 96 per request, and 0091 specs mandatory
   client-side chunk-and-stitch for it (the §8.1 TEI rerank-chunking argument
   applied to embeddings, where each vector is independent of the others in its
@@ -304,7 +304,11 @@ response-side clause.
   there. A follow-on could settle this uniformly — either a general §8 rule
   ("an embedding mapping MUST chunk-and-stitch when input exceeds the vendor
   per-call cap, preserving input order") or per-mapping additions — rather than
-  each vendor mapping re-deriving it. 0091 closes only the Cohere instance.
+  each vendor mapping re-deriving it. 0091 closed only the Cohere instance;
+  **proposal 0092 (Accepted, v0.87.0) added the general §8 *Batch chunking*
+  rule** — every embedding mapping now chunk-and-stitches over its provider's
+  documented per-call cap (TEI `max-client-batch-size`, OpenAI 2048, Cohere 96;
+  Jina is cap-free), with the caps recorded in `docs/compatibility.md`.
 
 ## observability
 
