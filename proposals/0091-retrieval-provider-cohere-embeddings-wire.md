@@ -23,7 +23,7 @@
 
 ## Summary
 
-The embedding half of the Cohere wire mapping, completing §8.4 Cohere into a both-endpoint vendor
+The embedding half of the Cohere wire mapping, completing §8.4 Cohere into a two-endpoint vendor
 section (rerank from 0090, embed here) — the structure §8.2 Jina already has. Cohere's `POST /v2/embed`
 is a near-1:1 fit for the 0059 embedding protocol, with one property that makes it the most
 *interesting* embedding wire in the catalog:
