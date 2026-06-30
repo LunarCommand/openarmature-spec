@@ -1,0 +1,1 @@
+../../proposals/0092-retrieval-provider-embedding-batch-chunking.md
