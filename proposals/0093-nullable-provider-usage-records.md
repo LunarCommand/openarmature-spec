@@ -5,7 +5,7 @@
 - **Created:** 2026-06-30
 - **Targets:** spec/retrieval-provider/spec.md — **§4** (`EmbeddingResponse.usage` → **"an `EmbeddingUsage`
   record, or null when the provider reports no usage"**; `EmbeddingUsage.input_tokens` stays `Int`, the
-  "always reported" phrasing dropped — its presence follows the record's); **§6** (`RerankResponse.usage`
+  "always reported" phrasing dropped — it is present whenever the record is); **§6** (`RerankResponse.usage`
   → **"a `RerankUsage` record, or null …"**; the record's `input_tokens` / `search_units` stay
   `Int or null` for partial usage — **and reconcile the RerankUsage note** that "a `RerankUsage` with both
   fields null is valid and represents the 'no billing surface' case": that case is now `usage = null`, not
@@ -59,7 +59,7 @@ genuinely needs it (see below).
 ## Motivation
 
 **Embedding is broken; rerank is inelegant.** TEI `/embed` returns no usage, so `input_tokens` "always
-reported" is un-satisfiable — a live contradiction. TEI `/rerank` likewise returns no usage, forcing a
+reported" is unsatisfiable — a live contradiction. TEI `/rerank` likewise returns no usage, forcing a
 fabricated empty `RerankUsage` today. Both are the same underlying gap: the response types assume a usage
 record always exists.
 
