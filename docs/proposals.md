@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0094](proposals/0094-subgraph-projection-declared-boundary.md) | Subgraph projection declared same-name boundary | graph-engine | Draft | —               | —          |
 | [0093](proposals/0093-nullable-provider-usage-records.md) | Nullable provider usage records | retrieval-provider | Accepted | Pending         | —          |
 | [0092](proposals/0092-retrieval-provider-embedding-batch-chunking.md) | Embedding-mapping batch chunking | retrieval-provider | Accepted | Pending         | —          |
 | [0091](proposals/0091-retrieval-provider-cohere-embeddings-wire.md) | Cohere embeddings wire mapping | retrieval-provider | Accepted | Pending         | —          |
