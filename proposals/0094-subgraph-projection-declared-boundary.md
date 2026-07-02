@@ -134,7 +134,7 @@ deduplicated merge, or a mapping-merge re-applied with the same value is a no-op
 subgraph and a subgraph field carrying it is merged back into that same parent field — in the declared
 same-name form, a field name present in **both** the in-set and the out-set; in the explicit maps, a parent
 field that is both an `inputs` source and the `outputs` target **of the same subgraph field** (e.g. `inputs`
-maps parent `p` → subgraph `s` and `outputs` maps parent `p` → subgraph `s`). A parent field that is an
+maps subgraph `s` → parent `p` and `outputs` maps parent `p` → subgraph `s`). A parent field that is an
 `inputs` source and an `outputs` target via *different* subgraph fields is not a round-trip (the value
 merged back is a distinct, subgraph-computed value).
 
