@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.89.0] — 2026-07-02
+
+**Added**
+
+- **graph-engine §2 — declared same-name subgraph projection boundary + reducer round-trip warning.** A subgraph-as-node MAY now declare its parent↔subgraph boundary as two field-name **sets** (an in-set and an out-set, naming the fields that cross by the same name on both sides), compile-validated against both schemas — the checked middle ground between the implicit field-name-matching default and the explicit `inputs`/`outputs` rename maps. It is a **complete declaration with no field-name-matching fallback** (empty set = nothing, symmetrically for both directions) and is **mutually exclusive** with the explicit maps (new compile-error category `conflicting_projection_forms`; the existing `mapping_references_undeclared_field` extends to the declared sets). Separately, a new compile-time **warning** `projection_reducer_round_trip` flags a field projected in and back out through a non-round-trip-idempotent reducer (the append-doubling hazard) — **MUST** for the canonical non-idempotent reducers (`append` / `concat_flatten` / `bounded_append` / `merge_all`; the other four — `last_write_wins` / `merge` / `merge_by_key` / `dedupe_append` — are round-trip-idempotent), **SHOULD** for custom reducers. conformance-adapter §5.8 gains an `expected_compile_warning: <category>` directive to assert it (and formally documents the established `expected_compile_error` alongside it); pipeline-utilities §9.3 (fan-out `extra_outputs`) and §11.4 (parallel-branches `subgraph`-branch `outputs`) gain pointers to the warning, since those projections merge through the parent's reducer too. ([proposal 0094](proposals/0094-subgraph-projection-declared-boundary.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Additive across graph-engine + conformance-adapter + pipeline-utilities: a new opt-in projection form, one new compile-error category (reachable only by the new form), an advisory compile-time warning, and a new conformance-adapter expected-outcome directive. The field-name-matching default and the explicit `inputs`/`outputs` maps are unchanged, so existing graphs and fixtures are unaffected. New conformance fixtures for the declared boundary (happy path, empty-out-set-projects-nothing, and the drift + conflicting-forms compile errors) and the round-trip warning (a graph-engine set of cases plus a fan-out instance).
+
 ## [0.88.0] — 2026-07-01
 
 **Changed**

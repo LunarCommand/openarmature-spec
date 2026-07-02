@@ -1,0 +1,76 @@
+# Table fixture: each case is an invalid subgraph-as-node projection whose
+# compilation MUST fail with the named diagnostic category. Adapters assert
+# that compilation raises an error whose category matches
+# `expected_compile_error` (per fixture 007 / conformance-adapter §5.8), before
+# any node body runs.
+#
+# Exercises graph-engine §2's declared same-name projection boundary
+# (`projects_in` / `projects_out`, introduced in fixture 040):
+#   - the declared sets reuse the `mapping_references_undeclared_field`
+#     validation (a same-name field is checked on BOTH schemas); and
+#   - the declared sets and the explicit `inputs`/`outputs` maps are mutually
+#     exclusive on a single node -> `conflicting_projection_forms`.
+
+cases:
+  # A declared out-set names a field that is not present on either schema. The
+  # rule is symmetric: an in-set/out-set name is checked on BOTH the parent and
+  # subgraph schema; `nonexistent` is on neither, so compilation fails. This is
+  # the whole point of the declared form — it turns the default's silent
+  # name-drift into a compile error.
+  - name: declared_field_absent_on_schema
+    graph:
+      state:
+        fields:
+          val: {type: string, default: ""}
+      subgraph:
+        name: inner
+        state:
+          fields:
+            val: {type: string, default: "s"}
+        entry: i
+        nodes:
+          i: {update: {val: "i"}}
+        edges:
+          - {from: i, to: END}
+      entry: a
+      nodes:
+        a:
+          subgraph: inner
+          projects_in: [val]
+          # `nonexistent` is declared on neither the parent nor the subgraph
+          # schema.
+          projects_out: [nonexistent]
+      edges:
+        - {from: a, to: END}
+    expected_compile_error: mapping_references_undeclared_field
+
+  # One subgraph-as-node declares BOTH the same-name sets (`projects_in` /
+  # `projects_out`) AND an explicit `inputs` map. The two projection forms are
+  # mutually exclusive on a single node.
+  - name: conflicting_projection_forms
+    graph:
+      state:
+        fields:
+          val: {type: string, default: ""}
+      subgraph:
+        name: inner
+        state:
+          fields:
+            val: {type: string, default: "s"}
+        entry: i
+        nodes:
+          i: {update: {val: "i"}}
+        edges:
+          - {from: i, to: END}
+      entry: a
+      nodes:
+        a:
+          subgraph: inner
+          projects_in: [val]
+          projects_out: [val]
+          # Declaring an explicit map alongside the declared sets is the
+          # conflict — a node picks at most one of default / sets / maps.
+          inputs: {val: val}
+      edges:
+        - {from: a, to: END}
+    expected_compile_error: conflicting_projection_forms

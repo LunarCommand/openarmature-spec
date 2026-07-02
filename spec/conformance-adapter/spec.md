@@ -675,6 +675,23 @@ These directives appear under per-invocation or per-case `expected:` blocks and 
 - **`expected_error: {category: <name>, raised_from: <node_name>}`** — alternative shape used in
   fixtures that expect the entire invocation to fail at construction or first-node entry. Equivalent
   to `outcome: errored` + `error.category:` but more compact.
+- **`expected_compile_error: <category>`** — a scalar asserting that **compilation** (not invocation)
+  fails with the named graph-engine §2 compile-error category (e.g. `no_declared_entry`,
+  `mapping_references_undeclared_field`, `conflicting_projection_forms`, `reducer_configuration_invalid`).
+  The adapter compiles the graph definition and asserts a compile-time error of that category is raised
+  before any node body runs. (Established by the graph-engine compile-error fixtures; documented here for
+  completeness.)
+- **`expected_compile_warning: <category> | [<category>, ...]`** — asserts that **compilation succeeds**
+  while emitting compile-time **warnings** — non-fatal diagnostics, distinct from the `expected_compile_error`
+  compile-*failure* assertion. The adapter captures the warnings raised during compilation. Two forms:
+  a bare **scalar** asserts the named warning is **among** those emitted (presence only); a **list** asserts
+  the **exhaustive** set of warnings emitted (order-insensitive) — so `expected_compile_warning: []` asserts
+  **no** compile-time warnings, and `[projection_reducer_round_trip]` asserts exactly that one and no other.
+  The list form is what lets a fixture assert a warning MUST **not** fire (catching an over-warning
+  implementation). Used for graph-engine §2's `projection_reducer_round_trip` (the reducer round-trip
+  warning): a round-trip into a non-round-trip-idempotent **canonical** reducer is MUST-level (asserted with
+  the warning present); a SHOULD-level warning an implementation may omit (custom reducers) is not asserted
+  by absence, so those cases stay out of the exhaustive-list fixtures.
 - **`suspended_state: { ... }`** — when `outcome: suspended`, the state at suspension point per
   suspension §5.
 - **`descriptor: {signal_id: <id>, metadata: { ... }} OR {signal_id: <id>, metadata_includes: { ... }}`**
@@ -1139,3 +1156,4 @@ per-directory specialization lives there.
 - §6.8 *Caching prompt backend* gains a fixture-level `manager: {default_cache_ttl_seconds: <int>}` construction slot and a `target: {manager: true}` fetch, so a fixture can exercise the §6 cache-TTL precedence chain (per-call value > manager default > backend) rather than only a backend-direct call — supporting the prompt-management service-wide-default fixture by [proposal 0086](../../proposals/0086-prompt-default-cache-ttl.md)
 - §5.1 *Node behavior directives* gained `calls_llm_from_wrapper` — issues a real `complete()` call from a pre- / post-phase middleware so the calling node's span is not open when the provider span / `LlmCompletionEvent` is emitted, exercising the observability §5.5 *Lineage-resolved parent* orphan fallback — alongside the existing `calls_llm` node directive it complements; §5.5 documents the case-level observability harness keys (`mock_llm`, `disable_llm_spans`, `caller_global_otel_active`); §5.4 *Composition directives* documents the existing `fan_out.concurrent_mode` (serial vs concurrent instance dispatch, distinct from `concurrency`), first surfaced in observability fixtures by the nested-fan-out span-keying tests. Supports proposal 0084's nested-fan-out span-lineage fixtures by [proposal 0084](../../proposals/0084-nested-fan-out-span-lineage.md)
 - §8.3 *Execution* gained a **Directive execution order** rule — a node's sibling directives (the keys under `nodes.<node_name>:`) execute in fixture-document order (mapping insertion order, not sorted-by-key), so order-sensitive compositions like `augment_metadata` → `capture_invocation_metadata_into` (observability §3.4) are deterministic; §7 *Nondeterminism handling* gains a counterpoint note (within-node order is deterministic, unlike the cross-source interleaving cases); §8.2 *Parsing* notes lossless parsing preserves directive order. New fixture `135` pins it; ratifies behavior fixtures 043/045 already depended on by [proposal 0087](../../proposals/0087-conformance-adapter-directive-execution-order.md)
+- §5.8 *Expected-outcome directives* gained `expected_compile_warning` — asserts compilation succeeds while emitting non-fatal compile-time **warnings** (the adapter captures compile-time warnings, distinct from the `expected_compile_error` compile-*failure* assertion), for diagnostics such as graph-engine §2's `projection_reducer_round_trip`; takes a **scalar** (the named warning is among those emitted) or a **list** (the exhaustive set — `[]` asserts *no* warnings, so a fixture can assert a warning MUST NOT fire). The established `expected_compile_error` scalar is formally documented in §5.8 alongside it for parity by [proposal 0094](../../proposals/0094-subgraph-projection-declared-boundary.md)
