@@ -2381,7 +2381,7 @@ Field mappings:
 | `embedding.model` | `EmbeddingEvent.response_model` (the provider's returned model; falls back to `EmbeddingEvent.model`, the requested model, when the provider returns none). |
 | `embedding.input` | The `EmbeddingEvent.input_strings`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), this field is NOT populated. |
 | `embedding.output` | The `EmbeddingEvent.output_vectors` (the embedding vectors, themselves sourced from `EmbeddingResponse.vectors` at dispatch). Privacy-gated per `disable_provider_payload`. |
-| `embedding.usageDetails.input` | `EmbeddingEvent.usage.input_tokens` when populated. Omitted when the embedding call reports no usage record (`usage = null`, e.g. TEI `/embed`); `usageDetails` then carries no keys — an empty map, per the open-map convention §8.4.7 documents for the rerank observation. |
+| `embedding.usageDetails.input` | `EmbeddingEvent.usage.input_tokens` when populated. Omitted when the embedding call reports no usage record (`usage = null`, e.g. TEI `/embed`); Langfuse's `usageDetails` is an open-shape map carrying only the usage figures the provider reported, so it is an empty map when none are (no `input` key). |
 | `embedding.metadata.openarmature_input_count` | The length of `input_strings`. |
 | `embedding.metadata.openarmature_dimensions` | The output vector dimensionality. |
 | `embedding.metadata.openarmature_response_id` | `EmbeddingEvent.response_id` when present. |
