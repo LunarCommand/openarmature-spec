@@ -37,15 +37,15 @@
 # §8 facets exercised here vs. deferred to 037: this fixture exercises
 # consecutive <=chunk_size chunking, the request count, identical per-call
 # params across chunks, vectors stitched IN INPUT ORDER, and the
-# MUST-NOT-send-over-cap rule. It does NOT assert the §8 "sum input_tokens"
-# facet: TEI /embed carries no usage object (017), and §4 holds
-# EmbeddingUsage.input_tokens is "Int. Always reported." — so pinning
-# input_tokens here (e.g. to null) would contradict §4. Like 017, the
-# fixture omits the usage assertion entirely; the "sum input_tokens" facet
-# is exercised by the Cohere instance (037), whose /v2/embed reports
-# meta.billed_units and sums to 500. TEI also surfaces no response id, so
-# the §8 "first chunk's id" => null (the one §8-nullable stitch field this
-# fixture does assert, matching 017).
+# MUST-NOT-send-over-cap rule. TEI /embed carries no usage object (017), so
+# the stitched EmbeddingResponse.usage is null: §4 makes usage `record |
+# null` and maps TEI /embed to `usage = null`, and §8's batch-chunking
+# step 4 sums input_tokens when the provider reports usage or produces
+# `usage = null` when it reports none — TEI reports none. This fixture
+# therefore asserts `usage: null` (consistent with §4 and with 017). The §8
+# sum-input_tokens branch is exercised by the Cohere instance (037), whose
+# /v2/embed reports meta.billed_units and sums to 500. TEI also surfaces no
+# response id, so the §8 "first chunk's id" => null (matching 017).
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 015's header (the chunk-and-stitch
@@ -83,13 +83,13 @@ cases:
       vectors, vector i == the embedding for input i across the chunk
       boundaries). EmbeddingResponse.model is the bound id (TEI echoes
       none). TEI surfaces no response id, so the §8 "first chunk's id" is
-      null. input_tokens is NOT asserted: TEI /embed carries no usage
-      object, and §4 holds it is "Int. Always reported.", so pinning it
-      here would contradict §4 — like 017, the fixture omits the usage
-      assertion (the §8 sum-input_tokens facet is exercised by Cohere 037).
-      A mapping that sent all 5 inputs in one over-cap request, split into
-      the wrong sizes, mis-ordered the stitch, or leaked a prompt_name /
-      dimensions param fails.
+      null. TEI /embed carries no usage object, so the stitched usage is
+      null: §4 makes usage `record | null` and §8's batch-chunking step 4
+      produces `usage = null` when the provider reports none (it sums
+      input_tokens only when usage is reported — the Cohere instance 037
+      exercises that branch). A mapping that sent all 5 inputs in one
+      over-cap request, split into the wrong sizes, mis-ordered the stitch,
+      or leaked a prompt_name / dimensions param fails.
     state:
       fields:
         embedding_response:
@@ -150,11 +150,11 @@ cases:
           model: tei-embed-test
           # TEI surfaces no response id; the §8 "first chunk's id" is null.
           response_id: null
-          # input_tokens is NOT asserted: TEI /embed carries no usage object,
-          # and §4 holds EmbeddingUsage.input_tokens is "Int. Always
-          # reported." — so pinning input_tokens: null would contradict §4.
-          # Like 017 (TEI embed wire), this fixture omits the usage assertion;
-          # the §8 "sum input_tokens" facet is exercised by Cohere 037.
+          # TEI /embed carries no usage object, so the stitched usage is null
+          # per §4 (usage is `record | null`) and §8's batch-chunking step 4
+          # (produce `usage = null` when the provider reports none). Matches
+          # 017; the §8 sum-input_tokens branch is exercised by Cohere 037.
+          usage: null
       invariants:
         exactly_three_embed_requests_issued: true
         chunk_inputs_sizes_2_2_1_consecutive_slices: true

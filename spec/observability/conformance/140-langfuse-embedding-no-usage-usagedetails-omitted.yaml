@@ -1,0 +1,81 @@
+# observability §8.4.5 — Langfuse embedding observation, conditional
+# usageDetails.input. Exercises the OBSERVER's provider-agnostic conditional
+# path for embedding.usageDetails.input when EmbeddingResponse.usage = null:
+# with no usage record the Embedding observation's usageDetails MUST NOT carry
+# an `input` key. The mock body is a usage-less embedding response — the
+# harness's standard embedding-mock body (retained gen_ai.system "openai"
+# identity) with the usage block dropped — that yields usage = null
+# (retrieval-provider §4). It is a harness stand-in for a no-usage provider,
+# NOT a claim that this is any specific vendor's wire shape. (TEI /embed is
+# the real-world archetype of a no-usage embedding provider, though its actual
+# wire is a bare vector array — a different shape than this mock.) This is the
+# no-usage counterpart to 083 (which populates usageDetails: {input: N} when
+# the provider reports usage). The omitted key is expressed as an empty
+# usageDetails map, matching 108's idiom of populating usageDetails with only
+# the keys the provider reported (none here).
+
+cases:
+  - name: embedding_observation_omits_usagedetails_input_when_no_usage_record
+    description: |
+      One embedding call. Default Langfuse observer config
+      (disable_provider_payload=True). The mocked response is a usage-less
+      embedding body (the standard embedding-mock body with the usage block
+      dropped) that yields usage = null — a harness stand-in for a no-usage
+      provider (TEI /embed is the real-world archetype), NOT a claim that this
+      is any vendor's exact wire. The Embedding observation MUST emit model +
+      identity metadata, but its usageDetails MUST NOT carry an `input` key
+      (no usage record to source it from). input / output stay null under the
+      default payload posture.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query one", "query two"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    # Usage-less embedding body (standard embedding-mock body, usage block
+    # dropped) => EmbeddingResponse.usage = null. Harness stand-in for a
+    # no-usage provider (archetype: TEI /embed), NOT that vendor's exact wire.
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          id: emb-140-id
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3]}
+            - {object: embedding, index: 1, embedding: [0.4, 0.5, 0.6]}
+    langfuse_observer:
+      disable_provider_payload: true
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "embed_node"
+            children:
+              - type: embedding
+                name: "openarmature.embedding.complete"
+                model: "text-embedding-test"
+                # No usage record => no `input` key in usageDetails (§8.4.5).
+                # Empty map mirrors 108's idiom: usageDetails carries only the
+                # keys the provider reported (none here).
+                usageDetails: {}
+                metadata:
+                  openarmature_input_count: 2
+                  openarmature_dimensions: 3
+                  openarmature_response_id: "emb-140-id"
+                level: DEFAULT
+                input: null
+                output: null
+                children: []
+      invariants:
+        observation_type_is_embedding_not_generation: true
+        usage_details_input_omitted_when_no_usage_record: true

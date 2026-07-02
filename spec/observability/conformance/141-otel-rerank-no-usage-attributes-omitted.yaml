@@ -1,0 +1,90 @@
+# observability §5.5.13 — OTel rerank span, record-null usage path.
+# Exercises §5.5.13's record-null branch: when the rerank call reports no
+# usage record at all (RerankResponse.usage = null), the rerank span MUST
+# OMIT BOTH usage-derived attributes — gen_ai.usage.input_tokens and
+# openarmature.rerank.search_units — while still emitting every non-usage
+# attribute. The mock body omits the meta.billed_units block entirely
+# ({id, model, results}) so usage is null. This is the no-usage counterpart
+# to 107 (whose two cases exercise the search-units-only and input-tokens-only
+# branches of a PRESENT usage record). The mock is a harness stand-in for a
+# no-usage reranker (TEI /rerank is the real-world archetype), NOT a claim
+# that this is any vendor's exact wire. Runs under default payload-off config
+# (the gated payload attributes openarmature.rerank.query / .documents /
+# .results stay absent). The omitted attributes are asserted via
+# attributes_absent (the §5.5.3.1 / 0047 conditional-emission convention,
+# alongside the always-deferred gen_ai.operation.name). (calls_rerank /
+# mock_rerank directives in retrieval-provider fixture 006's header; the suite
+# provider identifier is "cohere".)
+
+cases:
+  - name: rerank_span_omits_usage_attributes_when_no_usage_record
+    description: |
+      One rerank node; the provider reports NO usage record at all (the mock
+      body omits meta.billed_units) => RerankResponse.usage = null — a harness
+      stand-in for a no-usage reranker (TEI /rerank is the real-world
+      archetype), NOT a claim that this is any vendor's exact wire. Default
+      OTel observer config. The span MUST emit gen_ai.system,
+      gen_ai.request.model, gen_ai.response.model, gen_ai.response.id,
+      openarmature.rerank.query_length / document_count / top_k /
+      result_count, but MUST OMIT BOTH gen_ai.usage.input_tokens AND
+      openarmature.rerank.search_units (no usage record to source either
+      from), plus gen_ai.operation.name and the gated payload attributes.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "paris"
+          documents: ["doc one", "doc two"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    # No meta.billed_units block => RerankResponse.usage = null. Harness
+    # stand-in for a no-usage reranker (archetype: TEI /rerank), NOT that
+    # vendor's exact wire.
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-141-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "rerank_node"
+              status: OK
+              children:
+                - name: "openarmature.rerank.complete"
+                  status: OK
+                  attributes:
+                    gen_ai.system: "cohere"
+                    gen_ai.request.model: "rerank-test"
+                    gen_ai.response.model: "rerank-test"
+                    gen_ai.response.id: "rerank-141-id"
+                    openarmature.rerank.query_length: 5
+                    openarmature.rerank.document_count: 2
+                    openarmature.rerank.top_k: 2
+                    openarmature.rerank.result_count: 2
+                  attributes_absent:
+                    - gen_ai.operation.name
+                    - gen_ai.usage.input_tokens
+                    - openarmature.rerank.search_units
+                    - openarmature.rerank.query
+                    - openarmature.rerank.documents
+                    - openarmature.rerank.results
+                  children: []
+      invariants:
+        rerank_span_name_is_openarmature_rerank_complete: true
+        core_genai_semconv_subset_emitted: true
+        rerank_usage_attributes_omitted_when_no_usage_record: true
+        operation_name_attribute_not_emitted_in_v1: true

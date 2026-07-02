@@ -1,8 +1,9 @@
 # 0093: Nullable Provider Usage Records (embedding + rerank)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-06-30
+- **Accepted:** 2026-07-01
 - **Targets:** spec/retrieval-provider/spec.md — **§4** (`EmbeddingResponse.usage` → **"an `EmbeddingUsage`
   record, or null when the provider reports no usage"**; `EmbeddingUsage.input_tokens` stays `Int`, the
   "always reported" phrasing dropped — it is present whenever the record is); **§6** (`RerankResponse.usage`
@@ -155,7 +156,7 @@ sourcing.
 emission becomes conditional — a public-type + conformance change, hence its own proposal. Additive for
 the hosted mappings (they report usage and are unchanged); it **unblocks** the TEI `/embed` mapping (the
 prior contract made it non-conformant on usage) and removes the fabricated-empty-record for TEI
-`/rerank`. Tentative spec version target deferred to Accept. No hard sequencing dependency — fixture 017
+`/rerank`. Ships as spec **v0.88.0**. No hard sequencing dependency — fixture 017
 (pre-existing) covers the embedding no-usage case independently of 0092.
 
 ## Alternatives considered

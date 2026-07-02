@@ -1,0 +1,80 @@
+# observability §5.5.8 — OTel embedding span, conditional input-tokens.
+# Exercises the OBSERVER's provider-agnostic conditional-emission path for
+# gen_ai.usage.input_tokens when EmbeddingResponse.usage = null: with no
+# usage record the embedding span MUST OMIT gen_ai.usage.input_tokens
+# entirely while still emitting every other attribute. The mock body is a
+# usage-less embedding response — the harness's standard embedding-mock body
+# (retained gen_ai.system "openai" identity) with the usage block dropped —
+# that yields usage = null (retrieval-provider §4). It is a harness stand-in
+# for a no-usage provider, NOT a claim that this is any specific vendor's
+# wire shape. (TEI /embed is the real-world archetype of a no-usage embedding
+# provider, though its actual wire is a bare vector array — a different shape
+# than this mock.) This is the no-usage counterpart to 082 (which asserts the
+# attribute present when the provider reports usage). The omitted attribute is
+# asserted via attributes_absent (the §5.5.3.1 / 0047 conditional-emission
+# convention, alongside the always-deferred gen_ai.operation.name).
+
+cases:
+  - name: otel_embedding_span_omits_input_tokens_when_no_usage_record
+    description: |
+      One embedding-calling node. Default OTel observer config. The mocked
+      response is a usage-less embedding body (the standard embedding-mock
+      body with the usage block dropped) that yields usage = null — a harness
+      stand-in for a no-usage provider (TEI /embed is the real-world
+      archetype), NOT a claim that this is any vendor's exact wire. The
+      embedding span MUST emit gen_ai.system, gen_ai.request.model,
+      gen_ai.response.model, gen_ai.response.id,
+      openarmature.embedding.input_count, openarmature.embedding.dimensions,
+      but MUST OMIT gen_ai.usage.input_tokens (no usage record to source it
+      from).
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["hello", "world"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    # Usage-less embedding body (standard embedding-mock body, usage block
+    # dropped) => EmbeddingResponse.usage = null. Harness stand-in for a
+    # no-usage provider (archetype: TEI /embed), NOT that vendor's exact wire.
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          id: emb-139-id
+          data:
+            - {object: embedding, index: 0, embedding: [0.1, 0.2, 0.3]}
+            - {object: embedding, index: 1, embedding: [0.4, 0.5, 0.6]}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "embed_node"
+              status: OK
+              children:
+                - name: "openarmature.embedding.complete"
+                  status: OK
+                  attributes:
+                    gen_ai.system: "openai"
+                    gen_ai.request.model: "text-embedding-test"
+                    gen_ai.response.model: "text-embedding-test"
+                    gen_ai.response.id: "emb-139-id"
+                    openarmature.embedding.input_count: 2
+                    openarmature.embedding.dimensions: 3
+                  attributes_absent:
+                    - gen_ai.operation.name
+                    - gen_ai.usage.input_tokens
+                  children: []
+      invariants:
+        embedding_span_name_is_openarmature_embedding_complete: true
+        usage_input_tokens_attribute_omitted_when_no_usage_record: true
+        operation_name_attribute_not_emitted_in_v1: true

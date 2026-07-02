@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.88.0] — 2026-07-01
+
+**Changed**
+
+- **retrieval-provider §4 / §6 — nullable provider usage records.** `EmbeddingResponse.usage` and `RerankResponse.usage` are now `record | null` — a usage record when the provider reports one, `null` when it doesn't — giving OA one uniform "the provider reported no token usage" model across both response types, the typed events (graph-engine §6 `EmbeddingEvent` / `RerankEvent`, already record-null), and the §11 metric (already record-null). §4's `EmbeddingUsage.input_tokens` drops the "always reported" phrasing (it is present exactly when the record is); §6's "a `RerankUsage` with both fields null is valid" note is reconciled — the no-usage case is now `usage = null`, and a record is present only when at least one figure is reported (the record's `input_tokens` / `search_units` stay individually nullable for the partial case, e.g. Cohere's `search_units` without a token count). §2 concept lines qualify usage "(when present)"; §8.1 pins TEI `/embed` + `/rerank` to `usage = null` (the mapping MUST NOT fabricate a record); §8's batch-chunking step 4 combines usage record-aware (sum when reported, else `null`). Observability tracks the response contract: §5.5.8 (OTel embedding) `gen_ai.usage.input_tokens` and §8.4.5 (Langfuse embedding) `usageDetails.input` become **conditionally emitted** — omitted when the provider reports no usage; §5.5.13 / §8.4.7 rerank guards rephrased record-aware (and §5.5.13's stale "the embedding span, where `input_tokens` is always present" parenthetical corrected — both spans now emit conditionally). No change to graph-engine §6 or observability §11 (already null-usage-aware). ([proposal 0093](proposals/0093-nullable-provider-usage-records.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Widens two public response `usage` fields to nullable and makes the embedding usage observability emission conditional — a public-type + conformance change. Fixes a live contradiction: the prior "always reported" contract was unsatisfiable for TEI `/embed` (a bare vector array with no usage object) and forced a fabricated empty `RerankUsage` for TEI `/rerank`. Additive for the hosted mappings (they report usage and are unchanged). Conformance: TEI `/embed` + `/rerank` fixtures assert `usage: null` (the fabricated empty rerank records removed), plus new OTel + Langfuse no-usage fixtures for both the embedding and rerank spans/observations and an embedding no-usage metric fixture (pinning §11's zero-token-observation branch, now reachable for embedding).
+
 ## [0.87.0] — 2026-06-30
 
 **Added**

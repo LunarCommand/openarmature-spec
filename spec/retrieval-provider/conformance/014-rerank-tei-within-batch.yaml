@@ -40,8 +40,9 @@
 #   "text"?: str}] (the 006-012 mock_rerank shape is the harness-internal
 #   Cohere-flavoured stand-in; under TEI the body is what TEI returns).
 #   TEI surfaces no response id and no usage billing block, so the mapped
-#   RerankResponse carries response_id null and a RerankUsage with both
-#   fields null (§6).
+#   RerankResponse carries response_id null and usage null — the RECORD
+#   itself is null, NOT an all-null RerankUsage record (§6; the mapping
+#   MUST NOT fabricate a RerankUsage).
 
 mapping: tei
 
@@ -60,7 +61,7 @@ cases:
       the adapter MUST return results sorted by relevance_score descending
       ([{1, 0.91}, {0, 0.42}, {2, 0.08}]) with each index valid into the
       3-document input. TEI reports no id / no usage, so response_id is
-      null and usage has both fields null.
+      null and usage is null (the record itself, not an all-null record).
     state:
       fields:
         rerank_response:
@@ -97,9 +98,7 @@ cases:
             - {index: 2, relevance_score: 0.08, document: null}
           model: tei-rerank-test
           response_id: null
-          usage:
-            search_units: null
-            input_tokens: null
+          usage: null
       invariants:
         exactly_one_rerank_request_issued: true
         wire_request_texts_match_documents_in_order: true
@@ -156,9 +155,7 @@ cases:
             - {index: 2, relevance_score: 0.08, document: "doc about madrid"}
           model: tei-rerank-test
           response_id: null
-          usage:
-            search_units: null
-            input_tokens: null
+          usage: null
       invariants:
         exactly_one_rerank_request_issued: true
         wire_request_return_text_true: true

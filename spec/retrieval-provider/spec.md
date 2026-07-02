@@ -60,9 +60,9 @@ concerns (observability, error semantics, per-model binding).
 vectors wrapped in an `EmbeddingResponse`. Bound to a specific embedding model identifier per
 instance.
 
-**EmbeddingResponse.** The result of an `embed()` call: the vectors, the model identifier, usage
-information, and (when present) the provider-returned request identifier and the parsed raw
-response.
+**EmbeddingResponse.** The result of an `embed()` call: the vectors, the model identifier, the
+parsed raw response, and — when present — usage information and the provider-returned request
+identifier.
 
 **EmbeddingUsage.** A usage record carrying `input_tokens` only — embedding has no output tokens
 (vectors aren't tokens).
@@ -84,8 +84,8 @@ the documents sorted by query-relevance with provider-specific scores. Bound to 
 model identifier per instance.
 
 **RerankResponse.** The result of a `rerank()` call: the sorted scored documents, the model
-identifier, usage information, and (when present) the provider-returned response identifier and the
-parsed raw response.
+identifier, the parsed raw response, and — when present — usage information and the
+provider-returned response identifier.
 
 **RerankUsage.** A usage record with optional `search_units` and optional `input_tokens`, reflecting
 the messy provider landscape where rerank pricing surfaces vary widely.
@@ -163,7 +163,7 @@ idiomatic equivalent). The bound identifier is visible to the observability laye
 |---|---|
 | `vectors` | List of vectors (each a list of floats); one vector per input string in the order the inputs were supplied. The length of `vectors` MUST equal the length of `input`. |
 | `model` | The model identifier the provider returned. MAY be a more specific identifier than the one the provider was bound against. |
-| `usage` | An `EmbeddingUsage` record (defined below). |
+| `usage` | An `EmbeddingUsage` record (defined below), or `null` when the provider reports no usage (e.g. TEI `/embed`, which returns a bare vector array with no usage object). Implementations MUST populate `usage` when the provider returns a usage record and MUST NOT fabricate one (an empty record, a zero, or a client-side token estimate) when it does not. |
 | `response_id` | The provider-returned response identifier when present; null otherwise. Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.8) and the typed `EmbeddingEvent.response_id` field (per graph-engine §6). |
 | `dimensions` | Int. The output vector dimensionality. MUST equal the length of each inner list in `vectors`. Derivable from `vectors[0]` but kept on the response for ergonomics and cross-vendor consistency. |
 | `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Parallel to llm-provider §6 `Response.raw`. |
@@ -172,7 +172,7 @@ idiomatic equivalent). The bound identifier is visible to the observability laye
 
 | Field | Description |
 |---|---|
-| `input_tokens` | Int. Tokens billed for the embedding call. Always reported (no `output_tokens` — vectors aren't tokens). |
+| `input_tokens` | Int. Tokens billed for the embedding call. Present exactly when the `usage` record is (no `output_tokens` — vectors aren't tokens). |
 
 ### Cross-impl invariants
 
@@ -242,7 +242,7 @@ Implementations bind one rerank model identifier per provider instance via a con
 |---|---|
 | `results` | List of `ScoredDocument` entries sorted by `relevance_score` descending (most relevant first). `len(results)` is at most `min(top_k, len(documents))` when `top_k` is supplied; at most `len(documents)` otherwise. MAY be shorter than that bound if the provider returns fewer results (e.g., relevance-threshold filtering on the provider side). |
 | `model` | The model identifier the provider returned. MAY be a more specific identifier than the one the provider was bound against. |
-| `usage` | A `RerankUsage` record (defined below). |
+| `usage` | A `RerankUsage` record (defined below), or `null` when the provider reports no usage (e.g. TEI `/rerank`). A record is present when the provider surfaces at least one usage figure; its `input_tokens` / `search_units` stay individually nullable (below). Same populate/don't-fabricate rule as §4. |
 | `response_id` | The provider-returned response identifier when present; null otherwise. Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.13) and the typed `RerankEvent.response_id` field (per graph-engine §6). |
 | `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Per charter §3.1 principle 8 ("Transparency over abstraction") — callers retain access to provider-specific fields the normalized shape doesn't surface. Parallel to llm-provider §6 `Response.raw` and §4 `EmbeddingResponse.raw`. |
 
@@ -262,8 +262,11 @@ Implementations bind one rerank model identifier per provider instance via a con
 | `input_tokens` | Int or null. The provider-reported count of input tokens (query + concatenated documents). Populated for providers that surface it (e.g., Voyage AI); null otherwise. |
 
 Both fields default to null. Implementations MUST populate the field when the provider returns a
-corresponding value and MUST NOT fabricate one when the provider omits it. A `RerankUsage` with both
-fields null is valid and represents the "provider reports no billing surface" case.
+corresponding value and MUST NOT fabricate one when the provider omits it. A provider that surfaces
+*some* usage (e.g. Cohere's `search_units` without `input_tokens`) yields a record with the reported
+field(s) set and the rest null. A provider that surfaces *no* usage yields `usage = null` (§6 field
+table), not an all-null record — a `RerankUsage` record is present only when at least one figure is
+reported.
 
 ### Cross-impl invariants
 
@@ -320,8 +323,9 @@ the provider's per-call cap, preserving order; (2) issue one request per chunk w
 other than the chunked input list identical** across chunks (model, the `input_type` realization,
 dimensions / `output_dimension`, `embedding_types`, truncation, and any extras-bag fields); (3) stitch the
 responses — concatenate the per-chunk vectors in the original input order, so §4's one-vector-per-input
-and input-order invariants hold across the whole call; and (4) sum the per-chunk
-`EmbeddingUsage.input_tokens` (per §4's usage contract). `EmbeddingResponse.response_id` is the first chunk's response id (a
+and input-order invariants hold across the whole call; and (4) combine the per-chunk usage per §4's
+(now nullable) usage contract — sum the `EmbeddingUsage.input_tokens` when the provider reports usage,
+or produce `usage = null` when it reports none (e.g. TEI `/embed`). `EmbeddingResponse.response_id` is the first chunk's response id (a
 single-request call uses that request's id). A mapping MUST NOT silently send an over-cap request. When a
 provider enforces **no** per-call cap (it batches server-side), no client-side chunking is required. This
 generalizes to the embedding side, across all mappings, the per-item-independence chunk-and-stitch §8.1
@@ -355,7 +359,9 @@ operator-supplied at construction.
 mapping always sends the array form per §3's "always a list"); `EmbeddingRuntimeConfig.dimensions` maps
 to TEI's `dimensions` field when set. The response is the vector array, in input order. Like `/rerank`,
 `/embed` is bounded by TEI's `max-client-batch-size` (the construction `chunk_size`, default 32); an
-over-cap embed call chunk-and-stitches per the §8 *Batch chunking* rule.
+over-cap embed call chunk-and-stitches per the §8 *Batch chunking* rule. TEI `/embed` returns no usage
+object, so `EmbeddingResponse.usage` is `null` — the mapping MUST NOT fabricate a usage record or a
+zero (§4).
 
 `input_type` realization: the mapping sends TEI's native `prompt_name` field, looked up from the
 construction `input_type → prompt_name` map, so TEI applies the model's configured query/document
@@ -371,7 +377,9 @@ echoed text on `ScoredDocument.document`. The response `[{"index": int, "score":
 maps onto `results` (§6): `index` → `ScoredDocument.index`, `score` → `relevance_score`, `text` →
 `document`. Scores are normalized by default (`raw_scores: false`); the scale is model-specific (§6
 pins none). TEI does not guarantee response sort order, so the mapping MUST sort per §6's "sort if the
-provider didn't" invariant — subsumed by the chunk-and-stitch global re-sort below.
+provider didn't" invariant — subsumed by the chunk-and-stitch global re-sort below. TEI `/rerank`
+returns no usage object, so `RerankResponse.usage` is `null` — the mapping MUST NOT fabricate a
+`RerankUsage` record (§6).
 
 **Mandatory rerank batch chunking.** TEI enforces `max-client-batch-size` (server-configured, default
 32). When `len(documents)` exceeds the instance's `chunk_size`, the mapping MUST split the documents
@@ -646,3 +654,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - Cohere rerank wire mapping (§8.4) added by [proposal 0090](../../proposals/0090-retrieval-provider-cohere-rerank-wire.md)
 - Cohere `/v2/embed` endpoint (extends §8.4) added by [proposal 0091](../../proposals/0091-retrieval-provider-cohere-embeddings-wire.md)
 - §8 general embedding-mapping batch-chunking rule added by [proposal 0092](../../proposals/0092-retrieval-provider-embedding-batch-chunking.md)
+- `EmbeddingResponse.usage` (§4) and `RerankResponse.usage` (§6) made nullable (`record | null` — `null` when the provider reports no usage), reconciling the response types with the record-null model the typed events (graph-engine §6) and §11 metric already use; §2 concept lines qualify usage "(when present)", §8.1 pins TEI `/embed` + `/rerank` `usage = null`, and §8's batch-chunking step 4 combines usage record-aware by [proposal 0093](../../proposals/0093-nullable-provider-usage-records.md)
