@@ -7,11 +7,12 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0094](proposals/0094-subgraph-projection-declared-boundary.md) | Subgraph projection declared same-name boundary | graph-engine | Draft | —               | —          |
 | [0093](proposals/0093-nullable-provider-usage-records.md) | Nullable provider usage records | retrieval-provider | Accepted | Pending         | —          |
 | [0092](proposals/0092-retrieval-provider-embedding-batch-chunking.md) | Embedding-mapping batch chunking | retrieval-provider | Accepted | Pending         | —          |
 | [0091](proposals/0091-retrieval-provider-cohere-embeddings-wire.md) | Cohere embeddings wire mapping | retrieval-provider | Accepted | Pending         | —          |
 | [0090](proposals/0090-retrieval-provider-cohere-rerank-wire.md) | Cohere rerank wire mapping | retrieval-provider | Accepted | Pending         | —          |
-| [0089](proposals/0089-embedding-rerank-typed-event-output.md) | Embedding / rerank typed-event output | graph-engine | Accepted | Pending         | —          |
+| [0089](proposals/0089-embedding-rerank-typed-event-output.md) | Embedding / rerank typed-event output | graph-engine | Accepted | Partial (0.16.0)| —          |
 | [0088](proposals/0088-observability-langfuse-parallel-branches-parity.md) | Langfuse parallel-branches mapping parity | observability | Accepted | Pending         | —          |
 | [0087](proposals/0087-conformance-adapter-directive-execution-order.md) | Within-node directive execution order | conformance-adapter | Accepted | Pending         | —          |
 | [0086](proposals/0086-prompt-default-cache-ttl.md) | Service-wide default cache-TTL | prompt-management | Accepted | Pending         | —          |
