@@ -12,7 +12,9 @@
 #     EmbeddingResponse.vectors IN INPUT ORDER, one vector per input
 #     (§4 cross-impl invariants: vector count == input count, all inner
 #     vectors same dimensionality, dimensions field == inner length).
-#   - TEI surfaces no response id, so response_id is null (§4).
+#   - TEI surfaces no response id, so response_id is null; and TEI /embed
+#     returns no usage object, so EmbeddingResponse.usage is null (§4 — the
+#     mapping MUST NOT fabricate a usage record).
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 013's header (mapping: tei,
@@ -72,6 +74,7 @@ cases:
           inner_vector_lengths_all_equal: 4
           model: tei-embed-test
           response_id: null
+          usage: null
       invariants:
         wire_request_is_array_form: true
         vectors_length_matches_input_length: true
@@ -120,6 +123,7 @@ cases:
           inner_vector_lengths_all_equal: 4
           model: tei-embed-test
           response_id: null
+          usage: null
       invariants:
         wire_request_carries_dimensions_field: true
         vectors_length_matches_input_length: true

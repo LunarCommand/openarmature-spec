@@ -12,7 +12,8 @@ response maps onto `EmbeddingResponse.vectors` in input order with §4's cross-i
   response is the vector array in input order.
 - retrieval-provider §3 / §4 — `embed()` preserves input order; `EmbeddingResponse` cross-impl
   invariants (vector count == input count, all inner vectors same dimensionality, `dimensions` field
-  == inner length); `response_id` null when the provider returns none.
+  == inner length); `response_id` null when the provider returns none; TEI `/embed` returns no usage
+  object, so `EmbeddingResponse.usage` is `null` (the mapping MUST NOT fabricate a usage record).
 
 **Cases:**
 
@@ -20,7 +21,7 @@ response maps onto `EmbeddingResponse.vectors` in input order with §4's cross-i
    `{"inputs": [s0, s1, s2]}` (array form, no `prompt_name`, no `dimensions`). The TEI vector-array
    response of dimension 4 MUST map to `vectors` in input order (distinct first components make the
    order check load-bearing), with `vectors` length 3, all inner length 4, `dimensions` 4,
-   `response_id` null.
+   `response_id` null, `usage` null.
 2. `embed_dimensions_maps_to_tei_dimensions_field` — `config={dimensions: 4}` ⇒ the wire request
    carries TEI's `dimensions` field alongside `inputs`; the one-element vector-array response holds.
 
@@ -28,7 +29,7 @@ response maps onto `EmbeddingResponse.vectors` in input order with §4's cross-i
 
 - The request is the array form even for a single-string caller; `dimensions` appears on the wire
   only when supplied; `prompt_name` is absent.
-- Vectors map in input order; the cross-impl invariants hold; `response_id` is null.
+- Vectors map in input order; the cross-impl invariants hold; `response_id` and `usage` are null.
 
 **What fails:**
 
@@ -36,4 +37,4 @@ response maps onto `EmbeddingResponse.vectors` in input order with §4's cross-i
   when not supplied.
 - Vectors permuted relative to input order, a mismatched vector count, inconsistent inner
   dimensionality, or a `dimensions` field disagreeing with the inner length.
-- `response_id` fabricated when TEI returns none.
+- `response_id` or `usage` fabricated when TEI returns none.

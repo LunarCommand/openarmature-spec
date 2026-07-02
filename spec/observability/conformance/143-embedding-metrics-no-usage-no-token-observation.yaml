@@ -1,0 +1,59 @@
+# observability §11 (proposals 0067 + 0093): the zero-observation branch of
+# the token-usage instrument. When an embedding call's usage record is absent
+# (the provider returned no usage, EmbeddingResponse.usage = null per
+# retrieval-provider §4), NO openarmature.gen_ai.client.token.usage
+# observation is recorded — but the openarmature.gen_ai.client.operation.
+# duration observation is STILL recorded (a completed call is a real latency
+# sample). This is the no-usage counterpart to 089 (which records the token
+# observation from a present usage record). The mock body drops the usage
+# block so usage is null — a harness stand-in for a no-usage embedding
+# provider (TEI /embed is the real-world archetype), NOT a claim that this is
+# any vendor's exact wire. The absent token observation is expressed the way
+# 090 / 109 express it: the metrics: list (the exhaustive set of recorded
+# observations) carries only the duration entry, with an invariant asserting
+# the token observation was not recorded.
+
+cases:
+  - name: embedding_no_usage_records_duration_but_no_token_observation
+    description: |
+      One embedding-calling node, enable_metrics=True. The mock body drops the
+      usage block => EmbeddingResponse.usage = null — a harness stand-in for a
+      no-usage embedding provider (TEI /embed is the real-world archetype),
+      NOT a claim that this is any vendor's exact wire. Per §11 the
+      metric-capture primitive records NO token.usage observation (no usage
+      record to source it from) but STILL records one operation.duration
+      observation (operation "embeddings", dimensions only).
+    state:
+      fields:
+        emb: {type: record, default: null}
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha", "beta"]
+          stores_response_in: emb
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    enable_metrics: true
+    # Embedding body with NO usage block => EmbeddingResponse.usage = null.
+    # Harness stand-in for a no-usage provider (archetype: TEI /embed), NOT
+    # that vendor's exact wire.
+    mock_embedding:
+      - status: 200
+        body:
+          object: "list"
+          model: test-embed-model
+          data:
+            - {object: "embedding", index: 0, embedding: [0.1, 0.2]}
+            - {object: "embedding", index: 1, embedding: [0.3, 0.4]}
+    expected:
+      metrics:
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "embeddings"
+            gen_ai.request.model: "test-embed-model"
+            gen_ai.system: "openai"
+      invariants:
+        no_token_usage_observation_when_usage_absent: true
+        duration_recorded_when_usage_absent: true

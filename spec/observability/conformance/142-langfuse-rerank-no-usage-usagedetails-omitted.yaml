@@ -1,0 +1,82 @@
+# observability §8.4.7 — Langfuse rerank observation, record-null usage path.
+# Exercises §8.4.7's record-null branch: when the rerank call reports no usage
+# record at all (RerankResponse.usage = null), the Retriever observation's
+# usageDetails MUST carry NO keys — an empty map, per the open-map convention
+# §8.4.7 documents (usageDetails carries only the usage figures the provider
+# reported, none here). The mock body omits the meta.billed_units block
+# entirely ({id, model, results}) so usage is null. This is the no-usage
+# counterpart to 108 (whose default case populates usageDetails.searchUnits
+# from a present record). The mock is a harness stand-in for a no-usage
+# reranker (TEI /rerank is the real-world archetype), NOT a claim that this is
+# any vendor's exact wire. Runs under default observer config
+# (disable_provider_payload=True) so input / output stay null. (calls_rerank /
+# mock_rerank directives in retrieval-provider fixture 006's header; the suite
+# provider identifier is "cohere".)
+
+cases:
+  - name: rerank_observation_usagedetails_empty_when_no_usage_record
+    description: |
+      One rerank call; the provider reports NO usage record at all (the mock
+      body omits meta.billed_units) => RerankResponse.usage = null — a harness
+      stand-in for a no-usage reranker (TEI /rerank is the real-world
+      archetype), NOT a claim that this is any vendor's exact wire. Default
+      Langfuse observer config (disable_provider_payload=True). The Retriever
+      observation MUST emit model + identity metadata, but its usageDetails
+      MUST carry NO keys (empty map — no usage figures reported). input /
+      output stay null under the default payload posture.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "paris"
+          documents: ["doc one", "doc two"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    # No meta.billed_units block => RerankResponse.usage = null. Harness
+    # stand-in for a no-usage reranker (archetype: TEI /rerank), NOT that
+    # vendor's exact wire.
+    mock_rerank:
+      - status: 200
+        body:
+          id: rerank-142-id
+          model: rerank-test
+          results:
+            - {index: 0, relevance_score: 0.8}
+            - {index: 1, relevance_score: 0.2}
+    langfuse_observer:
+      disable_provider_payload: true
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "rerank_node"
+            children:
+              - type: retriever
+                name: "openarmature.rerank.complete"
+                model: "rerank-test"
+                # No usage record => no keys in usageDetails (§8.4.7). Empty
+                # map per the open-map convention: usageDetails carries only
+                # the usage figures the provider reported (none here).
+                usageDetails: {}
+                metadata:
+                  openarmature_query_length: 5
+                  openarmature_document_count: 2
+                  openarmature_top_k: 2
+                  openarmature_result_count: 2
+                  openarmature_response_id: "rerank-142-id"
+                level: DEFAULT
+                input: null
+                output: null
+                children: []
+      invariants:
+        observation_type_is_retriever_not_generation: true
+        usage_details_empty_when_no_usage_record: true

@@ -20,7 +20,8 @@ the sort + valid-index invariants honored.
 1. `single_batch_one_request_sorted_results` — 3 documents, default config. Exactly ONE `/rerank`
    request carrying `{query, texts: [...3...], truncate: false, return_text: false}`. The mocked TEI
    response is UNSORTED; the adapter MUST sort by `relevance_score` descending with valid indices.
-   TEI reports no id / no usage ⇒ `response_id` null, `usage` both fields null.
+   TEI reports no id / no usage ⇒ `response_id` null, `usage` null (the record itself, not an
+   all-null record — the mapping MUST NOT fabricate a `RerankUsage`).
 2. `single_batch_return_documents_maps_to_return_text` — `config={return_documents: True}` ⇒ the
    wire request carries `return_text: true`; the TEI-echoed `text` per result MUST surface verbatim
    on `ScoredDocument.document`.
