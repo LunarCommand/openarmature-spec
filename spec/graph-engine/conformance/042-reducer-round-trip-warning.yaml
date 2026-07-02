@@ -1,0 +1,197 @@
+# Reducer round-trip warning (graph-engine §2). Because projection-out merges
+# through the parent's reducer, a field projected IN and then BACK OUT into the
+# SAME parent field re-merges: for a reducer that is not round-trip-idempotent
+# (one for which re-applying an already-merged value changes the field), the
+# unchanged value is merged a second time — e.g. an `append` reducer doubles the
+# list.
+#
+# `projection_reducer_round_trip` is a WARNING (compilation SUCCEEDS), asserted
+# via the `expected_compile_warning` directive (conformance-adapter §5.8),
+# distinct from the MUST-fail `expected_compile_error` categories. This fixture
+# uses the LIST form throughout: `[projection_reducer_round_trip]` asserts EXACTLY
+# that one warning (an exhaustive, order-insensitive set), and `[]` asserts NO
+# compile warning — so the no-warn cases FAIL an over-warning implementation. The
+# warning is MUST for the §2 canonical non-idempotent reducers (`append`,
+# `concat_flatten`, `bounded_append`, `merge_all`), whose idempotency is
+# statically determinable; SHOULD for custom reducers. Round-trip-idempotent
+# canonical reducers (`last_write_wins`, `merge`, `merge_by_key`, `dedupe_append`)
+# do NOT warn.
+#
+# A projection round-trips a field when the SAME parent field is copied in and a
+# subgraph field carrying it is merged back into that SAME parent field, via any
+# of three shapes: (a) the declared same-name form — a name in BOTH `projects_in`
+# and `projects_out` (case 1); (b) the explicit maps — a parent field that is both
+# an `inputs` value and an `outputs` key mapped to the SAME subgraph field; (c) the
+# explicit maps with `outputs` ABSENT (projection-out at the field-name-matching
+# default) — an `inputs` entry copying a parent field into a SAME-NAMED subgraph
+# field, so name-matching merges it straight back out (case 4). Same parent field
+# via DIFFERENT subgraph fields is NOT a round-trip (case 3, the no-false-positive
+# case); an append field copied IN but never projected OUT is NOT a round-trip
+# either (case 5, the negative control).
+
+subgraphs:
+  # Same-name `log`; the subgraph leaves it alone — the round-trip is structural.
+  sg_log:
+    state:
+      fields:
+        log: {type: list<string>, reducer: append, default: []}
+        mark: {type: string, default: ""}
+    entry: n
+    nodes:
+      n: {update: {mark: "ran"}}
+    edges:
+      - {from: n, to: END}
+  # Same-name `status`; the subgraph replaces it.
+  sg_status:
+    state:
+      fields:
+        status: {type: string, default: ""}
+    entry: s
+    nodes:
+      s: {update: {status: "done"}}
+    edges:
+      - {from: s, to: END}
+  # Distinct in/out subgraph fields — `sg_in` receives the parent value, `sg_out`
+  # is a freshly computed value merged back.
+  sg_diff:
+    state:
+      fields:
+        sg_in: {type: list<string>, default: []}
+        sg_out: {type: list<string>, default: []}
+    entry: d
+    nodes:
+      d: {update: {sg_out: ["computed"]}}
+    edges:
+      - {from: d, to: END}
+  # Same-name `shared` (an append parent field); the subgraph leaves it alone.
+  # Used for the inputs-only + default-name-match-out round-trip (trigger (c)).
+  sg_shared:
+    state:
+      fields:
+        shared: {type: list<string>, reducer: append, default: []}
+        note: {type: string, default: ""}
+    entry: m
+    nodes:
+      m: {update: {note: "ran"}}
+    edges:
+      - {from: m, to: END}
+
+cases:
+  # Case 1 — `log` is in BOTH `projects_in` and `projects_out`, and the parent's
+  # reducer for `log` is `append` (non-round-trip-idempotent). Compilation
+  # SUCCEEDS but MUST emit the `projection_reducer_round_trip` warning.
+  - name: round_trip_into_append_warns
+    graph:
+      state:
+        fields:
+          log: {type: list<string>, reducer: append, default: ["p0"]}
+      entry: a
+      nodes:
+        a:
+          subgraph: sg_log
+          projects_in: [log]
+          projects_out: [log]
+      edges:
+        - {from: a, to: END}
+    # Exhaustive list form: exactly this one warning, no other.
+    expected_compile_warning: [projection_reducer_round_trip]
+
+  # Case 2 — same round-trip shape (`status` in both sets), but the parent's
+  # reducer for `status` is `last_write_wins` (round-trip-idempotent). NO
+  # warning: re-applying the same value is a no-op. Runnable — asserts the
+  # merged value rather than a compile diagnostic.
+  - name: round_trip_into_last_write_wins_no_warning
+    state:
+      fields:
+        status: {type: string, default: "init"}
+    entry: run
+    nodes:
+      run:
+        subgraph: sg_status
+        projects_in: [status]
+        projects_out: [status]
+    edges:
+      - {from: run, to: END}
+    initial_state: {}
+    # last_write_wins is round-trip-idempotent, so this round-trip emits NO
+    # warning. The empty list is EXHAUSTIVE: an impl that over-warns on an
+    # idempotent-reducer round-trip FAILS here.
+    expected_compile_warning: []
+    expected:
+      # Runnable too: re-applying the same value is a no-op, so parent.status
+      # ends as the subgraph's "done" (not doubled or corrupted).
+      final_state:
+        status: "done"
+      execution_order: [run]
+
+  # Case 3 — the no-false-positive case. Explicit maps: parent field `acc` is an
+  # `inputs` value (source) AND an `outputs` key (target), but via DIFFERENT
+  # subgraph fields (`sg_in` in, `sg_out` out). The value merged back (sg_out,
+  # freshly computed) is NOT the round-tripped `acc`, so this is NOT a round-trip
+  # and does NOT warn — even though `acc`'s reducer is `append`. The trigger is
+  # same-SUBGRAPH-field round-trip, not merely same-parent-field. Runnable.
+  - name: different_subgraph_fields_no_warning
+    state:
+      fields:
+        acc: {type: list<string>, reducer: append, default: ["p0"]}
+    entry: run
+    nodes:
+      run:
+        subgraph: sg_diff
+        inputs: {sg_in: acc}      # subgraph sg_in <- parent acc
+        outputs: {acc: sg_out}    # parent acc <- subgraph sg_out (a distinct field)
+    edges:
+      - {from: run, to: END}
+    initial_state: {}
+    # `acc` is touched via DIFFERENT subgraph fields (sg_in in, sg_out out), so
+    # this is NOT a round-trip and MUST NOT warn — even though acc's reducer is
+    # `append`. The empty list is EXHAUSTIVE: an over-warn on the
+    # same-parent-field / different-subgraph-field shape FAILS here.
+    expected_compile_warning: []
+    expected:
+      # Runnable too: sg_out (["computed"]) merges into acc via append ->
+      # ["p0", "computed"]. "p0" appears once — a genuine round-trip would double it.
+      final_state:
+        acc: ["p0", "computed"]
+      execution_order: [run]
+
+  # Case 4 — trigger shape (c): inputs-only + default-name-match-out. Explicit
+  # maps with `inputs` ONLY (no `outputs`), copying parent `shared` into the
+  # SAME-NAMED subgraph field `shared`. With `outputs` absent, projection-out is
+  # the field-name-matching default, which merges subgraph `shared` straight back
+  # into parent `shared` -> a round-trip into `append`. MUST warn. This shape
+  # previously shipped UNWARNED. Compile-only.
+  - name: inputs_only_default_out_round_trip_warns
+    graph:
+      state:
+        fields:
+          shared: {type: list<string>, reducer: append, default: ["p0"]}
+      entry: a
+      nodes:
+        a:
+          subgraph: sg_shared
+          inputs: {shared: shared}   # subgraph shared <- parent shared; no `outputs`
+      edges:
+        - {from: a, to: END}
+    expected_compile_warning: [projection_reducer_round_trip]
+
+  # Case 5 — negative control isolating the round-trip STRUCTURE from mere
+  # append-presence. The subgraph touches parent `log` (reducer `append`)
+  # projected IN only, never OUT: `projects_in: [log], projects_out: []`. `log`
+  # is copied in but never projected back -> NOT round-tripped -> MUST NOT warn.
+  # An impl that warns on any non-idempotent field a subgraph merely touches
+  # (rather than only on an actual round-trip) FAILS here. Compile-only.
+  - name: non_round_tripped_append_field_no_warning
+    graph:
+      state:
+        fields:
+          log: {type: list<string>, reducer: append, default: ["p0"]}
+      entry: a
+      nodes:
+        a:
+          subgraph: sg_log
+          projects_in: [log]
+          projects_out: []
+      edges:
+        - {from: a, to: END}
+    expected_compile_warning: []

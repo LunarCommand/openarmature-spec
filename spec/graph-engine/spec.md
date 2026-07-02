@@ -166,12 +166,71 @@ the defaults themselves: projection-in is off by default (so `inputs` turns it o
 projection-out is on by default via field-name matching (so `outputs` replaces it to avoid ambiguous mixed
 rules).
 
+**Declared same-name projection boundary.** As a checked alternative between the implicit
+field-name-matching default and the explicit rename maps, a subgraph-as-node MAY declare its boundary as two
+field-name *sets* — an **in-set** and an **out-set** — naming the fields that cross by the *same name* on
+both sides. The *per-entry* semantics of each set match the explicit maps restricted to same-name pairs: an in-set entry
+behaves as an `inputs` entry whose subgraph and parent field names coincide (the parent field's value is
+copied into the same-named subgraph field at entry); an out-set entry behaves as an `outputs` entry whose
+parent and subgraph field names coincide (the subgraph field's final value is merged into the same-named
+parent field via the parent's reducer at exit).
+
+Unlike the maps, the declared form is a **complete boundary declaration with no field-name-matching
+fallback** — using it states exactly what crosses:
+
+- The in-set fully determines projection-in: subgraph fields not named receive their schema-declared
+  defaults; an empty in-set projects nothing in (identical to the no-projection-in default).
+- The out-set fully determines projection-out, replacing field-name matching: subgraph fields not named are
+  discarded; an empty out-set projects nothing out. There is no "absent out-set falls back to field-name
+  matching" state — a subgraph-as-node that wants field-name matching uses the default (declares no
+  boundary). An empty set means "nothing," symmetrically for both directions.
+
+Using the declared form governs **both** directions: declaring either set opts the node into the declared
+form, and a set that is *omitted entirely* is treated as empty — nothing crosses in that direction, with no
+fall-back to field-name matching or to the maps' defaults. Declaring `projects_in` alone, for example,
+projects the named fields in and projects **nothing** out (to keep field-name matching on the way out, use
+the default form). This is what distinguishes the declared form from the explicit maps, whose `inputs`-only
+case *does* leave projection-out at the field-name-matching default (below).
+
+The declared same-name sets and the explicit `inputs`/`outputs` maps are **mutually exclusive** on a single
+subgraph-as-node: a node declares its projection with at most one of the default (nothing declared), the
+declared same-name sets, or the explicit maps.
+
 Compilation MUST fail with category `mapping_references_undeclared_field` if an `inputs` mapping names a
 parent field that is not declared in the parent's state schema, or a subgraph field that is not declared in
 the subgraph's state schema. The same rule applies symmetrically to `outputs`. Implementations SHOULD
 validate at compile time that the types of mapped parent/subgraph field pairs are compatible (per the
 language's type system's notion of compatibility); this is SHOULD rather than MUST because type-system
 expressiveness varies across languages.
+
+The same `mapping_references_undeclared_field` rule applies to the declared same-name sets: compilation MUST
+fail if an in-set or out-set names a field not declared on the relevant schema (a same-name field is checked
+on both the parent and the subgraph schema). Declaring both the same-name sets and an explicit
+`inputs`/`outputs` mapping on one subgraph-as-node MUST fail compilation with category
+`conflicting_projection_forms`.
+
+**Reducer round-trip warning.** Because projection-out merges through the parent's reducer, a field projected
+*in* and then *back out* into the same parent field re-merges: for a reducer that is not
+*round-trip-idempotent* — one for which re-applying an already-merged value changes the field — the unchanged
+value is merged a second time (e.g. an `append` reducer doubles the list). Of the canonical reducers above,
+`last_write_wins`, `merge`, `merge_by_key`, and `dedupe_append` are round-trip-idempotent (a replace, or a
+keyed / deduplicated / shallow merge re-applied with the same value, is a no-op); `append`, `concat_flatten`,
+`bounded_append`, and `merge_all` are not — `append` / `concat_flatten` / `bounded_append` grow the field on
+re-application, and `merge_all` requires a *list-of-mappings* update (see its definition above), so re-merging
+a single mapping value is ill-typed and raises `reducer_error` rather than a no-op. A projection
+**round-trips** a field when the same parent field is copied into the subgraph and a subgraph field carrying
+it is merged back into that same parent field. This occurs when: (a) in the declared same-name form, a field
+is named in **both** the in-set and the out-set; (b) in the explicit maps, a parent field is both an `inputs`
+value and an `outputs` key mapped to the **same** subgraph field; or (c) with `outputs` absent (projection-out
+left at the field-name-matching default), an `inputs` entry copies a parent field into a **same-named**
+subgraph field, so field-name matching merges it straight back out. Implementations **MUST** emit a compile-time warning
+`projection_reducer_round_trip` (a warning, distinct from the MUST-fail compile-error categories below) when a
+projection round-trips a field into a non-round-trip-idempotent **canonical** reducer, and **SHOULD** emit it
+when the target is a custom reducer the implementation classifies as non-idempotent. The warning is a
+structural heuristic — an implementation cannot statically prove the subgraph left the value unchanged, so it
+MAY fire on a round-trip that legitimately replaces the value — and it changes no runtime behavior
+(projection-out still merges through the parent's reducer). Authors SHOULD route a round-tripped field through
+a replace/idempotent reducer or avoid round-tripping it.
 
 **Compiled graph.** The result of compiling a graph definition. A compiled graph is immutable and executable.
 The entry node MUST be declared explicitly by the graph author — there is no implicit "first node added"
@@ -187,8 +246,10 @@ identifiers (as an error class, error code, or tagged discriminant, per the lang
 - `dangling_edge` — an edge references a node name that is not declared.
 - `multiple_outgoing_edges` — a node has more than one outgoing edge.
 - `conflicting_reducers` — a state field has more than one declared reducer.
-- `mapping_references_undeclared_field` — a subgraph-as-node `inputs` or `outputs` mapping names a field
-  not declared in the relevant state schema.
+- `mapping_references_undeclared_field` — a subgraph-as-node `inputs` or `outputs` mapping, or a declared
+  same-name in-set / out-set, names a field not declared in the relevant state schema.
+- `conflicting_projection_forms` — a subgraph-as-node declares both the same-name projection sets and an
+  explicit `inputs`/`outputs` mapping (the two are mutually exclusive).
 - `reducer_configuration_invalid` — a reducer factory was supplied invalid construction parameters
   (e.g., `bounded_append(max_len=0)`, `merge_by_key(key=None)`). Raised at field registration / graph
   compilation time, before any node body runs. Distinct from `conflicting_reducers`, which is about
@@ -1297,3 +1358,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §6 observer event union gained `LlmTokenEvent` — an **unpaired within-call sub-event** (not a call outcome; no `LlmTokenFailedEvent`) carrying one streamed delta per chunk when `complete()` is called with `stream` set (llm-provider §5). Mirrors `LlmCompletionEvent`'s identity / scoping baseline plus `chunk_index`, `delta_kind` (`"content"` / `"reasoning"`; `"tool_call"` reserved, not emitted), and `delta`; correlated to the terminal `LlmCompletionEvent` / `LlmFailedEvent` by shared `call_id`, dispatched in `chunk_index` order before the terminal event. `attempt_index` is node-level (does not advance across llm-provider §7.1 call-level wire attempts). Bundled OTel / Langfuse observers do not render it — it is payload for custom forwarding observers by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
 - §6 observer event surface gained `fan_out_index_chain` and `branch_name_chain` — the enclosing fan-out instance / parallel-branch lineage (outermost→innermost, aligned to `namespace`, null at non-applicable depths) — on `NodeEvent` and the provider/tool events (`LlmCompletionEvent`, `LlmFailedEvent`, `LlmTokenEvent`, `EmbeddingEvent` / `EmbeddingFailedEvent`, `RerankEvent` / `RerankFailedEvent`, `ToolCallEvent`, with `ToolCallFailedEvent` inheriting by reference), plus the framework metadata-augmentation event (so its observer scoping stays consistent with the chain-keyed span stack). The existing scalar `fan_out_index` / `branch_name` are retained as the innermost values; the chains disambiguate the same node nested in concurrent enclosing instances, which the scalars alone cannot. Additive by [proposal 0084](../../proposals/0084-nested-fan-out-span-lineage.md)
 - §6 `EmbeddingEvent` gained `output_vectors` (`list of list of float`, `EmbeddingResponse.vectors`) and `RerankEvent` gained `output_results` (the `ScoredDocument` list, `RerankResponse.results`) — the output-payload counterparts to `input_strings` / `query` + `documents`, paralleling `LlmCompletionEvent.output_content`; populated unconditionally on the success event, observer-side privacy-gated at the rendering boundary (the events' privacy-posture paragraphs extended to list them). The failure events carry no output. Lets observers render the embedding/rerank output the §8.4.5 / §8.4.7 Langfuse mappings and the OTel `openarmature.rerank.results` attribute require by [proposal 0089](../../proposals/0089-embedding-rerank-typed-event-output.md)
+- §2 subgraph projection gained a **declared same-name boundary** (in-set / out-set of field names, a complete declaration with no field-name-matching fallback, per-field semantics = the explicit maps restricted to same-name pairs), mutually exclusive with the explicit `inputs`/`outputs` maps (new compile category `conflicting_projection_forms`; `mapping_references_undeclared_field` extended to the declared sets), plus a **reducer round-trip warning** `projection_reducer_round_trip` (MUST for a round-trip into a non-round-trip-idempotent canonical reducer — `append`/`concat_flatten`/`bounded_append`/`merge_all`; SHOULD for custom) by [proposal 0094](../../proposals/0094-subgraph-projection-declared-boundary.md)

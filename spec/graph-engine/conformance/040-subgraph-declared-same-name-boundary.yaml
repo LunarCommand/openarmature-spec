@@ -1,0 +1,164 @@
+# Subgraph projection — declared same-name boundary (graph-engine §2). A
+# subgraph-as-node names the fields that cross the boundary as two field-name
+# SETS on the node: an in-set and an out-set, matching by the SAME name on both
+# schemas. Per-field semantics equal the explicit `inputs`/`outputs` maps
+# restricted to same-name pairs — but the declared form is a COMPLETE boundary
+# declaration with NO field-name-matching fallback (empty set = nothing).
+#
+# NEW harness directives introduced by this fixture (per §3.2; the
+# subgraph-as-node projection directives are documented in fixture headers,
+# alongside `subgraph`/`inputs`/`outputs`, not in conformance-adapter §5.4):
+#
+#   projects_in:  [<field>, ...]   # the in-set — subgraph_fields (== parent
+#                                  #   fields, same name) copied IN at entry.
+#   projects_out: [<field>, ...]   # the out-set — subgraph_fields (== parent
+#                                  #   fields, same name) merged OUT at exit via
+#                                  #   the parent's reducer.
+#
+# Both appear on a subgraph-as-node (a node with `subgraph: <name>`), e.g.
+#   outer_sub: {subgraph: inner, projects_in: [seed], projects_out: [doubled]}
+# The two sets are mutually exclusive with the explicit `inputs`/`outputs`
+# maps (fixture 041 exercises the conflict).
+#
+# The shared subgraph `inner` computes `doubled = seed * 2` (update_from_field,
+# per fixture 017), so the projected-IN `seed` is load-bearing: if the copy-in
+# is skipped, subgraph.seed stays at its schema default (0) and doubled == 0.
+
+subgraphs:
+  inner:
+    state:
+      fields:
+        seed:
+          type: int
+          default: 0
+        doubled:
+          type: int
+          default: -1
+        scratch:
+          type: string
+          default: ""
+    entry: compute
+    nodes:
+      # doubled = seed * 2 — reads the (possibly projected-in) subgraph.seed.
+      compute:
+        update_from_field: {doubled: seed, multiplier: 2}
+      # writes `scratch` (name matches a parent field; proves discard /
+      # no-name-match-fallback) and `seed` = 777, AFTER `compute` read the
+      # projected-in seed. `seed` is NOT in case 1's out-set, so this
+      # post-compute write must NOT reach the parent — that makes case 1's
+      # `seed: 5` assertion load-bearing (it would be 777 if wrongly projected out).
+      mark:
+        update: {scratch: "sub-scratch", seed: 777}
+    edges:
+      - {from: compute, to: mark}
+      - {from: mark, to: END}
+
+cases:
+  # Case 1 — the declared in-set and out-set project only their named fields.
+  # projects_in: [seed] copies parent.seed (5) -> subgraph.seed, so compute
+  # yields doubled = 10; projects_out: [doubled] merges subgraph.doubled (10)
+  # back into parent.doubled via last_write_wins. `scratch` is in NEITHER set:
+  # the subgraph's scratch ("sub-scratch") is DISCARDED (no name-match
+  # fallback), so parent.scratch keeps "outer-scratch".
+  - name: declared_boundary_projects_named_fields
+    state:
+      fields:
+        seed:
+          type: int
+          default: 5
+        doubled:
+          type: int
+          default: -1
+        scratch:
+          type: string
+          default: "outer-scratch"
+        trace:
+          type: list<string>
+          reducer: append
+          default: ["outer-start"]
+    entry: outer_a
+    nodes:
+      outer_a:
+        update: {trace: ["outer_a"]}
+      outer_sub:
+        subgraph: inner
+        projects_in: [seed]
+        projects_out: [doubled]
+      outer_b:
+        update: {trace: ["outer_b"]}
+    edges:
+      - {from: outer_a, to: outer_sub}
+      - {from: outer_sub, to: outer_b}
+      - {from: outer_b, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        # Load-bearing: `seed` is projected IN but NOT in the out-set. The
+        # subgraph's `mark` node overwrites subgraph.seed to 777 (after `compute`
+        # read the projected-in 5), yet `projects_out: [doubled]` does not carry
+        # `seed`, so the parent keeps 5. If this were 777, the impl wrongly
+        # projected `seed` out (name-matched a field outside the out-set).
+        seed: 5
+        # Load-bearing: proves projects_in copied parent.seed (5) into the
+        # subgraph (doubled = 5 * 2 = 10). If copy-in were skipped, this is 0.
+        doubled: 10
+        # `scratch` is in neither set -> subgraph's "sub-scratch" is discarded.
+        # The declared form has NO field-name-matching fallback, so the matching
+        # name does not project. If this were "sub-scratch", the impl wrongly
+        # fell back to name-matching.
+        scratch: "outer-scratch"
+        # Subgraph `inner` has no `trace` field, so it does not contribute.
+        trace: ["outer-start", "outer_a", "outer_b"]
+      execution_order: [outer_a, outer_sub, outer_b]
+
+  # Case 2 — a present-but-empty out-set projects NOTHING out. Same subgraph,
+  # projects_out: []. Both `doubled` and `scratch` are subgraph fields whose
+  # names MATCH parent fields, yet neither is projected out: the declared form
+  # has no field-name-matching fallback. Contrast fixture 006, where the DEFAULT
+  # form (no declaration) WOULD name-match `doubled` and `scratch` and project
+  # them. Here parent.doubled keeps its pre-subgraph value (42) and parent.scratch
+  # keeps "outer-scratch".
+  - name: empty_out_set_projects_nothing
+    state:
+      fields:
+        seed:
+          type: int
+          default: 5
+        doubled:
+          type: int
+          default: -1
+        scratch:
+          type: string
+          default: "outer-scratch"
+        trace:
+          type: list<string>
+          reducer: append
+          default: ["outer-start"]
+    entry: outer_a
+    nodes:
+      # Seeds an observable pre-subgraph value into `doubled` (42).
+      outer_a:
+        update: {doubled: 42, trace: ["outer_a"]}
+      outer_sub:
+        subgraph: inner
+        projects_in: [seed]
+        projects_out: []
+      outer_b:
+        update: {trace: ["outer_b"]}
+    edges:
+      - {from: outer_a, to: outer_sub}
+      - {from: outer_sub, to: outer_b}
+      - {from: outer_b, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        seed: 5
+        # projects_out: [] -> subgraph.doubled (10) is NOT projected. parent.doubled
+        # keeps its pre-subgraph value 42. If this were 10, projection-out ran on an
+        # empty set; if it were name-matched at all, the declared form fell back.
+        doubled: 42
+        # subgraph.scratch ("sub-scratch") is NOT projected either -> parent keeps
+        # "outer-scratch". Under fixture 006's default form this name WOULD match.
+        scratch: "outer-scratch"
+        trace: ["outer-start", "outer_a", "outer_b"]
+      execution_order: [outer_a, outer_sub, outer_b]

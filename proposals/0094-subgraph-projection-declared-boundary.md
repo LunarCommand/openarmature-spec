@@ -1,8 +1,9 @@
 # 0094: Subgraph Projection — Declared Same-Name Boundary
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-01
+- **Accepted:** 2026-07-02
 - **Targets:** spec/graph-engine/spec.md **§2 Concepts** (the *Subgraph* / *Explicit input/output mapping*
   block, ~L128–197, and the compile-error category list, ~L182–196): add a third projection form — a
   **declared same-name projection boundary** — alongside the field-name-matching default and the explicit
@@ -35,8 +36,9 @@ sharp edges of the current model without changing any existing behavior:
 
 2. A **reducer round-trip warning** — the projection merge deliberately uses the parent's reducers (like
    any node's return), which means a field projected *in* and then *back out* through a reducer that grows
-   on re-application (e.g. an append reducer) merges twice and doubles. Implementations SHOULD warn at
-   compile time when a projection round-trips a field into such a reducer.
+   on re-application (e.g. an append reducer) merges twice and doubles. Implementations warn at compile
+   time when a projection round-trips a field into such a reducer (MUST for the §2 canonical non-idempotent
+   reducers, whose idempotency is statically determinable; SHOULD for custom reducers).
 
 Both are behaviorally-normative, so a second implementation matches the first rather than being free to
 choose a different presence-check rule or a different stance on round-tripped reducers — either of which
@@ -125,10 +127,12 @@ whose two names coincide.)
 
 **Round-trip-idempotent reducer.** A reducer is *round-trip-idempotent* when re-applying an
 already-merged value leaves the field unchanged. Of the §2 canonical reducers: `last_write_wins`, `merge`,
-`merge_by_key`, `dedupe_append`, and `merge_all` are round-trip-idempotent (a replace, a keyed or
-deduplicated merge, or a mapping-merge re-applied with the same value is a no-op); `append`,
-`concat_flatten`, and `bounded_append` are **not** (they grow the field on re-application). A custom
-(user-registered) reducer's idempotency is implementation-classified where determinable.
+`merge_by_key`, and `dedupe_append` are round-trip-idempotent (a replace, or a keyed / deduplicated /
+shallow merge re-applied with the same value, is a no-op); `append`, `concat_flatten`, `bounded_append`,
+and `merge_all` are **not** — `append` / `concat_flatten` / `bounded_append` grow the field on
+re-application, and `merge_all` requires a *list-of-mappings* update, so re-merging a single mapping value
+is ill-typed (`reducer_error`), never a no-op. A custom (user-registered) reducer's idempotency is
+implementation-classified where determinable.
 
 **Round-tripped field.** A projection *round-trips* a field when the same parent field is copied into the
 subgraph and a subgraph field carrying it is merged back into that same parent field — in the declared
@@ -138,18 +142,22 @@ maps subgraph `s` → parent `p` and `outputs` maps parent `p` → subgraph `s`)
 `inputs` source and an `outputs` target via *different* subgraph fields is not a round-trip (the value
 merged back is a distinct, subgraph-computed value).
 
-**The warning.** Implementations **SHOULD** emit a compile-time **warning** — distinct from the MUST-fail
-compile-error categories — when a projection round-trips a field into a parent reducer that is not
-round-trip-idempotent. The advisory identifier is `projection_reducer_round_trip`. Authors SHOULD either
-route such a field through a replace/idempotent reducer or not round-trip it (e.g. keep the subgraph
-read-only with respect to that field and have the parent read it directly).
+**The warning.** When a projection round-trips a field into a parent reducer that is not
+round-trip-idempotent, implementations emit a compile-time **warning** — distinct from the MUST-fail
+compile-error categories — identified as `projection_reducer_round_trip`. The warning is **MUST** when the
+target reducer is a §2 canonical reducer that is not round-trip-idempotent (`append`, `concat_flatten`,
+`bounded_append`): their idempotency is statically determinable from §2's definitions, so the warning is
+deterministic and conformance-tested (via the conformance-adapter `expected_compile_warning` directive). It
+is **SHOULD** for a custom (user-registered) reducer the implementation classifies as non-idempotent.
+Authors SHOULD either route such a field through a replace/idempotent reducer or not round-trip it (e.g.
+keep the subgraph read-only with respect to that field and have the parent read it directly).
 
-This is a **SHOULD**, and it is a **structural heuristic**: an implementation cannot statically prove the
-subgraph left the value unchanged, so the warning MAY fire on a round-trip that legitimately replaces the
-value (a false positive that is acceptable for an advisory). It SHOULD nonetheless fire on the structural
-condition above, so implementations agree on when it is raised. For a custom reducer whose idempotency an
-implementation cannot determine, the implementation MAY omit the warning. The warning changes no runtime
-behavior — projection-out still merges through the parent's reducer in every case.
+The warning is a **structural heuristic**: an implementation cannot statically prove the subgraph left the
+value unchanged, so it MAY fire on a round-trip that legitimately replaces the value (an acceptable false
+positive). It fires on the structural condition above, so implementations agree on when it is raised. For a
+custom reducer whose idempotency an implementation cannot determine, the implementation MAY omit the warning
+(hence SHOULD, not MUST, for custom reducers). The warning changes no runtime behavior — projection-out
+still merges through the parent's reducer in every case.
 
 ### pipeline-utilities §11 / §9 — the round-trip warning applies; the set form does not extend
 
@@ -158,10 +166,11 @@ parent reducer, which includes two pipeline-utilities surfaces beyond the genera
 
 - **Parallel-branches `subgraph` branches** (§11.2 in / §11.4 out) — a field carried in via the branch
   `inputs` and back out via the branch `outputs` through the same subgraph field, into a
-  non-round-trip-idempotent parent reducer, round-trips and SHOULD warn.
+  non-round-trip-idempotent parent reducer, round-trips and warns (MUST for a canonical non-idempotent
+  reducer, SHOULD for custom — same by-reducer-type rule as the general subgraph-as-node).
 - **Fan-out** (§9.1 `inputs` / §9.3 `extra_outputs`) — a field carried in via `inputs` and back out via
   `extra_outputs` through the same subgraph field, into a non-round-trip-idempotent reducer, round-trips
-  and SHOULD warn.
+  and warns (MUST for a canonical non-idempotent reducer, SHOULD for custom).
 
 Each section gains a one-line pointer to the §2 warning; no other behavioral change. The **declared
 same-name set form is NOT added to these surfaces** in this proposal — the branch spec (§11.1.1) and the
@@ -193,10 +202,12 @@ New graph-engine fixtures (numbers assigned at Accept):
   no-false-positive case). A parallel fan-out fixture (`inputs` + `extra_outputs`) exercises the warning on
   that surface.
 
-Because the round-trip warning is advisory (SHOULD), its fixtures assert the *identifier and structural
-condition* an implementation that warns MUST use, not that every implementation warns; the exact conformance
-shape for a SHOULD-level compile warning (vs the existing MUST-fail diagnostics) is settled at Accept and may
-require a conformance-adapter primitive for asserting compile warnings distinctly from compile errors.
+The warning is asserted via the conformance-adapter §5.8 `expected_compile_warning` directive (added by this
+accept). Its **list** form asserts the exhaustive set of compile warnings emitted (`[]` asserting none), so a
+fixture can assert both that the warning MUST fire (the canonical non-idempotent round-trip) and that it MUST
+NOT fire (the round-trip-idempotent and no-round-trip cases) — catching an over-warning implementation. The
+SHOULD-level custom-reducer case is not asserted by absence (an implementation may omit it), so it stays out
+of the exhaustive-list fixtures.
 
 Existing subgraph-projection fixtures (default field-name matching, explicit `inputs`/`outputs`) are
 unaffected — this proposal adds a form, a compile category, and a warning; it changes none of their behavior.
@@ -206,7 +217,7 @@ unaffected — this proposal adds a form, a compile category, and a warning; it 
 **MINOR bump** (pre-1.0), additive. A new opt-in projection form, one new compile-error category
 (`conflicting_projection_forms`, reachable only by the new form), and an advisory compile-time warning; the
 field-name-matching default and the explicit `inputs`/`outputs` maps are unchanged, so existing graphs and
-fixtures are unaffected. Tentative spec version target deferred to Accept.
+fixtures are unaffected. Ships as spec **v0.89.0** (whole-spec bump spanning graph-engine, conformance-adapter, and pipeline-utilities).
 
 ## Alternatives considered
 
@@ -224,9 +235,10 @@ fixtures are unaffected. Tentative spec version target deferred to Accept.
 4. **Status quo: "just use the explicit `inputs`/`outputs` maps."** Reject — the maps re-introduce the
    rename-map boilerplate for the common same-name case, so authors default to the unchecked path and reach
    for the maps only reactively. The declared set is the terse, checked middle.
-5. **Make the reducer round-trip a MUST compile error.** Reject — reducer idempotency is not always
-   statically determinable (custom reducers), and some round-trips legitimately replace the value; a hard
-   error would over-constrain. SHOULD-warn fits the certainty available.
+5. **Make the reducer round-trip a MUST compile error (a hard failure).** Reject — reducer idempotency is
+   not always statically determinable (custom reducers), and some round-trips legitimately replace the
+   value; a hard *error* would over-constrain. The chosen middle: a **warning** (never a compile failure),
+   MUST for the statically-classifiable §2 canonical non-idempotent reducers and SHOULD for custom.
 6. **Give the declared form the maps' absent-vs-empty fallback (absent out-set → field-name matching).**
    Reject — for a *set*, an empty collection is an easy accidental value, so a silent fallback on absence
    (with "project nothing" on empty) is a footgun and is asymmetric between the directions. Making the
@@ -240,11 +252,11 @@ fixtures are unaffected. Tentative spec version target deferred to Accept.
 
 ## Open questions
 
-- **Conformance shape for a SHOULD-level compile warning.** The existing subgraph compile diagnostics are
-  MUST-fail categories; a SHOULD-emit warning is a new assertion shape. Resolve at Accept whether the fixture
-  asserts "an implementation that warns names it `projection_reducer_round_trip` under this structural
-  condition" (advisory) or a stronger form, and whether the conformance-adapter needs a warning-capture
-  primitive distinct from its compile-error capture.
+- **Conformance shape for the compile warning.** RESOLVED at Accept: the warning is **MUST** for a
+  round-trip into a non-idempotent §2 canonical reducer (deterministic, so a hard fixture asserts it) and
+  **SHOULD** for custom reducers. conformance-adapter gains an `expected_compile_warning: <category>`
+  directive (parallel to `expected_compile_error`) so the canonical case is conformance-tested; the
+  existing compile-error diagnostics are unchanged.
 
 ## Out of scope
 

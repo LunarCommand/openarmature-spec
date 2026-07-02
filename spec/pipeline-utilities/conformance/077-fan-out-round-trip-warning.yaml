@@ -1,0 +1,60 @@
+# §9.3 fan-out reducer round-trip warning (proposal 0094). The graph-engine §2
+# `projection_reducer_round_trip` warning applies to fan-out: a field carried
+# INTO an instance via `inputs` and back OUT via `extra_outputs` through the
+# SAME subgraph field, into a non-round-trip-idempotent parent reducer (e.g.
+# `append`), round-trips and re-merges — doubling the value.
+#
+# `inputs` is `Mapping[str, str]` (subgraph_field -> parent_field); `extra_outputs`
+# is `Mapping[str, str]` (parent_field -> subgraph_field). Here parent `log`
+# (reducer `append`) is copied into subgraph field `carry` via `inputs`, and
+# subgraph field `carry` is merged back into parent `log` via `extra_outputs` —
+# the SAME subgraph field, the SAME parent field: a round-trip.
+#
+# `projection_reducer_round_trip` is a WARNING (compilation SUCCEEDS), asserted
+# via the `expected_compile_warning` directive (conformance-adapter §5.8),
+# distinct from the MUST-fail `expected_compile_error` categories (per
+# graph-engine fixture 007 / pipeline-utilities fixture 065). MUST for the §2
+# canonical non-idempotent reducers. Uses the exhaustive one-element list form
+# `[projection_reducer_round_trip]` — exactly that warning, no other.
+
+subgraphs:
+  unit:
+    state:
+      fields:
+        input: {type: int, default: 0}
+        out: {type: string, default: ""}
+        carry: {type: list<string>, reducer: append, default: []}
+    entry: work
+    nodes:
+      work: {update: {out: "done"}}
+    edges:
+      - {from: work, to: END}
+
+cases:
+  # Fan-out node round-trips parent `log` (append) through subgraph field
+  # `carry`: `inputs: {carry: log}` copies it in, `extra_outputs: {log: carry}`
+  # merges it back out via the parent's append reducer -> round-trip -> warn.
+  # Compilation SUCCEEDS with the warning.
+  - name: fan_out_round_trip_into_append_warns
+    graph:
+      state:
+        fields:
+          items: {type: list<int>, default: [1]}
+          results: {type: list<string>, reducer: append, default: []}
+          log: {type: list<string>, reducer: append, default: ["p0"]}
+      entry: process
+      nodes:
+        process:
+          fan_out:
+            subgraph: unit
+            items_field: items
+            item_field: input
+            collect_field: out
+            target_field: results
+            inputs: {carry: log}        # subgraph carry <- parent log
+            extra_outputs: {log: carry} # parent log <- subgraph carry (same field)
+            error_policy: fail_fast
+      edges:
+        - {from: process, to: END}
+    # Exhaustive list form: exactly this one warning, no other.
+    expected_compile_warning: [projection_reducer_round_trip]
