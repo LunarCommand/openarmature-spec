@@ -146,7 +146,7 @@ merged back is a distinct, subgraph-computed value).
 round-trip-idempotent, implementations emit a compile-time **warning** — distinct from the MUST-fail
 compile-error categories — identified as `projection_reducer_round_trip`. The warning is **MUST** when the
 target reducer is a §2 canonical reducer that is not round-trip-idempotent (`append`, `concat_flatten`,
-`bounded_append`): their idempotency is statically determinable from §2's definitions, so the warning is
+`bounded_append`, `merge_all`): their idempotency is statically determinable from §2's definitions, so the warning is
 deterministic and conformance-tested (via the conformance-adapter `expected_compile_warning` directive). It
 is **SHOULD** for a custom (user-registered) reducer the implementation classifies as non-idempotent.
 Authors SHOULD either route such a field through a replace/idempotent reducer or not round-trip it (e.g.
