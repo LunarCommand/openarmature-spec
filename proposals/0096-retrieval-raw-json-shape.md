@@ -22,7 +22,7 @@
 ## Summary
 
 `raw` (retrieval-provider §4 / §6) exists to give callers **verbatim** access to what the provider actually
-returned — the charter §3.1 principle-8 *transparency over abstraction* surface the §6 row already cites.
+returned — the *transparency over abstraction* the §6 row already cites (charter §3.1 principle 8).
 Its type is pinned to `dict[str, Any]`, an object shape inherited from llm-provider's `Response.raw`
 (`raw` predates any §8 wire mapping; chat/completion responses are always JSON objects). The TEI wire mapping (§8.1) returns **bare
 JSON arrays** — `/embed` a list of vector lists, `/rerank` a list of result objects — whose verbatim
