@@ -1,0 +1,1 @@
+../../proposals/0096-retrieval-raw-json-shape.md
