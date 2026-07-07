@@ -87,7 +87,12 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-**0095** (adaptive call-level retry — per-attempt request override + structured-output reask) is Draft; every other numbered proposal is Accepted. New work opens as a numbered Draft proposal under [`proposals/`](proposals/).
+Proposals currently in flight. Status is Draft; contracts may change before they are Accepted.
+
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0095](proposals/0095-adaptive-call-level-retry.md) | Draft | llm-provider §7.1 | Adaptive call-level retry — per-attempt request override + structured-output reask |
+| [0096](proposals/0096-retrieval-raw-json-shape.md) | Draft | retrieval-provider §4 / §6 / §8 | Widen `raw` to verbatim JSON (`dict \| list`); define a chunked call's `raw` as the list of per-request responses |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
