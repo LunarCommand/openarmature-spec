@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.90.0] — 2026-07-07
+
+**Changed**
+
+- **retrieval-provider §4 / §6 / §8 — `raw` widened to verbatim JSON of any top-level shape.** `EmbeddingResponse.raw` and `RerankResponse.raw` go from `dict[str, Any]` to `dict[str, Any] | list[Any]` (TS `Record<string, unknown> | unknown[]`): `raw` is now the **verbatim deserialized JSON of the successful provider response** — an object or an array, matching the response's top-level shape — and a mapping MUST NOT wrap or reshape it. This unblocks bare-array wire (TEI `/embed` returns a list of vector arrays, `/rerank` a list of result objects), which the `dict`-only type could not carry without inventing a synthetic wrapper key. §8's *Batch chunking* rule also gains a `raw` stitch clause and §8.1 a `raw` note pinning the multi-request case: a chunk-and-stitch call's `raw` is the **list of the per-request verbatim responses**, in order — nothing the provider returned across the chunk requests is lost, while the normalized fields (`response_id`, `usage`, `vectors` / `results`) stay ergonomic summaries. Scoped to retrieval-provider; llm-provider `Response.raw` stays object-shaped (chat/completion responses are always objects). ([proposal 0096](proposals/0096-retrieval-raw-json-shape.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** A public-type widening on two response fields plus a new `raw` stitch rule in §8 (previously-undefined multi-request behavior). Additive for object-shaped single-request mappings (the union still admits `dict`); it unblocks the array-response mappings and closes the chunked-`raw` case. Conformance: `raw` assertions added to the TEI single-request (017 / 014) and chunk-and-stitch (015 / 038) fixtures and the Cohere embed chunk-and-stitch (037) — no new fixtures.
+
 ## [0.89.0] — 2026-07-02
 
 **Added**

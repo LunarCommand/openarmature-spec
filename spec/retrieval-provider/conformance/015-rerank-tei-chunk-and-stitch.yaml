@@ -145,6 +145,22 @@ cases:
           # TEI reports no usage; usage is null (the record itself, not an
           # all-null RerankUsage record — §6; MUST NOT fabricate a record).
           usage: null
+          # The chunk-and-stitch `raw` (§8.1 rerank chunking / §6): the LIST
+          # of the per-chunk verbatim /rerank responses, in request order —
+          # one entry per request, each entry that chunk's BARE result array
+          # with its CHUNK-LOCAL indices, provider order (NOT re-based to
+          # absolute positions, NOT re-sorted — that is the stitched
+          # `results` above). Mirrors the three mock_rerank bodies exactly.
+          raw:
+            - - {index: 2, score: 0.10}
+              - {index: 0, score: 0.20}
+              - {index: 3, score: 0.55}
+              - {index: 1, score: 0.95}
+            - - {index: 3, score: 0.05}
+              - {index: 1, score: 0.30}
+              - {index: 0, score: 0.80}
+              - {index: 2, score: 0.88}
+            - - {index: 0, score: 0.65}
       invariants:
         exactly_three_rerank_requests_issued: true
         chunk_texts_sizes_4_4_1_consecutive_slices: true

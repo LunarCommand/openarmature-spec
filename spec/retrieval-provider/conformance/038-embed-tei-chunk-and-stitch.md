@@ -21,7 +21,9 @@ construction `chunk_size` (§8.1 `/embed`: "bounded by TEI's `max-client-batch-s
 - retrieval-provider §8 — *Batch chunking* (the general rule): consecutive `≤ cap` slices, one request per
   chunk with identical per-call params, vectors concatenated in input order, usage combined record-aware
   (`input_tokens` summed when usage is reported, else `usage = null`), `response_id` from the first chunk;
-  a mapping MUST NOT send an over-cap request.
+  a mapping MUST NOT send an over-cap request. The §8 `raw` stitch clause sets `EmbeddingResponse.raw` to the **list of the
+  per-chunk verbatim responses**, in request order — one level deeper than a single-request `raw` (each
+  entry a chunk's bare vector array), NOT flattened into a single concatenated array (that is `vectors`).
 - retrieval-provider §8.1 TEI — `/embed`: `POST {base_url}/embed` with `{"inputs": [str]}` (always the
   array form), bounded by `max-client-batch-size` / the construction `chunk_size`; the response is the
   **bare** vector array in input order; TEI surfaces no usage and no response id.
@@ -61,6 +63,8 @@ no response id, so the §8 "first chunk's id" ⇒ **`null`** (matching 017).
 - `EmbeddingResponse.model` is the bound id; `response_id` is `null` (TEI surfaces none —
   first-of-no-ids). `usage` is `null` (TEI `/embed` carries no usage object; §8 step 4 produces
   `usage = null` when the provider reports none — see above).
+- `raw` is the list of the three per-chunk bare vector arrays in request order (chunk sizes 2 / 2 / 1),
+  one entry per `/embed` request — the chunk responses unstitched, not the flattened `vectors`.
 
 **What fails:**
 

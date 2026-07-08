@@ -9,7 +9,9 @@ the sort + valid-index invariants honored.
 
 - retrieval-provider §5 / §6 — `rerank()` MUST return results sorted by `relevance_score`
   descending, MUST preserve each result's `index`, and surfaces `ScoredDocument.document` from the
-  provider echo.
+  provider echo. `RerankResponse.raw` is the verbatim deserialized provider response — for TEI
+  `/rerank` a **bare result array** (§6 `raw`); a single-request call, so `raw` is that one response
+  in provider order with chunk-relative indices, not the sorted/re-based `results`.
 - retrieval-provider §8.1 TEI — `/rerank` request shape
   `{query, texts, truncate: false, return_text}`; `texts` maps directly onto `documents` (no
   per-document wrapping); `return_documents` → `return_text`; response `[{index, score, text?}]`
@@ -32,6 +34,8 @@ the sort + valid-index invariants honored.
   `return_text` tracks `return_documents`.
 - Results sorted descending; each `index` valid into the input documents; `response_id` / `usage`
   null where TEI omits them.
+- `raw` equals the verbatim bare result array as the mock returns it — provider order and
+  chunk-relative indices, distinct from the sorted/re-based `results`.
 - The echoed `text` surfaces verbatim on `document` when `return_documents` is set.
 
 **What fails:**

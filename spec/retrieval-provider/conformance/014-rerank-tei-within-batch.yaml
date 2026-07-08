@@ -99,6 +99,14 @@ cases:
           model: tei-rerank-test
           response_id: null
           usage: null
+          # The verbatim deserialized TEI /rerank response — the BARE result
+          # array (§6 raw). Single-request call, so raw is that one response
+          # exactly: provider order and chunk-relative indices, NOT the
+          # sorted/re-based `results` above.
+          raw:
+            - {index: 0, score: 0.42}
+            - {index: 1, score: 0.91}
+            - {index: 2, score: 0.08}
       invariants:
         exactly_one_rerank_request_issued: true
         wire_request_texts_match_documents_in_order: true
@@ -156,6 +164,14 @@ cases:
           model: tei-rerank-test
           response_id: null
           usage: null
+          # The verbatim deserialized TEI /rerank response — the BARE result
+          # array (§6 raw), including the echoed `text` per result. Single
+          # request, so raw is that one response exactly: provider order and
+          # chunk-relative indices, NOT the sorted/re-based `results` above.
+          raw:
+            - {index: 0, score: 0.42, text: "doc about berlin"}
+            - {index: 1, score: 0.91, text: "doc about paris"}
+            - {index: 2, score: 0.08, text: "doc about madrid"}
       invariants:
         exactly_one_rerank_request_issued: true
         wire_request_return_text_true: true

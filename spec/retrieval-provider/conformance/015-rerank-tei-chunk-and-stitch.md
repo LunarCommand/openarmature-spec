@@ -13,7 +13,10 @@ concatenate all `(index, score)` pairs, globally sort by score descending, and h
   rests on a cross-encoder scoring each `(query, document)` pair independently of the others in its
   batch.
 - retrieval-provider §6 — results sorted by `relevance_score` descending; each `index` a valid
-  position in the input list; no duplicate `index`; `len(results) ≤ top_k`.
+  position in the input list; no duplicate `index`; `len(results) ≤ top_k`. `RerankResponse.raw` is
+  the **list of the per-chunk verbatim `/rerank` responses**, in request order — each entry that
+  chunk's bare result array with its **chunk-local** indices in provider order (NOT re-based to
+  absolute positions, NOT re-sorted — that is the stitched `results`).
 
 **Case:**
 
@@ -37,6 +40,8 @@ concatenate all `(index, score)` pairs, globally sort by score descending, and h
   descending across chunks; `top_k` applied after the global sort.
 - The final `results[].index` are absolute positions into the original 9-document list (not
   chunk-local); no duplicate index.
+- `raw` is the list of the three per-chunk result arrays in request order, each preserving its
+  chunk-local indices and provider order — the raw per-chunk responses, distinct from `results`.
 
 **What fails:**
 
