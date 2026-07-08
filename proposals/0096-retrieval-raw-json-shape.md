@@ -1,8 +1,9 @@
 # 0096: Retrieval `raw` — Verbatim Deserialized JSON of Any Top-Level Shape
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-04
+- **Accepted:** 2026-07-07
 - **Targets:** spec/retrieval-provider/spec.md **§4** (`EmbeddingResponse.raw`) + **§6** (`RerankResponse.raw`)
   — widen the `raw` type from `dict[str, Any]` (TypeScript `Record<string, unknown>`) to
   **`dict[str, Any] | list[Any]`** (TS `Record<string, unknown> | unknown[]`), so a bare-array provider
@@ -141,7 +142,7 @@ additive, and it changes none of §8's existing normalized-field stitch rules. A
 single-request mappings (the union still admits `dict`, so existing callers and fixtures are unaffected); it
 **unblocks** the array-response mappings, whose verbatim `raw` the prior `dict`-only type could not express,
 and closes the previously-undefined chunked-`raw` case. Scoped to retrieval-provider (llm-provider
-`Response.raw` unchanged). Tentative spec version target deferred to Accept.
+`Response.raw` unchanged). Ships as spec **v0.90.0**.
 
 ## Alternatives considered
 

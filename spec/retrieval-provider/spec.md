@@ -46,8 +46,8 @@ The substrate is intentionally narrow, matching llm-provider's posture:
 
 **Transparency.** Per charter §3.1 principle 8 ("Transparency over abstraction"), the embedding
 abstraction surfaces a normalized shape — `EmbeddingResponse`, `EmbeddingUsage` — without hiding
-what the underlying provider returned. The `EmbeddingResponse.raw` field carries the parsed provider
-response verbatim alongside the normalized fields, and the error categories preserve the underlying
+what the underlying provider returned. The `EmbeddingResponse.raw` field carries the provider
+response verbatim — an object or an array (§4) — alongside the normalized fields, and the error categories preserve the underlying
 provider exception as cause.
 
 ## 2. Concepts
@@ -61,7 +61,7 @@ vectors wrapped in an `EmbeddingResponse`. Bound to a specific embedding model i
 instance.
 
 **EmbeddingResponse.** The result of an `embed()` call: the vectors, the model identifier, the
-parsed raw response, and — when present — usage information and the provider-returned request
+verbatim provider response (`raw`), and — when present — usage information and the provider-returned request
 identifier.
 
 **EmbeddingUsage.** A usage record carrying `input_tokens` only — embedding has no output tokens
@@ -84,7 +84,7 @@ the documents sorted by query-relevance with provider-specific scores. Bound to 
 model identifier per instance.
 
 **RerankResponse.** The result of a `rerank()` call: the sorted scored documents, the model
-identifier, the parsed raw response, and — when present — usage information and the
+identifier, the verbatim provider response (`raw`), and — when present — usage information and the
 provider-returned response identifier.
 
 **RerankUsage.** A usage record with optional `search_units` and optional `input_tokens`, reflecting
@@ -166,7 +166,7 @@ idiomatic equivalent). The bound identifier is visible to the observability laye
 | `usage` | An `EmbeddingUsage` record (defined below), or `null` when the provider reports no usage (e.g. TEI `/embed`, which returns a bare vector array with no usage object). Implementations MUST populate `usage` when the provider returns a usage record and MUST NOT fabricate one (an empty record, a zero, or a client-side token estimate) when it does not. |
 | `response_id` | The provider-returned response identifier when present; null otherwise. Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.8) and the typed `EmbeddingEvent.response_id` field (per graph-engine §6). |
 | `dimensions` | Int. The output vector dimensionality. MUST equal the length of each inner list in `vectors`. Derivable from `vectors[0]` but kept on the response for ergonomics and cross-vendor consistency. |
-| `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Parallel to llm-provider §6 `Response.raw`. |
+| `raw` | The verbatim deserialized JSON of the successful provider response — an object or an array (Python: `dict[str, Any] | list[Any]`; TypeScript: `Record<string, unknown> | unknown[]`), matching the response's top-level shape; the mapping MUST NOT wrap, rename, or reshape it to fit a container type. For a call that issues a single provider request this is that response; for a chunk-and-stitch call `raw` is the list of the per-request responses (§8 *Batch chunking*). MUST be populated on every successful return. Parallel to llm-provider §6 `Response.raw` **in intent** (verbatim provider response); the type differs because retrieval has array-response wire — e.g. TEI §8.1, whose `/embed` returns a bare vector array — that LLM completion does not, so `Response.raw` stays object-shaped. |
 
 ### EmbeddingUsage
 
@@ -244,7 +244,7 @@ Implementations bind one rerank model identifier per provider instance via a con
 | `model` | The model identifier the provider returned. MAY be a more specific identifier than the one the provider was bound against. |
 | `usage` | A `RerankUsage` record (defined below), or `null` when the provider reports no usage (e.g. TEI `/rerank`). A record is present when the provider surfaces at least one usage figure; its `input_tokens` / `search_units` stay individually nullable (below). Same populate/don't-fabricate rule as §4. |
 | `response_id` | The provider-returned response identifier when present; null otherwise. Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.13) and the typed `RerankEvent.response_id` field (per graph-engine §6). |
-| `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Per charter §3.1 principle 8 ("Transparency over abstraction") — callers retain access to provider-specific fields the normalized shape doesn't surface. Parallel to llm-provider §6 `Response.raw` and §4 `EmbeddingResponse.raw`. |
+| `raw` | The verbatim deserialized JSON of the successful provider response — an object or an array (Python: `dict[str, Any] | list[Any]`; TypeScript: `Record<string, unknown> | unknown[]`), matching the response's top-level shape; the mapping MUST NOT wrap, rename, or reshape it to fit a container type. For a call that issues a single provider request this is that response; for a chunk-and-stitch call `raw` is the list of the per-request responses (§8 *Batch chunking*; §8.1 for TEI rerank). MUST be populated on every successful return. Per charter §3.1 principle 8 ("Transparency over abstraction") — callers retain access to provider-specific fields the normalized shape doesn't surface (e.g. TEI `/rerank`'s chunk-relative indices, which `results` re-bases to absolute positions and re-sorts). Parallel to llm-provider §6 `Response.raw` and §4 `EmbeddingResponse.raw` **in intent**; the type differs because retrieval has array-response wire. |
 
 ### ScoredDocument
 
@@ -326,7 +326,9 @@ responses — concatenate the per-chunk vectors in the original input order, so 
 and input-order invariants hold across the whole call; and (4) combine the per-chunk usage per §4's
 (now nullable) usage contract — sum the `EmbeddingUsage.input_tokens` when the provider reports usage,
 or produce `usage = null` when it reports none (e.g. TEI `/embed`). `EmbeddingResponse.response_id` is the first chunk's response id (a
-single-request call uses that request's id). A mapping MUST NOT silently send an over-cap request. When a
+single-request call uses that request's id). `EmbeddingResponse.raw` is the **list of the
+per-chunk responses**, in request order — each entry the verbatim deserialized JSON of that request's
+response per §4 (a single-request call's `raw` is that one response, not a one-element list). A mapping MUST NOT silently send an over-cap request. When a
 provider enforces **no** per-call cap (it batches server-side), no client-side chunking is required. This
 generalizes to the embedding side, across all mappings, the per-item-independence chunk-and-stitch §8.1
 applies to TEI rerank; each mapping's cap is the provider's documented per-call limit, noted in that
@@ -391,6 +393,17 @@ others in its batch. `chunk_size` is a construction parameter, default `32` (TEI
 an operator who lowered `--max-client-batch-size` sets it to match; an implementation MAY auto-detect
 from TEI's `/info`). A mapping that does not chunk MUST NOT silently send an over-cap request; chunking
 is required, not optional.
+
+**`raw` shape.** TEI returns bare JSON arrays on both endpoints, so a single-request `raw` is that array —
+`/embed`'s `[[float, …], …]` or `/rerank`'s `[{index, score, text?}]` (§4 / §6) — never an OA-wrapped
+object. A chunk-and-stitch call's `raw` is the **list of the per-chunk arrays**, in request order (one level
+deeper than a single-request `raw`; §8's batch-chunking rule for embed, the mandatory rerank chunking above for rerank).
+Because both a single response and a chunked `raw` are a `list`, the container type alone does not
+distinguish them; the discriminator is whether the input exceeded `chunk_size` (the chunk trigger). For
+`/embed` the chunked `raw` is largely redundant with the fully-stitched `vectors`; for `/rerank` it is
+**not** — each chunk's array carries **chunk-relative** `index` values in the provider's order, which the
+stitched `results` re-bases to absolute positions and re-sorts by score, so `raw` preserves index / order
+information `results` reshapes away.
 
 **`truncate: false` (fail-loud).** TEI's `truncate` defaults to `false` on both endpoints, so an
 over-length input errors rather than being silently truncated (model context caps vary). The `/rerank`
@@ -655,3 +668,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - Cohere `/v2/embed` endpoint (extends §8.4) added by [proposal 0091](../../proposals/0091-retrieval-provider-cohere-embeddings-wire.md)
 - §8 general embedding-mapping batch-chunking rule added by [proposal 0092](../../proposals/0092-retrieval-provider-embedding-batch-chunking.md)
 - `EmbeddingResponse.usage` (§4) and `RerankResponse.usage` (§6) made nullable (`record | null` — `null` when the provider reports no usage), reconciling the response types with the record-null model the typed events (graph-engine §6) and §11 metric already use; §2 concept lines qualify usage "(when present)", §8.1 pins TEI `/embed` + `/rerank` `usage = null`, and §8's batch-chunking step 4 combines usage record-aware by [proposal 0093](../../proposals/0093-nullable-provider-usage-records.md)
+- `EmbeddingResponse.raw` (§4) and `RerankResponse.raw` (§6) widened from `dict[str, Any]` to `dict | list` — the verbatim deserialized JSON of the successful response whatever its top-level shape (an array for bare-array wire like TEI §8.1); the mapping MUST NOT wrap or reshape it. §8's batch-chunking rule gains a `raw` stitch clause and §8.1 a `raw` note: a chunk-and-stitch call's `raw` is the list of the per-request responses (nothing lost across chunks), the normalized fields staying ergonomic summaries. Scoped to retrieval-provider — llm-provider `Response.raw` unchanged by [proposal 0096](../../proposals/0096-retrieval-raw-json-shape.md)

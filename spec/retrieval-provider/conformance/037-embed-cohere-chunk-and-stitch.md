@@ -14,7 +14,9 @@ property — applied here to a **fixed vendor cap** (96), not TEI's construction
 - retrieval-provider §8.4 Cohere — *Mandatory batch chunking (96-input cap)*: consecutive `≤ 96` slices,
   one request per chunk with identical `model` / `input_type` / `embedding_types` / `truncate` /
   `output_dimension`, vectors concatenated in input order, `input_tokens` summed, `response_id` from the
-  first chunk; a mapping MUST NOT silently send an over-cap request.
+  first chunk; a mapping MUST NOT silently send an over-cap request. The §8 `raw` stitch clause sets `EmbeddingResponse.raw`
+  to the **list of the per-chunk verbatim response objects**, in request order — proving an
+  object-response chunked `raw` is a list-of-objects, not a single merged object.
 - retrieval-provider §3 / §4 — input-order preservation; the §4 one-vector-per-input and
   uniform-dimensionality invariants enforced against the **stitched** result.
 
@@ -43,6 +45,9 @@ property — applied here to a **fixed vendor cap** (96), not TEI's construction
   on the named order invariant.
 - `input_tokens` summed across chunks (`500`); `response_id` taken from the first chunk's `id`;
   `EmbeddingResponse.model` the bound id.
+- `raw` is the list of the two per-chunk Cohere `{id, embeddings, meta}` response objects verbatim, in
+  request order (chunk A's 96-vector object, then chunk B's 4-vector object) — a list-of-objects, not a
+  single merged object, and distinct from the stitched `vectors` / summed `usage`.
 
 **What fails:**
 

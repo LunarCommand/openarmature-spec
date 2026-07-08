@@ -75,6 +75,13 @@ cases:
           model: tei-embed-test
           response_id: null
           usage: null
+          # The verbatim deserialized TEI /embed response — a BARE vector
+          # array (§4 raw). Single-request call, so raw is that one response
+          # exactly (NOT an object, NOT wrapped, NOT a one-element list).
+          raw:
+            - [0.01, 0.02, 0.03, 0.04]
+            - [0.11, 0.12, 0.13, 0.14]
+            - [0.21, 0.22, 0.23, 0.24]
       invariants:
         wire_request_is_array_form: true
         vectors_length_matches_input_length: true
@@ -124,6 +131,11 @@ cases:
           model: tei-embed-test
           response_id: null
           usage: null
+          # The verbatim deserialized TEI /embed response — a BARE vector
+          # array (§4 raw). Single-request call, so raw is that one response
+          # exactly (here the one-element array), NOT an object, NOT wrapped.
+          raw:
+            - [0.01, 0.02, 0.03, 0.04]
       invariants:
         wire_request_carries_dimensions_field: true
         vectors_length_matches_input_length: true

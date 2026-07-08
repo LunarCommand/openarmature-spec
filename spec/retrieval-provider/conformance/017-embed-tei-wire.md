@@ -14,6 +14,9 @@ response maps onto `EmbeddingResponse.vectors` in input order with §4's cross-i
   invariants (vector count == input count, all inner vectors same dimensionality, `dimensions` field
   == inner length); `response_id` null when the provider returns none; TEI `/embed` returns no usage
   object, so `EmbeddingResponse.usage` is `null` (the mapping MUST NOT fabricate a usage record).
+  `EmbeddingResponse.raw` is the verbatim deserialized provider response — for TEI `/embed` a **bare
+  vector array** (§4 `raw`); a single-request call, so `raw` is that one response, not a one-element
+  list, not an object.
 
 **Cases:**
 
@@ -30,6 +33,7 @@ response maps onto `EmbeddingResponse.vectors` in input order with §4's cross-i
 - The request is the array form even for a single-string caller; `dimensions` appears on the wire
   only when supplied; `prompt_name` is absent.
 - Vectors map in input order; the cross-impl invariants hold; `response_id` and `usage` are null.
+- `raw` equals the verbatim bare vector-array response for that case (not wrapped in an object).
 
 **What fails:**
 
