@@ -118,9 +118,9 @@ A plain §6.1 record — or nothing — preserves current behavior. The §5 "MUS
 The behaviors manifest on the **outbound request**, so the fixtures use the new conformance-adapter
 §5.11 directives — the `per_attempt_override` / `reask: {template}` fields on `call.retry`, the
 per-attempt `expected.wire_requests` assertion (`sampling`; `appended_messages`, the appended
-`assistant`-output + `user`-correction pairs), and `attributes_absent` for the attempt-0 span. Six new
-llm-provider fixtures, **061–066** (`retry_reason` and its attempt-0 exclusion are asserted across them,
-not as a separate fixture):
+`assistant`-output + `user`-correction pairs; `messages`, the full outbound list for the prefill-continuation
+case), and `attributes_absent` for the attempt-0 span. Seven new llm-provider fixtures, **061–067**
+(`retry_reason` and its attempt-0 exclusion are asserted across them, not as a separate fixture):
 
 - **061 — per-attempt override (retry schedule).** A retry loop with a temperature schedule: attempt 0 uses
   the base `config`; retry *i* (attempt *i+1*) applies the *i*-th override to the outbound wire request
@@ -142,6 +142,9 @@ not as a separate fixture):
 - **066 — mixed transient + reask interleave.** A reask retry (attempt 1) followed by a transient retry
   (attempt 2): the transient retry re-sends the accumulated transcript and appends nothing new, and the two
   attempts carry distinct `retry_reason` values (`reask`, then `transient`) in one loop.
+- **067 — assistant-prefill continuation.** The caller's messages end in an `assistant` prefill; on reask the
+  model's output is concatenated onto that message verbatim (no separator, no new `assistant` message),
+  asserted via the full-list `messages` form.
 
 ## Versioning
 
