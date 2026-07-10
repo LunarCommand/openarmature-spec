@@ -358,12 +358,14 @@ per-chunk `LlmTokenEvent` (graph-engine §6) as each chunk arrives — the retur
   with the record form discriminated by `type`). Implementations MUST validate the shape at
   call time before sending.
 - `retry` — optional. Accepts an instance of the pipeline-utilities §6.1 retry middleware
-  configuration record (four-field `max_attempts` / `classifier` / `backoff` / `on_retry` shape)
-  or `None` / absent. Default is `None` / absent — the v0.4.0 behavior is preserved verbatim
-  (no in-call retry; transient errors raise to the caller). When supplied, the call performs an
-  in-call retry loop per §7.1 *Call-level retry*; the same configuration-record instance a
-  caller would pass to pipeline-utilities §6.1's retry middleware is accepted here (cross-spec
-  re-use of the framework-agnostic shape).
+  configuration record (four-field `max_attempts` / `classifier` / `backoff` / `on_retry` shape),
+  an **llm-provider retry-config** that extends that record with two optional adaptive fields
+  (`per_attempt_override`, `reask` — §7.1), or `None` / absent. Default is `None` / absent — the
+  v0.4.0 behavior is preserved verbatim (no in-call retry; transient errors raise to the caller).
+  When supplied, the call performs an in-call retry loop per §7.1 *Call-level retry*; the same
+  configuration-record instance a caller would pass to pipeline-utilities §6.1's retry middleware
+  is accepted here (cross-spec re-use of the framework-agnostic shape), and the adaptive fields add
+  the §7.1 opt-in behaviors below.
 - `stream` — optional boolean (keyword-only, or per-language idiomatic equivalent). Default `False`
   / absent — the v0.4.0 atomic behavior is preserved exactly. When set, the provider consumes the
   model's streaming wire response and emits per-chunk `LlmTokenEvent`s (graph-engine §6) as chunks
@@ -603,9 +605,12 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
   truncation (`"length"` — the model hit `max_tokens`) from a model that finished (`"stop"`) but
   emitted invalid or schema-violating content, and choose retry policy accordingly (this also
   reconciles §8.2.5's statement that the mapping surfaces the mapped `finish_reason`). Non-transient by default — a model that fails to produce schema-compliant output
-  on a given prompt usually fails the same way on retry. Users wanting retry-on-validation-failure
-  semantics MAY include `structured_output_invalid` in a pipeline-utilities `RetryMiddleware`
-  classifier's transient set, but the category is NOT transient by default at the spec level.
+  on a given prompt usually fails the same way on a byte-identical retry. Users wanting
+  retry-on-validation-failure semantics SHOULD use the call-level `reask` extension (§7.1), which
+  retries with a caller-authored correction built from this error's `output_content` + failure
+  description rather than replaying the identical request; a pipeline-utilities `RetryMiddleware`
+  classifier MAY also include `structured_output_invalid` in its transient set, but the category is
+  NOT transient by default at the spec level.
   Distinct from `provider_invalid_response` (which covers wire-shape malformation, not content
   validation against the caller's schema).
 
@@ -649,6 +654,53 @@ dependency on this §7 for transient category names. The two-way dependency is a
 because the shared retry config record is framework-agnostic and the per-section content
 remains independently coherent.)
 
+**Adaptive extensions (opt-in).** The `retry` parameter (§5) MAY instead be an **llm-provider
+retry-config** that extends the §6.1 four-field record with two optional fields; both default to
+absent, and a plain §6.1 record (or `None`) behaves exactly as above. These extensions are
+LLM-completion-specific — they concern sampling and messages — and so live here at the call level,
+not on the framework-agnostic §6.1 middleware.
+
+- **`per_attempt_override` — per-attempt request override.** A declarative *retry* schedule of
+  `RuntimeConfig` (§6) partial-overrides; when supplied, the loop **MUST** apply it. **Attempt 0
+  always uses the caller's base `config` unmodified.** The schedule applies to retries: retry *i*
+  (attempt *i+1*) uses the base config with the *i*-th override merged on top — the override's set fields replace the base, unspecified fields
+  are inherited (a general `RuntimeConfig` partial; the canonical case overrides only sampling, e.g.
+  an escalating temperature schedule). When the schedule is shorter than the retry count, the last
+  entry carries forward. The override is applied to an internal per-attempt copy; `complete()` MUST
+  NOT mutate the caller's `config` (§5). `on_retry` stays observe-only — the schedule is the
+  declarative mutation surface (an implementation MUST NOT substitute a mutating retry callback).
+
+- **`reask` — structured-output reask (caller-supplied corrective-message builder).** When `reask`
+  is supplied, the loop treats `structured_output_invalid` (§7) as retryable **for this call**,
+  without the caller supplying a custom `classifier` (the §6.1 default classifier is unchanged; this
+  is a call-level convenience). Reask attempts consume the same `max_attempts` budget — there is no
+  separate reask budget. On a `structured_output_invalid` attempt, before the next attempt the loop
+  invokes the caller's `reask` builder with the raised error's structured-output-failure surface (§7
+  / 0082 — the verbatim invalid `output_content` and the failure description on `error_message`) and
+  appends **two** messages to a working transcript: the model's own raw output for that attempt as an
+  `assistant` message, then the content the builder returns as a `user` message. The working
+  transcript starts as a copy of the caller's `messages` and **accumulates** these pairs across reask
+  retries — so attempt *k*'s request is the caller's messages followed by, for each prior reask
+  attempt in order, that attempt's `assistant` output and its `user` correction. Appending the
+  `assistant` output keeps the sequence role-alternating (Anthropic forbids consecutive same-role
+  messages — §8.2) and gives the model its full self-heal history. The `assistant` message carries the
+  attempt's output as the text the error surfaces on `output_content` (§7 / 0082); when the working
+  transcript's last message is already an `assistant` message (e.g. a caller prefill), the output
+  **continues** that message rather than starting a new one, so alternation still holds. The builder is
+  invoked only when a further attempt remains — not on the terminal attempt once `max_attempts` is
+  exhausted. A **transient** retry interleaved in a reask-enabled loop appends no reask pair but re-sends
+  the working transcript accumulated so far (its span's `retry_reason` is `transient`). `complete()` MUST
+  NOT mutate the caller's `messages` (§5) — the working transcript is an internal copy. The implementation MUST NOT
+  author or inject corrective prompt text of its own: the `assistant` message is the model's verbatim
+  output and the `user` message is exactly what the caller's builder returns (charter §3.1 principle
+  7, *No built-in prompts* — the caller owns every word OA adds beyond the model's own output; the
+  framework provides only the retry loop and the typed error surface). Absent a `reask` builder,
+  `structured_output_invalid` is non-transient and raises
+  on first occurrence (§7), unchanged.
+
+The two extensions compose: with both set, a `structured_output_invalid` retry both applies the next
+override (e.g. a higher temperature) and appends the caller's corrective message.
+
 **Transient classification.** The default `classifier` field's behavior matches the §6.1
 *Default transient classifier* text — the same categories §6.1 enumerates as transient trigger
 the per-call retry loop. Callers MAY supply a user-defined `classifier` if their application
@@ -672,8 +724,12 @@ implementations MUST detect cancellation and re-raise it before consulting the c
 
 **Per-attempt span emission.** Each retry attempt produces its own `openarmature.llm.complete`
 span per observability §5.5 — N retry attempts emit N LLM spans, all parented under the
-calling node's span. The per-attempt span carries the new `openarmature.llm.attempt_index`
-attribute (per observability §5.5). The final-error category lands on the LAST attempt's span;
+calling node's span. The per-attempt span carries the `openarmature.llm.attempt_index`
+attribute (per observability §5.5), and on retry attempts (attempt index ≥ 1) an
+`openarmature.llm.retry_reason` attribute recording why the retry occurred — `transient` (a
+transient-classified failure) or `reask` (a `structured_output_invalid` reask); attempt 0 carries
+no `retry_reason`. (§7.1 introduces the attribute; its detailed observability §5.5 / Langfuse
+rendering is a follow-on.) The final-error category lands on the LAST attempt's span;
 earlier failed-then-retried attempts carry their own per-span error categories.
 
 **Two-level retry lane separation.** Retry primitives operate at two semantic levels in OA:
@@ -700,7 +756,10 @@ node → per-call budgets reset for each fresh per-node attempt.
   excludes non-transient categories for a reason. Supplying a custom `classifier` that retries
   on `provider_invalid_request` or `structured_output_invalid` (for example) masks bugs rather
   than working around transient infrastructure issues. Custom classifiers SHOULD widen the
-  default only for categories that are genuinely transient but not yet enumerated by §6.1.
+  default only for categories that are genuinely transient but not yet enumerated by §6.1. For
+  `structured_output_invalid` specifically, prefer the opt-in `reask` extension above (which
+  retries with a caller-authored correction) over a classifier that blindly replays the
+  identical request.
 
 ## 8. Wire-format mappings
 
@@ -1687,3 +1746,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §6 `Response.usage` extended with two optional fields (`cached_tokens?` for prefix-cache hit input tokens, `cache_creation_tokens?` for input tokens written to the cache during the call); §8 framing gained an *Intra-impl wire-byte stability* paragraph (canonical sorted-key serialization of JSON-schema, content-block, and RuntimeConfig-extras payloads — within a single implementation; cross-impl byte equality is non-normative); per-mapping *Wire-byte stability* sub-paragraphs added to §8.1.1 / §8.2.1 / §8.3.1 anchoring the rule to that mapping's payloads; §8.1.2 gained cache-stat source rows (`usage.cached_tokens` ← `usage.prompt_tokens_details.cached_tokens` with the OpenAI Responses API alternate path and a vLLM dual-flag caveat; `cache_creation_tokens` left absent for OpenAI); §8.2.2 gained the Anthropic-implicit-not-supported caveat (Anthropic implicit-cache fields left absent because Anthropic only supports explicit `cache_control`-driven caching, out of scope for §6's implicit-cache surface); §8.3.2 maps `usage.cached_tokens` ← Gemini's `usageMetadata.cachedContentTokenCount` (Gemini 2.5+ implicit caching) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
 - §5 `complete()` signature extended with an optional `retry` kwarg accepting an instance of pipeline-utilities §6.1's retry middleware configuration record (or `None` / absent default preserving the v0.4.0 no-retry behavior); the "does NOT retry" operation-semantics bullet amended to note retry policy lives at the per-node layer (pipeline-utilities §6.1) OR the per-call layer (this kwarg per §7.1); new §7.1 *Call-level retry* sub-section defining the in-call retry loop semantics (transient classification reuses §6.1's default categories, backoff reuses §6.1's exponential-with-jitter default, cancellation propagation rule preserved, per-attempt span emission produces N spans for N attempts), reuses the §6.1 framework-agnostic four-field configuration record (cross-spec reference direction is the inverse of §6.1's existing dependency on §7 transient categories — bidirectional acceptable because the shared record is framework-agnostic), plus a *Two-level retry lane separation* table comparing per-call vs per-node layers and a *Common mistakes* list (multiplicative budget pitfall `3 × 5 × 3 = 45` worst-case, inline try/except defeating per-attempt attribution, classifier widening to mask real errors) by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
 - §5 `complete()` gained an optional `stream` flag (default off; return type unchanged — still `Response`), a *Streaming* rule (consume the wire incrementally + emit per-chunk `LlmTokenEvent`s; observably identical to the atomic path when no observer is attached), and a *Provider streaming support* rule (a mapping without streaming rejects `stream`-set calls with `provider_invalid_request`); §6 gained a *Streaming assembly* contract (content concatenation, reasoning-block assembly, tool-call-delta reassembly, terminal usage / finish_reason, structural identity with the atomic path); §8.1 gained §8.1.6 *Streaming* (OpenAI-compatible SSE: `stream_options.include_usage`, `[DONE]`, content / tool-call deltas, and the OpenAI-compatible reasoning-delta extension recognizing both `reasoning_content` and `reasoning`); §10 *Out of scope* lifted the blanket streaming deferral, replaced by narrower deferrals (node-body iterator consumption, tool-call-delta token events, Anthropic / Gemini streaming wire, non-completion streaming) by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
+- §5 `complete()`'s `retry` parameter extended to also accept an llm-provider retry-config (a superset of the pipeline-utilities §6.1 four-field record adding two optional fields); new §7.1 *Adaptive extensions (opt-in)* defining `per_attempt_override` — a declarative retry override schedule (attempt 0 uses the base `config`; the *i*-th override applies to retry *i*; a general `RuntimeConfig` partial merged onto base; last entry carries forward) — and `reask` — a caller-supplied corrective-message builder that makes `structured_output_invalid` retryable-for-this-call and, on each such failure, appends the model's raw output as an `assistant` message plus the builder's returned content as a `user` message to a working transcript that accumulates across reask retries (keeping the sequence role-alternating; the builder receives 0082's `output_content` + `error_message`; the implementation authors no prompt of its own, per charter §3.1 principle 7 *No built-in prompts*; reask reuses the `max_attempts` budget); the §7.1 per-attempt span gains an `openarmature.llm.retry_reason` (`transient` | `reask`) attribute on retry attempts; the *Common mistakes* classifier-widening bullet points `structured_output_invalid` at `reask` by [proposal 0095](../../proposals/0095-adaptive-call-level-retry.md)

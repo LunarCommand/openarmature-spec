@@ -1,0 +1,94 @@
+# §7.1 Call-level retry — per-attempt request override. Transient failures
+# on attempts 0 and 1, success on attempt 2. The retry override schedule
+# varies the outbound request's sampling on the RETRIES only: attempt 0
+# uses the caller's base config unchanged; attempt 1 (first retry) applies
+# override[0] (temp 0.3); attempt 2 (second retry) applies override[1]
+# (temp 0.6). No reask builder is supplied, so nothing is appended to the
+# working transcript on any attempt. Three LLM spans emit; the retry
+# attempts (1 and 2, including the successful attempt 2) carry
+# openarmature.llm.retry_reason=transient; attempt 0 carries no retry_reason.
+
+mock_provider:
+  responses:
+    # Attempt 0 — HTTP 503 → provider_unavailable (transient).
+    - status: 503
+      body:
+        error:
+          type: "service_unavailable"
+          message: "down 0"
+    # Attempt 1 (first retry) — HTTP 503 → provider_unavailable (transient).
+    - status: 503
+      body:
+        error:
+          type: "service_unavailable"
+          message: "down 1"
+    # Attempt 2 (second retry) — successful response.
+    - status: 200
+      body:
+        id: cc-061
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+        usage: {prompt_tokens: 4, completion_tokens: 1, total_tokens: 5}
+
+call:
+  operation: complete
+  messages: [{role: user, content: "go"}]
+  config: {temperature: 0.0}
+  retry:
+    max_attempts: 3
+    backoff: {type: deterministic, seconds: 0}
+    # Retry override schedule — applies to retries only. Attempt 0 uses the
+    # base config (temp 0.0); attempt 1 applies override[0] (temp 0.3);
+    # attempt 2 applies override[1] (temp 0.6).
+    per_attempt_override:
+      - {temperature: 0.3}
+      - {temperature: 0.6}
+
+expected:
+  response:
+    message: {role: assistant, content: "ok"}
+    finish_reason: stop
+    usage: {prompt_tokens: 4, completion_tokens: 1, total_tokens: 5}
+  # Per-attempt outbound-request assertion — one entry per attempt. The base
+  # attempt is unmodified; each retry carries its scheduled override. No
+  # reask builder, so appended_messages is empty on every attempt.
+  wire_requests:
+    # Attempt 0 — base config; nothing appended.
+    - sampling: {temperature: 0.0}
+      appended_messages: []
+    # Attempt 1 (first retry) — override[0]; still nothing appended
+    # (transient retry, not a reask).
+    - sampling: {temperature: 0.3}
+      appended_messages: []
+    # Attempt 2 (second retry) — override[1]; nothing appended.
+    - sampling: {temperature: 0.6}
+      appended_messages: []
+  llm_spans:
+    # Attempt 0 — base attempt; transient failure; carries no retry_reason.
+    - attempt_index: 0
+      attributes:
+        "openarmature.llm.attempt_index": 0
+      attributes_absent: ["openarmature.llm.retry_reason"]
+      error_category: provider_unavailable
+    # Attempt 1 (first retry) — retried because attempt 0 was transient.
+    - attempt_index: 1
+      attributes:
+        "openarmature.llm.attempt_index": 1
+        "openarmature.llm.retry_reason": transient
+      error_category: provider_unavailable
+    # Attempt 2 (second retry) — retried because attempt 1 was transient;
+    # succeeds. A successful final retry still carries retry_reason.
+    - attempt_index: 2
+      attributes:
+        "openarmature.llm.attempt_index": 2
+        "openarmature.llm.retry_reason": transient
+        "openarmature.llm.finish_reason": stop
+        "openarmature.llm.model": gpt-test
+      error_category: null
+  invariants:
+    base_attempt_uses_caller_config: true
+    per_attempt_override_applies_to_retries_only: true
+    caller_config_unmutated: true
+    n_attempts_emit_n_llm_spans: true

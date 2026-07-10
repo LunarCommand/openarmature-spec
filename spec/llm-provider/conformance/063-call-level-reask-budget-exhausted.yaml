@@ -1,0 +1,91 @@
+# §7.1 Call-level retry — structured-output reask, budget exhausted.
+# complete() is called with a response_schema and a reask builder. Every
+# attempt returns schema-invalid JSON (missing required "age"). On attempt
+# 0's structured_output_invalid the reask retry appends TWO messages — the
+# model's raw output as an assistant message, then the builder's rendered
+# correction as a user message — and re-attempts. The reask retry consumes
+# the max_attempts budget; when the budget is exhausted the final
+# structured_output_invalid propagates to the caller. Two LLM spans emit;
+# the retry attempt carries openarmature.llm.retry_reason=reask.
+
+mock_provider:
+  responses:
+    # Attempt 0 — invalid (missing "age") → structured_output_invalid.
+    - status: 200
+      body:
+        id: cc-063-a
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Bob"}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    # Attempt 1 (reask retry) — still invalid; budget exhausted here.
+    - status: 200
+      body:
+        id: cc-063-b
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Bob"}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 30, completion_tokens: 6, total_tokens: 36}
+
+call:
+  operation: complete
+  messages:
+    - {role: user, content: "Generate a person record."}
+  response_schema:
+    type: object
+    properties:
+      name: {type: string}
+      age: {type: integer}
+    required: [name, age]
+    additionalProperties: false
+  retry:
+    max_attempts: 2
+    backoff: {type: deterministic, seconds: 0}
+    # Template interpolates {error_message} (implementation-defined), so the
+    # rendered user message is asserted via content_contains, not exact.
+    reask:
+      template: "Fix {output_content}: {error_message}"
+
+expected:
+  # Budget exhausted with every attempt invalid — the final
+  # structured_output_invalid raises to the caller (0082 error surface).
+  raises:
+    category: structured_output_invalid
+    carries:
+      response_schema_present: true
+      raw_response_content: '{"name":"Bob"}'
+      failure_description_mentions: "age"
+      finish_reason: stop
+      usage: {prompt_tokens: 30, completion_tokens: 6, total_tokens: 36}
+  # Attempt 0 appends nothing; the reask retry appends the model's raw
+  # output as an assistant message (exact) then the builder's rendered
+  # correction as a user message (content_contains, since the template
+  # interpolates the implementation-defined {error_message}).
+  wire_requests:
+    - appended_messages: []
+    - appended_messages:
+        - {role: assistant, content: '{"name":"Bob"}'}
+        - {role: user, content_contains: ["Fix", '{"name":"Bob"}']}
+  llm_spans:
+    # Attempt 0 — structured_output_invalid; carries no retry_reason.
+    - attempt_index: 0
+      attributes:
+        "openarmature.llm.attempt_index": 0
+      attributes_absent: ["openarmature.llm.retry_reason"]
+      error_category: structured_output_invalid
+    # Attempt 1 (reask retry) — still invalid; final error lands here.
+    - attempt_index: 1
+      attributes:
+        "openarmature.llm.attempt_index": 1
+        "openarmature.llm.retry_reason": reask
+      error_category: structured_output_invalid
+  invariants:
+    reask_exhausts_max_attempts_budget: true
+    final_structured_output_invalid_propagates: true
+    n_attempts_emit_n_llm_spans: true

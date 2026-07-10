@@ -1,0 +1,77 @@
+# §7.1 Call-level retry — reask off by default. complete() is called with
+# a response_schema and a retry record with NO reask builder. Attempt 0
+# returns schema-invalid JSON (missing required "age"). Absent a reask
+# builder, structured_output_invalid is non-transient and raises on the
+# first occurrence — the loop does NOT iterate, even though max_attempts=2.
+# Exactly one attempt issues (one wire request, one LLM span); the second
+# mock response is never consumed.
+
+mock_provider:
+  responses:
+    # Attempt 0 — invalid (missing "age") → structured_output_invalid.
+    - status: 200
+      body:
+        id: cc-064-a
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Cara"}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    # Attempt 1 response — NEVER consumed. Present (and deliberately valid)
+    # only to prove the loop does not iterate: with reask absent,
+    # structured_output_invalid raises on attempt 0, so this response is
+    # never requested.
+    - status: 200
+      body:
+        id: cc-064-b
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Cara","age":9}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 30, completion_tokens: 8, total_tokens: 38}
+
+call:
+  operation: complete
+  messages:
+    - {role: user, content: "Generate a person record."}
+  response_schema:
+    type: object
+    properties:
+      name: {type: string}
+      age: {type: integer}
+    required: [name, age]
+    additionalProperties: false
+  # NO reask field — reask is off. max_attempts=2 has no effect because
+  # structured_output_invalid is non-transient without a reask builder.
+  retry:
+    max_attempts: 2
+
+expected:
+  # structured_output_invalid raises immediately on attempt 0 (0082 surface).
+  raises:
+    category: structured_output_invalid
+    carries:
+      response_schema_present: true
+      raw_response_content: '{"name":"Cara"}'
+      failure_description_mentions: "age"
+      finish_reason: stop
+      usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+  # Exactly one attempt issued — only the caller's original messages, with
+  # nothing appended (no reask).
+  wire_requests:
+    - appended_messages: []
+  llm_spans:
+    # Attempt 0 — the sole attempt; carries no retry_reason (never retried).
+    - attempt_index: 0
+      attributes:
+        "openarmature.llm.attempt_index": 0
+      attributes_absent: ["openarmature.llm.retry_reason"]
+      error_category: structured_output_invalid
+  invariants:
+    structured_output_invalid_not_retried_without_reask: true
+    exactly_one_attempt_issued: true
+    second_mock_response_never_consumed: true

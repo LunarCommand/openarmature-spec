@@ -835,6 +835,55 @@ This enumeration is the current authoritative set, not a frozen one — future p
 the same way they extend the rest of §5. The observability fixture suite's per-directory header
 comment (per §3.2) is a navigational example of the inline tokens; §5.10 is their normative home.
 
+### 5.11 Provider call-retry directives (llm-provider §7.1)
+
+llm-provider call fixtures configure a `complete()` call under `call:` and mock the provider's
+per-attempt responses under `mock_provider.responses:` (an ordered list consumed one per attempt in
+issue order; a fixture MAY supply more entries than the loop consumes — e.g. to prove it stops early). Two
+directives support llm-provider §7.1's adaptive call-level retry (the per-attempt request override
+and structured-output reask).
+
+**Call configuration.** Beyond the pipeline-utilities §6.1 four-field record, the `call.retry`
+mapping accepts the two llm-provider adaptive fields (llm-provider §7.1):
+
+- **`per_attempt_override: [<RuntimeConfig partial>, ...]`** — the retry override schedule. Entry
+  *i* applies to retry *i* (attempt *i+1*); attempt 0 uses the base `config` unchanged. Each entry is
+  a `RuntimeConfig` (llm-provider §6) partial merged onto the base for that attempt.
+- **`reask: {template: <str>}`** — a declarative stand-in for the caller's reask builder (a real
+  builder is a callable, which a data fixture cannot hold). The template is a string with
+  `{output_content}` / `{error_message}` placeholders; on a `structured_output_invalid` attempt the
+  adapter renders it with that error's 0082 surface (llm-provider §7) and wires the result as the
+  message the builder returns. The adapter MUST NOT contribute any text beyond the rendered template
+  — the fixture's purpose is to prove OA authors no prompt of its own (llm-provider §7.1).
+
+**Per-attempt outbound-request assertion.** Under `expected:`, **`wire_requests: [<entry>, ...]`** is
+an ordered list — one entry per attempt the retry loop issued — asserting that attempt's outbound
+provider request. Each entry asserts only the fields it names (`{}` asserts nothing for that
+attempt):
+
+- **`sampling: { ... }`** — the effective sampling fields on the attempt's wire request (e.g.
+  `{temperature: 0.3}`), for verifying `per_attempt_override`.
+- **`appended_messages: [<msg>, ...]`** — the messages the loop appended to the working transcript
+  **after** the caller's original messages, in order — for verifying reask (llm-provider §7.1). A
+  reask retry appends the pair `{role: assistant, content: <the model's raw output>}` then
+  `{role: user, content: <the builder's rendered correction>}`, accumulating across retries. Each
+  `<msg>` asserts either `{role: <user|assistant>, content: <str>}` (exact — proving the appended
+  text is exactly the model's output / the builder's rendering and nothing OA-authored) or
+  `{role: <role>, content_contains: [<str>, ...]}` (substring set — used when the reask template
+  interpolates the implementation-defined `{error_message}`, where exact equality is not portable;
+  assert the literal template text and the verbatim `{output_content}` this way). An empty list `[]`
+  asserts **no** appended messages (attempt 0, and reask-off cases).
+
+This generalizes the single-request `expected_wire_request` convention (provider wire-mapping
+fixtures) to the per-attempt retry-loop case.
+
+**Span attribute assertions.** The per-attempt `openarmature.llm.retry_reason` span attribute
+(llm-provider §7.1) is asserted via the existing `expected.llm_spans[*].attributes` shape on retry
+attempts. Because those attribute assertions are a subset match, asserting an attribute is **absent**
+— e.g. that attempt 0 carries no `retry_reason` — needs its own directive: a span entry MAY carry
+**`attributes_absent: [<key>, ...]`**, asserting none of the listed attribute keys are present on
+that span.
+
 ## 6. Harness primitives
 
 Adapters MUST provide the following runtime primitives to satisfy directives in §5.
@@ -1157,3 +1206,4 @@ per-directory specialization lives there.
 - §5.1 *Node behavior directives* gained `calls_llm_from_wrapper` — issues a real `complete()` call from a pre- / post-phase middleware so the calling node's span is not open when the provider span / `LlmCompletionEvent` is emitted, exercising the observability §5.5 *Lineage-resolved parent* orphan fallback — alongside the existing `calls_llm` node directive it complements; §5.5 documents the case-level observability harness keys (`mock_llm`, `disable_llm_spans`, `caller_global_otel_active`); §5.4 *Composition directives* documents the existing `fan_out.concurrent_mode` (serial vs concurrent instance dispatch, distinct from `concurrency`), first surfaced in observability fixtures by the nested-fan-out span-keying tests. Supports proposal 0084's nested-fan-out span-lineage fixtures by [proposal 0084](../../proposals/0084-nested-fan-out-span-lineage.md)
 - §8.3 *Execution* gained a **Directive execution order** rule — a node's sibling directives (the keys under `nodes.<node_name>:`) execute in fixture-document order (mapping insertion order, not sorted-by-key), so order-sensitive compositions like `augment_metadata` → `capture_invocation_metadata_into` (observability §3.4) are deterministic; §7 *Nondeterminism handling* gains a counterpoint note (within-node order is deterministic, unlike the cross-source interleaving cases); §8.2 *Parsing* notes lossless parsing preserves directive order. New fixture `135` pins it; ratifies behavior fixtures 043/045 already depended on by [proposal 0087](../../proposals/0087-conformance-adapter-directive-execution-order.md)
 - §5.8 *Expected-outcome directives* gained `expected_compile_warning` — asserts compilation succeeds while emitting non-fatal compile-time **warnings** (the adapter captures compile-time warnings, distinct from the `expected_compile_error` compile-*failure* assertion), for diagnostics such as graph-engine §2's `projection_reducer_round_trip`; takes a **scalar** (the named warning is among those emitted) or a **list** (the exhaustive set — `[]` asserts *no* warnings, so a fixture can assert a warning MUST NOT fire). The established `expected_compile_error` scalar is formally documented in §5.8 alongside it for parity by [proposal 0094](../../proposals/0094-subgraph-projection-declared-boundary.md)
+- New §5.11 *Provider call-retry directives* documents the fixture surface for llm-provider §7.1's adaptive call-level retry: the `call.retry` adaptive fields `per_attempt_override` (the retry override schedule) and `reask: {template}` (a declarative stand-in for the caller's reask builder — the adapter renders the template with the `structured_output_invalid` error's `output_content` / `error_message` and wires it, contributing no text of its own), plus the `expected.wire_requests` per-attempt outbound-request assertion (`sampling`; `appended_messages` — the ordered `assistant`-output + `user`-correction pairs a reask retry appends, accumulating across retries, each asserted exactly or via `content_contains`), generalizing the single-request `expected_wire_request` provider-fixture convention to the retry-loop case; and an `attributes_absent` span-attribute directive for asserting a span carries no `retry_reason` (attempt 0) by [proposal 0095](../../proposals/0095-adaptive-call-level-retry.md)
