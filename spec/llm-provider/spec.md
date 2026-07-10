@@ -663,9 +663,11 @@ not on the framework-agnostic §6.1 middleware.
 - **`per_attempt_override` — per-attempt request override.** A declarative *retry* schedule of
   `RuntimeConfig` (§6) partial-overrides; when supplied, the loop **MUST** apply it. **Attempt 0
   always uses the caller's base `config` unmodified.** The schedule applies to retries: retry *i*
-  (attempt *i+1*) uses the base config with the *i*-th override merged on top — the override's set fields replace the base, unspecified fields
-  are inherited (a general `RuntimeConfig` partial; the canonical case overrides only sampling, e.g.
-  an escalating temperature schedule). When the schedule is shorter than the retry count, the last
+  (attempt *i+1*) uses the base config with the *i*-th override shallow-merged on top per key — a field set
+  to a non-`None` value in the override replaces the base's value for that key; a field left `None` or absent
+  inherits the base (per §6's null-skip semantics, `None` means "unset", so an override cannot clear a base
+  field to `None`). Undeclared extras (§6) merge by the same per-key rule. (A general `RuntimeConfig` partial;
+  the canonical case overrides only sampling, e.g. an escalating temperature schedule). When the schedule is shorter than the retry count, the last
   entry carries forward. The override is applied to an internal per-attempt copy; `complete()` MUST
   NOT mutate the caller's `config` (§5). `on_retry` stays observe-only — the schedule is the
   declarative mutation surface (an implementation MUST NOT substitute a mutating retry callback).
@@ -686,7 +688,8 @@ not on the framework-agnostic §6.1 middleware.
   messages — §8.2) and gives the model its full self-heal history. The `assistant` message carries the
   attempt's output as the text the error surfaces on `output_content` (§7 / 0082); when the working
   transcript's last message is already an `assistant` message (e.g. a caller prefill), the output
-  **continues** that message rather than starting a new one, so alternation still holds. The builder is
+  **continues** that message — concatenated onto its content verbatim, with no OA-added separator —
+  rather than starting a new one, so alternation still holds. The builder is
   invoked only when a further attempt remains — not on the terminal attempt once `max_attempts` is
   exhausted. A **transient** retry interleaved in a reask-enabled loop appends no reask pair but re-sends
   the working transcript accumulated so far (its span's `retry_reason` is `transient`). `complete()` MUST
@@ -726,8 +729,9 @@ implementations MUST detect cancellation and re-raise it before consulting the c
 span per observability §5.5 — N retry attempts emit N LLM spans, all parented under the
 calling node's span. The per-attempt span carries the `openarmature.llm.attempt_index`
 attribute (per observability §5.5), and on retry attempts (attempt index ≥ 1) an
-`openarmature.llm.retry_reason` attribute recording why the retry occurred — `transient` (a
-transient-classified failure) or `reask` (a `structured_output_invalid` reask); attempt 0 carries
+`openarmature.llm.retry_reason` attribute recording why **this attempt was scheduled** — the class of
+the *immediately prior* attempt's failure, `transient` (a transient-classified failure) or `reask` (a
+`structured_output_invalid` reask), not this attempt's own outcome; attempt 0 carries
 no `retry_reason`. (§7.1 introduces the attribute; its detailed observability §5.5 / Langfuse
 rendering is a follow-on.) The final-error category lands on the LAST attempt's span;
 earlier failed-then-retried attempts carry their own per-span error categories.

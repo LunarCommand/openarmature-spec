@@ -838,10 +838,11 @@ comment (per §3.2) is a navigational example of the inline tokens; §5.10 is th
 ### 5.11 Provider call-retry directives (llm-provider §7.1)
 
 llm-provider call fixtures configure a `complete()` call under `call:` and mock the provider's
-per-attempt responses under `mock_provider.responses:` (an ordered list consumed one per attempt in
-issue order; a fixture MAY supply more entries than the loop consumes — e.g. to prove it stops early). Two
-directives support llm-provider §7.1's adaptive call-level retry (the per-attempt request override
-and structured-output reask).
+per-attempt responses under `mock_provider.responses:` (an ordered list consumed one per attempt, in the
+order attempts are issued; a fixture MAY supply more entries than the loop consumes — e.g. to prove it stops
+early). This section documents the directives supporting llm-provider §7.1's adaptive call-level retry —
+the two `call.retry` adaptive fields (`per_attempt_override`, `reask`) plus the `expected.wire_requests` and
+`attributes_absent` assertion surfaces.
 
 **Call configuration.** Beyond the pipeline-utilities §6.1 four-field record, the `call.retry`
 mapping accepts the two llm-provider adaptive fields (llm-provider §7.1):
