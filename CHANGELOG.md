@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.91.0] — 2026-07-09
+
+**Added**
+
+- **llm-provider §7.1 — adaptive call-level retry (per-attempt request override + structured-output reask).** The `complete()` `retry` parameter (§5) now also accepts an llm-provider retry-config that extends the pipeline-utilities §6.1 four-field record with two optional, opt-in fields. `per_attempt_override` is a declarative *retry* override schedule — attempt 0 uses the caller's base `config` unchanged, and the *i*-th override (a general `RuntimeConfig` partial, canonically a temperature schedule) applies to retry *i*, merged onto base; the last entry carries forward. `reask` is a **caller-supplied corrective-message builder**: when set, `structured_output_invalid` (§7) becomes retryable-for-this-call (reusing the `max_attempts` budget), and on each such failure OA invokes the caller's builder with the error's failure surface (0082 — the invalid `output_content` + the `error_message` reason) and appends the model's raw output as an `assistant` message plus the content the builder returns as a `user` message, accumulating across reask retries so the transcript stays role-alternating. **OA authors no prompt text of its own** — the `assistant` message is the model's verbatim output and the caller owns every word OA adds beyond it (charter §3.1 principle 7, *No built-in prompts*). The per-attempt span gains an `openarmature.llm.retry_reason` (`transient` | `reask`) attribute on retry attempts. Both extensions are opt-in; a plain §6.1 record (or none) preserves the existing transient-only behavior. ([proposal 0095](proposals/0095-adaptive-call-level-retry.md))
+- **conformance-adapter §5.11 — provider call-retry fixture directives.** Documents the fixture surface for the above: the `call.retry` adaptive fields (`per_attempt_override`, and `reask: {template}` — a declarative stand-in for the caller's builder that the adapter renders from the error surface, contributing no text of its own) and the `expected.wire_requests` per-attempt outbound-request assertion (`sampling`; `appended_messages` — the appended `assistant`-output + `user`-correction pairs; `messages` — the full outbound list, for the assistant-prefill continuation case; exact or `content_contains`) plus an `attributes_absent` span directive, generalizing the single-request `expected_wire_request` provider-fixture convention to the retry-loop case. ([proposal 0095](proposals/0095-adaptive-call-level-retry.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Additive: both behaviors are opt-in, and the §7.1 default (transient-only, byte-identical replay) and the generic §6.1 middleware are unchanged. The reask half depends on 0082 (Accepted); a downstream implementation MUST NOT ship reask ahead of its own 0082 implementation. Conformance: seven new llm-provider fixtures (061–067) — per-attempt override, reask success, reask budget exhausted, reask off-by-default, override + reask compose (with transcript accumulation), a mixed transient+reask interleave, and an assistant-prefill continuation.
+
 ## [0.90.0] — 2026-07-07
 
 **Changed**

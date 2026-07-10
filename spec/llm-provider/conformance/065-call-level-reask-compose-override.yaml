@@ -1,0 +1,132 @@
+# §7.1 Call-level retry — reask composes with per-attempt override, and the
+# working transcript accumulates across reask retries. complete() is called
+# with a response_schema, a reask builder, AND a per-attempt temperature
+# schedule. Attempts 0 and 1 return DIFFERENT schema-invalid JSON (attempt 0
+# omits "age"; attempt 1 gives "age" the wrong type — both
+# structured_output_invalid); attempt 2 returns the corrected object. Each
+# reask retry applies BOTH its scheduled sampling override AND the appended
+# corrective pair. Because the two invalid outputs differ, attempt 2's
+# transcript carries the FULL accumulation: both prior (assistant output +
+# user correction) pairs, four appended messages in order. Three LLM spans
+# emit; the reask retries carry openarmature.llm.retry_reason=reask.
+
+mock_provider:
+  responses:
+    # Attempt 0 — invalid (missing "age") → structured_output_invalid.
+    - status: 200
+      body:
+        id: cc-065-a
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Dan"}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    # Attempt 1 (reask retry 1) — still invalid, but DIFFERENT: "age" is the
+    # wrong type ("forty" string vs. integer) → structured_output_invalid.
+    # Differing from attempt 0's output makes accumulation observable.
+    - status: 200
+      body:
+        id: cc-065-b
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Dan","age":"forty"}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 30, completion_tokens: 8, total_tokens: 38}
+    # Attempt 2 (reask retry 2) — corrected JSON that validates.
+    - status: 200
+      body:
+        id: cc-065-c
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Dan","age":40}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 40, completion_tokens: 8, total_tokens: 48}
+
+call:
+  operation: complete
+  messages:
+    - {role: user, content: "Generate a person record."}
+  config: {temperature: 0.0}
+  response_schema:
+    type: object
+    properties:
+      name: {type: string}
+      age: {type: integer}
+    required: [name, age]
+    additionalProperties: false
+  retry:
+    max_attempts: 3
+    backoff: {type: deterministic, seconds: 0}
+    reask:
+      template: "Correct {output_content}: {error_message}"
+    # Escalating temperature schedule — composes with reask on each retry.
+    per_attempt_override:
+      - {temperature: 0.3}
+      - {temperature: 0.6}
+
+expected:
+  response:
+    message:
+      role: assistant
+      content: '{"name":"Dan","age":40}'
+      tool_calls: null
+    finish_reason: stop
+    parsed: {name: "Dan", age: 40}
+  # Each reask retry carries BOTH its scheduled override AND the appended
+  # corrective pair. The working transcript accumulates: attempt 1 appends
+  # attempt 0's (assistant output + user correction) pair; attempt 2 appends
+  # that pair PLUS attempt 1's pair — four messages, in order, proving
+  # accumulation across reask retries. User corrections use content_contains
+  # (the template interpolates the implementation-defined {error_message});
+  # the assistant outputs are asserted exactly (the verbatim model output).
+  wire_requests:
+    # Attempt 0 — base config; nothing appended.
+    - sampling: {temperature: 0.0}
+      appended_messages: []
+    # Attempt 1 (reask retry 1) — override[0]; appends attempt 0's pair.
+    - sampling: {temperature: 0.3}
+      appended_messages:
+        - {role: assistant, content: '{"name":"Dan"}'}
+        - {role: user, content_contains: ["Correct", '{"name":"Dan"}']}
+    # Attempt 2 (reask retry 2) — override[1]; appends the FULL accumulation:
+    # attempt 0's pair, then attempt 1's pair (four messages, in order).
+    - sampling: {temperature: 0.6}
+      appended_messages:
+        - {role: assistant, content: '{"name":"Dan"}'}
+        - {role: user, content_contains: ["Correct", '{"name":"Dan"}']}
+        - {role: assistant, content: '{"name":"Dan","age":"forty"}'}
+        - {role: user, content_contains: ["Correct", '{"name":"Dan","age":"forty"}']}
+  llm_spans:
+    # Attempt 0 — base attempt; structured_output_invalid; no retry_reason.
+    - attempt_index: 0
+      attributes:
+        "openarmature.llm.attempt_index": 0
+      attributes_absent: ["openarmature.llm.retry_reason"]
+      error_category: structured_output_invalid
+    # Attempt 1 (reask retry 1) — still invalid.
+    - attempt_index: 1
+      attributes:
+        "openarmature.llm.attempt_index": 1
+        "openarmature.llm.retry_reason": reask
+      error_category: structured_output_invalid
+    # Attempt 2 (reask retry 2) — corrected; success.
+    - attempt_index: 2
+      attributes:
+        "openarmature.llm.attempt_index": 2
+        "openarmature.llm.retry_reason": reask
+        "openarmature.llm.finish_reason": stop
+        "openarmature.llm.model": gpt-test
+      error_category: null
+  invariants:
+    override_and_reask_compose_on_reask_retries: true
+    reask_transcript_accumulates_across_retries: true
+    base_attempt_uses_caller_config: true
+    caller_messages_unmutated: true
+    caller_config_unmutated: true
+    n_attempts_emit_n_llm_spans: true

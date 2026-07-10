@@ -1,0 +1,120 @@
+# §7.1 Call-level retry — reask with a caller assistant-prefill: the reask
+# output CONTINUES the trailing assistant message. complete() is called with a
+# response_schema, a reask builder, and caller `messages` that END in an
+# `assistant` prefill (`{role: assistant, content: "Sure: "}`). Attempt 0
+# returns schema-invalid JSON (missing required "age") → structured_output_invalid,
+# which the reask builder makes retryable. Because the working transcript's last
+# message is already an `assistant` message (the prefill), the reask does NOT
+# start a new assistant message: it CONCATENATES the model's raw attempt-0 output
+# onto the prefill's content VERBATIM (no OA-added separator — no newline, no
+# delimiter), keeping the sequence role-alternating, then appends the builder's
+# rendered `user` correction. Attempt 1's request therefore carries a MODIFIED
+# caller message (the continued assistant prefill), which `appended_messages`
+# cannot express — so attempt 1 is asserted via the FULL-list `messages` form
+# (conformance-adapter §5.11). Attempt 1 returns corrected, schema-valid JSON and
+# the call succeeds. This proves the prefill-continuation branch: OA continues the
+# assistant message rather than starting a new one, inserts no separator, and
+# authors no text of its own (charter §3.1 principle 7, No built-in prompts).
+
+mock_provider:
+  responses:
+    # Attempt 0 — valid JSON, but missing the required "age" field →
+    # structured_output_invalid. The reask builder makes this retryable. The raw
+    # output / {output_content} for this attempt is exactly {"name":"Zoe"}.
+    - status: 200
+      body:
+        id: cc-067-a
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Zoe"}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 22, completion_tokens: 6, total_tokens: 28}
+    # Attempt 1 (reask retry) — corrected JSON that validates. Its REQUEST carries
+    # the CONTINUED assistant prefill ("Sure: " + attempt-0 output) followed by the
+    # builder's user correction (asserted via `messages` below).
+    - status: 200
+      body:
+        id: cc-067-b
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Zoe","age":25}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 34, completion_tokens: 9, total_tokens: 43}
+
+call:
+  operation: complete
+  # Caller messages END in an assistant prefill — this is the branch under test.
+  messages:
+    - {role: user, content: "Return a person as JSON."}
+    - {role: assistant, content: "Sure: "}
+  response_schema:
+    type: object
+    properties:
+      name: {type: string}
+      age: {type: integer}
+    required: [name, age]
+    additionalProperties: false
+  retry:
+    max_attempts: 2
+    backoff: {type: deterministic, seconds: 0}
+    # Reask builder stand-in; interpolates {error_message}, so the rendered user
+    # correction is asserted via content_contains below.
+    reask:
+      template: "Fix {output_content}: {error_message}"
+
+expected:
+  response:
+    message:
+      role: assistant
+      content: '{"name":"Zoe","age":25}'
+      tool_calls: null
+    finish_reason: stop
+    parsed: {name: "Zoe", age: 25}
+  # Attempt 0 carries the caller's original messages — including the assistant
+  # prefill — sent UNCHANGED; nothing appended. Attempt 1 (the reask retry) is
+  # asserted via the FULL-list `messages` form because the reask MODIFIES a caller
+  # message (it continues the trailing assistant prefill) rather than only
+  # appending after it — a case `appended_messages` cannot express. The continued
+  # assistant content is exactly the prefill "Sure: " concatenated with the
+  # attempt-0 output {"name":"Zoe"} VERBATIM, with NO separator → exactly
+  # `Sure: {"name":"Zoe"}`. The user correction uses content_contains (the reask
+  # template interpolates the implementation-defined {error_message}).
+  wire_requests:
+    # Attempt 0 — base attempt; the caller's messages (prefill included) sent
+    # unchanged; nothing appended.
+    - appended_messages: []
+    # Attempt 1 (reask retry) — FULL outbound message list. The trailing assistant
+    # prefill was CONTINUED (not a new assistant message, no inserted separator);
+    # the user correction follows, keeping the sequence role-alternating.
+    - messages:
+        - {role: user, content: "Return a person as JSON."}
+        - {role: assistant, content: 'Sure: {"name":"Zoe"}'}
+        - {role: user, content_contains: ["Fix", '{"name":"Zoe"}']}
+  llm_spans:
+    # Attempt 0 — base attempt; FAILED structured_output_invalid (missing "age");
+    # carries no retry_reason.
+    - attempt_index: 0
+      attributes:
+        "openarmature.llm.attempt_index": 0
+      attributes_absent: ["openarmature.llm.retry_reason"]
+      error_category: structured_output_invalid
+    # Attempt 1 (reask retry) — retried BECAUSE attempt 0 was a reasked
+    # structured_output_invalid (retry_reason = reask); corrected and succeeds.
+    - attempt_index: 1
+      attributes:
+        "openarmature.llm.attempt_index": 1
+        "openarmature.llm.retry_reason": reask
+        "openarmature.llm.finish_reason": stop
+        "openarmature.llm.model": gpt-test
+      error_category: null
+  invariants:
+    prefill_continuation_concatenates_verbatim: true
+    no_new_assistant_message_on_prefill_continuation: true
+    no_oa_added_separator_on_prefill_continuation: true
+    reask_makes_structured_output_invalid_retryable: true
+    caller_messages_unmutated: true
+    n_attempts_emit_n_llm_spans: true

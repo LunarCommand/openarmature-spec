@@ -1,0 +1,103 @@
+# §7.1 Call-level retry — structured-output reask, corrected on retry.
+# complete() is called with a response_schema and a reask builder. Attempt
+# 0 returns valid JSON that fails schema validation (missing required
+# "age") → structured_output_invalid. With a reask builder present the loop
+# treats that as retryable for this call: it appends TWO messages to the
+# working transcript — the model's own raw output as an assistant message,
+# then the builder's rendered correction as a user message — and retries.
+# Attempt 1 returns valid JSON and the call succeeds. This is the exactness
+# fixture: the reask template is {output_content}-only (deterministic), so
+# BOTH appended messages are asserted by exact content, proving OA appends
+# exactly the model's output plus the builder's rendering and nothing else
+# (charter §3.1 principle 7, No built-in prompts).
+
+mock_provider:
+  responses:
+    # Attempt 0 — valid JSON, but missing the required "age" field →
+    # structured_output_invalid.
+    - status: 200
+      body:
+        id: cc-062-a
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Alice"}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    # Attempt 1 (reask retry) — corrected JSON that validates.
+    - status: 200
+      body:
+        id: cc-062-b
+        object: chat.completion
+        model: gpt-test
+        choices:
+          - index: 0
+            message: {role: assistant, content: '{"name":"Alice","age":30}'}
+            finish_reason: stop
+        usage: {prompt_tokens: 30, completion_tokens: 8, total_tokens: 38}
+
+call:
+  operation: complete
+  messages:
+    - {role: user, content: "Generate a person record."}
+  response_schema:
+    type: object
+    properties:
+      name: {type: string}
+      age: {type: integer}
+    required: [name, age]
+    additionalProperties: false
+  retry:
+    max_attempts: 2
+    backoff: {type: deterministic, seconds: 0}
+    # Declarative stand-in for the caller's reask builder. Deterministic:
+    # {output_content}-only, no {error_message}, so the rendered user
+    # message is exact and portable. The adapter renders it with the
+    # structured_output_invalid error's 0082 surface. OA contributes no text
+    # of its own beyond the model's output and this rendered template.
+    reask:
+      template: "Your previous output {output_content} was invalid. Return corrected JSON."
+
+expected:
+  response:
+    message:
+      role: assistant
+      content: '{"name":"Alice","age":30}'
+      tool_calls: null
+    finish_reason: stop
+    parsed: {name: "Alice", age: 30}
+  # Attempt 0 carries only the caller's original messages (nothing appended).
+  # The reask retry appends TWO messages: the model's raw attempt-0 output as
+  # an assistant message, then the builder's rendered correction as a user
+  # message. Because the template is {output_content}-only, both are asserted
+  # by exact content — this fixture proves OA appends exactly the model output
+  # plus the builder's rendering and nothing else.
+  wire_requests:
+    - appended_messages: []
+    - appended_messages:
+        - {role: assistant, content: '{"name":"Alice"}'}
+        - {role: user, content: "Your previous output {\"name\":\"Alice\"} was invalid. Return corrected JSON."}
+  llm_spans:
+    # Attempt 0 — FAILED structured_output_invalid (missing "age"); carries
+    # no retry_reason. The reask is the loop's response to this failure.
+    - attempt_index: 0
+      attributes:
+        "openarmature.llm.attempt_index": 0
+      attributes_absent: ["openarmature.llm.retry_reason"]
+      error_category: structured_output_invalid
+    # Attempt 1 (reask retry) — retried because attempt 0 was a reasked
+    # structured_output_invalid; success.
+    - attempt_index: 1
+      attributes:
+        "openarmature.llm.attempt_index": 1
+        "openarmature.llm.retry_reason": reask
+        "openarmature.llm.finish_reason": stop
+        "openarmature.llm.model": gpt-test
+      error_category: null
+  invariants:
+    reask_makes_structured_output_invalid_retryable: true
+    appended_assistant_message_is_exactly_model_output: true
+    appended_user_correction_is_exactly_builder_output: true
+    caller_messages_unmutated: true
+    n_attempts_emit_n_llm_spans: true
