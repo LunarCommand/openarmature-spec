@@ -136,6 +136,10 @@ not_in_nav: |
 extra:
   # Hide the "Made with Material for MkDocs" footer (matches python repo).
   generator: false
+  # Google Analytics (GA4). Deliberate exception to the vendored-JS policy
+  # under extra_javascript below: gtag.js is a Google-served, server-versioned
+  # script that can't be self-hosted or SRI-pinned, and analytics inherently
+  # reports to Google — the accepted tradeoff for GA4.
   analytics:
     provider: google
     property: G-WQ9QXJGR81
