@@ -9,6 +9,7 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 **Documented**
 
 - **conformance-adapter §5.12 — provider structured-output error assertion.** Documents the previously-undocumented `expected.raises.carries` assertion directives for the `structured_output_invalid` error (llm-provider §7): `response_schema_present`, `raw_response_content`, `failure_description_present`, `failure_description_mentions`, `finish_reason`, and `usage`. Descriptive of the established convention the 0016 (022 / 023) and 0095 (062–067) fixtures already use — no behavior or expectation change.
+- **llm-provider §7 — `output_content` wording.** Clarified the `structured_output_invalid` error's `output_content` description from "the bytes the model produced" to "the verbatim content the model produced" — it is a string (`Response.message.content`), so "bytes" was imprecise. No behavior change.
 
 **Notes**
 

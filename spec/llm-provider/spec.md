@@ -597,7 +597,7 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
 - `structured_output_invalid` — `complete()` was called with a `response_schema` (§5), and the
   provider returned content that could not be parsed as JSON OR did not validate against the
   supplied schema. The error MUST expose the requested `response_schema`, the raw response
-  content as **`output_content`** (the bytes the model produced), a description of the validation
+  content as **`output_content`** (the verbatim content the model produced), a description of the validation
   or parse failure as **`error_message`** (the wrapped exception's message, the failing JSON
   Pointer, or the language's idiomatic equivalent) — these two matching the graph-engine §6
   failure-event field names (0082), which the call-level `reask` builder (§7.1) consumes — **and
