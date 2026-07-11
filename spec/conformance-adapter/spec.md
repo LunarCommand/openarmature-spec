@@ -897,8 +897,8 @@ that span.
 ### 5.12 Provider structured-output error assertion (llm-provider §7)
 
 llm-provider call fixtures assert a raised `structured_output_invalid` error (llm-provider §7, its
-diagnostics surface per 0082) via `expected.raises: {category: structured_output_invalid, carries:
-{ ... }}`. The `carries` block asserts the error's exposed fields. These directives document an
+diagnostics surface per 0082) via an `expected.raises` block with `category: structured_output_invalid`
+and a `carries` mapping. The `carries` block asserts the error's exposed fields. These directives document an
 established convention — the 0016 structured-output fixtures (022 / 023) and the 0095 reask fixtures
 (062–067) already use them; they are documented here **as-is, without renaming**. (The `carries` key
 names predate llm-provider §7 naming its error fields `output_content` / `error_message`; aligning the
@@ -907,7 +907,7 @@ routed through the impl coordination, not applied here.)
 
 - **`response_schema_present: <bool>`** — the error exposes the requested `response_schema` (llm-provider §5 / §7).
 - **`raw_response_content: <str>`** — exact-equality on the error's raw response content (llm-provider §7's
-  `output_content` field): the bytes the model produced that failed to parse or validate.
+  `output_content` field): the verbatim content the model produced that failed to parse or validate.
 - **`failure_description_present: <bool>`** — the error's failure description (llm-provider §7's `error_message`
   field) is present. Used when the wording is not asserted (e.g. a parse failure with no specific
   field to name).
