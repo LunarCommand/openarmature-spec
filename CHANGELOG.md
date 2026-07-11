@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.91.1] — 2026-07-11
+
+**Documented**
+
+- **conformance-adapter §5.12 — provider structured-output error assertion.** Documents the previously-undocumented `expected.raises.carries` assertion directives for the `structured_output_invalid` error (llm-provider §7): `response_schema_present`, `raw_response_content`, `failure_description_present`, `failure_description_mentions`, `finish_reason`, and `usage`. Descriptive of the established convention the 0016 (022 / 023) and 0095 (062–067) fixtures already use — no behavior or expectation change.
+
+**Notes**
+
+- **PATCH (pre-1.0), clarification only.** No proposal (documents shipped behavior, no new requirement). A future alignment of the `carries` key names with §7's error field names (`output_content` / `error_message`) is a coordinated follow-on — routed through impl coordination, since the keys are read by shipped adapters (0016 shipped at python 0.6.0).
+
 ## [0.91.0] — 2026-07-09
 
 **Added**
