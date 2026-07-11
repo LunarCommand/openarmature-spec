@@ -894,6 +894,33 @@ attempts. Because those attribute assertions are a subset match, asserting an at
 **`attributes_absent: [<key>, ...]`**, asserting none of the listed attribute keys are present on
 that span.
 
+### 5.12 Provider structured-output error assertion (llm-provider §7)
+
+llm-provider call fixtures assert a raised `structured_output_invalid` error (llm-provider §7, its
+diagnostics surface per 0082) via an `expected.raises` block with `category: structured_output_invalid`
+and a `carries` mapping. The `carries` block asserts the error's exposed fields. These directives document an
+established convention — the 0016 structured-output fixtures (022 / 023) and the 0095 reask fixtures
+(062–067) already use them; they are documented here **as-is, without renaming**. (The `carries` key
+names predate llm-provider §7 naming its error fields `output_content` / `error_message`; aligning the
+two is a separate, coordinated change — the key names are read by shipped adapters, so a rename is
+routed through the impl coordination, not applied here.)
+
+- **`response_schema_present: <bool>`** — the error exposes the requested `response_schema` (llm-provider §5 / §7).
+- **`raw_response_content: <str>`** — exact-equality on the error's raw response content (llm-provider §7's
+  `output_content` field): the verbatim content the model produced that failed to parse or validate.
+- **`failure_description_present: <bool>`** — the error's failure description (llm-provider §7's `error_message`
+  field) is present. Used when the wording is not asserted (e.g. a parse failure with no specific
+  field to name).
+- **`failure_description_mentions: <str>`** — a substring the error's failure description
+  (`error_message`) MUST contain (e.g. the failing field name). A contains-check, since the exact
+  wording is implementation-defined (llm-provider §7).
+- **`finish_reason: <str>`** — the error's normalized `finish_reason` (llm-provider §6), mandated on
+  `structured_output_invalid` by 0082.
+- **`usage: { ... }`** — exact-equality on the error's token `usage`: the llm-provider §6 usage record
+  (the baseline counters `prompt_tokens` / `completion_tokens` / `total_tokens`, plus any optional §6
+  fields such as the cache counters `cached_tokens` / `cache_creation_tokens`), mandated on
+  `structured_output_invalid` by 0082.
+
 ## 6. Harness primitives
 
 Adapters MUST provide the following runtime primitives to satisfy directives in §5.
