@@ -905,18 +905,18 @@ names predate llm-provider §7 naming its error fields `output_content` / `error
 two is a separate, coordinated change — the key names are read by shipped adapters, so a rename is
 routed through the impl coordination, not applied here.)
 
-- **`response_schema_present: <bool>`** — the error exposes the requested `response_schema` (§5 / §7).
-- **`raw_response_content: <str>`** — exact-equality on the error's raw response content (§7's
+- **`response_schema_present: <bool>`** — the error exposes the requested `response_schema` (llm-provider §5 / §7).
+- **`raw_response_content: <str>`** — exact-equality on the error's raw response content (llm-provider §7's
   `output_content` field): the bytes the model produced that failed to parse or validate.
-- **`failure_description_present: <bool>`** — the error's failure description (§7's `error_message`
+- **`failure_description_present: <bool>`** — the error's failure description (llm-provider §7's `error_message`
   field) is present. Used when the wording is not asserted (e.g. a parse failure with no specific
   field to name).
 - **`failure_description_mentions: <str>`** — a substring the error's failure description
   (`error_message`) MUST contain (e.g. the failing field name). A contains-check, since the exact
-  wording is implementation-defined (§7).
-- **`finish_reason: <str>`** — the error's normalized `finish_reason` (§6), mandated on
+  wording is implementation-defined (llm-provider §7).
+- **`finish_reason: <str>`** — the error's normalized `finish_reason` (llm-provider §6), mandated on
   `structured_output_invalid` by 0082.
-- **`usage: <record>`** — the error's token `usage` (§6), mandated on `structured_output_invalid` by
+- **`usage: <record>`** — the error's token `usage` (llm-provider §6), mandated on `structured_output_invalid` by
   0082.
 
 ## 6. Harness primitives
