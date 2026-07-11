@@ -916,8 +916,9 @@ routed through the impl coordination, not applied here.)
   wording is implementation-defined (llm-provider §7).
 - **`finish_reason: <str>`** — the error's normalized `finish_reason` (llm-provider §6), mandated on
   `structured_output_invalid` by 0082.
-- **`usage: <record>`** — the error's token `usage` (llm-provider §6), mandated on `structured_output_invalid` by
-  0082.
+- **`usage: { ... }`** — exact-equality on the error's token `usage` (llm-provider §6): a mapping of the
+  token counters (`prompt_tokens` / `completion_tokens` / `total_tokens`), mandated on
+  `structured_output_invalid` by 0082.
 
 ## 6. Harness primitives
 
