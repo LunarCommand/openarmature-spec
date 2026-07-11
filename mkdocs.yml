@@ -136,6 +136,9 @@ not_in_nav: |
 extra:
   # Hide the "Made with Material for MkDocs" footer (matches python repo).
   generator: false
+  analytics:
+    provider: google
+    property: G-WQ9QXJGR81
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/LunarCommand/
