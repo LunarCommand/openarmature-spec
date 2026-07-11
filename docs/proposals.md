@@ -10,7 +10,7 @@ lifecycle and the proposal template.
 | [0096](proposals/0096-retrieval-raw-json-shape.md) | Retrieval `raw` verbatim JSON of any top-level shape | retrieval-provider | Accepted | Pending         | —          |
 | [0095](proposals/0095-adaptive-call-level-retry.md) | Adaptive call-level retry (per-attempt override + reask) | llm-provider | Accepted | Pending         | —          |
 | [0094](proposals/0094-subgraph-projection-declared-boundary.md) | Subgraph projection declared same-name boundary | graph-engine | Accepted | Pending         | —          |
-| [0093](proposals/0093-nullable-provider-usage-records.md) | Nullable provider usage records | retrieval-provider | Accepted | Pending         | —          |
+| [0093](proposals/0093-nullable-provider-usage-records.md) | Nullable provider usage records | retrieval-provider | Accepted | Partial (0.16.0)| —          |
 | [0092](proposals/0092-retrieval-provider-embedding-batch-chunking.md) | Embedding-mapping batch chunking | retrieval-provider | Accepted | Pending         | —          |
 | [0091](proposals/0091-retrieval-provider-cohere-embeddings-wire.md) | Cohere embeddings wire mapping | retrieval-provider | Accepted | Pending         | —          |
 | [0090](proposals/0090-retrieval-provider-cohere-rerank-wire.md) | Cohere rerank wire mapping | retrieval-provider | Accepted | Pending         | —          |
@@ -26,7 +26,7 @@ lifecycle and the proposal template.
 | [0080](proposals/0080-prompt-group-arity-enforcement.md) | PromptGroup arity enforcement | prompt-management | Accepted | Pending         | —          |
 | [0079](proposals/0079-retrieval-provider-openai-compatible-embeddings.md) | OpenAI-compatible embeddings wire mapping | retrieval-provider | Accepted    | Pending         | —          |
 | [0078](proposals/0078-retrieval-provider-jina-wire-mapping.md) | Jina wire mapping (rerank + embedding) | retrieval-provider | Accepted    | Pending         | —          |
-| [0077](proposals/0077-retrieval-provider-tei-wire-mapping.md) | TEI wire mapping + asymmetric query/document embedding | retrieval-provider | Accepted    | Pending         | —          |
+| [0077](proposals/0077-retrieval-provider-tei-wire-mapping.md) | TEI wire mapping + asymmetric query/document embedding | retrieval-provider | Accepted    | Shipped (0.16.0)| —          |
 | [0076](proposals/0076-tool-call-request-observability-llm-spans.md) | Tool-call request observability on LLM spans | observability | Accepted | Shipped (0.15.0)| —          |
 | [0075](proposals/0075-parallel-branches-lightweight-branches.md) | Parallel-branches lightweight callable + conditional branches | pipeline-utilities | Accepted | Shipped (0.15.0)| —          |
 | [0074](proposals/0074-failure-isolation-catch-classification.md) | Failure-isolation cause-chain catch classification | pipeline-utilities | Accepted | Shipped (0.15.0)| —          |
