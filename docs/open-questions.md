@@ -496,6 +496,41 @@ short-horizon roadmap below.
   directly intelligible as speech; same threat-model weight as raw
   text). Probably a 2-proposal batch like retrieval-provider, or one
   combined proposal — to be decided when the capability is drafted.
+- **Composes with a real-time runtime; does not replace one.** OA owns
+  the provider contracts, typed events, and observability; the real-time
+  media runtime — audio transport (WebRTC / WebSocket), frame processing,
+  buffer management, and barge-in *mechanics* — is out of scope. A
+  voice-provider capability composes *underneath* a runtime like Pipecat
+  (which already plugs swappable vendor STT / TTS stages), the way
+  `llm-provider` composes under an application's own control flow.
+  Deepgram is a natural first `§8` realization: it spans STT, TTS, and
+  endpointing in one vendor, so modeling its contract exercises the whole
+  surface and generalizes to AssemblyAI / Speechmatics / Cartesia /
+  ElevenLabs. Deepgram's bundled *Voice Agent API* (STT+LLM+TTS in one
+  socket) is a useful counterpoint — OA models the *component* providers a
+  dev composes, not an all-in-one turnkey.
+- **Streaming shape is duplex / continuous, not request / response.** The
+  "audio → transcript text" shape above under-models real ASR: streaming
+  STT is a persistent bidirectional stream (client → server audio frames,
+  server → client `interim → final` transcript events, plus endpointing /
+  VAD signals) — a different shape than 0062's unidirectional LLM token
+  stream. Typed events would carry the interim / final distinction (an
+  interim transcript event superseded by a final one). This grows the
+  queued *full streaming wire* discussion a duplex case it doesn't yet
+  cover.
+- **Latency is the first-class observable.** Voice UX turns on
+  time-to-first-audio, endpoint-to-first-token, TTS time-to-first-byte,
+  and turn duration. The OA-shaped contribution is a speech extension of
+  the GenAI / OTel semconv (§11-style metrics + spans for the STT / TTS /
+  turn latencies), which no runtime standardizes across vendors.
+- **Interruption / barge-in is mostly runtime, with one contract sliver.**
+  The mechanics (detecting the interrupt, flushing audio) belong to the
+  runtime, but *cancelling the in-flight turn* — the LLM completion + TTS
+  synthesis — maps onto OA's existing middleware cancellation-propagation
+  (0004); the voice case is a concrete driver for that contract.
+- **Turn boundaries are a separate cross-cutting question** — endpointing
+  is the voice trigger for a turn abstraction shared with the chat harness
+  and event-driven runtimes; see *Forward-looking turn model* below.
 
 ### Cross-cutting — `multimodal-provider` capability
 
@@ -514,6 +549,28 @@ short-horizon roadmap below.
   `EmbeddingResponse.vectors`). Video generation NOT in scope under
   this capability — different cost / latency / streaming-shape; lands
   separately if downstream demand surfaces.
+
+## Forward-looking turn model
+
+### Cross-cutting — modality-agnostic turn boundary
+
+- **A "turn" recurs across surfaces with different boundary triggers.**
+  [candidate-for-new-proposal] — a *voice* turn ends at audio endpointing
+  / utterance-end (a provider-emitted signal), a *chat* turn ends at
+  message submit (harness-chat, 0056), an *event-driven* turn ends at an
+  external event boundary (an event-driven runtime's turn edge). If OA
+  models the turn boundary abstractly — a contract independent of what
+  produces it — the voice harness, the chat harness, and event-driven
+  runtimes all compose on the same abstraction: the framework owns the
+  turn *contract*, not the transport that produces it. Ties to
+  harness-chat (0056), sessions (0020 — cross-invocation state and
+  checkpoint points), and HITL. Open sub-questions: what a turn-boundary
+  event is and who emits it (provider vs harness vs external runtime);
+  how in-turn cancellation (voice barge-in) relates to the boundary; how
+  the boundary lines up with session / checkpoint persistence points.
+  Surfaced exploring a Deepgram / Pipecat voice harness; belongs to the
+  harness / voice work queued behind the discussion set. Captured so it
+  isn't re-derived — not proposal-ready.
 
 ## prompt-management
 
