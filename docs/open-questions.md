@@ -507,7 +507,7 @@ short-horizon roadmap below.
   endpointing in one vendor, so modeling its contract exercises the whole
   surface and generalizes to AssemblyAI / Speechmatics / Cartesia /
   ElevenLabs. Deepgram's bundled *Voice Agent API* (STT+LLM+TTS in one
-  socket) is a useful counterpoint — OA models the *component* providers the
+  socket) is a useful counterpoint — OA models the *component* providers that the
   caller composes, not an all-in-one turnkey.
 - **Streaming shape is duplex / continuous, not request / response.** The
   "audio → transcript text" shape above under-models real ASR: streaming
@@ -516,8 +516,8 @@ short-horizon roadmap below.
   VAD signals) — a different shape than 0062's unidirectional LLM token
   stream. Typed events would carry the interim / final distinction (an
   interim transcript event superseded by a final one). This grows the
-  queued *full streaming wire* discussion a duplex case it doesn't yet
-  cover.
+  queued *full streaming wire* discussion with a duplex case it doesn't
+  yet cover.
 - **Latency is the first-class observable.** Voice UX turns on
   time-to-first-audio, endpoint-to-first-token, TTS time-to-first-byte,
   and turn duration. The OA-shaped contribution is a speech extension of
