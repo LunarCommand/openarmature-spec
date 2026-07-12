@@ -25,7 +25,7 @@ lifecycle and the proposal template.
 | [0082](proposals/0082-structured-output-failure-diagnostics.md) | Structured-output failure diagnostics | graph-engine | Accepted | Pending         | —          |
 | [0081](proposals/0081-conformance-adapter-value-matcher-vocabulary.md) | Value-matcher vocabulary | conformance-adapter | Accepted | Textual (0.16.0)| —          |
 | [0080](proposals/0080-prompt-group-arity-enforcement.md) | PromptGroup arity enforcement | prompt-management | Accepted | Pending         | —          |
-| [0079](proposals/0079-retrieval-provider-openai-compatible-embeddings.md) | OpenAI-compatible embeddings wire mapping | retrieval-provider | Accepted    | Pending         | —          |
+| [0079](proposals/0079-retrieval-provider-openai-compatible-embeddings.md) | OpenAI-compatible embeddings wire mapping | retrieval-provider | Accepted    | Shipped (0.16.0)| —          |
 | [0078](proposals/0078-retrieval-provider-jina-wire-mapping.md) | Jina wire mapping (rerank + embedding) | retrieval-provider | Accepted    | Shipped (0.16.0)| —          |
 | [0077](proposals/0077-retrieval-provider-tei-wire-mapping.md) | TEI wire mapping + asymmetric query/document embedding | retrieval-provider | Accepted    | Shipped (0.16.0)| —          |
 | [0076](proposals/0076-tool-call-request-observability-llm-spans.md) | Tool-call request observability on LLM spans | observability | Accepted | Shipped (0.15.0)| —          |
