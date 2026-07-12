@@ -12,7 +12,7 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 **Notes**
 
-- **MINOR (pre-1.0).** A behavioral change to the §6 `document`-echo contract (generalized to object shapes) and the §8.2 Jina mapping. §6's `string | null` type is unchanged and the bare-string case is unchanged; an implementation that only handled bare-string echoes becomes non-conforming for object echoes (it was already silently dropping the echo on the live Jina wire). Depends on 0096 for the "verbatim echo on `raw`" clause. Conformance: fixture 019 gains a `TextDoc` case (→ extracted text), an `ImageDoc` case (→ `null`, verbatim object on `raw`), and a mixed-shape case (string + `TextDoc` + `ImageDoc` + absent across four results → per-result `["…", "…", null, null]`), each asserting the verbatim echo on `RerankResponse.raw`.
+- **MINOR (pre-1.0).** A behavioral change to the §6 `document`-echo contract (generalized to object shapes) and the §8.2 Jina mapping. §6's `string | null` type is unchanged and the bare-string case is unchanged; an implementation that only handled bare-string echoes becomes non-conforming for object echoes (it was already silently dropping the echo on the live Jina wire). Depends on 0096 for the "verbatim echo on `raw`" clause. Conformance: fixture 019 gains a `TextDoc` case (→ extracted text), an `ImageDoc` case (→ `null`, verbatim object on `raw`), a mixed-shape case (string + `TextDoc` + `ImageDoc` + absent across four results → per-result `["…", "…", null, null]`), an empty-string case (`""` present → `""`, distinct from an absent echo → `null`), and a malformed non-object case (a bare number → `provider_invalid_response`); the success cases assert the verbatim echo on `RerankResponse.raw`.
 
 ## [0.91.1] — 2026-07-11
 

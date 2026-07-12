@@ -449,8 +449,8 @@ didn't" invariant regardless.
 (`TextDoc = {"text": str}`, `ImageDoc = {"image": str}`); the text reranker typically returns the `TextDoc`
 object. Realizing §6's object-echo rule: a `string` → itself; a `TextDoc` → its `text`; an `ImageDoc` (or
 any object without a string `text`) → `null`; absent / `null` → `null`. The verbatim echo object is
-preserved on `RerankResponse.raw`. A `TextDoc` / `ImageDoc` is a documented Jina shape, so the mapping MUST
-NOT treat it as malformed, and an object echo that is neither (no string `text`) still surfaces `null` per
+preserved on `RerankResponse.raw`. A `TextDoc` or `ImageDoc` echo is a documented Jina shape, so the mapping
+MUST NOT treat it as malformed, and an object echo that is neither (no string `text`) still surfaces `null` per
 the §6 rule — its verbatim shape stays on `RerankResponse.raw` — rather than raising. A `document` echo
 that is **not** a string, object, or `null` — a number, array, or boolean — is not a valid document shape
 and maps to `provider_invalid_response` (§7); the `null` fallback covers text-less object echoes, not
