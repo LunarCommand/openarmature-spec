@@ -1,0 +1,1 @@
+../../proposals/0097-retrieval-provider-jina-document-echo-shape.md

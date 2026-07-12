@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0097](proposals/0097-retrieval-provider-jina-document-echo-shape.md) | Rerank `document` object-shape echo — general §6 rule + Jina TextDoc / ImageDoc | retrieval-provider | Draft | —               | —          |
 | [0096](proposals/0096-retrieval-raw-json-shape.md) | Retrieval `raw` verbatim JSON of any top-level shape | retrieval-provider | Accepted | Pending         | —          |
 | [0095](proposals/0095-adaptive-call-level-retry.md) | Adaptive call-level retry (per-attempt override + reask) | llm-provider | Accepted | Pending         | —          |
 | [0094](proposals/0094-subgraph-projection-declared-boundary.md) | Subgraph projection declared same-name boundary | graph-engine | Accepted | Pending         | —          |

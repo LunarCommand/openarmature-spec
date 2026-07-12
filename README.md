@@ -87,10 +87,11 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-Proposals currently in flight — Status is Draft; contracts may change before they are Accepted. None are open at present; a row is added here when a Draft opens.
+Proposals currently in flight. Status is Draft; contracts may change before they are Accepted.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
+| [0097](proposals/0097-retrieval-provider-jina-document-echo-shape.md) | Draft | retrieval-provider §6 / §8.2 | Rerank `document` object-shape echo — text-or-`null` (general §6), Jina `TextDoc`/`ImageDoc` realization, verbatim on `raw` |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
