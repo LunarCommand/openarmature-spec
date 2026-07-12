@@ -252,7 +252,7 @@ Implementations bind one rerank model identifier per provider instance via a con
 |---|---|
 | `index` | Int. The 0-based position of this document in the original input `documents` list. **Load-bearing for caller-side lookup** — callers MUST be able to map a result back to its input document via `documents[result.index]`. Implementations MUST preserve this verbatim from the provider response. |
 | `relevance_score` | Float. The provider-assigned relevance score; higher = more relevant. **Provider-specific scale** — most providers normalize to `[0.0, 1.0]` but the spec does NOT pin a scale. Cross-provider score comparisons are NOT meaningful. |
-| `document` | The echoed document text when the provider returns it; null otherwise. Implementations MUST surface the provider's echo verbatim when present; MUST NOT fabricate the echo from the input `documents` list when the provider omits it (the provider's echo and the caller's input are two different surfaces; conflating them would mask provider-side document transformations like deduplication or truncation). |
+| `document` | The echoed document **text** when the provider returns it; `null` otherwise. When the provider echoes the document as a **string**, implementations MUST surface it verbatim (an empty string is *present* — surfaced as `""`, not folded to `null`). When the provider echoes it as an **object** (a wrapper carrying the text under a `text` key), implementations MUST surface the object's text content — an object with a **string-valued `text` key** → that string; any other object (no string `text`, or a non-text media shape) → `null` — with the verbatim echo object preserved on `RerankResponse.raw` (the transparency surface, where a caller recovers a non-text echo, e.g. an image). An echo that is neither a string, an object, nor absent/`null` — a number, boolean, or array — is not a valid document shape and is a malformed provider response (`provider_invalid_response`, §7). Implementations MUST NOT fabricate the echo from the input `documents` list when the provider omits it (the provider's echo and the caller's input are two different surfaces; conflating them would mask provider-side document transformations like deduplication or truncation). |
 
 ### RerankUsage
 
@@ -279,9 +279,11 @@ reported.
   `provider_invalid_response` (§7) on duplicate-index responses.
 - When `top_k` is supplied, `len(results) <= top_k`. Implementations MUST raise
   `provider_invalid_response` (§7) if the provider returns more results than requested.
-- When the provider returns `document` echoes for some results but not others, implementations MUST
-  preserve the per-result variance (null where the provider omitted; populated where the provider
-  echoed). MUST NOT auto-fill from the input `documents` list.
+- When the provider returns `document` echoes for some results but not others — or as different shapes
+  per result — implementations MUST preserve the per-result variance: `null` where the provider omitted
+  the echo **or echoed a non-text shape** (per the `document` row above), populated with the echoed text
+  where the provider echoed a string or a text-bearing object. MUST NOT auto-fill from the input
+  `documents` list.
 
 ## 7. Error semantics
 
@@ -437,10 +439,21 @@ private gateway). A Jina `EmbeddingProvider` (`/v1/embeddings`) and a Jina `Rera
 `RerankRuntimeConfig.return_documents` value, **sent explicitly** — Jina's wire default is `true`, but
 OA's default is `False` (§2), so the mapping sends the OA value rather than relying on Jina's default.
 The response `{model, usage: {total_tokens}, results: [{index, relevance_score, document?}]}` maps onto
-`results` (§6): `index` → `ScoredDocument.index`, `relevance_score` → `relevance_score`, `document` →
-`document`; `usage.total_tokens` → `RerankUsage.input_tokens` (Jina meters rerank by tokens, not search
-units). Results are returned ranked; the mapping applies §6's "sort if the provider didn't" invariant
-regardless.
+`results` (§6): `index` → `ScoredDocument.index`, `relevance_score` → `relevance_score`, the `document`
+echo per the shape rule below; `usage.total_tokens` → `RerankUsage.input_tokens` (Jina meters rerank by
+tokens, not search units). Results are returned ranked; the mapping applies §6's "sort if the provider
+didn't" invariant regardless.
+
+**`document` echo shape.** Jina's rerank result `document` is `anyOf[string, TextDoc, ImageDoc, null]`
+(`TextDoc = {"text": str}`, `ImageDoc = {"image": str}`); the text reranker typically returns the `TextDoc`
+object. Realizing §6's object-echo rule: a `string` → itself; a `TextDoc` → its `text`; an `ImageDoc` (or
+any object without a string `text`) → `null`; absent / `null` → `null`. The verbatim echo object is
+preserved on `RerankResponse.raw`. A `TextDoc` / `ImageDoc` is a documented Jina shape, so the mapping MUST
+NOT treat it as malformed, and an object echo that is neither (no string `text`) still surfaces `null` per
+the §6 rule — its verbatim shape stays on `RerankResponse.raw` — rather than raising. A `document` echo
+that is **not** a string, object, or `null` — a number, array, or boolean — is not a valid document shape
+and maps to `provider_invalid_response` (§7); the `null` fallback covers text-less object echoes, not
+non-object wire corruption.
 
 **`/v1/embeddings`.** `POST {base_url}/v1/embeddings` with
 `{"model": str, "input": [str], "task"?: str, "dimensions"?: int, "truncate": false}`. **`input_type`
@@ -669,3 +682,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §8 general embedding-mapping batch-chunking rule added by [proposal 0092](../../proposals/0092-retrieval-provider-embedding-batch-chunking.md)
 - `EmbeddingResponse.usage` (§4) and `RerankResponse.usage` (§6) made nullable (`record | null` — `null` when the provider reports no usage), reconciling the response types with the record-null model the typed events (graph-engine §6) and §11 metric already use; §2 concept lines qualify usage "(when present)", §8.1 pins TEI `/embed` + `/rerank` `usage = null`, and §8's batch-chunking step 4 combines usage record-aware by [proposal 0093](../../proposals/0093-nullable-provider-usage-records.md)
 - `EmbeddingResponse.raw` (§4) and `RerankResponse.raw` (§6) widened from `dict[str, Any]` to `dict | list` — the verbatim deserialized JSON of the successful response whatever its top-level shape (an array for bare-array wire like TEI §8.1); the mapping MUST NOT wrap or reshape it. §8's batch-chunking rule gains a `raw` stitch clause and §8.1 a `raw` note: a chunk-and-stitch call's `raw` is the list of the per-request responses (nothing lost across chunks), the normalized fields staying ergonomic summaries. Scoped to retrieval-provider — llm-provider `Response.raw` unchanged by [proposal 0096](../../proposals/0096-retrieval-raw-json-shape.md)
+- `ScoredDocument.document` (§6) generalized to **object-shaped echoes**: an object echo surfaces its text content (a string-valued `text` key → that string, else `null`), an empty string is present (→ `""`), and the verbatim echo object is preserved on `RerankResponse.raw`; the "surface verbatim" MUST and the per-result null-dichotomy invariant amended (`null` now = omitted OR a non-text-shape echo). §8.2 Jina realizes it for `document: anyOf[string, TextDoc, ImageDoc, null]` (`TextDoc` → `text`, `ImageDoc` / text-less object → `null`, a non-object echo — number / array / boolean → `provider_invalid_response`), replacing the prior `document → document` direct mapping; fixture 019 gains TextDoc / ImageDoc→`null` / mixed-shape cases by [proposal 0097](../../proposals/0097-retrieval-provider-jina-document-echo-shape.md)

@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.92.0] — 2026-07-11
+
+**Changed**
+
+- **retrieval-provider §6 / §8.2 — rerank `document` echo generalized to object shapes.** `ScoredDocument.document` (§6) stays the echoed document **text** (`string | null`), but the echo rule now spans object shapes: a **string** echo → surfaced verbatim (an empty string `""` is *present* → `""`, not folded to `null`); an **object** echo → its text content (an object with a **string-valued `text` key** → that string; any other object, e.g. an image wrapper → `null`); an **absent** / `null` echo → `null`. The **verbatim** echo — whatever its shape — is preserved nested at `results[].document` on `RerankResponse.raw` (0096), so a non-text echo (e.g. an image) is never lost. This **amends** §6's "surface the echo verbatim" MUST to the text-or-`null` rule and **reconciles** the per-result null-dichotomy invariant (`null` now covers both an omitted echo *and* an echo carrying no text, per result). §8.2 realizes it for Jina, whose rerank result `document` is `anyOf[string, TextDoc, ImageDoc, null]` (`TextDoc = {"text": str}`, `ImageDoc = {"image": str}`, verified against the live Jina OpenAPI): a `string` → itself, a `TextDoc` → its `text`, an `ImageDoc` / text-less object → `null`, absent / `null` → `null` — replacing §8.2's prior `document → document` direct mapping. A `document` echo that is **not** a string, object, or `null` (a number, array, boolean) is a malformed response → `provider_invalid_response` (§7); a text-less *object* echo surfaces `null` (its verbatim shape recoverable on `raw`), so the `null` fallback covers object echoes without text, not non-object wire corruption. ([proposal 0097](proposals/0097-retrieval-provider-jina-document-echo-shape.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** A behavioral change to the §6 `document`-echo contract (generalized to object shapes) and the §8.2 Jina mapping. §6's `string | null` type is unchanged and the bare-string case is unchanged; an implementation that only handled bare-string echoes becomes non-conforming for object echoes (it was already silently dropping the echo on the live Jina wire). Depends on 0096 for the "verbatim echo on `raw`" clause. Conformance: fixture 019 gains a `TextDoc` case (→ extracted text), an `ImageDoc` case (→ `null`, verbatim object on `raw`), and a mixed-shape case (string + `TextDoc` + `ImageDoc` + absent across four results → per-result `["…", "…", null, null]`), each asserting the verbatim echo on `RerankResponse.raw`.
+
 ## [0.91.1] — 2026-07-11
 
 **Documented**
