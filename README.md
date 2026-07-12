@@ -87,7 +87,11 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-No proposals are currently in flight. New work opens as a numbered Draft proposal under [`proposals/`](proposals/).
+Proposals currently in flight. Status is Draft; contracts may change before they are Accepted.
+
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0098](proposals/0098-conformance-adapter-carries-key-alignment.md) | Draft | conformance-adapter §5.12 | Align the structured-output `carries` assertion keys with llm-provider §7's error field names (`output_content` / `error_message_present` / `error_message_mentions`) + state the key-naming convention |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 

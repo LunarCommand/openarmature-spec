@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0098](proposals/0098-conformance-adapter-carries-key-alignment.md) | Align structured-output `carries` assertion keys with §7 error field names | conformance-adapter | Draft | —               | —          |
 | [0097](proposals/0097-retrieval-provider-jina-document-echo-shape.md) | Rerank `document` object-shape echo — general §6 rule + Jina TextDoc / ImageDoc | retrieval-provider | Accepted | Pending         | —          |
 | [0096](proposals/0096-retrieval-raw-json-shape.md) | Retrieval `raw` verbatim JSON of any top-level shape | retrieval-provider | Accepted | Pending         | —          |
 | [0095](proposals/0095-adaptive-call-level-retry.md) | Adaptive call-level retry (per-attempt override + reask) | llm-provider | Accepted | Pending         | —          |
@@ -14,7 +15,7 @@ lifecycle and the proposal template.
 | [0093](proposals/0093-nullable-provider-usage-records.md) | Nullable provider usage records | retrieval-provider | Accepted | Partial (0.16.0)| —          |
 | [0092](proposals/0092-retrieval-provider-embedding-batch-chunking.md) | Embedding-mapping batch chunking | retrieval-provider | Accepted | Pending         | —          |
 | [0091](proposals/0091-retrieval-provider-cohere-embeddings-wire.md) | Cohere embeddings wire mapping | retrieval-provider | Accepted | Pending         | —          |
-| [0090](proposals/0090-retrieval-provider-cohere-rerank-wire.md) | Cohere rerank wire mapping | retrieval-provider | Accepted | Pending         | —          |
+| [0090](proposals/0090-retrieval-provider-cohere-rerank-wire.md) | Cohere rerank wire mapping | retrieval-provider | Accepted | Shipped (0.16.0)| —          |
 | [0089](proposals/0089-embedding-rerank-typed-event-output.md) | Embedding / rerank typed-event output | graph-engine | Accepted | Shipped (0.16.0)| —          |
 | [0088](proposals/0088-observability-langfuse-parallel-branches-parity.md) | Langfuse parallel-branches mapping parity | observability | Accepted | Pending         | —          |
 | [0087](proposals/0087-conformance-adapter-directive-execution-order.md) | Within-node directive execution order | conformance-adapter | Accepted | Pending         | —          |
