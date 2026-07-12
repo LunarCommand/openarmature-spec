@@ -27,7 +27,11 @@
 #     OMITS document (absent), pinning §6's present-vs-absent distinction —
 #     an empty string is present and surfaces as "" (NOT folded to null),
 #     an absent echo surfaces null.
-# All cases return the mocked response UNSORTED to keep the §6 sort
+#   - case G: one result echoes document as a bare NUMBER (123) — a value
+#     outside document: anyOf[string, TextDoc, ImageDoc, null], i.e. neither
+#     a string, an object, nor null. Per §6 / §8.2 a non-object echo is a
+#     malformed response => provider_invalid_response (NOT folded to null).
+# All success cases return the mocked response UNSORTED to keep the §6 sort
 # invariant load-bearing.
 #
 # ---------------------------------------------------------------------
@@ -477,3 +481,57 @@ cases:
         each_index_valid_into_input_documents: true
         empty_string_echo_present_surfaced_as_empty_string: true
         absent_echo_surfaced_as_null: true
+
+  - name: document_echo_non_object_scalar_raises_provider_invalid_response
+    description: |
+      config return_documents=True, but Jina echoes `document` as a bare
+      NUMBER (123) on a result — a value outside document: anyOf[string,
+      TextDoc, ImageDoc, null] (§8.2), i.e. neither a string, an object,
+      nor null. Per §6 / §8.2 that is not a valid document shape and is a
+      malformed provider response: the mapping MUST raise
+      provider_invalid_response (§7), NOT fold the scalar to null. Contrast
+      case D — a text-less OBJECT echo (ImageDoc) surfaces null; a
+      non-object scalar raises. The request is well-formed, so the failure
+      is response-side.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris"]
+          config:
+            return_documents: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris"]
+      return_documents: true
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 200
+        body:
+          model: jina-reranker-test
+          usage: {total_tokens: 57}
+          results:
+            - {index: 0, relevance_score: 0.42, document: 123}
+            - {index: 1, relevance_score: 0.91, document: "doc about paris"}
+    expected_error:
+      category: provider_invalid_response
+      raised_from: rerank_node
+    expected:
+      invariants:
+        non_object_scalar_document_echo_detected: true
+        provider_invalid_response_raised: true

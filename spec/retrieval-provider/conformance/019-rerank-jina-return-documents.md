@@ -51,6 +51,12 @@ verbatim on `ScoredDocument.document`.
    as `""` (**not** folded to null), while the absent echo surfaces null — pinning the present-vs-absent
    distinction the object-shape cases don't reach. The verbatim response is preserved on
    `RerankResponse.raw`.
+7. `document_echo_non_object_scalar_raises_provider_invalid_response` — a result echoes `document` as a
+   bare **number** (`123`), a value outside `anyOf[string, TextDoc, ImageDoc, null]` (neither a string, an
+   object, nor null). Per §6 / §8.2 a non-object echo is a **malformed** response ⇒
+   `provider_invalid_response` (§7), **not** folded to null — the documented-shape-vs-corruption line that
+   contrasts case D (a text-less *object* surfaces null). The request is well-formed, so the failure is
+   response-side.
 
 **What passes:**
 
@@ -67,6 +73,8 @@ verbatim on `ScoredDocument.document`.
   preserved on `RerankResponse.raw` (cases C, D, E), so a non-text (image) echo remains recoverable.
 - An empty-string echo (`document: ""`) surfaces as `""` (present), distinct from an absent echo which
   surfaces null (case F).
+- A non-object `document` echo — a bare number `123` — raises `provider_invalid_response` (case G),
+  distinct from a text-less *object* echo which surfaces null (case D).
 - Results sorted descending; each `index` valid into the input documents.
 
 **What fails:**
@@ -82,3 +90,5 @@ verbatim on `ScoredDocument.document`.
 - The object echo dropped from `RerankResponse.raw` (raw must preserve the verbatim response, including
   the nested `document` objects), or `raw` reshaped to the sorted/normalized `results`.
 - An empty-string echo (`document: ""`) folded to null instead of surfacing as `""` (case F).
+- A non-object `document` echo (a number / array / boolean) folded to null or otherwise accepted instead
+  of raising `provider_invalid_response` (case G).
