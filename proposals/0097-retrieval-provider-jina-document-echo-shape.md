@@ -8,7 +8,7 @@
   "surface verbatim" MUST (§6 `document` row) and the per-result null-dichotomy invariant (§6 "some results
   but not others"); and **§8.2 Jina** — realize that rule for Jina's `document: anyOf[string, TextDoc,
   ImageDoc, null]`, with a value **outside** the union mapped to `provider_invalid_response` (§7).
-  Conformance: fixture 019 gains TextDoc, ImageDoc→`null`, and mixed-shape cases (+ a `raw` assertion).
+  Conformance (at Accept): fixture 019 gains TextDoc, ImageDoc→`null`, and mixed-shape cases (+ a `raw` assertion).
 - **Related:** 0078 (Jina wire mapping — introduced the §8.2 `document → document` mapping this refines),
   0060 (rerank protocol — §6 `ScoredDocument.document` contract), 0096 (`raw` verbatim JSON — the echo
   object is preserved nested in the verbatim response there)
