@@ -898,28 +898,46 @@ that span.
 
 llm-provider call fixtures assert a raised `structured_output_invalid` error (llm-provider §7, its
 diagnostics surface per 0082) via an `expected.raises` block with `category: structured_output_invalid`
-and a `carries` mapping. The `carries` block asserts the error's exposed fields. These directives document an
-established convention — the 0016 structured-output fixtures (022 / 023) and the 0095 reask fixtures
-(062–067) already use them; they are documented here **as-is, without renaming**. (The `carries` key
-names predate llm-provider §7 naming its error fields `output_content` / `error_message`; aligning the
-two is a separate, coordinated change — the key names are read by shipped adapters, so a rename is
-routed through the impl coordination, not applied here.)
+and a `carries` mapping. The `carries` block asserts the error's exposed fields. The 0016 structured-output
+fixtures (022 / 023) and the 0095 reask fixtures (063 / 064) use them — the other 0095 fixtures are
+success-path and raise nothing.
+
+**Key-naming convention.** Within a `structured_output_invalid` `carries` block, a key **MUST** be named
+for the llm-provider §7 error field it asserts, plus an optional suffix naming the assertion flavor:
+
+- a **bare field name** — **exact-equality** on that field. When the field is a **mapping** (e.g. `usage`),
+  the assertion is a **subset match**: every key the fixture names MUST match, and keys it does not name
+  are ignored (an implementation MAY expose additional optional fields without failing the assertion) —
+  the same convention §5.11 applies to span `attributes`.
+- the **`_present`** suffix — asserts the field's **presence**, not its value: `true` asserts the field is
+  present (non-null); `false` asserts it is absent (null).
+- the **`_mentions`** suffix — the field's value **contains** the given substring (used where the exact
+  wording is implementation-defined).
+
+The suffix, when present, **MUST** be one of `_present` / `_mentions` — the flavor set is closed, and a new
+flavor requires a proposal. A new key in this block **MUST** derive its name from the field it asserts
+rather than coining a fresh stem, so the vocabulary is derivable from llm-provider §7 rather than
+enumerated here.
+
+This convention governs the `structured_output_invalid` block only. `carries` blocks asserting other raised
+errors (e.g. the state-migration and prompt-management fixtures) assert *those* errors' own fields and are
+outside its scope.
 
 - **`response_schema_present: <bool>`** — the error exposes the requested `response_schema` (llm-provider §5 / §7).
-- **`raw_response_content: <str>`** — exact-equality on the error's raw response content (llm-provider §7's
-  `output_content` field): the verbatim content the model produced that failed to parse or validate.
-- **`failure_description_present: <bool>`** — the error's failure description (llm-provider §7's `error_message`
-  field) is present. Used when the wording is not asserted (e.g. a parse failure with no specific
-  field to name).
-- **`failure_description_mentions: <str>`** — a substring the error's failure description
-  (`error_message`) MUST contain (e.g. the failing field name). A contains-check, since the exact
-  wording is implementation-defined (llm-provider §7).
+- **`output_content: <str>`** — exact-equality on the error's `output_content` (llm-provider §7): the
+  verbatim content the model produced that failed to parse or validate.
+- **`error_message_present: <bool>`** — the error's `error_message` (llm-provider §7) is present. Used when
+  the wording is not asserted (e.g. a parse failure with no specific field to name).
+- **`error_message_mentions: <str>`** — a substring the error's `error_message` MUST contain (e.g. the
+  failing field name). A contains-check, since the exact wording is implementation-defined
+  (llm-provider §7).
 - **`finish_reason: <str>`** — the error's normalized `finish_reason` (llm-provider §6), mandated on
   `structured_output_invalid` by 0082.
-- **`usage: { ... }`** — exact-equality on the error's token `usage`: the llm-provider §6 usage record
-  (the baseline counters `prompt_tokens` / `completion_tokens` / `total_tokens`, plus any optional §6
-  fields such as the cache counters `cached_tokens` / `cache_creation_tokens`), mandated on
-  `structured_output_invalid` by 0082.
+- **`usage: { ... }`** — the error's token `usage`: the llm-provider §6 usage record (the baseline counters
+  `prompt_tokens` / `completion_tokens` / `total_tokens`, plus any optional §6 fields such as the cache
+  counters `cached_tokens` / `cache_creation_tokens`), mandated on `structured_output_invalid` by 0082.
+  Asserted as a **subset match** per the convention above — a fixture naming only the baseline counters
+  does not fail an implementation that also reports the optional ones.
 
 ## 6. Harness primitives
 
@@ -1244,3 +1262,4 @@ per-directory specialization lives there.
 - §8.3 *Execution* gained a **Directive execution order** rule — a node's sibling directives (the keys under `nodes.<node_name>:`) execute in fixture-document order (mapping insertion order, not sorted-by-key), so order-sensitive compositions like `augment_metadata` → `capture_invocation_metadata_into` (observability §3.4) are deterministic; §7 *Nondeterminism handling* gains a counterpoint note (within-node order is deterministic, unlike the cross-source interleaving cases); §8.2 *Parsing* notes lossless parsing preserves directive order. New fixture `135` pins it; ratifies behavior fixtures 043/045 already depended on by [proposal 0087](../../proposals/0087-conformance-adapter-directive-execution-order.md)
 - §5.8 *Expected-outcome directives* gained `expected_compile_warning` — asserts compilation succeeds while emitting non-fatal compile-time **warnings** (the adapter captures compile-time warnings, distinct from the `expected_compile_error` compile-*failure* assertion), for diagnostics such as graph-engine §2's `projection_reducer_round_trip`; takes a **scalar** (the named warning is among those emitted) or a **list** (the exhaustive set — `[]` asserts *no* warnings, so a fixture can assert a warning MUST NOT fire). The established `expected_compile_error` scalar is formally documented in §5.8 alongside it for parity by [proposal 0094](../../proposals/0094-subgraph-projection-declared-boundary.md)
 - New §5.11 *Provider call-retry directives* documents the fixture surface for llm-provider §7.1's adaptive call-level retry: the `call.retry` adaptive fields `per_attempt_override` (the retry override schedule) and `reask: {template}` (a declarative stand-in for the caller's reask builder — the adapter renders the template with the `structured_output_invalid` error's `output_content` / `error_message` and wires it, contributing no text of its own), plus the `expected.wire_requests` per-attempt outbound-request assertion (`sampling`; `appended_messages` — the ordered `assistant`-output + `user`-correction pairs a reask retry appends, accumulating across retries; `messages` — the full outbound list, for the assistant-prefill continuation where a retry modifies the caller's trailing message; each asserted exactly or via `content_contains`), generalizing the single-request `expected_wire_request` provider-fixture convention to the retry-loop case; and an `attributes_absent` span-attribute directive for asserting a span carries no `retry_reason` (attempt 0) by [proposal 0095](../../proposals/0095-adaptive-call-level-retry.md)
+- §5.12 *Provider structured-output error assertion* — the three `carries` assertion keys that did not track the llm-provider §7 error field names are renamed (`raw_response_content` → `output_content`, `failure_description_present` → `error_message_present`, `failure_description_mentions` → `error_message_mentions`), and the section states the key-naming convention **normatively**, scoped to the `structured_output_invalid` block: a key MUST be named for the §7 error field it asserts plus an optional flavor suffix (bare field name = exact-equality, and a **subset match** when the field is a mapping such as `usage`; `_present` = presence not value, `true` present / `false` absent; `_mentions` = the value contains a given substring), the suffix set is **closed** (a new flavor requires a proposal), and a new key MUST derive its name from the field it asserts — so the vocabulary is derivable from §7 rather than enumerated. `carries` blocks asserting other raised errors (state-migration, prompt-management, sessions) are explicitly outside the rule. The remaining keys (`response_schema_present` / `finish_reason` / `usage`) already followed it. Breaking for an adapter reading the old names; the fixture corpus (022 / 023, 063 / 064) moves in the same version. §5.12's fixture-provenance citation is corrected in the same edit (the 0095 reask fixtures are `063 / 064`, not `062–067` — the others raise nothing) by [proposal 0098](../../proposals/0098-conformance-adapter-carries-key-alignment.md)
