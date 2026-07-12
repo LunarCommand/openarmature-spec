@@ -69,8 +69,9 @@ verbatim on `ScoredDocument.document`.
   (case C); an ImageDoc object echo (`{"image": str}`) surfaces `null` (case D); a response mixing
   string / TextDoc / ImageDoc / absent echoes surfaces each per the §8.2 rule at its sorted position
   (case E).
-- The verbatim provider response — including the object echoes nested in `results[].document` — is
-  preserved on `RerankResponse.raw` (cases C, D, E), so a non-text (image) echo remains recoverable.
+- The verbatim provider response — including any echoes nested in `results[].document` (string, object,
+  empty, or absent) — is preserved on `RerankResponse.raw` on every successful return (cases A–F), so a
+  non-text (image) echo remains recoverable and no echo shape is dropped from `raw`.
 - An empty-string echo (`document: ""`) surfaces as `""` (present), distinct from an absent echo which
   surfaces null (case F).
 - A non-object `document` echo — a bare number `123` — raises `provider_invalid_response` (case G),

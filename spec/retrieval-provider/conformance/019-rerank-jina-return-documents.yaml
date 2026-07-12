@@ -104,6 +104,16 @@ cases:
           usage:
             search_units: null
             input_tokens: 57
+          # Verbatim deserialized Jina response (§6 raw) — populated on every
+          # successful return; the default (return_documents=false) response
+          # carries no document echoes.
+          raw:
+            model: jina-reranker-test
+            usage: {total_tokens: 57}
+            results:
+              - {index: 0, relevance_score: 0.42}
+              - {index: 1, relevance_score: 0.91}
+              - {index: 2, relevance_score: 0.08}
       invariants:
         wire_request_return_documents_false_explicit: true
         wire_request_overrides_jina_true_default: true
@@ -111,6 +121,7 @@ cases:
         results_sorted_by_relevance_descending: true
         each_index_valid_into_input_documents: true
         document_null_when_provider_omits_echo: true
+        verbatim_response_preserved_on_raw: true
 
   - name: return_documents_true_populates_document_echo
     description: |
@@ -167,12 +178,23 @@ cases:
           usage:
             search_units: null
             input_tokens: 57
+          # Verbatim deserialized Jina response (§6 raw) — the string echoes
+          # are preserved nested at results[].document, proving raw carries
+          # the verbatim response for string echoes too (not just objects).
+          raw:
+            model: jina-reranker-test
+            usage: {total_tokens: 57}
+            results:
+              - {index: 0, relevance_score: 0.42, document: "doc about berlin"}
+              - {index: 1, relevance_score: 0.91, document: "doc about paris"}
+              - {index: 2, relevance_score: 0.08, document: "doc about madrid"}
       invariants:
         wire_request_return_documents_true: true
         authorization_bearer_header_present: true
         results_sorted_by_relevance_descending: true
         each_index_valid_into_input_documents: true
         echoed_document_preserved_verbatim: true
+        verbatim_response_preserved_on_raw: true
 
   - name: document_echo_textdoc_object_unwraps_to_text
     description: |
