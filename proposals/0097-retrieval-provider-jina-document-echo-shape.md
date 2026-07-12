@@ -1,13 +1,14 @@
 # 0097: Rerank `document` echo — object-shape contract (general §6 rule; Jina §8.2 realization)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-11
+- **Accepted:** 2026-07-11
 - **Targets:** spec/retrieval-provider/spec.md **§6 ScoredDocument** — generalize the `document`-echo
   contract to object-shaped echoes (echoed *text* or `null`, verbatim object on `raw`), amending the
   "surface verbatim" MUST (§6 `document` row) and the per-result null-dichotomy invariant (§6 "some results
   but not others"); and **§8.2 Jina** — realize that rule for Jina's `document: anyOf[string, TextDoc,
-  ImageDoc, null]`, with a value **outside** the union mapped to `provider_invalid_response` (§7).
+  ImageDoc, null]`, with a **non-object** value (number / array / boolean) mapped to `provider_invalid_response` (§7).
   Conformance (at Accept): fixture 019 gains TextDoc, ImageDoc→`null`, and mixed-shape cases (+ a `raw` assertion).
 - **Related:** 0078 (Jina wire mapping — introduced the §8.2 `document → document` mapping this refines),
   0060 (rerank protocol — §6 `ScoredDocument.document` contract), 0096 (`raw` verbatim JSON — the echo
@@ -28,7 +29,7 @@ catch.
 
 This generalizes the §6 echo contract to object shapes — an object echo surfaces its **text content** (a
 string-valued `text` key) or `null`, with the verbatim object preserved on `RerankResponse.raw` — and pins
-the §8.2 Jina realization (`TextDoc → text`, `ImageDoc`/text-less → `null`, off-union → `provider_invalid_response`).
+the §8.2 Jina realization (`TextDoc → text`, `ImageDoc`/text-less object → `null`, a non-object echo → `provider_invalid_response`).
 
 ## Motivation
 
@@ -78,10 +79,11 @@ Jina's rerank result `document` is `anyOf[string, TextDoc, ImageDoc, null]` (Jin
 - an **`ImageDoc`** (`{"image": str}`), or any object without a string `text` → `null`;
 - **absent** / `null` → `null`.
 
-A `TextDoc` / `ImageDoc` echo is a **documented Jina shape**, so the mapping MUST NOT treat it as malformed.
-A `document` value **outside** the `anyOf` — a number, array, boolean, etc. — is a malformed response and maps
-to `provider_invalid_response` (§7); the null fallback is scoped to the documented member shapes, not a
-catch-all that would swallow wire corruption.
+A `TextDoc` / `ImageDoc` echo is a **documented Jina shape**, so the mapping MUST NOT treat it as malformed,
+and an object echo that is neither (no string `text`) still surfaces `null` per §6 rather than raising (its
+verbatim shape stays on `raw`). A `document` echo that is **not** a string, object, or `null` — a number,
+array, boolean — is a malformed response and maps to `provider_invalid_response` (§7); the null fallback
+covers text-less object echoes, not non-object wire corruption.
 
 ## Conformance test impact
 
@@ -101,7 +103,7 @@ retrieval-`raw` fixtures):
   absent `document` across four results → `["…", "…", null, null]` per result, exercising the §6 per-result
   invariant so a "read the first result's shape, apply to all" implementation fails.
 
-An off-union `document` (e.g. a number) → `provider_invalid_response` rides the existing §7 error-mapping
+A non-object `document` (e.g. a number) → `provider_invalid_response` rides the existing §7 error-mapping
 coverage; a dedicated malformed-echo case MAY be added at Accept. Numbers / case-names assigned at Accept.
 
 ## Versioning
@@ -110,15 +112,14 @@ coverage; a dedicated malformed-echo case MAY be added at Accept. Numbers / case
 shapes) and the §8.2 Jina mapping. §6's `string | null` type is unchanged and the bare-string case is
 unchanged; an implementation that only handled bare-string echoes becomes non-conforming for object echoes
 (it was already silently dropping the echo on the live Jina wire). Depends on 0096 for the "verbatim echo on
-`raw`" clause (`RerankResponse.raw` carries the verbatim response). Tentative spec version target deferred to
-Accept.
+`raw`" clause (`RerankResponse.raw` carries the verbatim response). Ships as spec **v0.92.0**.
 
 ## Alternatives considered
 
 1. **Reject non-string echoes as `provider_invalid_response`.** Reject — a `TextDoc` / `ImageDoc` is a
    *documented, expected* Jina response shape (per the OpenAPI `anyOf`), not malformed; §6 types `document`
    as text with a `null` fallback, so a non-text echo maps cleanly to `null` (object on `raw`), not an error.
-   (A value *outside* the `anyOf` — number, array — DOES raise; that is the documented-shape-vs-corruption
+   (A *non-object* value — number, array — DOES raise; that is the documented-shape-vs-corruption
    line.)
 2. **Widen `ScoredDocument.document` to carry the echo object.** Reject — §6 deliberately types the field as
    the echoed *text* (`string | null`) for cross-vendor uniformity; the verbatim object already has a home on

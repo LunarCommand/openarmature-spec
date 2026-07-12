@@ -11,9 +11,27 @@
 #     Jina's `true` wire default. The mocked response carries no document
 #     echo, so ScoredDocument.document is null.
 #   - case B: OA return_documents=True => wire return_documents: true, and
-#     the Jina-echoed `document` per result populates
+#     the Jina-echoed `document` per result (a string) populates
 #     ScoredDocument.document verbatim (§6).
-# Both cases return the mocked response UNSORTED to keep the §6 sort
+#   - case C: Jina echoes each `document` as a TextDoc object
+#     ({"text": str}); ScoredDocument.document surfaces the object's text
+#     (§6 / §8.2), and the verbatim object is preserved on raw.
+#   - case D: Jina echoes each `document` as an ImageDoc object
+#     ({"image": str}); ScoredDocument.document is null (no string text to
+#     surface), and the verbatim object is preserved on raw.
+#   - case E: one response mixes echo shapes per result (string / TextDoc /
+#     ImageDoc / absent), exercising §6's per-result shape variance; each
+#     surfaces per the §8.2 rule and the verbatim echoes are preserved on
+#     raw.
+#   - case F: one result echoes an EMPTY STRING (document: "") and another
+#     OMITS document (absent), pinning §6's present-vs-absent distinction —
+#     an empty string is present and surfaces as "" (NOT folded to null),
+#     an absent echo surfaces null.
+#   - case G: one result echoes document as a bare NUMBER (123) — a value
+#     outside document: anyOf[string, TextDoc, ImageDoc, null], i.e. neither
+#     a string, an object, nor null. Per §6 / §8.2 a non-object echo is a
+#     malformed response => provider_invalid_response (NOT folded to null).
+# All success cases return the mocked response UNSORTED to keep the §6 sort
 # invariant load-bearing.
 #
 # ---------------------------------------------------------------------
@@ -155,3 +173,365 @@ cases:
         results_sorted_by_relevance_descending: true
         each_index_valid_into_input_documents: true
         echoed_document_preserved_verbatim: true
+
+  - name: document_echo_textdoc_object_unwraps_to_text
+    description: |
+      Same 3 documents with config return_documents=True, but Jina echoes
+      each `document` as a TextDoc OBJECT ({"text": str}) — the shape the
+      text reranker typically returns (§8.2). Realizing §6's object-echo
+      rule, the mapping MUST surface the object's `text` string on
+      ScoredDocument.document (NOT the object). The verbatim echo object is
+      preserved on RerankResponse.raw (the transparency surface). Response
+      UNSORTED ([{0, 0.42}, {1, 0.91}, {2, 0.08}]) => sorted descending.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          config:
+            return_documents: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+      return_documents: true
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 200
+        body:
+          model: jina-reranker-test
+          usage: {total_tokens: 57}
+          results:
+            - {index: 0, relevance_score: 0.42, document: {text: "doc about berlin"}}
+            - {index: 1, relevance_score: 0.91, document: {text: "doc about paris"}}
+            - {index: 2, relevance_score: 0.08, document: {text: "doc about madrid"}}
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.91, document: "doc about paris"}
+            - {index: 0, relevance_score: 0.42, document: "doc about berlin"}
+            - {index: 2, relevance_score: 0.08, document: "doc about madrid"}
+          model: jina-reranker-test
+          response_id: null
+          usage:
+            search_units: null
+            input_tokens: 57
+          # Verbatim deserialized Jina response (§6 raw) — the TextDoc
+          # OBJECTS are preserved here in provider order, proving the
+          # unwrapped-to-text `document` above did not destroy the echo.
+          raw:
+            model: jina-reranker-test
+            usage: {total_tokens: 57}
+            results:
+              - {index: 0, relevance_score: 0.42, document: {text: "doc about berlin"}}
+              - {index: 1, relevance_score: 0.91, document: {text: "doc about paris"}}
+              - {index: 2, relevance_score: 0.08, document: {text: "doc about madrid"}}
+      invariants:
+        wire_request_return_documents_true: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        textdoc_object_unwrapped_to_text: true
+        verbatim_textdoc_object_on_raw: true
+
+  - name: document_echo_imagedoc_object_maps_to_null
+    description: |
+      Same 3 documents with config return_documents=True, but Jina echoes
+      each `document` as an ImageDoc OBJECT ({"image": str}) — a documented
+      Jina member shape with no string `text` (§8.2). Per §6's object-echo
+      rule, an object without a string `text` surfaces null on
+      ScoredDocument.document (there is no text to surface); the mapping
+      MUST NOT treat the documented shape as malformed. The verbatim echo
+      object is preserved on RerankResponse.raw, so a caller can recover the
+      non-text (image) echo. Response UNSORTED => sorted descending.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          config:
+            return_documents: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+      return_documents: true
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 200
+        body:
+          model: jina-reranker-test
+          usage: {total_tokens: 57}
+          results:
+            - {index: 0, relevance_score: 0.42, document: {image: "https://example.com/berlin.jpg"}}
+            - {index: 1, relevance_score: 0.91, document: {image: "https://example.com/paris.jpg"}}
+            - {index: 2, relevance_score: 0.08, document: {image: "https://example.com/madrid.jpg"}}
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.91, document: null}
+            - {index: 0, relevance_score: 0.42, document: null}
+            - {index: 2, relevance_score: 0.08, document: null}
+          model: jina-reranker-test
+          response_id: null
+          usage:
+            search_units: null
+            input_tokens: 57
+          # Verbatim deserialized Jina response (§6 raw) — the ImageDoc
+          # OBJECTS are preserved here in provider order, so the non-text
+          # echo mapped to null above remains recoverable on raw.
+          raw:
+            model: jina-reranker-test
+            usage: {total_tokens: 57}
+            results:
+              - {index: 0, relevance_score: 0.42, document: {image: "https://example.com/berlin.jpg"}}
+              - {index: 1, relevance_score: 0.91, document: {image: "https://example.com/paris.jpg"}}
+              - {index: 2, relevance_score: 0.08, document: {image: "https://example.com/madrid.jpg"}}
+      invariants:
+        wire_request_return_documents_true: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        imagedoc_maps_document_to_null: true
+        verbatim_imagedoc_object_on_raw: true
+
+  - name: document_echo_mixed_shapes_per_result
+    description: |
+      ONE response, 4 documents with config return_documents=True, whose
+      results echo DIFFERENT `document` shapes per result — exercising §6's
+      per-result shape variance: index 0 = bare STRING, index 1 = TextDoc
+      object, index 2 = ImageDoc object, index 3 = ABSENT (no `document`
+      key). Distinct relevance_scores make the sorted order deterministic;
+      each result's `document` is surfaced per the §8.2 rule — string ->
+      itself, TextDoc -> its text, ImageDoc -> null, absent -> null —
+      carried to its sorted position. The verbatim mixed-shape echoes are
+      preserved on RerankResponse.raw in provider order.
+      Scores [{0, 0.42}, {1, 0.91}, {2, 0.08}, {3, 0.55}] sort to
+      idx1 (0.91) > idx3 (0.55) > idx0 (0.42) > idx2 (0.08).
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid", "doc about rome"]
+          config:
+            return_documents: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid", "doc about rome"]
+      return_documents: true
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 200
+        body:
+          model: jina-reranker-test
+          usage: {total_tokens: 57}
+          results:
+            - {index: 0, relevance_score: 0.42, document: "berlin string"}
+            - {index: 1, relevance_score: 0.91, document: {text: "paris text"}}
+            - {index: 2, relevance_score: 0.08, document: {image: "https://example.com/madrid.jpg"}}
+            - {index: 3, relevance_score: 0.55}
+    expected:
+      final_state:
+        rerank_response:
+          # Sorted descending: idx1 (TextDoc -> "paris text"),
+          # idx3 (absent -> null), idx0 (string -> "berlin string"),
+          # idx2 (ImageDoc -> null).
+          results:
+            - {index: 1, relevance_score: 0.91, document: "paris text"}
+            - {index: 3, relevance_score: 0.55, document: null}
+            - {index: 0, relevance_score: 0.42, document: "berlin string"}
+            - {index: 2, relevance_score: 0.08, document: null}
+          model: jina-reranker-test
+          response_id: null
+          usage:
+            search_units: null
+            input_tokens: 57
+          # Verbatim deserialized Jina response (§6 raw) — every echo shape
+          # (string / TextDoc / ImageDoc / absent) preserved in provider
+          # order, before the per-result surfacing + sort above.
+          raw:
+            model: jina-reranker-test
+            usage: {total_tokens: 57}
+            results:
+              - {index: 0, relevance_score: 0.42, document: "berlin string"}
+              - {index: 1, relevance_score: 0.91, document: {text: "paris text"}}
+              - {index: 2, relevance_score: 0.08, document: {image: "https://example.com/madrid.jpg"}}
+              - {index: 3, relevance_score: 0.55}
+      invariants:
+        wire_request_return_documents_true: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        per_result_document_shape_variance_preserved: true
+        verbatim_mixed_shapes_on_raw: true
+
+  - name: document_echo_empty_string_present_distinct_from_absent
+    description: |
+      Same query with config return_documents=True over 2 documents. One
+      result echoes an EMPTY STRING (document: "") — present, zero-length —
+      the other OMITS `document` (absent). Per §6 an empty string is
+      *present* and MUST surface as "" (NOT folded to null), while an absent
+      echo surfaces null: the present-vs-absent distinction the object-shape
+      cases don't exercise. Response UNSORTED ([{0, 0.30}, {1, 0.80}]) =>
+      sorted descending (idx1 then idx0).
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris"]
+          config:
+            return_documents: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris"]
+      return_documents: true
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 200
+        body:
+          model: jina-reranker-test
+          usage: {total_tokens: 57}
+          results:
+            - {index: 0, relevance_score: 0.30, document: ""}
+            - {index: 1, relevance_score: 0.80}
+    expected:
+      final_state:
+        rerank_response:
+          results:
+            - {index: 1, relevance_score: 0.80, document: null}
+            - {index: 0, relevance_score: 0.30, document: ""}
+          model: jina-reranker-test
+          response_id: null
+          usage:
+            search_units: null
+            input_tokens: 57
+          # Verbatim deserialized Jina response (§6 raw) — the empty-string
+          # echo (idx0) and the absent-document result (idx1) preserved as
+          # they arrived, before the present-vs-absent surfacing + sort.
+          raw:
+            model: jina-reranker-test
+            usage: {total_tokens: 57}
+            results:
+              - {index: 0, relevance_score: 0.30, document: ""}
+              - {index: 1, relevance_score: 0.80}
+      invariants:
+        wire_request_return_documents_true: true
+        authorization_bearer_header_present: true
+        results_sorted_by_relevance_descending: true
+        each_index_valid_into_input_documents: true
+        empty_string_echo_present_surfaced_as_empty_string: true
+        absent_echo_surfaced_as_null: true
+
+  - name: document_echo_non_object_scalar_raises_provider_invalid_response
+    description: |
+      config return_documents=True, but Jina echoes `document` as a bare
+      NUMBER (123) on a result — a value outside document: anyOf[string,
+      TextDoc, ImageDoc, null] (§8.2), i.e. neither a string, an object,
+      nor null. Per §6 / §8.2 that is not a valid document shape and is a
+      malformed provider response: the mapping MUST raise
+      provider_invalid_response (§7), NOT fold the scalar to null. Contrast
+      case D — a text-less OBJECT echo (ImageDoc) surfaces null; a
+      non-object scalar raises. The request is well-formed, so the failure
+      is response-side.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris"]
+          config:
+            return_documents: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris"]
+      return_documents: true
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 200
+        body:
+          model: jina-reranker-test
+          usage: {total_tokens: 57}
+          results:
+            - {index: 0, relevance_score: 0.42, document: 123}
+            - {index: 1, relevance_score: 0.91, document: "doc about paris"}
+    expected_error:
+      category: provider_invalid_response
+      raised_from: rerank_node
+    expected:
+      invariants:
+        non_object_scalar_document_echo_detected: true
+        provider_invalid_response_raised: true
