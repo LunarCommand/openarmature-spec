@@ -507,8 +507,8 @@ short-horizon roadmap below.
   endpointing in one vendor, so modeling its contract exercises the whole
   surface and generalizes to AssemblyAI / Speechmatics / Cartesia /
   ElevenLabs. Deepgram's bundled *Voice Agent API* (STT+LLM+TTS in one
-  socket) is a useful counterpoint — OA models the *component* providers a
-  dev composes, not an all-in-one turnkey.
+  socket) is a useful counterpoint — OA models the *component* providers the
+  caller composes, not an all-in-one turnkey.
 - **Streaming shape is duplex / continuous, not request / response.** The
   "audio → transcript text" shape above under-models real ASR: streaming
   STT is a persistent bidirectional stream (client → server audio frames,
