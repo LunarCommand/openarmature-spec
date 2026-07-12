@@ -85,9 +85,10 @@ catch-all that would swallow wire corruption.
 
 ## Conformance test impact
 
-Fixture **019** (`019-rerank-jina-return-documents`) gains three cases alongside the existing bare-string
-case B, and — since 019 currently asserts no `raw` — an added `raw` assertion (the harness supports asserting
-`raw`, per 0096's retrieval-`raw` fixtures):
+**At Accept** (this is a Draft — the spec edits + fixtures land with the accept PR, not here), fixture
+**019** (`019-rerank-jina-return-documents`) gains three cases alongside the existing bare-string case B,
+plus a `raw` assertion (019 asserts none today; the harness supports asserting `raw` per 0096's
+retrieval-`raw` fixtures):
 
 - **TextDoc echo** — `return_documents: true`; mocked response echoes `document: {"text": "doc about
   berlin"}` per result. Assert `ScoredDocument.document` is the extracted string (`"doc about berlin"`,
