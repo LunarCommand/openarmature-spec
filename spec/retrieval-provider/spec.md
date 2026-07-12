@@ -281,8 +281,9 @@ reported.
   `provider_invalid_response` (§7) if the provider returns more results than requested.
 - When the provider returns `document` echoes for some results but not others — or as different shapes
   per result — implementations MUST preserve the per-result variance: `null` where the provider omitted
-  the echo **or echoed a non-text shape** (per the `document` row above), populated with the echoed text
-  where the provider echoed a string or a text-bearing object. MUST NOT auto-fill from the input
+  the echo **or echoed a non-text object** (an object without a string `text`, per the `document` row
+  above), populated with the echoed text where the provider echoed a string or a text-bearing object.
+  MUST NOT auto-fill from the input
   `documents` list.
 
 ## 7. Error semantics
