@@ -15,6 +15,9 @@ Accepted, any remaining Open Questions section migrates here.
 - **resolved-by-acceptance** — the proposal's acceptance pass effectively
   decided the question (e.g., by picking one of two alternatives in the
   proposal text). Kept on the page for retrieval, marked as closed.
+- **resolved-by-NNNN** — a *later* numbered proposal settled the question.
+  Kept on the page for retrieval, marked as closed, with a pointer to the
+  proposal that decided it.
 - **inherited** — restates a constraint from an earlier proposal; not a
   novel question. Kept for cross-referencing only.
 - **candidate-for-new-proposal** — signal has accumulated; this OQ should
@@ -285,10 +288,67 @@ response-side clause.
 ### 0078 — Jina wire-format mapping
 
 - **Widening `input_type`'s normative value space.**
-  [still-relevant] — Jina's non-retrieval embedding tasks ride the extras
-  pass-through bag for now; widening the protocol-level `input_type` value
-  set (a §2 protocol change, not a per-mapping one) is deferred until a
-  consumer needs it.
+  [resolved-by-0099] — the framing was wrong: recognition is **per-mapping,
+  not protocol-level**. §2 already types `input_type` as an extensible string
+  and already delegates the decision ("additional well-known values MAY be
+  recognized by mappings whose backend supports them"), so no §2 change is
+  needed for a mapping to accept `classification` / `clustering`. 0099
+  exercised that for §8.4 Cohere, whose backend supports them uniformly.
+  What survives is the reason a mapping may still decline: **model-dependent
+  backend support**. Jina's `task` values differ across its embedding models
+  (some accept `classification` but not `clustering`; some accept neither),
+  and a provider is bound to a model identifier with no capability registry,
+  so §8.2 keeps its closed set and its non-retrieval tasks continue to ride
+  the extras bag — which works there because `task` is an *undeclared* key
+  and is omitted when `input_type` is absent.
+
+### Cross-cutting — extras key vs mapping-managed wire field
+
+- **What happens when an extras-bag key collides with a wire field the
+  mapping itself manages?** [candidate-for-new-proposal] — deferred by 0099,
+  which pinned one instance and explicitly declined the general rule.
+  llm-provider §6 says an *undeclared* field is forwarded to the wire body
+  **untouched** and "MUST NOT translate, rename, or otherwise transform" it —
+  but scopes that to what "the wire-format mapping (§8)" defines, and says
+  nothing about a key the mapping also **manages**. Two conforming
+  implementations can therefore diverge: one forwards untouched, one lets the
+  mapping win, one silently drops the extra.
+  0099 resolved the §8.4 Cohere `embedding_types` instance as an explicit,
+  **mapping-local exception**: the mapping manages the key (it must request
+  `"float"` for its own response consumer), so an extras-supplied value is
+  *merged* with `"float"` rather than replacing it — an override would strip
+  the very key the mapping reads and fail the call. The same shape recurs
+  wherever a mapping manages a wire field and also advertises extras (§8.4's
+  `truncate` / `input_type`, §8.2's `truncation` / `task`, §8.3's note that a
+  server extending the wire "with its own `input_type`-style field" takes it
+  through the bag — which is impossible if that field is literally named
+  `input_type`, since a *declared* field can never ride the bag).
+  A general rule belongs in llm-provider §6 with an §8 pointer. Candidate
+  postures: (a) a managed field always wins — a colliding extras key is
+  merged where the field is list-shaped, else rejected pre-send; (b) extras
+  always win (maximally transparent, but lets a caller break a mapping's own
+  response consumer — exactly the failure 0099 prevented); (c) per-field,
+  declared by each mapping (precise, but re-derived per vendor and leaves the
+  default undefined). Auditing every §8.x mapping for managed-field-vs-extras
+  interactions is most of the work.
+
+### Cross-cutting — §8.3 `encoding_format: "base64"` advertised via extras
+
+- **§8.3 advertises a knob that would break its own response consumer.**
+  [candidate-for-new-proposal] — surfaced auditing 0099. §8.3 says the mapping
+  "does not send `encoding_format` by default (OpenAI's wire default is
+  `\"float\"`); `\"base64\"` rides the extras-pass-through bag." Unlike 0099's
+  `embedding_types` case this is *not* a managed-field collision — the key is
+  undeclared and unmanaged, so it reaches the wire untouched exactly as
+  llm-provider §6 requires. That is the problem: OpenAI then returns
+  `data[].embedding` as base64 **strings**, which this mapping consumes as
+  float vectors, blowing §4's dimensionality invariants and failing the call
+  `provider_invalid_response`. So the sentence advertises a working knob that
+  cannot work — the same false-promise shape 0099 purged from §8.4, and now
+  the one left unpinned. Options: state that the mapping requires `float` and
+  define what happens when `base64` is supplied (reject pre-send, or decode
+  it), or stop advertising the knob. Needs a proposal either way, since it
+  changes §8.3 behavior.
 
 ### Cross-cutting — §8 embedding-mapping per-call input caps
 

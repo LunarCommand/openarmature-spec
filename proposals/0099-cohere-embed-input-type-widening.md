@@ -1,8 +1,9 @@
 # 0099: Cohere `/v2/embed` — widen `input_type`, and pin the extras-vs-managed-field claims
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-12
+- **Accepted:** 2026-07-12
 - **Targets:** spec/retrieval-provider/spec.md **§8.4 Cohere** — three edits: (1) widen the `/v2/embed`
   mapping's recognized `input_type` set from the closed `{query, document}` to also accept
   **`classification`** and **`clustering`** (identity-mapped onto Cohere's wire values), removing §8.4's
@@ -127,11 +128,31 @@ deferred multimodal capability, not to `input_type`'s value space.
 
 ### retrieval-provider §8.4 — pin the `embedding_types` extras semantics
 
+**`embedding_types` is named a mapping-managed wire key — an explicit exception to untouched pass-through.**
+llm-provider §6 forwards an undeclared extras key to the wire *untouched* and **forbids transforming it**,
+but scopes that to what "the wire-format mapping (§8)" defines. A merge *is* a transform, so without this
+naming the rule below would contradict §6 outright, and an implementer with the generic extras-forwarding
+layer §6 mandates would face two conflicting MUSTs. §8.4 therefore states that this mapping **manages**
+`embedding_types` (it must request `"float"` for its own response consumer), so §8.4 — not the
+untouched-pass-through default — governs a collision on that key. The exception is **mapping-local and
+deliberate**; the general rule is deferred (see *Out of scope*).
+
 An extras-supplied `embedding_types` **MUST** be **merged** with the mapping's mandatory `"float"`, not
 replace it: the mapping always requests `float` (so `embeddings.float` is present for its own consumer) and
 requests the caller's additional precisions alongside it. The caller reads the extra precisions off the
 verbatim response on `raw` (0096). A mapping **MUST NOT** let an extras-supplied `embedding_types` drop
 `"float"` from the request.
+
+The merged list **MUST** be ordered `"float"` first, then the caller's precisions in the order supplied,
+**de-duplicated with first occurrence winning** (an explicitly-named `"float"` appears once, in first
+position; a repeated precision keeps its first position). The wire is order-insensitive here, so the
+ordering carries no semantics — it is fixed purely so the outbound request is **deterministic**, and
+therefore decidable by a conformance fixture that asserts the request body. Both halves are needed: without
+a pinned order an implementation emitting `["int8", "float"]` satisfies the merge rule yet fails an
+exact-match assertion (the fixture would demand more than the spec), and without a pinned dedupe rule
+`["int8", "uint8", "int8"]` yields `["float", "int8", "uint8"]` under first-wins and
+`["float", "uint8", "int8"]` under last-wins — both "merged, float-first, in supplied order,
+de-duplicated," and the determinism the rule exists to buy is lost.
 
 ### retrieval-provider §8.2 — reconcile the stale deferral
 
@@ -194,8 +215,8 @@ resolution, so no implementation could have conformed to a rule that did not exi
 override reading becomes non-conforming.
 
 No change to §2 (its value space already admitted these values) and **no behavioral change** to
-§8.1 / §8.2 / §8.3 — §8.2's *prose rationale* is corrected, but its mapping is untouched. Tentative spec
-version target deferred to Accept.
+§8.1 / §8.2 / §8.3 — §8.2's *prose rationale* is corrected, but its mapping is untouched. Ships as spec
+**v0.94.0**.
 
 ## Alternatives considered
 

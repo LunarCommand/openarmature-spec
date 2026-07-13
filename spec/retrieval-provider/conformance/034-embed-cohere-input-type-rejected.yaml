@@ -1,22 +1,24 @@
 # retrieval-provider §8.4 Cohere /v2/embed — unrecognized input_type
 # rejected PRE-SEND.
 #
-# Locks the §8.4 *input_type (mandatory wire field)* closed-set behavior:
-# the mapping recognizes a CLOSED input_type set (query / document, per the
-# §8.2 closed-set treatment). An OA input_type value OUTSIDE that set is a
-# pre-send provider_invalid_request (§7) — raised by the implementation's
-# pre-send validation layer BEFORE any /v2/embed request is issued (the §7
-# exception-flow contract: the category exception MUST raise out of embed()
-# whether from the provider or from pre-send validation).
+# Locks the §8.4 *input_type (mandatory wire field)* reject-unrecognized
+# behavior: the mapping recognizes the set query / document /
+# classification / clustering (fixture 033). An OA input_type value OUTSIDE
+# that set is a pre-send provider_invalid_request (§7) — raised by the
+# implementation's pre-send validation layer BEFORE any /v2/embed request is
+# issued (the §7 exception-flow contract: the category exception MUST raise
+# out of embed() whether from the provider or from pre-send validation).
 #
-# This is the embed analogue of the §8.2 closed-set reject; it exercises a
-# corner unique to Cohere's mandatory-wire-field design — the mapping must
-# pick a value for absent input_type (search_document, fixture 033), but an
-# UNRECOGNIZED supplied value is rejected, not silently coerced to the
-# default. (Cohere's own non-query/document values — classification /
-# clustering / image — are likewise OUTSIDE OA's closed set and ride the
-# extras-pass-through bag, not OA's input_type; widening input_type's
-# normative value space is a §2 / 0077 protocol-level change, deferred.)
+# This is the embed analogue of the §8.2 reject-unrecognized path; it
+# exercises a corner unique to Cohere's mandatory-wire-field design — the
+# mapping must pick a value for absent input_type (search_document, fixture
+# 033), but an UNRECOGNIZED supplied value is rejected, not silently coerced
+# to the default. There is NO wire path for an unrecognized value: OA's
+# input_type is a DECLARED field (§2), and the extras-pass-through bag
+# carries only UNDECLARED keys, so an unrecognized value cannot ride the bag
+# onto the wire. (Cohere's `image` value stays unrecognized here — it names
+# an input MODALITY, not a purpose for embedded text; §3 / §11 scope v1 to
+# text.)
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 001's header (calls_embed), 016's
@@ -44,12 +46,14 @@ cases:
   - name: unrecognized_input_type_rejected_pre_send
     description: |
       embed(config={input_type: "summarization"}) — an OA input_type value
-      OUTSIDE the closed query / document set §8.4 recognizes. The mapping
-      MUST raise provider_invalid_request (§7) at the pre-send validation
-      layer and MUST NOT issue any /v2/embed request (no silent coercion to
-      the search_document default — that default is ONLY for the ABSENT
-      case, fixture 033). The §7 category exception raises out of the embed
-      node.
+      OUTSIDE the query / document / classification / clustering set §8.4
+      recognizes. The mapping MUST raise provider_invalid_request (§7) at
+      the pre-send validation layer and MUST NOT issue any /v2/embed request
+      (no silent coercion to the search_document default — that default is
+      ONLY for the ABSENT case, fixture 033; and no pass-through onto the
+      wire — input_type is a DECLARED field, so an unrecognized value has no
+      extras-bag path either). The §7 category exception raises out of the
+      embed node.
     state:
       fields:
         embedding_response:

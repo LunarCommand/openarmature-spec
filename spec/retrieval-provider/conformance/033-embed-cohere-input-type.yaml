@@ -4,15 +4,25 @@
 # fixture 013, and Jina's task, fixture 020) and the FIRST where the wire
 # field is MANDATORY.
 #
-# Verifies the §8.4 Cohere embedding mapping's input_type contract:
-#   - input_type: query    -> wire input_type "search_query"
-#   - input_type: document -> wire input_type "search_document"
-#   - input_type ABSENT    -> wire input_type "search_document" (the
+# Verifies the §8.4 Cohere embedding mapping's input_type contract — the
+# RECOGNIZED SET is query / document / classification / clustering (§8.4
+# exercises §2's "additional well-known values MAY be recognized by mappings
+# whose backend supports them"; Cohere's backend supports all four):
+#   - input_type: query          -> wire input_type "search_query"
+#   - input_type: document       -> wire input_type "search_document"
+#   - input_type: classification -> wire input_type "classification"
+#   - input_type: clustering     -> wire input_type "clustering"
+#   - input_type ABSENT          -> wire input_type "search_document" (the
 #     MANDATORY-field default — the case NO other embed mapping has: §8.1
 #     (prompt_name) and §8.2 (task) OMIT the field when input_type is
 #     absent, and §8.3 has no field at all, but Cohere v2 /v2/embed REQUIRES
 #     a value, so the mapping MUST send one. search_document is the
 #     bulk-indexing default — storing document vectors is the dominant case.)
+# The last two are IDENTITY mappings (Cohere's wire values match the §2
+# well-known names), unlike the query/document pair Cohere prefixes with
+# "search_". A value OUTSIDE the recognized set is a pre-send
+# provider_invalid_request (fixture 034); `image` is NOT recognized (an input
+# modality, not a purpose for embedded text — §3 / §11 scope v1 to text).
 # Also (§3 + graph-engine §6) input_type flows into
 # EmbeddingEvent.request_params with absence-is-meaningful semantics — the
 # protocol knob is observable on the event REGARDLESS of how the wire
@@ -38,12 +48,12 @@ cases:
   - name: input_type_query_sends_search_query
     description: |
       embed(config={input_type: "query"}) against a Cohere
-      EmbeddingProvider. The §8.4 closed-set mapping translates input_type
-      "query" to Cohere's "search_query", so the wire request to /v2/embed
-      MUST carry input_type "search_query" alongside {model, texts,
-      embedding_types: ["float"], truncate: "NONE"}. input_type MUST also
-      reach EmbeddingEvent.request_params as "query". The Authorization:
-      Bearer header is present.
+      EmbeddingProvider. The §8.4 mapping translates the recognized
+      input_type "query" to Cohere's "search_query", so the wire request
+      to /v2/embed MUST carry input_type "search_query" alongside {model,
+      texts, embedding_types: ["float"], truncate: "NONE"}. input_type MUST
+      also reach EmbeddingEvent.request_params as "query". The
+      Authorization: Bearer header is present.
     state:
       fields:
         embedding_response:
@@ -109,8 +119,8 @@ cases:
   - name: input_type_document_sends_search_document
     description: |
       embed(config={input_type: "document"}) against the same provider:
-      document -> "search_document" per the §8.4 closed-set mapping, so the
-      wire request MUST carry input_type "search_document". input_type MUST
+      document -> "search_document" per the §8.4 mapping, so the wire
+      request MUST carry input_type "search_document". input_type MUST
       reach EmbeddingEvent.request_params as "document".
     state:
       fields:
@@ -168,6 +178,151 @@ cases:
                 input_type: document
       invariants:
         wire_request_carries_input_type_search_document: true
+        wire_request_embedding_types_float: true
+        wire_request_truncate_none: true
+        authorization_bearer_header_present: true
+        input_type_in_embedding_event_request_params: true
+        vectors_length_matches_input_length: true
+
+  - name: input_type_classification_sends_classification
+    description: |
+      embed(config={input_type: "classification"}) against the same
+      provider. Cohere's backend supports the classification purpose, so
+      §8.4 RECOGNIZES the §2 well-known value (§2 — "additional well-known
+      values MAY be recognized by mappings whose backend supports them")
+      and MUST NOT reject it pre-send. The wire value is an IDENTITY
+      mapping — Cohere's own name for the purpose is "classification", so
+      the wire request MUST carry input_type "classification" (NOT a
+      "search_"-prefixed value; only query/document take that prefix).
+      input_type MUST reach EmbeddingEvent.request_params as
+      "classification".
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["this movie was a complete waste of time."]
+          config:
+            input_type: classification
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "classification"
+      texts: ["this movie was a complete waste of time."]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-033class-id
+          embeddings:
+            float:
+              - [0.21, 0.22, 0.23, 0.24]
+          texts: ["this movie was a complete waste of time."]
+          meta:
+            billed_units:
+              input_tokens: 9
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: classification
+      invariants:
+        wire_request_carries_input_type_classification: true
+        classification_not_rejected_pre_send: true
+        wire_request_embedding_types_float: true
+        wire_request_truncate_none: true
+        authorization_bearer_header_present: true
+        input_type_in_embedding_event_request_params: true
+        vectors_length_matches_input_length: true
+
+  - name: input_type_clustering_sends_clustering
+    description: |
+      embed(config={input_type: "clustering"}) against the same provider.
+      Cohere's backend supports the clustering purpose, so §8.4 RECOGNIZES
+      the §2 well-known value and MUST NOT reject it pre-send. Identity
+      mapping again: the wire request MUST carry input_type "clustering".
+      input_type MUST reach EmbeddingEvent.request_params as "clustering".
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["quarterly revenue rose twelve percent."]
+          config:
+            input_type: clustering
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "clustering"
+      texts: ["quarterly revenue rose twelve percent."]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-033cluster-id
+          embeddings:
+            float:
+              - [0.31, 0.32, 0.33, 0.34]
+          texts: ["quarterly revenue rose twelve percent."]
+          meta:
+            billed_units:
+              input_tokens: 7
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              request_params:
+                input_type: clustering
+      invariants:
+        wire_request_carries_input_type_clustering: true
+        clustering_not_rejected_pre_send: true
         wire_request_embedding_types_float: true
         wire_request_truncate_none: true
         authorization_bearer_header_present: true
