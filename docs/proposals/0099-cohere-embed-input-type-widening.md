@@ -1,0 +1,1 @@
+../../proposals/0099-cohere-embed-input-type-widening.md
