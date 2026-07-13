@@ -1,0 +1,329 @@
+# retrieval-provider §8.4 Cohere /v2/embed — extras-supplied embedding_types
+# MERGED with the mapping's mandatory "float" (never replacing it).
+#
+# `embedding_types` is a MANAGED wire field on this mapping: §8.4
+# (*output_dimension / embedding_types / truncate*) has the mapping request
+# embedding_types: ["float"] EXPLICITLY, because its own response consumer
+# reads the embeddings.float key (fixture 032). Other precisions (int8 /
+# uint8 / binary / ubinary / base64) ride the extras-pass-through bag — so
+# the caller's value and the mapping's managed value MEET on the same wire
+# key. This fixture pins what happens then:
+#   - the extras value is MERGED with "float", not substituted for it: the
+#     wire request carries "float" PLUS the caller's additional precisions.
+#   - a mapping MUST NOT let the extras value DROP "float" — that would
+#     strip the embeddings.float key the mapping reads, failing the call
+#     provider_invalid_response (§7). The merge is what makes the extras
+#     escape hatch safe.
+#   - the mapping still consumes embeddings.float for
+#     EmbeddingResponse.vectors, ignoring the extra precision keys; the
+#     caller reads those off the verbatim EmbeddingResponse.raw (§4).
+# The truncate: "NONE" fail-loud flag and the mandatory input_type default
+# (search_document — no OA input_type supplied) are unchanged (032/033/036).
+#
+# Merged-list ordering: §8.4 pins it NORMATIVELY — the managed "float"
+# FIRST, then the caller's precisions in the order supplied, de-duplicated.
+# The wire is order-insensitive here, so the ordering carries no semantics;
+# it is fixed purely so the outbound request is DETERMINISTIC and therefore
+# decidable by an exact expected_wire_request assertion. (Without a pinned
+# order, an impl emitting ["int8", "float"] would satisfy the merge rule yet
+# fail this fixture — the fixture would be demanding more than the spec.)
+# Case C exercises the de-duplication half.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 001's header (calls_embed /
+# mock_embedding) and 032's header (mapping: cohere,
+# cohere_embedding_provider, the Cohere /v2/embed request + keyed-by-type
+# response shapes, expected_wire_request / expected_wire_request_absent_keys
+# / expected_wire_headers). New directive:
+#
+# - calls_embed.config.extras: {<key>: <value>, ...} — the §2
+#   extras-pass-through bag on the embedding runtime config (the
+#   retrieval-provider realization of the config.extras idiom llm-provider
+#   fixture 032 uses for §6 RuntimeConfig). Carries UNDECLARED keys only —
+#   vendor-specific knobs with no declared OA field. The keys land on the
+#   §8 wire request body per the mapping; where an extras key collides with
+#   a field the mapping MANAGES (embedding_types here), the mapping's
+#   collision rule governs — the §8.4 merge this fixture pins.
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: extras_embedding_types_merged_with_managed_float
+    description: |
+      embed(config={extras: {embedding_types: ["int8"]}}) — the caller wants
+      the int8 precision alongside the float vectors OA consumes. The §8.4
+      mapping MUST MERGE the extras value with its mandatory "float": the
+      /v2/embed wire request carries embedding_types: ["float", "int8"] —
+      NOT ["int8"] (which would strip the embeddings.float key the mapping
+      reads) and NOT ["float"] (which would silently discard the caller's
+      knob). The mocked Cohere response is keyed by BOTH types; the mapping
+      MUST still assemble EmbeddingResponse.vectors from embeddings.float
+      and MUST NOT read (or fail on) the extra precision key, which the
+      caller recovers from the verbatim EmbeddingResponse.raw (§4).
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            extras:
+              embedding_types: ["int8"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha string"]
+      # The MERGE: the mapping's managed "float" AND the caller's extras
+      # precision. "float" MUST survive the extras-supplied value.
+      embedding_types: ["float", "int8"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-039m-id
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04]
+            int8:
+              - [1, 2, 3, 4]
+          texts: ["alpha string"]
+          meta:
+            billed_units:
+              input_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          # Vectors come from embeddings.float — the extra precision key is
+          # NOT what the mapping consumes.
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          response_id: cohere-embed-039m-id
+          usage:
+            input_tokens: 2
+          # The verbatim deserialized Cohere response (§4 raw) — where the
+          # caller reads the extra precision back. Single-request call, so
+          # raw is that one response object exactly.
+          raw:
+            id: cohere-embed-039m-id
+            embeddings:
+              float:
+                - [0.01, 0.02, 0.03, 0.04]
+              int8:
+                - [1, 2, 3, 4]
+            texts: ["alpha string"]
+            meta:
+              billed_units:
+                input_tokens: 2
+      invariants:
+        exactly_one_embed_request_issued: true
+        wire_request_embedding_types_contains_float: true
+        wire_request_embedding_types_contains_extras_precision: true
+        extras_embedding_types_merged_not_replaced: true
+        managed_float_not_dropped_by_extras: true
+        wire_request_truncate_none: true
+        wire_request_input_type_search_document_default: true
+        authorization_bearer_header_present: true
+        vectors_assembled_from_embeddings_float_in_input_order: true
+        vectors_length_matches_input_length: true
+        dimensions_field_matches_inner_vector_length: true
+        extra_precision_preserved_on_raw: true
+
+  - name: extras_embedding_types_multiple_precisions_merged
+    description: |
+      embed(config={extras: {embedding_types: ["int8", "uint8"]}}) — MORE
+      than one extra precision, proving the merge is a general union and not
+      a two-element special case. The wire request MUST carry
+      embedding_types: ["float", "int8", "uint8"] — the managed "float" plus
+      BOTH caller precisions. The response is keyed by all three; vectors
+      still come from embeddings.float, and both extra precisions survive
+      verbatim on raw.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string", "beta string"]
+          config:
+            extras:
+              embedding_types: ["int8", "uint8"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha string", "beta string"]
+      embedding_types: ["float", "int8", "uint8"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-039p-id
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04]
+              - [0.11, 0.12, 0.13, 0.14]
+            int8:
+              - [1, 2, 3, 4]
+              - [11, 12, 13, 14]
+            uint8:
+              - [129, 130, 131, 132]
+              - [139, 140, 141, 142]
+          texts: ["alpha string", "beta string"]
+          meta:
+            billed_units:
+              input_tokens: 4
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+            - [0.11, 0.12, 0.13, 0.14]
+          vectors_length: 2
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          response_id: cohere-embed-039p-id
+          usage:
+            input_tokens: 4
+          raw:
+            id: cohere-embed-039p-id
+            embeddings:
+              float:
+                - [0.01, 0.02, 0.03, 0.04]
+                - [0.11, 0.12, 0.13, 0.14]
+              int8:
+                - [1, 2, 3, 4]
+                - [11, 12, 13, 14]
+              uint8:
+                - [129, 130, 131, 132]
+                - [139, 140, 141, 142]
+            texts: ["alpha string", "beta string"]
+            meta:
+              billed_units:
+                input_tokens: 4
+      invariants:
+        exactly_one_embed_request_issued: true
+        wire_request_embedding_types_contains_float: true
+        wire_request_embedding_types_contains_all_extras_precisions: true
+        extras_embedding_types_merged_not_replaced: true
+        managed_float_not_dropped_by_extras: true
+        wire_request_truncate_none: true
+        authorization_bearer_header_present: true
+        vectors_assembled_from_embeddings_float_in_input_order: true
+        vectors_length_matches_input_length: true
+        all_vectors_same_dimensionality: true
+        dimensions_field_matches_inner_vector_length: true
+        extra_precision_preserved_on_raw: true
+
+  - name: extras_embedding_types_naming_float_is_deduplicated
+    description: |
+      embed(config={extras: {embedding_types: ["float", "int8"]}}) — the
+      caller names "float" EXPLICITLY, alongside a precision. §8.4's merge is
+      de-duplicating: the wire request MUST carry embedding_types:
+      ["float", "int8"] — "float" appears ONCE, not twice. This pins the
+      dedupe half of the merge rule (a naive concatenation would emit
+      ["float", "float", "int8"]). The managed "float" and the caller's
+      "float" are the same request, not two.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["gamma string"]
+          config:
+            extras:
+              embedding_types: ["float", "int8"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["gamma string"]
+      embedding_types: ["float", "int8"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-039d-id
+          embeddings:
+            float:
+              - [0.21, 0.22, 0.23, 0.24]
+            int8:
+              - [21, 22, 23, 24]
+          texts: ["gamma string"]
+          meta:
+            billed_units:
+              input_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.21, 0.22, 0.23, 0.24]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          response_id: cohere-embed-039d-id
+          usage:
+            input_tokens: 2
+          raw:
+            id: cohere-embed-039d-id
+            embeddings:
+              float:
+                - [0.21, 0.22, 0.23, 0.24]
+              int8:
+                - [21, 22, 23, 24]
+            texts: ["gamma string"]
+            meta:
+              billed_units:
+                input_tokens: 2
+      invariants:
+        exactly_one_embed_request_issued: true
+        wire_request_embedding_types_contains_float_exactly_once: true
+        caller_supplied_float_not_duplicated: true
+        extras_embedding_types_merged_not_replaced: true
+        managed_float_not_dropped_by_extras: true
+        wire_request_truncate_none: true
+        authorization_bearer_header_present: true
+        vectors_assembled_from_embeddings_float_in_input_order: true

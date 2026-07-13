@@ -461,10 +461,16 @@ non-object wire corruption.
 realization:** the mapping sets Jina's native `task` from `input_type` — `"query"` → `"retrieval.query"`,
 `"document"` → `"retrieval.passage"` — so Jina applies the model-appropriate query/passage representation
 server-side; `input_type` absent ⇒ `task` omitted. The mapping recognizes a **closed `input_type` set**
-(`query` / `document`); an unrecognized value is a pre-send `provider_invalid_request` (§7). Jina's other
-`task` values (e.g. `text-matching`, `classification`, `clustering` — model-dependent) are reached via
-the extras-pass-through bag, not `input_type` (widening `input_type`'s normative value space is a
-protocol-level change, deferred until a consumer needs it). `EmbeddingRuntimeConfig.dimensions` → Jina's
+(`query` / `document`); an unrecognized value is a pre-send `provider_invalid_request` (§7). Unlike §8.4
+Cohere — which recognizes §2's additional well-known values because its backend supports them uniformly —
+this mapping keeps the closed set because **Jina's `task` support is model-dependent**: across Jina's
+embedding models the accepted `task` values differ (some accept `classification` but not `clustering`,
+some accept neither), and a provider is bound to a model *identifier* with no model-capability registry to
+consult, so the mapping cannot promise those values. Jina's other `task` values (e.g. `text-matching`,
+`classification`, `clustering` — model-dependent) are therefore reached via the extras-pass-through bag,
+not `input_type`. That path works here precisely because `task` is an *undeclared* key (so it rides the
+bag, unlike a declared field) and is *omitted* when `input_type` is absent (so nothing the mapping manages
+collides with it). `EmbeddingRuntimeConfig.dimensions` → Jina's
 `dimensions` (Matryoshka) when set. The response `{model, usage, data: [{index, embedding}]}` maps to the
 `EmbeddingResponse` vectors in input order. Jina enforces **no** per-call input cap (it batches
 server-side by token count), so the §8 *Batch chunking* rule's no-cap branch applies — the embed mapping
@@ -584,20 +590,55 @@ input, input-order keying, uniform dimensionality) are enforced against `embeddi
 
 **`input_type` (mandatory wire field).** Cohere v2 `/v2/embed` **requires** `input_type`, so — unlike
 §8.1 / §8.2 (where an absent `input_type` omits the wire field) and §8.3 (symmetric no-op) — this mapping
-MUST always send a value. It recognizes the **closed `input_type` set** (`query` / `document`, per §8.2's
-treatment): `query` → `search_query`, `document` → `search_document`. An absent `input_type` MUST map to
+MUST always send a value. Cohere's backend supports the §2 well-known values beyond `query` / `document`,
+so this mapping recognizes the set **`query` / `document` / `classification` / `clustering`** (§2 —
+"additional well-known values MAY be recognized by mappings whose backend supports them"):
+
+- `query` → `search_query`
+- `document` → `search_document`
+- `classification` → `classification`
+- `clustering` → `clustering`
+
+The mapping MUST NOT reject `classification` or `clustering` pre-send. An absent `input_type` MUST map to
 `search_document` — the conventional bulk-indexing default (the wire requires a value; storing document
-vectors is the dominant case). An unrecognized OA `input_type` value is a pre-send
-`provider_invalid_request` (§7). Cohere's other `input_type` values (`classification` / `clustering` /
-`image`) are reached via the extras-pass-through bag, not OA's `input_type` (widening `input_type`'s
-normative value space is a §2 / 0077 protocol-level change, deferred until a consumer needs it).
+vectors is the dominant case). An OA `input_type` value outside the recognized set is a pre-send
+`provider_invalid_request` (§7).
+
+Cohere's `image` `input_type` is **not** recognized: it names an input *modality*, not a purpose for
+embedded text, and `embed()` consumes a list of strings (§3; §11 scopes v1 to text-only). It is not
+reachable through this mapping, and image embedding belongs to the deferred multimodal capability. Note
+that OA's `input_type` is a **declared** field (§2), so it can never ride the extras-pass-through bag: that
+bag carries only *undeclared* keys (llm-provider §6 *Extras pass-through*, inherited per §10) — a value
+outside the recognized set has no wire path through this mapping at all.
 
 **`output_dimension` / `embedding_types` / `truncate` (fail-loud).** `EmbeddingRuntimeConfig.dimensions` →
 Cohere's **`output_dimension`** (Cohere's name for the Matryoshka knob; supported on `embed-v4` and newer
 models) when set; omitted otherwise (Cohere's model default applies). The mapping requests
 `embedding_types: ["float"]` **explicitly** (so the type-keyed response is guaranteed to carry the
 `embeddings.float` key the mapping reads) and consumes `embeddings.float`; other precisions (`int8` /
-`uint8` / `binary` / `ubinary` / `base64`) ride the extras-pass-through bag. It sends `truncate: "NONE"`
+`uint8` / `binary` / `ubinary` / `base64`) ride the extras-pass-through bag.
+
+**`embedding_types` is a mapping-managed wire key — a named exception to untouched pass-through.**
+llm-provider §6 forwards an undeclared extras key to the wire *untouched* and forbids transforming it, but
+scopes that to what "the wire-format mapping (§8)" defines. This mapping **manages** `embedding_types` (it
+must request `"float"` for its own response consumer), so §8.4 — not the untouched-pass-through default —
+governs a collision on that key:
+
+- An extras-supplied `embedding_types` **MUST** be **merged** with the mapping's mandatory `"float"`, never
+  replace it. A mapping **MUST NOT** let an extras-supplied value drop `"float"` from the request: doing so
+  would strip the `embeddings.float` key this mapping's own response consumer reads, failing the call
+  `provider_invalid_response` (§7).
+- The merged list **MUST** be ordered `"float"` first, then the caller's precisions in the order supplied,
+  **de-duplicated with first occurrence winning** (a caller who names `"float"` explicitly gets it once, in
+  first position; a repeated precision keeps its first position). The wire is order-insensitive here, so
+  the ordering carries no semantics — it is fixed solely to make the outbound request **deterministic**,
+  and therefore decidable by a conformance fixture that asserts the request body.
+- The caller reads the extra precisions off the verbatim response on `EmbeddingResponse.raw` (§4).
+
+This exception is **mapping-local and deliberate**. The general question — what happens when *any* extras
+key collides with *any* mapping-managed wire field — is not specified; see `docs/open-questions.md`.
+
+It sends `truncate: "NONE"`
 so an over-length input **errors** (surfacing `provider_invalid_request` per §7) rather than being
 silently truncated — the §8.2 Jina embed fail-loud posture, and the point where §8.4's embed half
 diverges from its rerank half (which has no fail-loud option).
@@ -643,6 +684,12 @@ detail) unless the provider documents a tie-breaking rule; the spec MUST NOT ass
   `disable_llm_payload` by proposal 0059) gates payload from any provider call, including embedding
   payload (`input_strings`, `request_extras`, the Langfuse `output` vectors) and rerank payload
   (`query`, `documents`, the result document echoes).
+- **llm-provider §6** — the `RuntimeConfig` *Extras pass-through* contract (inherited): an undeclared
+  field MUST be forwarded to the wire body untouched, subject to what the wire-format mapping (§8)
+  defines. Two consequences this capability leans on: a **declared** field (`input_type`, `dimensions`)
+  can never ride the extras bag, since the bag carries only *undeclared* keys; and a mapping that
+  **manages** a wire key may govern a collision on it (§8.4 `embedding_types`) rather than forwarding
+  untouched.
 - **llm-provider §7** — error-category enumeration (inherited).
 - **pipeline-utilities §6 (middleware)** — `EmbeddingProvider` and `RerankProvider` calls are
   eligible for retry middleware identically to `complete()` calls.
@@ -684,3 +731,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - `EmbeddingResponse.usage` (§4) and `RerankResponse.usage` (§6) made nullable (`record | null` — `null` when the provider reports no usage), reconciling the response types with the record-null model the typed events (graph-engine §6) and §11 metric already use; §2 concept lines qualify usage "(when present)", §8.1 pins TEI `/embed` + `/rerank` `usage = null`, and §8's batch-chunking step 4 combines usage record-aware by [proposal 0093](../../proposals/0093-nullable-provider-usage-records.md)
 - `EmbeddingResponse.raw` (§4) and `RerankResponse.raw` (§6) widened from `dict[str, Any]` to `dict | list` — the verbatim deserialized JSON of the successful response whatever its top-level shape (an array for bare-array wire like TEI §8.1); the mapping MUST NOT wrap or reshape it. §8's batch-chunking rule gains a `raw` stitch clause and §8.1 a `raw` note: a chunk-and-stitch call's `raw` is the list of the per-request responses (nothing lost across chunks), the normalized fields staying ergonomic summaries. Scoped to retrieval-provider — llm-provider `Response.raw` unchanged by [proposal 0096](../../proposals/0096-retrieval-raw-json-shape.md)
 - `ScoredDocument.document` (§6) generalized to **object-shaped echoes**: an object echo surfaces its text content (a string-valued `text` key → that string, else `null`), an empty string is present (→ `""`), and the verbatim echo object is preserved on `RerankResponse.raw`; the "surface verbatim" MUST and the per-result null-dichotomy invariant amended (`null` now = omitted OR a non-text-shape echo). §8.2 Jina realizes it for `document: anyOf[string, TextDoc, ImageDoc, null]` (`TextDoc` → `text`, `ImageDoc` / text-less object → `null`, a non-object echo — number / array / boolean → `provider_invalid_response`), replacing the prior `document → document` direct mapping; fixture 019 gains TextDoc / ImageDoc→`null` / mixed-shape cases by [proposal 0097](../../proposals/0097-retrieval-provider-jina-document-echo-shape.md)
+- §8.4 Cohere `/v2/embed` **`input_type` widened** — the mapping now recognizes `query` / `document` / `classification` / `clustering` (identity-mapping the latter two onto Cohere's wire values), exercising §2's "additional well-known values MAY be recognized by mappings whose backend supports them". The recognized set is still fixed — a value outside it is still a pre-send `provider_invalid_request`; it is *wider*, not open. Removes §8.4's claim that Cohere's other `input_type` values "are reached via the extras-pass-through bag" — unachievable, since OA's `input_type` is a **declared** field and the bag carries only *undeclared* keys (llm-provider §6), and §8.4 rejects an unrecognized value pre-send anyway — the sentence directly contradicted the rule immediately before it. `image` stays unrecognized (an input modality, not a purpose for embedded text; §3 / §11 scope v1 to text). The "per §8.2's treatment" anchor on the recognized set is severed — the sets now differ deliberately (that copy-coupling is what carried the broken sentence across vendors). §8.4's **`embedding_types`** extras claim, whose collision with the mapping's mandatory `"float"` was undefined, is pinned: an extras-supplied value MUST be **merged** with `"float"`, never replace it (an override would strip the `embeddings.float` key the mapping's own response consumer reads). §8.2 Jina keeps its closed set, its rationale corrected to the real one — Jina's `task` support is **model-dependent**, so a mapping bound to a model identifier cannot promise those values by [proposal 0099](../../proposals/0099-cohere-embed-input-type-widening.md)
