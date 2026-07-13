@@ -10,16 +10,16 @@ complementing the parse-failure case in fixture 022.
 
 - §7 `structured_output_invalid` — raised when the provider's content
   parses as JSON but fails to validate against the supplied schema.
-- §7 error payload — failure description SHOULD identify the failing
+- §7 error payload — the `error_message` SHOULD identify the failing
   field/pointer; the error also exposes the response's normalized
   `finish_reason` and token `usage` (per proposal 0082).
 
 **What passes:**
 
 - `complete()` raises `structured_output_invalid`.
-- The error payload carries the requested schema and the raw response
-  content (`'{"name":"Alice"}'`).
-- The failure description mentions the missing `"age"` field.
+- The error payload carries the requested `response_schema` and the
+  verbatim `output_content` (`'{"name":"Alice"}'`).
+- The `error_message` mentions the missing `"age"` field.
 - The error also carries the response's `finish_reason` (`"stop"`) and
   `usage` (the body's literal token counts), per proposal 0082.
 

@@ -59,8 +59,8 @@ expected:
     category: structured_output_invalid
     carries:
       response_schema_present: true
-      raw_response_content: '{"name":"Bob"}'
-      failure_description_mentions: "age"
+      output_content: '{"name":"Bob"}'
+      error_message_mentions: "age"
       finish_reason: stop
       usage: {prompt_tokens: 30, completion_tokens: 6, total_tokens: 36}
   # Attempt 0 appends nothing; the reask retry appends the model's raw

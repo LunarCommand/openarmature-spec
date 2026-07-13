@@ -40,8 +40,8 @@ calls:
         carries:
           # The error MUST expose these so the user can debug.
           response_schema_present: true
-          raw_response_content: '{"name": "Alice" "age": 30}'
-          failure_description_present: true
+          output_content: '{"name": "Alice" "age": 30}'
+          error_message_present: true
           # finish_reason + usage are now required on the error (proposal 0082)
           # — sourced from the received (but unparseable) response.
           finish_reason: stop

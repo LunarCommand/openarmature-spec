@@ -1,8 +1,9 @@
 # 0098: Align structured-output `carries` assertion keys with the llm-provider §7 error field names
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-12
+- **Accepted:** 2026-07-12
 - **Targets:** spec/conformance-adapter/spec.md **§5.12 Provider structured-output error assertion** —
   rename the three `carries` assertion keys that do not track the llm-provider §7
   `structured_output_invalid` error field names (`raw_response_content` → `output_content`,
@@ -74,17 +75,29 @@ with the same flavor.
 
 ### conformance-adapter §5.12 — state the key-naming convention normatively
 
-A `carries` key **MUST** be named for the llm-provider §7 error field it asserts, plus an optional suffix
-naming the assertion flavor:
+**Within a `structured_output_invalid` `carries` block**, a key **MUST** be named for the llm-provider §7
+error field it asserts, plus an optional suffix naming the assertion flavor:
 
 - a **bare field name** (`output_content`, `finish_reason`, `usage`) — **exact-equality** on that field.
-- the **`_present` suffix** (`response_schema_present`, `error_message_present`) — the field is
-  **present** (non-null); its value is not asserted.
+  When the field is a **mapping** (`usage`), the assertion is a **subset match**: every key the fixture
+  names MUST match, and keys it does not name are ignored, so an implementation MAY expose additional
+  optional §6 fields (e.g. the cache counters) without failing. This is the convention §5.11 already
+  applies to span `attributes`; stating it here settles what exact-equality means for a mapping-valued
+  assertion, which the section left open.
+- the **`_present` suffix** (`response_schema_present`, `error_message_present`) — asserts the field's
+  **presence**, not its value: `true` asserts present (non-null), `false` asserts absent (null).
 - the **`_mentions` suffix** (`error_message_mentions`) — the field's value **contains** the given
   substring (used where the exact wording is implementation-defined).
 
-Every §5.12 key then follows the rule, and a new `carries` key **MUST** derive its name from the field it
-asserts rather than coining a fresh stem.
+The suffix, when present, **MUST** be one of `_present` / `_mentions` — the flavor set is **closed**, and a
+new flavor requires a proposal. A new key in this block **MUST** derive its name from the field it asserts
+rather than coining a fresh stem. Together these make the vocabulary genuinely derivable from §7: the stem
+comes from the field, the suffix from a closed set.
+
+The convention is **scoped to the `structured_output_invalid` block**. §5.12 is the only section that
+documents the `expected.raises.carries` directive, but `carries` is used by fixtures across capabilities
+(state-migration, prompt-management, sessions) to assert *other* raised errors' fields — those blocks are
+explicitly outside this rule, which the section now says.
 
 ### conformance-adapter §5.12 — correct the fixture-provenance range
 
@@ -97,16 +110,17 @@ deferred is removed; this proposal resolves it.
 
 ## Conformance test impact
 
-**At Accept** (this is a Draft — the spec edits and fixture updates land with the accept PR, not here), the
-four fixtures that use the renamed keys move to the new names:
+The four fixtures that use the renamed keys move to the new names:
 
 - **022** / **023** — the 0016 structured-output parse-failure and validation-failure fixtures, which
   coined the keys.
 - **063** / **064** — the 0095 reask fixtures (budget-exhausted, off-by-default).
 
 No new fixtures and **no changed expectations**: the same fields are asserted the same way, under names
-that match them. The other 0095 fixtures (062, 065–067) carry no `carries` block and are untouched — the
-same fact the §5.12 range correction above records.
+that match them. Their prose companions move with them, from the retired wording ("the raw response
+bytes" — which llm-provider §7 no longer uses; the content is a string, not bytes) to the §7 field names.
+The other 0095 fixtures (062, 065–067) carry no `carries` block and are untouched — the same fact the
+§5.12 range correction above records.
 
 ## Versioning
 
@@ -119,8 +133,7 @@ half — it renamed nothing; this is the half that moves the keys).
 
 **It is a breaking change for an adapter.** One that reads the old key names stops matching the fixtures,
 which move to the new names in the same version; the directive vocabulary and the fixture corpus move
-together. Pre-1.0, a breaking change of this kind may land in a MINOR bump. Tentative spec version target
-deferred to Accept.
+together. Pre-1.0, a breaking change of this kind may land in a MINOR bump. Ships as spec **v0.93.0**.
 
 ## Alternatives considered
 

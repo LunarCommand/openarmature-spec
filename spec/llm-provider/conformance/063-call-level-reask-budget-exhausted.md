@@ -13,7 +13,7 @@ schema-invalid JSON (missing the required `age` field).
   per the normal `complete()` exception path; the retry attempt carries
   `openarmature.llm.retry_reason = reask`; the final-error category lands on the last attempt's span.
 - llm-provider §7 / proposal 0082 — the propagated `structured_output_invalid` error surface
-  (schema present, raw response content, failure description, `finish_reason`, `usage`).
+  (`response_schema` present, `output_content`, `error_message`, `finish_reason`, `usage`).
 - conformance-adapter §5.11 — `call.retry.reask.template` directive, the per-attempt
   `expected.wire_requests` assertion (`appended_messages` mixing an exact `assistant` entry with a
   `content_contains` `user` entry), and `attributes_absent` on the attempt-0 span.
