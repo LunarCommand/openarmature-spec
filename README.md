@@ -87,7 +87,11 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-No proposals are currently in flight. New work opens as a numbered Draft proposal under [`proposals/`](proposals/).
+Proposals currently in flight. Status is Draft; contracts may change before they are Accepted.
+
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0099](proposals/0099-cohere-embed-input-type-widening.md) | Draft | retrieval-provider §8.4 / §8.2 | Cohere `/v2/embed` `input_type` widened to recognize `classification` / `clustering`, removing an unachievable "reached via the extras bag" claim; the `embedding_types` extras collision with the mapping's mandatory `float` pinned to a merge; §8.2 Jina's stale deferral reconciled (its `task` support is model-dependent) |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 

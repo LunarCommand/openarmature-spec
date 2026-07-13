@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0099](proposals/0099-cohere-embed-input-type-widening.md) | Cohere `/v2/embed` — widen `input_type`, pin the extras-vs-managed-field claims | retrieval-provider | Draft | —               | —          |
 | [0098](proposals/0098-conformance-adapter-carries-key-alignment.md) | Align structured-output `carries` assertion keys with §7 error field names | conformance-adapter | Accepted | Pending         | —          |
 | [0097](proposals/0097-retrieval-provider-jina-document-echo-shape.md) | Rerank `document` object-shape echo — general §6 rule + Jina TextDoc / ImageDoc | retrieval-provider | Accepted | Pending         | —          |
 | [0096](proposals/0096-retrieval-raw-json-shape.md) | Retrieval `raw` verbatim JSON of any top-level shape | retrieval-provider | Accepted | Pending         | —          |
