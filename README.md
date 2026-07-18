@@ -87,7 +87,12 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-No proposals are currently in flight. New work opens as a numbered Draft proposal under [`proposals/`](proposals/).
+Proposals currently in flight. Status is Draft; contracts may change before they are Accepted.
+
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0100](proposals/0100-malformed-ancillary-figures-not-reported.md) | Draft | retrieval-provider §4/§6/§7/§8 · graph-engine §6 | **A malformed figure is not a reported figure** (retrieval) — a garbage `usage` counter or `response_id` is treated as absent (never `provider_invalid_response`), never coerced or repaired, verbatim on `raw`, and not surfaced on the typed events either. Supplies the principle 0097's `document` rule already sits on |
+| [0101](proposals/0101-malformed-usage-counter-llm-observability.md) | Draft | llm-provider §6/§7/§8 · graph-engine §6 · observability §5.5.3/§11.2/§11.3 | The same rule for llm-provider's always-present usage record, plus the observability guard chain a null counter runs through — the OTel usage attributes, the token histogram, and the token-budget instruments all omit rather than emit/compare/divide over a not-reported counter |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
