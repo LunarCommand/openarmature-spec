@@ -1,0 +1,53 @@
+# §7 *Malformed usage counter* — ALL THREE counters malformed.
+#
+# When every counter is malformed, NO usage is reported, so §6's "the first
+# three MUST be null together" fires AS WRITTEN: `Response.usage` is a PRESENT
+# record of {null, null, null} — never a null usage record (the §6
+# `Response.usage` record is always present), and never a raise. The three
+# malformation kinds §7 enumerates are each exercised here: a non-integer
+# string, a negative, and a boolean.
+#
+# OpenAI-compatible mapping (§8.1 — the default); all three are wire counters.
+#
+# NOTE: graph-engine §6 `LlmCompletionEvent.usage` MIRRORS this — a PRESENT
+# record of null counters, NOT a null usage. That distinction (present record
+# of nulls vs. a null record) is the reconciliation 0101 pins so the response
+# and its observability event agree; the event-mirror assertion lives in the
+# observability conformance suite.
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: cc-069
+        object: chat.completion
+        created: 1700000001
+        model: test-model
+        choices:
+          - {index: 0, message: {role: assistant, content: "Done."}, finish_reason: stop}
+        usage:
+          prompt_tokens: "abc"      # malformed — non-integer string
+          completion_tokens: -5     # malformed — negative
+          total_tokens: true        # malformed — boolean
+
+calls:
+  - operation: complete
+    messages: [{role: user, content: "Hi"}]
+    expected:
+      response:
+        message: {role: assistant, content: "Done.", tool_calls: null}
+        finish_reason: stop
+        usage:
+          prompt_tokens: null       # all three malformed → no usage reported,
+          completion_tokens: null   # §6 null-together fires; the record is
+          total_tokens: null        # still PRESENT (never a null usage)
+        raw_check:
+          # required_keys asserts raw.usage is PRESENT (key presence only — it
+          # does NOT pin the values). The verbatim malformed values are asserted
+          # by the adapter-enforced invariant below.
+          required_keys: [id, object, created, model, choices, usage]
+      invariants:
+        # raw.usage preserves all three malformed values byte-for-value — the
+        # string "abc", the negative -5, and the boolean true all survive
+        # unchanged (no coercion / clamp / repair; llm-provider §6 / §7).
+        raw_usage_all_counters_verbatim_malformed: true

@@ -7,7 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
-| [0101](proposals/0101-malformed-usage-counter-llm-observability.md) | A malformed usage counter is *not reported* — llm-provider + observability | llm-provider | Draft | —               | —          |
+| [0101](proposals/0101-malformed-usage-counter-llm-observability.md) | A malformed usage counter is *not reported* — llm-provider + observability | llm-provider | Accepted | Pending         | —          |
 | [0100](proposals/0100-malformed-ancillary-figures-not-reported.md) | A malformed ancillary figure is *not reported*, never a malformed response (retrieval-provider) | retrieval-provider | Accepted | Pending         | —          |
 | [0099](proposals/0099-cohere-embed-input-type-widening.md) | Cohere `/v2/embed` — widen `input_type`, pin the extras-vs-managed-field claims | retrieval-provider | Accepted | Pending         | —          |
 | [0098](proposals/0098-conformance-adapter-carries-key-alignment.md) | Align structured-output `carries` assertion keys with §7 error field names | conformance-adapter | Accepted | Pending         | —          |

@@ -1018,8 +1018,9 @@ semconv opt-out is enabled (per §5.5.4):
   when the provider returns a non-null response model.
 
 - `gen_ai.usage.input_tokens` — int. The prompt token count from the response's usage record.
-  Mirrors `openarmature.llm.usage.prompt_tokens`; both emit. Omit when the response's usage
-  record is null.
+  Mirrors `openarmature.llm.usage.prompt_tokens`; both emit. Omit when the counter is null — the record is
+  absent, or its `prompt_tokens` is not reported (a provider that reported no usage, or a malformed counter
+  per llm-provider §7). Per-field, matching `output_tokens` and the `openarmature.llm.usage.*` mirror.
 
 - `gen_ai.usage.output_tokens` — int. The completion token count from the response's usage
   record. Mirrors `openarmature.llm.usage.completion_tokens`; both emit. Omit when null.
@@ -1567,7 +1568,10 @@ signal:
 
 When a budget is declared and exceeded, the implementation MUST set
 `openarmature.llm.token_budget.exceeded = true` (when LLM spans are enabled per §5.5.4) and record the
-§11.2 token-budget instruments (when `enable_metrics`). The signal is **reactive** — evaluated from the actual usage on the terminal typed event
+§11.2 token-budget instruments (when `enable_metrics`). A bound whose **actual counter is not reported** —
+malformed per llm-provider §7 *Malformed usage counter*, or a derived-total bound with an unreported
+addend — is **not evaluated**: it is not treated as exceeded (a comparison against a `null` is undefined,
+not `false`) and contributes no §11.2 observation; the other declared bounds are evaluated independently. The signal is **reactive** — evaluated from the actual usage on the terminal typed event
 after the call returns: every §5.5.7 `LlmCompletionEvent`, and a `structured_output_invalid`
 `LlmFailedEvent` (the failure category that carries `usage` per proposal 0082 / §5.5.7); other failure
 categories carry no usage, so no evaluation occurs. It is **advisory observability only** — `token_budget`
@@ -2267,6 +2271,8 @@ and orphan cases.
 | `gen_ai.response.model` (when set) | `generation.metadata.response_model` |
 | `gen_ai.response.id` (when set) | `generation.metadata.response_id` |
 
+Each `generation.usage` counter is **omitted** when its source counter is not reported (absent, or malformed per llm-provider §7 *Malformed usage counter*) — the Langfuse `Usage` record carries only the counters the provider reported, as the `Embedding` / `Retriever` observations' `usageDetails` already omit a not-reported figure.
+
 When a generation's finish_reason is an error condition (e.g., `"content_filter"`, `"length"` —
 vendor-specific), the implementation MAY also set `observation.level = "WARNING"` to surface the
 condition in the Langfuse UI; this is RECOMMENDED but not MUST (different vendors carry
@@ -2828,9 +2834,10 @@ prefix). Recording cadence under call-level retry is covered in *Call-level retr
   input-token count with `"input"` (embeddings have no output tokens, per retrieval-provider §2). For a
   rerank call, it records the input-token count with `"input"` only when the rerank usage reports
   `input_tokens` (rerank has no output tokens; `search_units` is a billing unit, not a token, and is
-  not recorded as a token-usage measurement). When
-  a call's usage record is absent (the provider returned no usage), no observation is recorded for that
-  call.
+  not recorded as a token-usage measurement). Each observation is recorded **only when its counter is reported**: when a call's usage record is absent
+  (the provider returned no usage), or a counter is not reported (malformed per llm-provider §7, or
+  individually null), no observation is recorded for that token type — the LLM branch is per-counter, as
+  the rerank branch above already is.
 
 - **`openarmature.gen_ai.client.operation.duration`** — **Histogram**, unit `s`. Mirrors upstream
   `gen_ai.client.operation.duration`. SHOULD be configured with explicit bucket boundaries
@@ -2861,7 +2868,10 @@ keeping coverage aligned with the `token.usage` instrument above:
   ratio). Records `actual / budget` per declared bound — `prompt_tokens / input_max_tokens` (`kind`
   `"input"`), `total_tokens / total_max_tokens` (`kind` `"total"`) — on **every** call with that bound
   declared, exceeded or not, so the distribution shows how close prompts run to budget (`> 1.0` is over
-  budget). SHOULD use explicit bucket boundaries `[0.1, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 4.0]`.
+  budget) — **provided the bound's actual counter is reported**. A bound whose counter is not reported
+  (malformed per llm-provider §7, or a derived total with an unreported addend) is **not evaluated**: no
+  observation, and `token_budget.exceeded` is not incremented for it (a comparison or ratio against a null
+  is undefined, not `false` / `0`); the §5.5.15 span signal follows the same rule. SHOULD use explicit bucket boundaries `[0.1, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 4.0]`.
   Recording on every budgeted call is observation volume, not cardinality (the dimensions are bounded; the
   histogram aggregates), and the sub-`1.0` distribution is the instrument's point.
 
@@ -2985,3 +2995,4 @@ spec:
 - §8 *Langfuse mapping* brought to parallel-branches parity with the OTel side and the fan-out mapping (proposal 0088): new §8.4.8 *Parallel-branches dispatch-span mapping* (the Langfuse observer synthesizes the per-branch dispatch Span observation — the three-level tree mirroring the OTel §4.3 / §6 synthesis — with `observation.name` = `branch_name`, resolving §5.7's dangling forward-reference); §8.3 gains observation-type rows for the parallel-branches node span + per-branch dispatch span; §8.4.2 gains the `parallel_branches_branch_count` / `_error_policy` / `_parent_node_name` attribute rows (the §5.7 attributes, flattened like `fan_out_*`); §3.4's reserved caller-metadata-key set gains those three keys (26 → 29). New fixture `136`. Additive — brings the spec into line with already-conformant Langfuse behavior by [proposal 0088](../../proposals/0088-observability-langfuse-parallel-branches-parity.md)
 - §8.4.5 / §8.4.7 output mappings (`embedding.output` / `retriever.output`) and the OTel §5.5.13 `openarmature.rerank.results` attribute re-sourced from the new graph-engine §6 `EmbeddingEvent.output_vectors` / `RerankEvent.output_results` (the observer's input is the typed event, not the response object) — making the existing fixtures `083` / `108` satisfiable; §8.4.5 / §8.4.7 gained *Failure observations* paragraphs (`ERROR`-level `Embedding` / `Retriever` observation on `EmbeddingFailedEvent` / `RerankFailedEvent`, mirroring §8.4.6 tool); §5.5.9 / §5.5.14 privacy-posture notes list the new fields; the §8.4.5 / §8.4.7 input rows re-sourced from the event. The `disable_llm_spans` scoping (§5.5.8 / §5.5.13) is unchanged by [proposal 0089](../../proposals/0089-embedding-rerank-typed-event-output.md)
 - §5.5.8 (OTel embedding span) `gen_ai.usage.input_tokens` and §8.4.5 (Langfuse embedding observation) `embedding.usageDetails.input` made **conditionally emitted** — present only when the provider reports a usage record, omitted for no-usage providers (e.g. TEI `/embed`) — tracking retrieval-provider §4's now-nullable `EmbeddingResponse.usage`; §5.5.13's rerank `input_tokens` guard rephrased record-aware and its stale "the embedding span, where `input_tokens` is always present" parenthetical corrected (both spans now emit conditionally); §8.4.7 (Langfuse rerank) `retriever.usageDetails.input` likewise record-aware. No change to §11 metrics or graph-engine §6 (already null-usage-aware). New fixtures 139–143 (OTel + Langfuse embedding and rerank no-usage spans/observations; embedding no-usage metric exercising §11's zero-token-observation branch) by [proposal 0093](../../proposals/0093-nullable-provider-usage-records.md)
+- LLM usage surfaces reconciled for a **not-reported counter** (llm-provider §7 *Malformed usage counter*): §5.5.3 `gen_ai.usage.input_tokens` moves from a per-*record* omit-guard to per-*field* (omit when the counter is null — record absent or the counter malformed/unreported), aligning it with the existing per-field `output_tokens` and `openarmature.llm.usage.*` guards; §11.2's token-usage histogram makes the LLM branch **per-counter** (a null counter records no observation for that token type, as the rerank branch already does); the §11.2 token-budget instruments and the §5.5.15 span signal **do not evaluate** a bound whose counter is not reported (no `utilization` observation, no `exceeded` increment — a comparison / ratio against a null is undefined, not `false` / `0`; the `total` bound follows §8.2's derived-total rule); and the §8.4.3 Langfuse `Generation` `usage` omits a counter that is not reported, as the `Embedding` / `Retriever` `usageDetails` already do. No attribute or observation is ever emitted from a null counter by [proposal 0101](../../proposals/0101-malformed-usage-counter-llm-observability.md)

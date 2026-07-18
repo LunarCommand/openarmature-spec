@@ -1,0 +1,70 @@
+# §7 *Malformed usage counter* + §8.2 derived `total_tokens`.
+#
+# The Anthropic Messages mapping (§8.2) returns `input_tokens` / `output_tokens`
+# and NO wire `total_tokens`; the mapping DERIVES total = prompt + completion.
+# Here `input_tokens` is malformed ("abc"), `output_tokens` is sound (7).
+#
+# Two assertions, the second a discriminator:
+#   - prompt_tokens <- malformed input_tokens => null (not reported);
+#   - the DERIVED total_tokens is ITSELF null, because an addend is not
+#     reported. A mapping MUST NOT substitute the surviving addend (7) as the
+#     total — that would report a figure the provider never sent, understating
+#     the true count. DISCRIMINATOR: a bug that substitutes the surviving
+#     addend surfaces total_tokens: 7 and FAILS this fixture.
+#
+# `completion_tokens` (the sound addend) still stands at 7. No raise. The
+# verbatim malformed `input_tokens` survives on `Response.raw.usage`.
+#
+# NOTE: graph-engine §6 `LlmCompletionEvent.usage` mirrors this response
+# (present record; prompt_tokens null, completion_tokens 7, total_tokens null);
+# the event-mirror assertion lives in the observability conformance suite.
+
+mapping: anthropic
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        type: message
+        id: msg_070
+        model: claude-test
+        role: assistant
+        content:
+          - {type: text, text: "Answer."}
+        stop_reason: end_turn
+        usage:
+          input_tokens: "abc"       # malformed — non-integer string
+          output_tokens: 7          # sound
+          # No total on the wire — §8.2 derives it from the two addends.
+
+calls:
+  - operation: complete
+    messages:
+      - {role: user, content: "Hello."}
+    config:
+      max_tokens: 256
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 256
+      messages:
+        - {role: user, content: "Hello."}
+    expected:
+      response:
+        message: {role: assistant, content: "Answer.", tool_calls: null}
+        finish_reason: stop
+        usage:
+          prompt_tokens: null       # malformed input_tokens => not reported
+          completion_tokens: 7      # sound output_tokens stands
+          total_tokens: null        # DERIVED total: addend unreported => null,
+                                    # NOT the surviving addend (7)
+        raw_check:
+          # required_keys asserts raw.usage is PRESENT (key presence only — it
+          # does NOT pin the value). The verbatim malformed Anthropic wire
+          # input_tokens is asserted by the adapter-enforced invariant below.
+          required_keys: [type, id, model, role, content, stop_reason, usage]
+      invariants:
+        # raw.usage.input_tokens preserves the Anthropic wire's malformed "abc"
+        # byte-for-value — never coerced, clamped, or repaired (llm-provider
+        # §6 / §7). (raw carries the Anthropic wire field input_tokens, not the
+        # normalized prompt_tokens.)
+        raw_usage_input_tokens_verbatim_malformed: true

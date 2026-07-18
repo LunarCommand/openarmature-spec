@@ -1,8 +1,9 @@
 # 0101: A malformed usage counter is *not reported* — llm-provider + observability
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-15
+- **Accepted:** 2026-07-17
 - **Targets:** spec/llm-provider/spec.md **§6** (`Response.usage` — a malformed counter is not a reported
   counter; and the *Streaming assembly* clause — the verbatim usage must survive on `raw`), **§7** (its
   reservation clause, which today mandates the raise this forbids), **§8.2** (the *derived*
@@ -206,8 +207,7 @@ The observability changes are behavioral for observers: the §5.5.3 input-token 
 per-record to per-field, the §11.2 histogram gains per-counter conditionality, and the §11.2 budget
 instruments gain a not-evaluated branch. An observer that emitted an attribute or recorded an observation
 from a null counter becomes non-conforming. No record shape changes; the `record | null` event type,
-0093's no-fabrication rule, and 0097's `document` boundary all stand. Tentative spec version target
-deferred to Accept.
+0093's no-fabrication rule, and 0097's `document` boundary all stand. Ships as spec **v0.96.0**.
 
 ## Alternatives considered
 

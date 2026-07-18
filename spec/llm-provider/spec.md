@@ -463,7 +463,7 @@ A `Response` record:
 |---|---|
 | `message` | The assistant message returned by the model. Always `role: "assistant"`. May carry `tool_calls`. When the bound provider's §8.X mapping surfaces provider-emitted reasoning content, `message.content` is a content-block sequence that MAY include `ThinkingBlock` / `RedactedThinkingBlock` entries (per §3.1.4 / §3.1.5); mappings that do not surface reasoning content return text-only content. |
 | `finish_reason` | One of `"stop"`, `"length"`, `"tool_calls"`, `"content_filter"`, `"error"`. See below. |
-| `usage` | A record `{prompt_tokens, completion_tokens, total_tokens, cached_tokens?, cache_creation_tokens?}`. Each declared field is a non-negative integer or `null`. The first three (`prompt_tokens`, `completion_tokens`, `total_tokens`) MUST be `null` together when the provider does not report usage. The two optional fields surface prefix-cache statistics when the provider returns them: `cached_tokens` is the count of input tokens that hit a prefix cache ("reported miss" is `0`, distinct from absent — see below); `cache_creation_tokens` is the count of input tokens written to the cache during the call (typically populated by providers with explicit cache-control surfaces; absent or `0` otherwise). Each §8.X wire-format mapping documents the provider response field these values are sourced from. Absent (`null` / `None` / `undefined`, per the language's idiom) when the provider does not report the corresponding cache statistic. |
+| `usage` | A record `{prompt_tokens, completion_tokens, total_tokens, cached_tokens?, cache_creation_tokens?}`. Each declared field is a non-negative integer or `null`. The first three (`prompt_tokens`, `completion_tokens`, `total_tokens`) MUST be `null` together when the provider does not report usage. The two optional fields surface prefix-cache statistics when the provider returns them: `cached_tokens` is the count of input tokens that hit a prefix cache ("reported miss" is `0`, distinct from absent — see below); `cache_creation_tokens` is the count of input tokens written to the cache during the call (typically populated by providers with explicit cache-control surfaces; absent or `0` otherwise). Each §8.X wire-format mapping documents the provider response field these values are sourced from. Absent (`null` / `None` / `undefined`, per the language's idiom) when the provider does not report the corresponding cache statistic. A counter **present on the wire but malformed** (a non-integer, a negative) is treated as *not reported* — that counter is `null`, the others stand, never raised or repaired (§7 *Malformed usage counter*). |
 | `raw` | The parsed provider response, as a language-idiomatic representation of deserialized JSON (Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`). MUST be populated on every successful return. Carries everything the provider returned — including fields the spec does not normalize (logprobs, content-filter details, provider-specific extensions). The normalized fields above are derived from `raw`; the two views MUST be consistent (modifying one does not affect the other, since both are immutable from the caller's perspective). |
 | `parsed` | The parsed and validated structured value when the call supplied a `response_schema` and the model returned structured content. The value conforms to the supplied `response_schema`. Absent (`null` / `None` / `undefined`, per the language's idiom) on calls that did not supply a `response_schema`, and on responses whose `finish_reason` is `"tool_calls"` (regardless of whether `message.content` is also populated, per the §3 assistant-message contract). |
 
@@ -551,7 +551,9 @@ identical `Response` records:
 - **Usage / finish_reason** — sourced from the terminal chunk (providers emit usage and the finish
   reason on the final streamed event; §8.1 documents the OpenAI-compatible specifics).
 - **`raw`** — the parsed provider response; for a streamed call, the assembled representation of the
-  streamed events (implementation-defined assembly; MUST be populated per the `raw` contract above).
+  streamed events (implementation-defined assembly; MUST be populated per the `raw` contract above). The
+  assembly MUST preserve the terminal chunk's usage block **verbatim**, so a malformed counter nulled on
+  the normalized `Response.usage` remains inspectable on `raw` (§7 *Malformed usage counter*).
   Within-implementation wire-byte stability (§8) applies to the assembled form.
 - **Structural identity** — a `Response` assembled from a stream MUST be indistinguishable in shape
   from a `Response` returned atomically for the equivalent non-streamed call. This is the contract
@@ -575,7 +577,9 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
 - `provider_rate_limit` — provider returned a rate-limit response (e.g., HTTP 429). Implementations
   SHOULD expose a `retry_after` accessor when the provider supplies one (e.g., `Retry-After` header).
 - `provider_invalid_response` — provider returned a malformed response that cannot be parsed into
-  the §6 shape (missing required fields, invalid `tool_calls` structure, invalid JSON).
+  the §6 shape (missing required fields, invalid `tool_calls` structure, invalid JSON). This is a
+  **payload** category: a malformed **usage counter** — an accounting figure beside the message — is
+  *not* one; it is treated as not reported (see *Malformed usage counter* below).
 - `provider_invalid_request` — the request was malformed before sending (per-role message
   constraints violated, `tool_call_id` does not match an earlier `assistant` tool call, duplicate
   tool names, etc.). This category is raised by the implementation's pre-send validation — except
@@ -629,6 +633,36 @@ retry policy.
 The categories `provider_authentication`, `provider_invalid_model`, `provider_invalid_request`,
 `provider_invalid_response`, `provider_unsupported_content_block`, and `structured_output_invalid`
 are *non-transient* — retrying without changing the request will not succeed.
+
+### Malformed usage counter
+
+A usage counter (§6 `Response.usage`) that is **present on the wire but malformed** — a non-integer, a
+negative, a boolean where a non-negative integer is required — is treated as **not reported**, exactly as
+an *absent* counter is. It is the per-field `null` §6 already permits: that counter is `null`, the others
+stand. §6's "the first three MUST be `null` together" is conditioned on the provider reporting **no** usage
+at all, which a partially-malformed record does not satisfy — a response reporting two sound counters and
+one garbage one has reported usage, so `{null, 5, 15}` is the outcome, not `{null, null, null}`.
+
+An implementation:
+
+- **MUST NOT** raise `provider_invalid_response` (or any category) *because of the counter* — the
+  completion succeeded and the message is intact; a genuine parse failure of the §6 shape (a missing
+  required field, invalid `tool_calls`, invalid JSON) still raises on its own grounds;
+- **MUST NOT** fabricate, coerce, clamp, or repair it — a repaired counter is indistinguishable from a
+  reported one (fabrication under another name);
+- **MUST** leave the verbatim value on `Response.raw`.
+
+Where a mapping **derives** `total_tokens` (§8.2 — the providers that do not return a total on the wire),
+a derived total whose addend is not reported (malformed or absent) is **itself not reported** (`null`); a
+mapping **MUST NOT** substitute the surviving addend as the total, which would report a figure the
+provider never sent.
+
+The rule binds every surface that renders a counter, not only `Response.usage`: the typed
+`LlmCompletionEvent.usage` (graph-engine §6) **mirrors the response** — a partially-malformed record
+surfaces as a present record with the malformed counter(s) `null`, an all-malformed record as a present
+record of null counters (§6 null-together), **not** as a null `usage` — and the observability usage
+attributes, token-usage histogram, and token-budget instruments (observability §5.5.3 / §11.2 / §5.5.15)
+**omit** — rather than emit, sum, compare, or divide over — a counter that is not reported.
 
 ### 7.1 Call-level retry
 
@@ -1280,7 +1314,7 @@ A successful Anthropic response maps onto a §6 `Response`:
   | (unknown) | `"error"` |
 
 - `usage` — `usage.prompt_tokens` ← `input_tokens`, `usage.completion_tokens` ← `output_tokens`,
-  `usage.total_tokens` ← the sum of those two (or `null` per §6's rules). **Cache-token note:**
+  `usage.total_tokens` ← the sum of those two (or `null` per §6's rules; a derived total whose addend is not reported — malformed or absent — is itself `null` per §7 *Malformed usage counter*, never the surviving addend). **Cache-token note:**
   Anthropic does NOT support implicit prefix caching — `cache_creation_input_tokens` and
   `cache_read_input_tokens` only fire when the caller explicitly annotates content with
   Anthropic `cache_control` blocks, which is an explicit-cache surface out of scope for the §6
@@ -1753,3 +1787,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §5 `complete()` signature extended with an optional `retry` kwarg accepting an instance of pipeline-utilities §6.1's retry middleware configuration record (or `None` / absent default preserving the v0.4.0 no-retry behavior); the "does NOT retry" operation-semantics bullet amended to note retry policy lives at the per-node layer (pipeline-utilities §6.1) OR the per-call layer (this kwarg per §7.1); new §7.1 *Call-level retry* sub-section defining the in-call retry loop semantics (transient classification reuses §6.1's default categories, backoff reuses §6.1's exponential-with-jitter default, cancellation propagation rule preserved, per-attempt span emission produces N spans for N attempts), reuses the §6.1 framework-agnostic four-field configuration record (cross-spec reference direction is the inverse of §6.1's existing dependency on §7 transient categories — bidirectional acceptable because the shared record is framework-agnostic), plus a *Two-level retry lane separation* table comparing per-call vs per-node layers and a *Common mistakes* list (multiplicative budget pitfall `3 × 5 × 3 = 45` worst-case, inline try/except defeating per-attempt attribution, classifier widening to mask real errors) by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
 - §5 `complete()` gained an optional `stream` flag (default off; return type unchanged — still `Response`), a *Streaming* rule (consume the wire incrementally + emit per-chunk `LlmTokenEvent`s; observably identical to the atomic path when no observer is attached), and a *Provider streaming support* rule (a mapping without streaming rejects `stream`-set calls with `provider_invalid_request`); §6 gained a *Streaming assembly* contract (content concatenation, reasoning-block assembly, tool-call-delta reassembly, terminal usage / finish_reason, structural identity with the atomic path); §8.1 gained §8.1.6 *Streaming* (OpenAI-compatible SSE: `stream_options.include_usage`, `[DONE]`, content / tool-call deltas, and the OpenAI-compatible reasoning-delta extension recognizing both `reasoning_content` and `reasoning`); §10 *Out of scope* lifted the blanket streaming deferral, replaced by narrower deferrals (node-body iterator consumption, tool-call-delta token events, Anthropic / Gemini streaming wire, non-completion streaming) by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
 - §5 `complete()`'s `retry` parameter extended to also accept an llm-provider retry-config (a superset of the pipeline-utilities §6.1 four-field record adding two optional fields); new §7.1 *Adaptive extensions (opt-in)* defining `per_attempt_override` — a declarative retry override schedule (attempt 0 uses the base `config`; the *i*-th override applies to retry *i*; a general `RuntimeConfig` partial merged onto base; last entry carries forward) — and `reask` — a caller-supplied corrective-message builder that makes `structured_output_invalid` retryable-for-this-call and, on each such failure, appends the model's raw output as an `assistant` message plus the builder's returned content as a `user` message to a working transcript that accumulates across reask retries (keeping the sequence role-alternating; the builder receives 0082's `output_content` + `error_message`; the implementation authors no prompt of its own, per charter §3.1 principle 7 *No built-in prompts*; reask reuses the `max_attempts` budget); the §7.1 per-attempt span gains an `openarmature.llm.retry_reason` (`transient` | `reask`) attribute on retry attempts; the *Common mistakes* classifier-widening bullet points `structured_output_invalid` at `reask` by [proposal 0095](../../proposals/0095-adaptive-call-level-retry.md)
+- §7 gains **Malformed usage counter** — a `Response.usage` counter that is present on the wire but malformed (a non-integer, a negative, a boolean) is treated as **not reported**, the per-field `null` §6 already permits: that counter is `null` and the others stand (§6's "the first three MUST be `null` together" is conditioned on *no* usage being reported, which a partially-malformed record does not satisfy). It MUST NOT raise `provider_invalid_response` (or any category) because of the counter — a genuine §6-shape parse failure still raises — and MUST NOT be fabricated, coerced, clamped, or repaired; the verbatim value stays on `Response.raw`. A **derived** `total_tokens` (§8.2) whose addend is not reported is itself `null`, never the surviving addend. §6's streaming `raw` assembly MUST preserve the terminal chunk's usage verbatim. This is a **reversal**: composing §6's "non-negative integer or `null`" counter type with §7's "cannot be parsed into the §6 shape" reservation, a strict implementation today raises on `"abc"`; from this version it MUST NOT. Reconciled across the surfaces a null counter renders through (graph-engine §6 `LlmCompletionEvent.usage` mirrors the response; observability §5.5.3 / §11.2 / §5.5.15 / §8.4.3 omit rather than emit / sum / compare / divide over a not-reported counter) by [proposal 0101](../../proposals/0101-malformed-usage-counter-llm-observability.md)

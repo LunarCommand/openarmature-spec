@@ -1,0 +1,86 @@
+# observability §8.4.3 (proposal 0101): the bundled Langfuse observer's
+# Generation OMITS a not-reported counter from its fixed `generation.usage`
+# record. Unlike the Embedding / Retriever observations' open `usageDetails`
+# map (which already omits a not-reported figure), the Generation's `usage`
+# maps the three LLM counters to a fixed Usage record (input / output / total)
+# and carried NO per-counter null guard before this proposal. §8.4.3 now omits
+# each `generation.usage` field whose source counter is not reported.
+#
+# Mock usage {prompt_tokens: null, completion_tokens: 5, total_tokens: 15} —
+# the {null, 5, 15} record of 0101 (malformed prompt_tokens nulled per
+# llm-provider §7 *Malformed usage counter*). Wire null is the post-nulling
+# state; this fixture renders it, it does not test the nulling (sibling
+# llm-provider fixture). A SUCCESSFUL completion (not the 123 failed-Generation
+# path) — the omit-on-not-reported guard is on the ordinary success mapping.
+#
+# The Langfuse Generation is the fourth LLM usage surface (span, histogram,
+# budget are 147); this closes the leak on it. Counterpart to 023 (which
+# populates generation.usage {input, output, total} when all counters are
+# sound) and 140 (the Embedding usageDetails omit precedent this cites).
+
+cases:
+  - name: generation_usage_omits_input_when_prompt_tokens_null
+    description: |
+      Single successful LLM call, Langfuse observer with
+      disable_provider_payload=False. The mock returns usage {prompt_tokens:
+      null, completion_tokens: 5, total_tokens: 15}. The Generation's
+      generation.usage MUST carry output = 5 and total = 15 but MUST NOT carry
+      an `input` field (prompt_tokens not reported — §8.4.3). The rest of the
+      Generation (model, output, metadata, DEFAULT level) is unaffected.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          model: "test-model"
+          messages:
+            - {role: user, content: "hi there"}
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-148
+          object: chat.completion
+          model: test-model-v2
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello back"}, finish_reason: stop}
+          # {null, 5, 15}: prompt_tokens not reported -> `input` omitted from
+          # generation.usage; output / total present.
+          usage: {prompt_tokens: null, completion_tokens: 5, total_tokens: 15}
+    langfuse_observer:
+      disable_provider_payload: false
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                model: "test-model"
+                # `input` OMITTED (prompt_tokens not reported, §8.4.3); output
+                # and total present. Exact-map assertion — the missing `input`
+                # key IS the omission (140's usageDetails idiom, on the fixed
+                # Generation Usage record).
+                usage:
+                  output: 5
+                  total: 15
+                metadata:
+                  finish_reason: "stop"
+                  system: "openai"
+                  response_model: "test-model-v2"
+                  response_id: "cc-148"
+                level: DEFAULT
+                output: "hello back"
+                children: []
+      invariants:
+        generation_usage_input_omitted_when_prompt_tokens_null: true
+        generation_usage_output_and_total_present_when_sound: true

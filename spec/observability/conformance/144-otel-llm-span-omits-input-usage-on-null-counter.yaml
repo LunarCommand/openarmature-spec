@@ -1,0 +1,108 @@
+# observability §5.5.3 (proposal 0101): the OTel LLM provider span OMITS the
+# input-token usage attributes when the response's `prompt_tokens` counter is
+# not reported, while STILL emitting the sound output / total counters. The
+# mock's usage record is {prompt_tokens: null, completion_tokens: 5,
+# total_tokens: 15} — the {null, 5, 15} partial-malformed record of proposal
+# 0101: a provider that reported a malformed `prompt_tokens` (nulled per
+# llm-provider §7 *Malformed usage counter*) beside two sound counters. The
+# wire carries `prompt_tokens: null` directly (the post-nulling state — the
+# §6 "non-negative integer or null" counter type); the sibling llm-provider
+# fixtures cover the wire-malformed -> null mapping. Here we exercise the
+# OBSERVABILITY rendering of a null counter.
+#
+# The point: §5.5.3's `gen_ai.usage.input_tokens` omit-guard moved from
+# per-RECORD (0093: "omit when the usage record is null") to per-FIELD ("omit
+# when the counter is null"). The record here is present (two sound counters),
+# so a per-record impl would emit `gen_ai.usage.input_tokens` sourced from a
+# null counter while its declared mirror `openarmature.llm.usage.prompt_tokens`
+# (always per-field) omits — breaking the "both emit" pairing. This fixture
+# asserts BOTH input attributes are absent (per-field) while the output pair
+# and total attribute still emit. A per-record impl fails on the emitted (or
+# fabricated) `gen_ai.usage.input_tokens`.
+#
+# Counterpart to 019 (which asserts every usage attribute present when all
+# three counters are sound). The omitted attributes are asserted via
+# attributes_absent, the §5.5.3.1 / 0047 conditional-emission convention 139
+# uses for the no-usage embedding span.
+
+cases:
+  - name: otel_llm_span_omits_input_usage_attributes_when_prompt_tokens_null
+    description: |
+      Single LLM call against an OpenAI-compatible provider, default OTel
+      observer config. The mock returns usage {prompt_tokens: null,
+      completion_tokens: 5, total_tokens: 15} — a provider that reported a
+      malformed prompt_tokens (nulled per llm-provider §7) beside sound
+      completion / total counters. The openarmature.llm.complete span MUST:
+      - OMIT gen_ai.usage.input_tokens AND its mirror
+        openarmature.llm.usage.prompt_tokens (per-field, §5.5.3) — the null
+        counter reaches neither;
+      - STILL emit gen_ai.usage.output_tokens = 5 and
+        openarmature.llm.usage.completion_tokens = 5 (completion sound);
+      - STILL emit openarmature.llm.usage.total_tokens = 15 (total sound;
+        no gen_ai.* total attribute exists);
+      - emit the identity attributes (system, request/response model,
+        response id, finish reasons).
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-144
+          object: chat.completion
+          model: "test-model-2026-07-15"
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          # {null, 5, 15}: prompt_tokens not reported (malformed -> null per
+          # llm-provider §7); completion / total sound. Wire null is the
+          # post-nulling state — this fixture renders it, it does not test
+          # the nulling (that is the sibling llm-provider fixture).
+          usage: {prompt_tokens: null, completion_tokens: 5, total_tokens: 15}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    # Identity — unaffected by the null counter.
+                    openarmature.llm.model: "test-model"
+                    openarmature.llm.finish_reason: "stop"
+                    gen_ai.system: "openai"
+                    gen_ai.request.model: "test-model"
+                    gen_ai.response.model: "test-model-2026-07-15"
+                    gen_ai.response.finish_reasons: ["stop"]
+                    gen_ai.response.id: "cc-144"
+                    # Output counter sound -> both mirror attributes emit.
+                    gen_ai.usage.output_tokens: 5
+                    openarmature.llm.usage.completion_tokens: 5
+                    # Total counter sound (wire total, direct) -> emits. No
+                    # gen_ai.* total attribute exists (semconv has no total).
+                    openarmature.llm.usage.total_tokens: 15
+                  attributes_absent:
+                    # The null prompt_tokens reaches NEITHER of the input
+                    # pair (§5.5.3 per-field omit, proposal 0101).
+                    - gen_ai.usage.input_tokens
+                    - openarmature.llm.usage.prompt_tokens
+                    # Always-deferred (stable-only), unchanged from 019.
+                    - gen_ai.operation.name
+                  children: []
+      invariants:
+        input_usage_attributes_omitted_when_prompt_tokens_null: true
+        output_and_total_usage_attributes_emitted_when_sound: true
+        gen_ai_input_tokens_never_sourced_from_null_counter: true

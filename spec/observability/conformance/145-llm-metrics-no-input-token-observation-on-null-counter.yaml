@@ -1,0 +1,88 @@
+# observability §11.2 (proposal 0101): the token-usage histogram's per-COUNTER
+# conditionality on the LLM branch. When a completion's `prompt_tokens` is not
+# reported (null), the openarmature.gen_ai.client.token.usage histogram records
+# NO "input" observation — but STILL records the "output" observation (the
+# completion counter is sound) and the operation.duration observation (a
+# completed call is a real latency sample).
+#
+# Mock usage {prompt_tokens: null, completion_tokens: 5, total_tokens: 15} —
+# the {null, 5, 15} record of proposal 0101 (malformed prompt_tokens nulled
+# per llm-provider §7 *Malformed usage counter*, sound completion / total).
+# Wire null is the post-nulling state; this fixture renders it, it does not
+# test the nulling (sibling llm-provider fixture).
+#
+# The point: §11.2's LLM branch moved from "record two observations, skip only
+# when the record is absent" to "record each observation only when its counter
+# is reported" — matching the rerank branch's existing per-counter behavior.
+# A per-record impl records an "input" observation sourced from the null
+# counter and fails this fixture. This is the null-counter counterpart to 088
+# (which records both input=5 and output=1 when all counters are sound).
+#
+# The absent "input" observation is expressed the way 090 / 109 / 143 express
+# a not-recorded observation: the metrics: list (the exhaustive set of recorded
+# observations) carries only the output token.usage entry and the duration
+# entry, with an invariant asserting the input observation was NOT recorded.
+
+cases:
+  - name: token_usage_histogram_records_no_input_observation_when_prompt_tokens_null
+    description: |
+      One LLM-calling node, enable_metrics=True. The mock returns usage
+      {prompt_tokens: null, completion_tokens: 5, total_tokens: 15}. Per §11.2
+      the metric-capture primitive records:
+      - NO openarmature.gen_ai.client.token.usage observation with
+        openarmature.gen_ai.token.type = "input" (prompt_tokens not reported —
+        no observation sourced from a null counter);
+      - one openarmature.gen_ai.client.token.usage observation value 5 with
+        token.type = "output" (completion counter sound);
+      - one openarmature.gen_ai.client.operation.duration observation
+        (dimensions only — value not asserted per §11.4).
+      There is no "total" token.usage observation — §11.2 records input +
+      output only (total is not a token-usage measurement).
+    state:
+      fields:
+        msg: {type: string, default: ""}
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: true
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-145
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          # {null, 5, 15}: prompt_tokens not reported -> no "input" observation.
+          usage: {prompt_tokens: null, completion_tokens: 5, total_tokens: 15}
+    expected:
+      metrics:
+        # Output counter sound -> the "output" observation records (value 5).
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 5
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        # The call completed -> one duration observation (value not asserted).
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+      invariants:
+        # No "input" token.usage observation — prompt_tokens not reported, so
+        # §11.2's per-counter LLM branch records nothing for that token type.
+        # An absence predicate over the captured measurement set (the metrics:
+        # list shape cannot express a NEGATIVE assertion); see 143 / 129.
+        no_input_token_usage_observation_when_prompt_tokens_null: true
+        output_token_usage_observation_recorded_when_completion_sound: true
+        one_duration_observation_per_call: true

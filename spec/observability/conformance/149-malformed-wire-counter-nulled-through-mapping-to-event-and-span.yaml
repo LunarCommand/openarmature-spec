@@ -1,0 +1,207 @@
+# observability §5.5.3 + graph-engine §6 (proposal 0101): the malformed -> null
+# -> EVENT/SPAN seam, driven from a genuinely MALFORMED WIRE counter.
+#
+# Fixtures 144-148 mock a counter that is ALREADY null on the wire
+# (usage.prompt_tokens: null) — the post-nulling state — and assert the
+# observability rendering of a null counter. They do NOT drive a malformed wire
+# value through the provider mapping. This fixture closes that gap: it mocks a
+# MALFORMED counter on the wire ("abc", -5, true) and asserts it is nulled by
+# the real complete() mapping (llm-provider §7) BEFORE the typed event and OTel
+# span render.
+#
+# This is expressible obs-side because `calls_llm` issues a REAL complete() call
+# against the mock provider (conformance-adapter §5.1 / §5.5): the `mock_llm`
+# body is an OpenAI-compatible chat-completion WIRE shape (llm-provider §8) that
+# the real provider mapping parses — so a malformed wire counter flows through
+# the same malformed -> null path the sibling llm-provider fixtures (068-071)
+# test in isolation, then out to LlmCompletionEvent.usage (graph-engine §6
+# mirror, the load-bearing surface 0101 pins) and the §5.5.3 span attributes.
+#
+# THE DISCRIMINATOR: an impl that nulls Response.usage but sources
+# LlmCompletionEvent.usage from `raw` (which carries "abc" / -5 / true verbatim)
+# surfaces the malformed value on the event and FAILS `contains_event` here —
+# the exact bypass 144-148 cannot catch (they mock the post-nulling null, so a
+# raw-sourced event would coincidentally read null too).
+#
+# Counterpart to 144 (span, post-nulling null) and 050 (event dispatch, sound
+# counters). No metrics surface here — the seam under test is the
+# wire -> mapping -> event/span path; 145-147 cover the metric surfaces.
+
+cases:
+  - name: malformed_wire_prompt_tokens_nulled_through_mapping_to_event_and_span
+    description: |
+      One LLM-calling node; default OTel observer + a typed_event_collector.
+      The mock returns a WIRE usage {prompt_tokens: "abc", completion_tokens: 5,
+      total_tokens: 15} — a malformed prompt_tokens beside two sound counters.
+      The real complete() mapping nulls prompt_tokens (llm-provider §7) before
+      anything observes it. The harness asserts:
+      - LlmCompletionEvent.usage MIRRORS the nulled response (graph-engine §6):
+        prompt_tokens null (NOT the wire "abc"), completion 5, total 15 — an
+        event sourced from raw would carry "abc" and fail;
+      - the openarmature.llm.complete span OMITS gen_ai.usage.input_tokens AND
+        its mirror openarmature.llm.usage.prompt_tokens (§5.5.3 per-field), while
+        still emitting the sound output pair and the total.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-149a
+          object: chat.completion
+          model: "test-model-2026-07-15"
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          # MALFORMED prompt_tokens ON THE WIRE — the string "abc". The real
+          # complete() mapping nulls it (llm-provider §7) before the event /
+          # span render. (144-148 mock the post-nulling null instead.)
+          usage: {prompt_tokens: "abc", completion_tokens: 5, total_tokens: 15}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              # The event mirrors the NULLED response (graph-engine §6, 0101):
+              # prompt_tokens is null, NOT the wire "abc". DISCRIMINATOR — an
+              # impl sourcing the event from raw surfaces "abc" here and FAILS.
+              usage:
+                prompt_tokens: null
+                completion_tokens: 5
+                total_tokens: 15
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    # Identity — unaffected by the nulled counter.
+                    openarmature.llm.model: "test-model"
+                    openarmature.llm.finish_reason: "stop"
+                    gen_ai.system: "openai"
+                    gen_ai.request.model: "test-model"
+                    gen_ai.response.model: "test-model-2026-07-15"
+                    gen_ai.response.finish_reasons: ["stop"]
+                    gen_ai.response.id: "cc-149a"
+                    # Output / total counters sound -> emit.
+                    gen_ai.usage.output_tokens: 5
+                    openarmature.llm.usage.completion_tokens: 5
+                    openarmature.llm.usage.total_tokens: 15
+                  attributes_absent:
+                    # The nulled prompt_tokens reaches NEITHER input attribute
+                    # (§5.5.3 per-field omit, 0101).
+                    - gen_ai.usage.input_tokens
+                    - openarmature.llm.usage.prompt_tokens
+                    # Always-deferred (stable-only), unchanged from 019 / 144.
+                    - gen_ai.operation.name
+                  children: []
+      invariants:
+        malformed_wire_prompt_tokens_nulled_before_event_and_span: true
+        event_usage_prompt_tokens_null_not_verbatim_wire_value: true
+        span_omits_both_input_usage_attributes_on_malformed_wire_counter: true
+
+  - name: all_three_malformed_wire_counters_surface_as_present_record_of_nulls_on_event
+    description: |
+      All three counters malformed on the wire — {prompt_tokens: "abc",
+      completion_tokens: -5, total_tokens: true}. No usage is reported, so §6
+      null-together fires and the response carries a PRESENT record of
+      {null, null, null} (never a null usage). The harness asserts:
+      - LlmCompletionEvent.usage is a PRESENT record of null counters (NOT a
+        null usage) — the graph-engine §6 mirror 0101 pins so the response and
+        its event agree. DISCRIMINATOR: an impl that surfaces a null usage
+        record, or sources the counters from raw ("abc"/-5/true), FAILS;
+      - the span OMITS every usage attribute (all three counters not reported,
+        §5.5.3 per-field), while the identity attributes still emit.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-149b
+          object: chat.completion
+          model: "test-model-2026-07-15"
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          # ALL THREE malformed on the wire — string, negative, boolean. The
+          # mapping nulls each (§7); §6 null-together yields a PRESENT record of
+          # {null, null, null}, never a null usage.
+          usage: {prompt_tokens: "abc", completion_tokens: -5, total_tokens: true}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              # A PRESENT record of null counters — NOT a null usage. Asserting
+              # the nested mapping (usage.prompt_tokens etc.) discriminates a
+              # present record from a null usage (a null cannot satisfy a nested
+              # mapping assertion); the invariant makes it explicit.
+              usage:
+                prompt_tokens: null
+                completion_tokens: null
+                total_tokens: null
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "ask_llm"
+              status: OK
+              children:
+                - name: "openarmature.llm.complete"
+                  status: OK
+                  attributes:
+                    # Identity — unaffected by the nulled counters.
+                    openarmature.llm.model: "test-model"
+                    openarmature.llm.finish_reason: "stop"
+                    gen_ai.system: "openai"
+                    gen_ai.request.model: "test-model"
+                    gen_ai.response.model: "test-model-2026-07-15"
+                    gen_ai.response.finish_reasons: ["stop"]
+                    gen_ai.response.id: "cc-149b"
+                  attributes_absent:
+                    # Every usage counter not reported -> every usage attribute
+                    # omitted (§5.5.3 per-field, 0101).
+                    - gen_ai.usage.input_tokens
+                    - gen_ai.usage.output_tokens
+                    - openarmature.llm.usage.prompt_tokens
+                    - openarmature.llm.usage.completion_tokens
+                    - openarmature.llm.usage.total_tokens
+                    - gen_ai.operation.name
+                  children: []
+      invariants:
+        all_three_malformed_wire_counters_nulled_before_event_and_span: true
+        event_usage_is_present_record_of_nulls_not_null_record: true
+        span_omits_all_usage_attributes_when_all_counters_malformed: true
