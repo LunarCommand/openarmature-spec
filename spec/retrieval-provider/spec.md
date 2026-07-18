@@ -325,8 +325,10 @@ rather than *as* its result: the figures inside `usage` (`EmbeddingUsage.input_t
 
 A malformed ancillary figure **MUST** be treated as **not reported**. An implementation:
 
-- **MUST NOT** raise `provider_invalid_response` (or any §7 category) — the call succeeded, and the
-  vectors / results are unaffected;
+- **MUST NOT** raise `provider_invalid_response` (or any §7 category) *because of the figure* — the
+  vectors / results are unaffected by it, so it is not a reason to fail the call; a payload defect present
+  in the *same* response (a mismatched vector count, an out-of-range `index`) still raises on its own
+  grounds per §7;
 - **MUST NOT** fabricate, coerce, clamp, or repair it (a negative clamped to `0`, a `"12"` parsed to
   `12`) — a repaired figure is indistinguishable from a reported one, the same fabrication that §4 / §6
   already forbid for *absent* figures;
