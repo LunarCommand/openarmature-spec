@@ -21,7 +21,7 @@ Accepted, any remaining Open Questions section migrates here.
 - **inherited** — restates a constraint from an earlier proposal; not a
   novel question. Kept for cross-referencing only.
 - **candidate-for-new-proposal** — signal has accumulated; this OQ should
-  drive a new proposal. (None currently.)
+  drive a new proposal.
 
 **Grooming cadence:** trigger-based. The questions get classified here when
 (a) a proposal is being drafted in a related area, (b) ~5 acceptance passes
@@ -301,6 +301,53 @@ response-side clause.
   so §8.2 keeps its closed set and its non-retrieval tasks continue to ride
   the extras bag — which works there because `task` is an *undeclared* key
   and is omitted when `input_type` is absent.
+
+### Cross-cutting — `model` / `response_model` response-vs-event consistency
+
+- **A provider that returns a malformed or absent model identifier is
+  handled inconsistently between a response and its own typed event.**
+  [candidate-for-new-proposal] — surfaced drafting 0100 / 0101, which
+  scoped it out to keep the ancillary-figure rule clean.
+  `EmbeddingResponse.model` / `RerankResponse.model` (retrieval §4 / §6) are
+  **non-nullable**, with an established fallback to the bound model
+  identifier where the provider returns none (§8.4). But the typed events
+  carry a separately-declared `response_model` (graph-engine §6,
+  `string | null`), and the OTel span sources `gen_ai.response.model` from
+  it — so the response and its own event already disagree about whether the
+  provider's returned model can be absent. llm-provider is worse: its §6
+  `Response` declares **no** `response_model` at all, yet
+  `LlmCompletionEvent.response_model` and `gen_ai.response.model` both exist
+  and are sourced from `raw`. So a provider returning `model: 7` has no
+  defined outcome on any of these surfaces. 0100 / 0101 pin the *usage* and
+  *response_id* figures and deliberately leave `model` / `response_model` to
+  a dedicated pass, because reconciling it means deciding whether the
+  bound-id fallback applies to a *malformed* (not merely absent) value, and
+  aligning the non-nullable response field with the nullable event field —
+  a model-identity question, not a usage-figure one.
+
+### Cross-cutting — should §7's payload enumeration generalize?
+
+- **A type-malformed payload field outside the four enumerated invariants has
+  no defined outcome.** [candidate-for-new-proposal] — surfaced drafting 0100,
+  which deliberately declined to answer it. retrieval-provider §7 defines
+  `provider_invalid_response` by a **closed list**: "missing required fields,
+  or a violation of the capability's cross-impl invariants (embedding §4 —
+  mismatched vector count, inconsistent dimensions; rerank §6 — out-of-range
+  or duplicate `index`, more results than `top_k`)". A `relevance_score`
+  returned as the string `"0.9"`, or an `index` as `"2"`, is neither missing
+  nor an enumerated invariant violation — so nothing today forbids a tolerant
+  implementation from coercing it, and nothing requires a strict one to raise.
+  Two conforming implementations diverge.
+  Evidence the general rule does not already exist: **0097 had to add a
+  per-field raise rule** for a malformed `document` echo. If §7's enumeration
+  were general, it would not have needed to.
+  0100 pins the *ancillary* side (a malformed `usage` counter or `response_id`
+  is not reported → absent, never a raise) and explicitly adds **no** payload
+  obligation, precisely so this question is not smuggled into it. The payload
+  side wants its own answer: generalize §7 to "any type-malformed payload
+  field raises", field-by-field like 0097, or state that tolerant coercion is
+  permitted. Whichever, it needs fixtures — today there are none for a
+  type-malformed payload field outside the four invariants.
 
 ### Cross-cutting — extras key vs mapping-managed wire field
 
