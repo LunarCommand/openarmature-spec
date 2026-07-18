@@ -8,7 +8,7 @@ chunk-and-stitches across two `/v2/embed` requests. Two branches of §8 step 4 a
   other's is sound. Per §8 step 4 (amended by §7): a chunk whose `input_tokens` is malformed has **not
   reported** usage, so if **any** chunk is malformed the stitched `EmbeddingResponse.usage` is `null`. A
   mapping **MUST NOT** sum only the well-formed chunks — that reports a total the provider never sent,
-  understating the true count and indistinguishable from a truthful figure, the fabrication §7 forbids.
+  understating the true count and indistinguishable from a truthful figure — the fabrication §7 forbids.
 - **First-chunk id, no fall-through** (case 2): both chunks report **sound** `input_tokens`, but the
   **first** chunk's top-level `id` is **malformed**. Per §8 step 4, `response_id` is the first chunk's id
   and a malformed first-chunk id is `null` — a mapping **MUST NOT** fall through to a later chunk's id. The

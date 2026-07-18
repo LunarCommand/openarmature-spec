@@ -328,7 +328,7 @@ A malformed ancillary figure **MUST** be treated as **not reported**. An impleme
 - **MUST NOT** raise `provider_invalid_response` (or any §7 category) — the call succeeded, and the
   vectors / results are unaffected;
 - **MUST NOT** fabricate, coerce, clamp, or repair it (a negative clamped to `0`, a `"12"` parsed to
-  `12`) — a repaired figure is indistinguishable from a reported one, the same fabrication §4 / §6
+  `12`) — a repaired figure is indistinguishable from a reported one, the same fabrication that §4 / §6
   already forbid for *absent* figures;
 - **MUST** leave the verbatim value on `raw` (§4 / §6), where a caller inspects what the provider sent.
 
