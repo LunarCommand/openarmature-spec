@@ -163,8 +163,8 @@ idiomatic equivalent). The bound identifier is visible to the observability laye
 |---|---|
 | `vectors` | List of vectors (each a list of floats); one vector per input string in the order the inputs were supplied. The length of `vectors` MUST equal the length of `input`. |
 | `model` | The model identifier the provider returned. MAY be a more specific identifier than the one the provider was bound against. |
-| `usage` | An `EmbeddingUsage` record (defined below), or `null` when the provider reports no usage (e.g. TEI `/embed`, which returns a bare vector array with no usage object). Implementations MUST populate `usage` when the provider returns a usage record and MUST NOT fabricate one (an empty record, a zero, or a client-side token estimate) when it does not. |
-| `response_id` | The provider-returned response identifier when present; null otherwise. Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.8) and the typed `EmbeddingEvent.response_id` field (per graph-engine §6). |
+| `usage` | An `EmbeddingUsage` record (defined below), or `null` when the provider reports no usage (e.g. TEI `/embed`, which returns a bare vector array with no usage object). Implementations MUST populate `usage` when the provider returns a usage record and MUST NOT fabricate one (an empty record, a zero, or a client-side token estimate) when it does not. A returned-but-**malformed** figure is not a returned figure — it is treated as not reported (§7 *Malformed ancillary figures*), so a malformed `input_tokens` yields `usage = null`. |
+| `response_id` | The provider-returned response identifier when present; null otherwise. A **malformed** identifier is not a present one — it is `null` (§7 *Malformed ancillary figures*). Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.8) and the typed `EmbeddingEvent.response_id` field (per graph-engine §6). |
 | `dimensions` | Int. The output vector dimensionality. MUST equal the length of each inner list in `vectors`. Derivable from `vectors[0]` but kept on the response for ergonomics and cross-vendor consistency. |
 | `raw` | The verbatim deserialized JSON of the successful provider response — an object or an array (Python: `dict[str, Any] | list[Any]`; TypeScript: `Record<string, unknown> | unknown[]`), matching the response's top-level shape; the mapping MUST NOT wrap, rename, or reshape it to fit a container type. For a call that issues a single provider request this is that response; for a chunk-and-stitch call `raw` is the list of the per-request responses (§8 *Batch chunking*). MUST be populated on every successful return. Parallel to llm-provider §6 `Response.raw` **in intent** (verbatim provider response); the type differs because retrieval has array-response wire — e.g. TEI §8.1, whose `/embed` returns a bare vector array — that LLM completion does not, so `Response.raw` stays object-shaped. |
 
@@ -242,8 +242,8 @@ Implementations bind one rerank model identifier per provider instance via a con
 |---|---|
 | `results` | List of `ScoredDocument` entries sorted by `relevance_score` descending (most relevant first). `len(results)` is at most `min(top_k, len(documents))` when `top_k` is supplied; at most `len(documents)` otherwise. MAY be shorter than that bound if the provider returns fewer results (e.g., relevance-threshold filtering on the provider side). |
 | `model` | The model identifier the provider returned. MAY be a more specific identifier than the one the provider was bound against. |
-| `usage` | A `RerankUsage` record (defined below), or `null` when the provider reports no usage (e.g. TEI `/rerank`). A record is present when the provider surfaces at least one usage figure; its `input_tokens` / `search_units` stay individually nullable (below). Same populate/don't-fabricate rule as §4. |
-| `response_id` | The provider-returned response identifier when present; null otherwise. Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.13) and the typed `RerankEvent.response_id` field (per graph-engine §6). |
+| `usage` | A `RerankUsage` record (defined below), or `null` when the provider reports no usage (e.g. TEI `/rerank`). A record is present when the provider surfaces at least one usage figure; its `input_tokens` / `search_units` stay individually nullable (below). Same populate/don't-fabricate rule as §4. A **malformed** figure is not a reported figure (§7 *Malformed ancillary figures*): it is nulled independently, so a malformed `input_tokens` beside a sound `search_units` yields a record carrying `search_units` only. |
+| `response_id` | The provider-returned response identifier when present; null otherwise. A **malformed** identifier is not a present one — it is `null` (§7 *Malformed ancillary figures*). Matches the OTel GenAI semconv `gen_ai.response.id` attribute (per observability §5.5.13) and the typed `RerankEvent.response_id` field (per graph-engine §6). |
 | `raw` | The verbatim deserialized JSON of the successful provider response — an object or an array (Python: `dict[str, Any] | list[Any]`; TypeScript: `Record<string, unknown> | unknown[]`), matching the response's top-level shape; the mapping MUST NOT wrap, rename, or reshape it to fit a container type. For a call that issues a single provider request this is that response; for a chunk-and-stitch call `raw` is the list of the per-request responses (§8 *Batch chunking*; §8.1 for TEI rerank). MUST be populated on every successful return. Per charter §3.1 principle 8 ("Transparency over abstraction") — callers retain access to provider-specific fields the normalized shape doesn't surface (e.g. TEI `/rerank`'s chunk-relative indices, which `results` re-bases to absolute positions and re-sorts). Parallel to llm-provider §6 `Response.raw` and §4 `EmbeddingResponse.raw` **in intent**; the type differs because retrieval has array-response wire. |
 
 ### ScoredDocument
@@ -300,6 +300,8 @@ subset (the §7 categories minus the LLM-completion-specific ones), shared by bo
 - `provider_invalid_response` — provider returned a malformed response: missing required fields, or a
   violation of the capability's cross-impl invariants (embedding §4 — mismatched vector count,
   inconsistent dimensions; rerank §6 — out-of-range or duplicate `index`, more results than `top_k`).
+  This is a **payload** category: a malformed value in an *ancillary* field (`usage`, `response_id`) is
+  **not** a malformed response — see *Malformed ancillary figures* below.
 - `provider_invalid_request` — caller-supplied input failed pre-send validation (embedding: empty
   input list, invalid `dimensions`; rerank: empty `query`, empty `documents` list, `top_k <= 0`).
 
@@ -311,6 +313,37 @@ The following llm-provider §7 categories do NOT apply to embedding or rerank:
 The exception-flow contract from llm-provider §7 applies identically: the error category exception
 MUST raise out of `embed()` / `rerank()` whether raised by the provider or by the implementation's
 pre-send validation layer.
+
+### Malformed ancillary figures
+
+A figure is **malformed** when it is present on the wire but does not conform to its declared type or
+domain — a non-integer where an integer is required, a negative count, a boolean or string in a numeric
+field (distinct from a value the mapping does not *recognize*, which each §8 mapping handles on its own
+terms). The **ancillary** figures on a retrieval response are those the provider reports *about* the call
+rather than *as* its result: the figures inside `usage` (`EmbeddingUsage.input_tokens`;
+`RerankUsage.search_units` / `RerankUsage.input_tokens`), and `response_id`.
+
+A malformed ancillary figure **MUST** be treated as **not reported**. An implementation:
+
+- **MUST NOT** raise `provider_invalid_response` (or any §7 category) *because of the figure* — the
+  vectors / results are unaffected by it, so it is not a reason to fail the call; a payload defect present
+  in the *same* response (a mismatched vector count, an out-of-range `index`) still raises on its own
+  grounds per §7;
+- **MUST NOT** fabricate, coerce, clamp, or repair it (a negative clamped to `0`, a `"12"` parsed to
+  `12`) — a repaired figure is indistinguishable from a reported one, the same fabrication that §4 / §6
+  already forbid for *absent* figures;
+- **MUST** leave the verbatim value on `raw` (§4 / §6), where a caller inspects what the provider sent.
+
+Each figure is judged **independently**, and the outcome follows §4 / §6's existing record rules: a
+malformed `EmbeddingUsage.input_tokens` (a single-figure record) collapses to `usage = null`; a malformed
+`RerankUsage` figure beside a sound one yields a record carrying the sound figure only (§6 — "a record is
+present when at least one figure is reported"), and both malformed yields `usage = null`; a malformed
+`response_id` is `null`. No record shape changes; no new nullability is introduced.
+
+The rule binds the **typed events**, not only the response: an implementation **MUST NOT** surface a
+malformed figure on graph-engine §6 `EmbeddingEvent.usage` / `RerankEvent.usage` or their `response_id`
+any more than on the response (the observability spans and Langfuse observations render from the event,
+so a figure emitted there would reach the trace and the billing surfaces regardless of the response).
 
 ## 8. Wire-format mappings
 
@@ -328,8 +361,12 @@ dimensions / `output_dimension`, `embedding_types`, truncation, and any extras-b
 responses — concatenate the per-chunk vectors in the original input order, so §4's one-vector-per-input
 and input-order invariants hold across the whole call; and (4) combine the per-chunk usage per §4's
 (now nullable) usage contract — sum the `EmbeddingUsage.input_tokens` when the provider reports usage,
-or produce `usage = null` when it reports none (e.g. TEI `/embed`). `EmbeddingResponse.response_id` is the first chunk's response id (a
-single-request call uses that request's id). `EmbeddingResponse.raw` is the **list of the
+or produce `usage = null` when it reports none (e.g. TEI `/embed`); a chunk whose `input_tokens` is
+**malformed** has not reported usage, so if **any** chunk is malformed the stitched `usage` is `null`
+(§7 *Malformed ancillary figures*) — a mapping **MUST NOT** sum only the well-formed chunks, which would
+report a total the provider never sent. `EmbeddingResponse.response_id` is the first chunk's response id
+(a single-request call uses that request's id; a malformed first-chunk id is `null` per §7, and a mapping
+**MUST NOT** fall through to a later chunk's id). `EmbeddingResponse.raw` is the **list of the
 per-chunk responses**, in request order — each entry the verbatim deserialized JSON of that request's
 response per §4 (a single-request call's `raw` is that one response, not a one-element list). A mapping MUST NOT silently send an over-cap request. When a
 provider enforces **no** per-call cap (it batches server-side), no client-side chunking is required. This
@@ -732,3 +769,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - `EmbeddingResponse.raw` (§4) and `RerankResponse.raw` (§6) widened from `dict[str, Any]` to `dict | list` — the verbatim deserialized JSON of the successful response whatever its top-level shape (an array for bare-array wire like TEI §8.1); the mapping MUST NOT wrap or reshape it. §8's batch-chunking rule gains a `raw` stitch clause and §8.1 a `raw` note: a chunk-and-stitch call's `raw` is the list of the per-request responses (nothing lost across chunks), the normalized fields staying ergonomic summaries. Scoped to retrieval-provider — llm-provider `Response.raw` unchanged by [proposal 0096](../../proposals/0096-retrieval-raw-json-shape.md)
 - `ScoredDocument.document` (§6) generalized to **object-shaped echoes**: an object echo surfaces its text content (a string-valued `text` key → that string, else `null`), an empty string is present (→ `""`), and the verbatim echo object is preserved on `RerankResponse.raw`; the "surface verbatim" MUST and the per-result null-dichotomy invariant amended (`null` now = omitted OR a non-text-shape echo). §8.2 Jina realizes it for `document: anyOf[string, TextDoc, ImageDoc, null]` (`TextDoc` → `text`, `ImageDoc` / text-less object → `null`, a non-object echo — number / array / boolean → `provider_invalid_response`), replacing the prior `document → document` direct mapping; fixture 019 gains TextDoc / ImageDoc→`null` / mixed-shape cases by [proposal 0097](../../proposals/0097-retrieval-provider-jina-document-echo-shape.md)
 - §8.4 Cohere `/v2/embed` **`input_type` widened** — the mapping now recognizes `query` / `document` / `classification` / `clustering` (identity-mapping the latter two onto Cohere's wire values), exercising §2's "additional well-known values MAY be recognized by mappings whose backend supports them". The recognized set is still fixed — a value outside it is still a pre-send `provider_invalid_request`; it is *wider*, not open. Removes §8.4's claim that Cohere's other `input_type` values "are reached via the extras-pass-through bag" — unachievable, since OA's `input_type` is a **declared** field and the bag carries only *undeclared* keys (llm-provider §6), and §8.4 rejects an unrecognized value pre-send anyway — the sentence directly contradicted the rule immediately before it. `image` stays unrecognized (an input modality, not a purpose for embedded text; §3 / §11 scope v1 to text). The "per §8.2's treatment" anchor on the recognized set is severed — the sets now differ deliberately (that copy-coupling is what carried the broken sentence across vendors). §8.4's **`embedding_types`** extras claim, whose collision with the mapping's mandatory `"float"` was undefined, is pinned: an extras-supplied value MUST be **merged** with `"float"`, never replace it (an override would strip the `embeddings.float` key the mapping's own response consumer reads). §8.2 Jina keeps its closed set, its rationale corrected to the real one — Jina's `task` support is **model-dependent**, so a mapping bound to a model identifier cannot promise those values by [proposal 0099](../../proposals/0099-cohere-embed-input-type-widening.md)
+- §7 gains **Malformed ancillary figures** — a provider figure that is present on the wire but malformed (a non-integer token count, a negative, a boolean) in an *ancillary* field (`usage`, `response_id`) is treated as **not reported**, not `provider_invalid_response`: the call succeeds, the figure is nulled (never fabricated, coerced, or repaired), and the verbatim value stays on `raw`. Judged per figure — a malformed `EmbeddingUsage.input_tokens` collapses `usage` to null, a malformed `RerankUsage` figure beside a sound one keeps the sound one, a malformed `response_id` is null — so no record shape changes and no new nullability is added (the figures were already individually nullable per 0093). §4 / §6 `usage` + `response_id` rows and §8 *Batch chunking* step 4 (a malformed chunk ⇒ stitched `usage = null`, never a partial sum; a malformed first-chunk id ⇒ null, no fall-through) gain the carve-out, and the rule binds the graph-engine §6 `EmbeddingEvent` / `RerankEvent` figures so a nulled figure cannot leak to the observability surfaces that render from the event. Scoped to retrieval-provider (the llm-provider parallel is a separate change — its usage record is always-present, so a null counter needs an observability-guard reconciliation retrieval does not) by [proposal 0100](../../proposals/0100-malformed-ancillary-figures-not-reported.md)

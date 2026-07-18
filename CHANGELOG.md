@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.95.0] — 2026-07-17
+
+**Changed**
+
+- **retrieval-provider §7 — a malformed ancillary figure is *not reported*, not `provider_invalid_response`.** A provider figure that is present on the wire but **malformed** — a token count arriving as a string, a negative, a boolean — in an *ancillary* field (`usage`, `response_id`) is treated as **not reported**: the call succeeds (the vectors / results are unaffected), the figure is nulled, and the verbatim value stays on `RerankResponse.raw` / `EmbeddingResponse.raw`. An implementation **MUST NOT** raise on it, and **MUST NOT** fabricate, coerce, clamp, or repair it (a repaired figure is indistinguishable from a reported one — the fabrication that §4 / §6 already forbid for *absent* figures). Each figure is judged independently, and the outcome follows §4 / §6's existing record rules (a malformed single-figure `EmbeddingUsage.input_tokens` collapses `usage` to `null`; a malformed `RerankUsage` figure is nulled independently; a malformed `response_id` is `null`), so no record shape changes and no new nullability is added — the figures were already individually nullable (0093). The rule binds the graph-engine §6 `EmbeddingEvent` / `RerankEvent` figures as well as the response (the observability spans and Langfuse observations render from the event, so a figure emitted there would reach the trace and billing surfaces regardless of the response). §7 states the rule (new *Malformed ancillary figures* subsection); §4 / §6's `usage` + `response_id` rows and §8 *Batch chunking* step 4 (a malformed chunk ⇒ stitched `usage = null`, never a partial sum; a malformed first-chunk id ⇒ `null`, no fall-through) gain the carve-out. ([proposal 0100](proposals/0100-malformed-ancillary-figures-not-reported.md))
+
+**Notes**
+
+- **MINOR (pre-1.0).** Previously-undefined behavior — retrieval §4 / §6 addressed only absent-vs-reported, and §7's invariant list is payload-only, so the spec said nothing about a malformed ancillary figure and no fixture covered it. No implementation could have conformed to a rule that did not exist, but one that raised `provider_invalid_response` on a malformed usage figure — or nulled the response while emitting the malformed figure on the typed event — becomes non-conforming. Scoped to retrieval-provider; the llm-provider parallel is a separate change (its usage record is always-present, so a null counter needs an observability-guard reconciliation retrieval does not). Conformance: three new fixtures — embedding malformed-usage + malformed-`response_id`, rerank malformed-usage, and a chunk-and-stitch malformed-chunk case (stitched `usage = null`).
+
 ## [0.94.0] — 2026-07-12
 
 **Changed**

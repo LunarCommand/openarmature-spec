@@ -1,0 +1,1320 @@
+# retrieval-provider §7 *Malformed ancillary figures* + §8 *Batch chunking*
+# step 4 — a malformed per-chunk input_tokens collapses the STITCHED usage to
+# null, never a partial sum of only the well-formed chunks.
+#
+# Verifies the chunk-and-stitch interaction of §7 with §8 on the §8.4 Cohere
+# /v2/embed mapping. An over-cap (>96 inputs) embed call chunk-and-stitches
+# across two /v2/embed requests. One chunk's meta.billed_units.input_tokens is
+# MALFORMED and the other's is sound. Per §8 step 4 (amended by §7): a chunk
+# whose input_tokens is malformed has NOT reported usage, so if ANY chunk is
+# malformed the stitched EmbeddingResponse.usage is null. A mapping MUST NOT
+# sum only the well-formed chunks — that would report a total the provider
+# never sent (here 480), understating the true count and indistinguishable from
+# a truthful figure: the fabrication §7 forbids. Nothing is lost: `raw` is the
+# LIST of the per-chunk verbatim responses (§8 / 0096), so every chunk's figure
+# (including the malformed one) remains available. The vectors stitch normally
+# — the malformed accounting figure does not impugn the payload. The rule binds
+# the TYPED EVENT (graph-engine §6): EmbeddingEvent.usage MUST be null to match.
+#
+# 100 inputs => two requests with texts sizes 96, 4 (the consecutive slices
+# input[0:96], input[96:100]). Chunk A reports a SOUND input_tokens 480; chunk
+# B reports a MALFORMED input_tokens ("abc", a string). The stitched usage is
+# null (NOT 480, NOT 484); vectors concatenate in input order across the chunk
+# boundary; response_id is chunk A's id (the first chunk's, sound). Each
+# vector's first component is its ABSOLUTE input index / 1000 (0.000 .. 0.099)
+# so a mis-ordered stitch produces wrong vectors. This is the chunk-and-stitch
+# analogue of fixture 040 Case A's single-request single-figure collapse.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 037's header (the Cohere embed
+# chunk-and-stitch path — expected_wire_request as a LIST of request bodies one
+# per chunk in arrival order, expected_wire_request_count, mock_embedding
+# dispatched one per request in arrival order, and the chunked `raw` as the
+# list of per-chunk verbatim response objects), 032's header (mapping: cohere,
+# cohere_embedding_provider, the Cohere /v2/embed request + keyed-by-type
+# response shapes), and 033's header (typed_observers + contains_event
+# asserting an EmbeddingEvent's fields — reused here to assert the event
+# mirrors the nulled stitched usage).
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: malformed_chunk_input_tokens_collapses_stitched_usage_to_null
+    description: |
+      100 inputs, Cohere's 96-input cap. The mapping issues exactly 2
+      /v2/embed requests with texts sizes [96, 4] over the consecutive slices
+      input[0:96], input[96:100], identical per-call params on each. Chunk A's
+      mocked response reports a SOUND meta.billed_units.input_tokens 480; chunk
+      B's reports a MALFORMED input_tokens ("abc", a string). The adapter MUST
+      stitch the vectors (concatenate the per-chunk embeddings.float IN INPUT
+      ORDER, 100 vectors, vector i == the embedding for input i across the
+      chunk boundary) and take response_id from the FIRST chunk's id
+      (cohere-embed-042-chunk-a-id). Per §8 step 4 amended by §7: chunk B has
+      not reported usage, so the STITCHED usage is null — the mapping MUST NOT
+      sum only the well-formed chunk A into 480 (a total the provider never
+      sent). No provider_invalid_response is raised. `raw` is the LIST of the
+      two per-chunk verbatim response objects, in request order (chunk A's
+      480-token object, chunk B's malformed-"abc" object). EmbeddingEvent.usage
+      MUST be null to match the stitched response.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input:
+            - "doc-000"
+            - "doc-001"
+            - "doc-002"
+            - "doc-003"
+            - "doc-004"
+            - "doc-005"
+            - "doc-006"
+            - "doc-007"
+            - "doc-008"
+            - "doc-009"
+            - "doc-010"
+            - "doc-011"
+            - "doc-012"
+            - "doc-013"
+            - "doc-014"
+            - "doc-015"
+            - "doc-016"
+            - "doc-017"
+            - "doc-018"
+            - "doc-019"
+            - "doc-020"
+            - "doc-021"
+            - "doc-022"
+            - "doc-023"
+            - "doc-024"
+            - "doc-025"
+            - "doc-026"
+            - "doc-027"
+            - "doc-028"
+            - "doc-029"
+            - "doc-030"
+            - "doc-031"
+            - "doc-032"
+            - "doc-033"
+            - "doc-034"
+            - "doc-035"
+            - "doc-036"
+            - "doc-037"
+            - "doc-038"
+            - "doc-039"
+            - "doc-040"
+            - "doc-041"
+            - "doc-042"
+            - "doc-043"
+            - "doc-044"
+            - "doc-045"
+            - "doc-046"
+            - "doc-047"
+            - "doc-048"
+            - "doc-049"
+            - "doc-050"
+            - "doc-051"
+            - "doc-052"
+            - "doc-053"
+            - "doc-054"
+            - "doc-055"
+            - "doc-056"
+            - "doc-057"
+            - "doc-058"
+            - "doc-059"
+            - "doc-060"
+            - "doc-061"
+            - "doc-062"
+            - "doc-063"
+            - "doc-064"
+            - "doc-065"
+            - "doc-066"
+            - "doc-067"
+            - "doc-068"
+            - "doc-069"
+            - "doc-070"
+            - "doc-071"
+            - "doc-072"
+            - "doc-073"
+            - "doc-074"
+            - "doc-075"
+            - "doc-076"
+            - "doc-077"
+            - "doc-078"
+            - "doc-079"
+            - "doc-080"
+            - "doc-081"
+            - "doc-082"
+            - "doc-083"
+            - "doc-084"
+            - "doc-085"
+            - "doc-086"
+            - "doc-087"
+            - "doc-088"
+            - "doc-089"
+            - "doc-090"
+            - "doc-091"
+            - "doc-092"
+            - "doc-093"
+            - "doc-094"
+            - "doc-095"
+            - "doc-096"
+            - "doc-097"
+            - "doc-098"
+            - "doc-099"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    # One /v2/embed body per chunk, in arrival order. texts sizes 96, 4;
+    # identical per-call params on each; output_dimension absent on both.
+    expected_wire_request:
+      - model: cohere-embed-test
+        input_type: "search_document"
+        embedding_types: ["float"]
+        truncate: "NONE"
+        texts:
+          - "doc-000"
+          - "doc-001"
+          - "doc-002"
+          - "doc-003"
+          - "doc-004"
+          - "doc-005"
+          - "doc-006"
+          - "doc-007"
+          - "doc-008"
+          - "doc-009"
+          - "doc-010"
+          - "doc-011"
+          - "doc-012"
+          - "doc-013"
+          - "doc-014"
+          - "doc-015"
+          - "doc-016"
+          - "doc-017"
+          - "doc-018"
+          - "doc-019"
+          - "doc-020"
+          - "doc-021"
+          - "doc-022"
+          - "doc-023"
+          - "doc-024"
+          - "doc-025"
+          - "doc-026"
+          - "doc-027"
+          - "doc-028"
+          - "doc-029"
+          - "doc-030"
+          - "doc-031"
+          - "doc-032"
+          - "doc-033"
+          - "doc-034"
+          - "doc-035"
+          - "doc-036"
+          - "doc-037"
+          - "doc-038"
+          - "doc-039"
+          - "doc-040"
+          - "doc-041"
+          - "doc-042"
+          - "doc-043"
+          - "doc-044"
+          - "doc-045"
+          - "doc-046"
+          - "doc-047"
+          - "doc-048"
+          - "doc-049"
+          - "doc-050"
+          - "doc-051"
+          - "doc-052"
+          - "doc-053"
+          - "doc-054"
+          - "doc-055"
+          - "doc-056"
+          - "doc-057"
+          - "doc-058"
+          - "doc-059"
+          - "doc-060"
+          - "doc-061"
+          - "doc-062"
+          - "doc-063"
+          - "doc-064"
+          - "doc-065"
+          - "doc-066"
+          - "doc-067"
+          - "doc-068"
+          - "doc-069"
+          - "doc-070"
+          - "doc-071"
+          - "doc-072"
+          - "doc-073"
+          - "doc-074"
+          - "doc-075"
+          - "doc-076"
+          - "doc-077"
+          - "doc-078"
+          - "doc-079"
+          - "doc-080"
+          - "doc-081"
+          - "doc-082"
+          - "doc-083"
+          - "doc-084"
+          - "doc-085"
+          - "doc-086"
+          - "doc-087"
+          - "doc-088"
+          - "doc-089"
+          - "doc-090"
+          - "doc-091"
+          - "doc-092"
+          - "doc-093"
+          - "doc-094"
+          - "doc-095"
+      - model: cohere-embed-test
+        input_type: "search_document"
+        embedding_types: ["float"]
+        truncate: "NONE"
+        texts:
+          - "doc-096"
+          - "doc-097"
+          - "doc-098"
+          - "doc-099"
+    expected_wire_request_count: 2
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-042-chunk-a-id
+          embeddings:
+            float:
+              - [0.000, 0.5]
+              - [0.001, 0.5]
+              - [0.002, 0.5]
+              - [0.003, 0.5]
+              - [0.004, 0.5]
+              - [0.005, 0.5]
+              - [0.006, 0.5]
+              - [0.007, 0.5]
+              - [0.008, 0.5]
+              - [0.009, 0.5]
+              - [0.010, 0.5]
+              - [0.011, 0.5]
+              - [0.012, 0.5]
+              - [0.013, 0.5]
+              - [0.014, 0.5]
+              - [0.015, 0.5]
+              - [0.016, 0.5]
+              - [0.017, 0.5]
+              - [0.018, 0.5]
+              - [0.019, 0.5]
+              - [0.020, 0.5]
+              - [0.021, 0.5]
+              - [0.022, 0.5]
+              - [0.023, 0.5]
+              - [0.024, 0.5]
+              - [0.025, 0.5]
+              - [0.026, 0.5]
+              - [0.027, 0.5]
+              - [0.028, 0.5]
+              - [0.029, 0.5]
+              - [0.030, 0.5]
+              - [0.031, 0.5]
+              - [0.032, 0.5]
+              - [0.033, 0.5]
+              - [0.034, 0.5]
+              - [0.035, 0.5]
+              - [0.036, 0.5]
+              - [0.037, 0.5]
+              - [0.038, 0.5]
+              - [0.039, 0.5]
+              - [0.040, 0.5]
+              - [0.041, 0.5]
+              - [0.042, 0.5]
+              - [0.043, 0.5]
+              - [0.044, 0.5]
+              - [0.045, 0.5]
+              - [0.046, 0.5]
+              - [0.047, 0.5]
+              - [0.048, 0.5]
+              - [0.049, 0.5]
+              - [0.050, 0.5]
+              - [0.051, 0.5]
+              - [0.052, 0.5]
+              - [0.053, 0.5]
+              - [0.054, 0.5]
+              - [0.055, 0.5]
+              - [0.056, 0.5]
+              - [0.057, 0.5]
+              - [0.058, 0.5]
+              - [0.059, 0.5]
+              - [0.060, 0.5]
+              - [0.061, 0.5]
+              - [0.062, 0.5]
+              - [0.063, 0.5]
+              - [0.064, 0.5]
+              - [0.065, 0.5]
+              - [0.066, 0.5]
+              - [0.067, 0.5]
+              - [0.068, 0.5]
+              - [0.069, 0.5]
+              - [0.070, 0.5]
+              - [0.071, 0.5]
+              - [0.072, 0.5]
+              - [0.073, 0.5]
+              - [0.074, 0.5]
+              - [0.075, 0.5]
+              - [0.076, 0.5]
+              - [0.077, 0.5]
+              - [0.078, 0.5]
+              - [0.079, 0.5]
+              - [0.080, 0.5]
+              - [0.081, 0.5]
+              - [0.082, 0.5]
+              - [0.083, 0.5]
+              - [0.084, 0.5]
+              - [0.085, 0.5]
+              - [0.086, 0.5]
+              - [0.087, 0.5]
+              - [0.088, 0.5]
+              - [0.089, 0.5]
+              - [0.090, 0.5]
+              - [0.091, 0.5]
+              - [0.092, 0.5]
+              - [0.093, 0.5]
+              - [0.094, 0.5]
+              - [0.095, 0.5]
+          meta:
+            billed_units:
+              input_tokens: 480
+      - status: 200
+        body:
+          id: cohere-embed-042-chunk-b-id
+          embeddings:
+            float:
+              - [0.096, 0.5]
+              - [0.097, 0.5]
+              - [0.098, 0.5]
+              - [0.099, 0.5]
+          meta:
+            billed_units:
+              input_tokens: "abc"
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          # Concrete stitched vectors, full 100-element list IN INPUT ORDER:
+          # vector i == the value the mock returns for input i (chunk-A floats
+          # [0:96] then chunk-B floats [96:100] concatenated). The malformed
+          # accounting figure does NOT impugn the payload — the vectors stitch
+          # exactly as fixture 037's do.
+          vectors:
+            - [0.000, 0.5]
+            - [0.001, 0.5]
+            - [0.002, 0.5]
+            - [0.003, 0.5]
+            - [0.004, 0.5]
+            - [0.005, 0.5]
+            - [0.006, 0.5]
+            - [0.007, 0.5]
+            - [0.008, 0.5]
+            - [0.009, 0.5]
+            - [0.010, 0.5]
+            - [0.011, 0.5]
+            - [0.012, 0.5]
+            - [0.013, 0.5]
+            - [0.014, 0.5]
+            - [0.015, 0.5]
+            - [0.016, 0.5]
+            - [0.017, 0.5]
+            - [0.018, 0.5]
+            - [0.019, 0.5]
+            - [0.020, 0.5]
+            - [0.021, 0.5]
+            - [0.022, 0.5]
+            - [0.023, 0.5]
+            - [0.024, 0.5]
+            - [0.025, 0.5]
+            - [0.026, 0.5]
+            - [0.027, 0.5]
+            - [0.028, 0.5]
+            - [0.029, 0.5]
+            - [0.030, 0.5]
+            - [0.031, 0.5]
+            - [0.032, 0.5]
+            - [0.033, 0.5]
+            - [0.034, 0.5]
+            - [0.035, 0.5]
+            - [0.036, 0.5]
+            - [0.037, 0.5]
+            - [0.038, 0.5]
+            - [0.039, 0.5]
+            - [0.040, 0.5]
+            - [0.041, 0.5]
+            - [0.042, 0.5]
+            - [0.043, 0.5]
+            - [0.044, 0.5]
+            - [0.045, 0.5]
+            - [0.046, 0.5]
+            - [0.047, 0.5]
+            - [0.048, 0.5]
+            - [0.049, 0.5]
+            - [0.050, 0.5]
+            - [0.051, 0.5]
+            - [0.052, 0.5]
+            - [0.053, 0.5]
+            - [0.054, 0.5]
+            - [0.055, 0.5]
+            - [0.056, 0.5]
+            - [0.057, 0.5]
+            - [0.058, 0.5]
+            - [0.059, 0.5]
+            - [0.060, 0.5]
+            - [0.061, 0.5]
+            - [0.062, 0.5]
+            - [0.063, 0.5]
+            - [0.064, 0.5]
+            - [0.065, 0.5]
+            - [0.066, 0.5]
+            - [0.067, 0.5]
+            - [0.068, 0.5]
+            - [0.069, 0.5]
+            - [0.070, 0.5]
+            - [0.071, 0.5]
+            - [0.072, 0.5]
+            - [0.073, 0.5]
+            - [0.074, 0.5]
+            - [0.075, 0.5]
+            - [0.076, 0.5]
+            - [0.077, 0.5]
+            - [0.078, 0.5]
+            - [0.079, 0.5]
+            - [0.080, 0.5]
+            - [0.081, 0.5]
+            - [0.082, 0.5]
+            - [0.083, 0.5]
+            - [0.084, 0.5]
+            - [0.085, 0.5]
+            - [0.086, 0.5]
+            - [0.087, 0.5]
+            - [0.088, 0.5]
+            - [0.089, 0.5]
+            - [0.090, 0.5]
+            - [0.091, 0.5]
+            - [0.092, 0.5]
+            - [0.093, 0.5]
+            - [0.094, 0.5]
+            - [0.095, 0.5]
+            - [0.096, 0.5]
+            - [0.097, 0.5]
+            - [0.098, 0.5]
+            - [0.099, 0.5]
+          vectors_length: 100
+          dimensions: 2
+          inner_vector_lengths_all_equal: 2
+          model: cohere-embed-test
+          # First chunk's id, sound — response_id is the first chunk's id.
+          response_id: cohere-embed-042-chunk-a-id
+          # Chunk B's input_tokens is malformed => that chunk has not reported
+          # usage => the STITCHED usage is null. NOT 480 (a partial sum of only
+          # the well-formed chunk A), NOT 484, NOT 0.
+          usage: null
+          # The chunk-and-stitch `raw` (§8 batch-chunking `raw` clause / 0096):
+          # the LIST of the per-chunk verbatim /v2/embed response OBJECTS, in
+          # request order — chunk A's 480-token object, then chunk B's object
+          # carrying the malformed "abc" verbatim. Every chunk's figure remains
+          # available, so nothing is lost by not-reporting the stitched usage.
+          raw:
+            - id: cohere-embed-042-chunk-a-id
+              embeddings:
+                float:
+                  - [0.000, 0.5]
+                  - [0.001, 0.5]
+                  - [0.002, 0.5]
+                  - [0.003, 0.5]
+                  - [0.004, 0.5]
+                  - [0.005, 0.5]
+                  - [0.006, 0.5]
+                  - [0.007, 0.5]
+                  - [0.008, 0.5]
+                  - [0.009, 0.5]
+                  - [0.010, 0.5]
+                  - [0.011, 0.5]
+                  - [0.012, 0.5]
+                  - [0.013, 0.5]
+                  - [0.014, 0.5]
+                  - [0.015, 0.5]
+                  - [0.016, 0.5]
+                  - [0.017, 0.5]
+                  - [0.018, 0.5]
+                  - [0.019, 0.5]
+                  - [0.020, 0.5]
+                  - [0.021, 0.5]
+                  - [0.022, 0.5]
+                  - [0.023, 0.5]
+                  - [0.024, 0.5]
+                  - [0.025, 0.5]
+                  - [0.026, 0.5]
+                  - [0.027, 0.5]
+                  - [0.028, 0.5]
+                  - [0.029, 0.5]
+                  - [0.030, 0.5]
+                  - [0.031, 0.5]
+                  - [0.032, 0.5]
+                  - [0.033, 0.5]
+                  - [0.034, 0.5]
+                  - [0.035, 0.5]
+                  - [0.036, 0.5]
+                  - [0.037, 0.5]
+                  - [0.038, 0.5]
+                  - [0.039, 0.5]
+                  - [0.040, 0.5]
+                  - [0.041, 0.5]
+                  - [0.042, 0.5]
+                  - [0.043, 0.5]
+                  - [0.044, 0.5]
+                  - [0.045, 0.5]
+                  - [0.046, 0.5]
+                  - [0.047, 0.5]
+                  - [0.048, 0.5]
+                  - [0.049, 0.5]
+                  - [0.050, 0.5]
+                  - [0.051, 0.5]
+                  - [0.052, 0.5]
+                  - [0.053, 0.5]
+                  - [0.054, 0.5]
+                  - [0.055, 0.5]
+                  - [0.056, 0.5]
+                  - [0.057, 0.5]
+                  - [0.058, 0.5]
+                  - [0.059, 0.5]
+                  - [0.060, 0.5]
+                  - [0.061, 0.5]
+                  - [0.062, 0.5]
+                  - [0.063, 0.5]
+                  - [0.064, 0.5]
+                  - [0.065, 0.5]
+                  - [0.066, 0.5]
+                  - [0.067, 0.5]
+                  - [0.068, 0.5]
+                  - [0.069, 0.5]
+                  - [0.070, 0.5]
+                  - [0.071, 0.5]
+                  - [0.072, 0.5]
+                  - [0.073, 0.5]
+                  - [0.074, 0.5]
+                  - [0.075, 0.5]
+                  - [0.076, 0.5]
+                  - [0.077, 0.5]
+                  - [0.078, 0.5]
+                  - [0.079, 0.5]
+                  - [0.080, 0.5]
+                  - [0.081, 0.5]
+                  - [0.082, 0.5]
+                  - [0.083, 0.5]
+                  - [0.084, 0.5]
+                  - [0.085, 0.5]
+                  - [0.086, 0.5]
+                  - [0.087, 0.5]
+                  - [0.088, 0.5]
+                  - [0.089, 0.5]
+                  - [0.090, 0.5]
+                  - [0.091, 0.5]
+                  - [0.092, 0.5]
+                  - [0.093, 0.5]
+                  - [0.094, 0.5]
+                  - [0.095, 0.5]
+              meta:
+                billed_units:
+                  input_tokens: 480
+            - id: cohere-embed-042-chunk-b-id
+              embeddings:
+                float:
+                  - [0.096, 0.5]
+                  - [0.097, 0.5]
+                  - [0.098, 0.5]
+                  - [0.099, 0.5]
+              meta:
+                billed_units:
+                  input_tokens: "abc"
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              usage: null
+      invariants:
+        exactly_two_embed_requests_issued: true
+        chunk_texts_sizes_96_4_consecutive_slices: true
+        identical_per_call_params_across_chunks: true
+        over_cap_request_chunked_not_sent_whole: true
+        vectors_concatenated_in_input_order: true
+        vectors_length_matches_input_length: true
+        all_vectors_same_dimensionality: true
+        dimensions_field_matches_inner_vector_length: true
+        response_id_from_first_chunk_id: true
+        malformed_chunk_input_tokens_collapses_stitched_usage_null: true
+        stitched_usage_not_partial_sum_of_wellformed_chunks: true
+        no_provider_invalid_response_raised: true
+        both_chunk_responses_preserved_verbatim_on_raw_list: true
+        embedding_event_usage_null_mirrors_response: true
+
+  - name: malformed_first_chunk_id_nulls_response_id_no_fall_through
+    description: |
+      100 inputs, Cohere's 96-input cap. The mapping issues exactly 2
+      /v2/embed requests with texts sizes [96, 4] over the consecutive slices
+      input[0:96], input[96:100], identical per-call params on each. This time
+      BOTH chunks report a SOUND meta.billed_units.input_tokens — chunk A 480,
+      chunk B 20 — so the stitched EmbeddingUsage is a real summed record
+      ({input_tokens: 500} per §8's sum rule), unaffected by the id defect.
+      What is malformed is the FIRST chunk's top-level id: chunk A carries the
+      NUMBER 99999 where a string id belongs (the malformed-id kind of fixture
+      040 Case B), while chunk B (a LATER chunk) carries a SOUND string id
+      (cohere-embed-042b-chunkB-id). Per §8 step 4 amended by §7: response_id
+      is the FIRST chunk's id, a malformed first-chunk id is null, and a
+      mapping MUST NOT fall through to a later chunk's id — so
+      EmbeddingResponse.response_id is null, NOT chunk B's id and NOT the
+      stringified "99999". A fall-through bug ("use the first non-malformed
+      chunk id") would surface chunk B's id here and FAIL. usage is judged
+      independently of the id, so the summed {input_tokens: 500} stands. The
+      vectors stitch in input order across the chunk boundary and no
+      provider_invalid_response is raised. `raw` is the LIST of the two
+      per-chunk verbatim response objects, in request order — chunk A's object
+      carrying the malformed numeric id 99999, chunk B's object carrying its
+      sound string id. EmbeddingEvent.response_id MUST be null to match the
+      stitched response; EmbeddingEvent.usage MUST be the summed record.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input:
+            - "doc-000"
+            - "doc-001"
+            - "doc-002"
+            - "doc-003"
+            - "doc-004"
+            - "doc-005"
+            - "doc-006"
+            - "doc-007"
+            - "doc-008"
+            - "doc-009"
+            - "doc-010"
+            - "doc-011"
+            - "doc-012"
+            - "doc-013"
+            - "doc-014"
+            - "doc-015"
+            - "doc-016"
+            - "doc-017"
+            - "doc-018"
+            - "doc-019"
+            - "doc-020"
+            - "doc-021"
+            - "doc-022"
+            - "doc-023"
+            - "doc-024"
+            - "doc-025"
+            - "doc-026"
+            - "doc-027"
+            - "doc-028"
+            - "doc-029"
+            - "doc-030"
+            - "doc-031"
+            - "doc-032"
+            - "doc-033"
+            - "doc-034"
+            - "doc-035"
+            - "doc-036"
+            - "doc-037"
+            - "doc-038"
+            - "doc-039"
+            - "doc-040"
+            - "doc-041"
+            - "doc-042"
+            - "doc-043"
+            - "doc-044"
+            - "doc-045"
+            - "doc-046"
+            - "doc-047"
+            - "doc-048"
+            - "doc-049"
+            - "doc-050"
+            - "doc-051"
+            - "doc-052"
+            - "doc-053"
+            - "doc-054"
+            - "doc-055"
+            - "doc-056"
+            - "doc-057"
+            - "doc-058"
+            - "doc-059"
+            - "doc-060"
+            - "doc-061"
+            - "doc-062"
+            - "doc-063"
+            - "doc-064"
+            - "doc-065"
+            - "doc-066"
+            - "doc-067"
+            - "doc-068"
+            - "doc-069"
+            - "doc-070"
+            - "doc-071"
+            - "doc-072"
+            - "doc-073"
+            - "doc-074"
+            - "doc-075"
+            - "doc-076"
+            - "doc-077"
+            - "doc-078"
+            - "doc-079"
+            - "doc-080"
+            - "doc-081"
+            - "doc-082"
+            - "doc-083"
+            - "doc-084"
+            - "doc-085"
+            - "doc-086"
+            - "doc-087"
+            - "doc-088"
+            - "doc-089"
+            - "doc-090"
+            - "doc-091"
+            - "doc-092"
+            - "doc-093"
+            - "doc-094"
+            - "doc-095"
+            - "doc-096"
+            - "doc-097"
+            - "doc-098"
+            - "doc-099"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    # One /v2/embed body per chunk, in arrival order. texts sizes 96, 4;
+    # identical per-call params on each; output_dimension absent on both.
+    expected_wire_request:
+      - model: cohere-embed-test
+        input_type: "search_document"
+        embedding_types: ["float"]
+        truncate: "NONE"
+        texts:
+          - "doc-000"
+          - "doc-001"
+          - "doc-002"
+          - "doc-003"
+          - "doc-004"
+          - "doc-005"
+          - "doc-006"
+          - "doc-007"
+          - "doc-008"
+          - "doc-009"
+          - "doc-010"
+          - "doc-011"
+          - "doc-012"
+          - "doc-013"
+          - "doc-014"
+          - "doc-015"
+          - "doc-016"
+          - "doc-017"
+          - "doc-018"
+          - "doc-019"
+          - "doc-020"
+          - "doc-021"
+          - "doc-022"
+          - "doc-023"
+          - "doc-024"
+          - "doc-025"
+          - "doc-026"
+          - "doc-027"
+          - "doc-028"
+          - "doc-029"
+          - "doc-030"
+          - "doc-031"
+          - "doc-032"
+          - "doc-033"
+          - "doc-034"
+          - "doc-035"
+          - "doc-036"
+          - "doc-037"
+          - "doc-038"
+          - "doc-039"
+          - "doc-040"
+          - "doc-041"
+          - "doc-042"
+          - "doc-043"
+          - "doc-044"
+          - "doc-045"
+          - "doc-046"
+          - "doc-047"
+          - "doc-048"
+          - "doc-049"
+          - "doc-050"
+          - "doc-051"
+          - "doc-052"
+          - "doc-053"
+          - "doc-054"
+          - "doc-055"
+          - "doc-056"
+          - "doc-057"
+          - "doc-058"
+          - "doc-059"
+          - "doc-060"
+          - "doc-061"
+          - "doc-062"
+          - "doc-063"
+          - "doc-064"
+          - "doc-065"
+          - "doc-066"
+          - "doc-067"
+          - "doc-068"
+          - "doc-069"
+          - "doc-070"
+          - "doc-071"
+          - "doc-072"
+          - "doc-073"
+          - "doc-074"
+          - "doc-075"
+          - "doc-076"
+          - "doc-077"
+          - "doc-078"
+          - "doc-079"
+          - "doc-080"
+          - "doc-081"
+          - "doc-082"
+          - "doc-083"
+          - "doc-084"
+          - "doc-085"
+          - "doc-086"
+          - "doc-087"
+          - "doc-088"
+          - "doc-089"
+          - "doc-090"
+          - "doc-091"
+          - "doc-092"
+          - "doc-093"
+          - "doc-094"
+          - "doc-095"
+      - model: cohere-embed-test
+        input_type: "search_document"
+        embedding_types: ["float"]
+        truncate: "NONE"
+        texts:
+          - "doc-096"
+          - "doc-097"
+          - "doc-098"
+          - "doc-099"
+    expected_wire_request_count: 2
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          # FIRST chunk's top-level id is MALFORMED — the number 99999 where a
+          # string id belongs (fixture 040 Case B's malformed-id kind).
+          id: 99999
+          embeddings:
+            float:
+              - [0.000, 0.5]
+              - [0.001, 0.5]
+              - [0.002, 0.5]
+              - [0.003, 0.5]
+              - [0.004, 0.5]
+              - [0.005, 0.5]
+              - [0.006, 0.5]
+              - [0.007, 0.5]
+              - [0.008, 0.5]
+              - [0.009, 0.5]
+              - [0.010, 0.5]
+              - [0.011, 0.5]
+              - [0.012, 0.5]
+              - [0.013, 0.5]
+              - [0.014, 0.5]
+              - [0.015, 0.5]
+              - [0.016, 0.5]
+              - [0.017, 0.5]
+              - [0.018, 0.5]
+              - [0.019, 0.5]
+              - [0.020, 0.5]
+              - [0.021, 0.5]
+              - [0.022, 0.5]
+              - [0.023, 0.5]
+              - [0.024, 0.5]
+              - [0.025, 0.5]
+              - [0.026, 0.5]
+              - [0.027, 0.5]
+              - [0.028, 0.5]
+              - [0.029, 0.5]
+              - [0.030, 0.5]
+              - [0.031, 0.5]
+              - [0.032, 0.5]
+              - [0.033, 0.5]
+              - [0.034, 0.5]
+              - [0.035, 0.5]
+              - [0.036, 0.5]
+              - [0.037, 0.5]
+              - [0.038, 0.5]
+              - [0.039, 0.5]
+              - [0.040, 0.5]
+              - [0.041, 0.5]
+              - [0.042, 0.5]
+              - [0.043, 0.5]
+              - [0.044, 0.5]
+              - [0.045, 0.5]
+              - [0.046, 0.5]
+              - [0.047, 0.5]
+              - [0.048, 0.5]
+              - [0.049, 0.5]
+              - [0.050, 0.5]
+              - [0.051, 0.5]
+              - [0.052, 0.5]
+              - [0.053, 0.5]
+              - [0.054, 0.5]
+              - [0.055, 0.5]
+              - [0.056, 0.5]
+              - [0.057, 0.5]
+              - [0.058, 0.5]
+              - [0.059, 0.5]
+              - [0.060, 0.5]
+              - [0.061, 0.5]
+              - [0.062, 0.5]
+              - [0.063, 0.5]
+              - [0.064, 0.5]
+              - [0.065, 0.5]
+              - [0.066, 0.5]
+              - [0.067, 0.5]
+              - [0.068, 0.5]
+              - [0.069, 0.5]
+              - [0.070, 0.5]
+              - [0.071, 0.5]
+              - [0.072, 0.5]
+              - [0.073, 0.5]
+              - [0.074, 0.5]
+              - [0.075, 0.5]
+              - [0.076, 0.5]
+              - [0.077, 0.5]
+              - [0.078, 0.5]
+              - [0.079, 0.5]
+              - [0.080, 0.5]
+              - [0.081, 0.5]
+              - [0.082, 0.5]
+              - [0.083, 0.5]
+              - [0.084, 0.5]
+              - [0.085, 0.5]
+              - [0.086, 0.5]
+              - [0.087, 0.5]
+              - [0.088, 0.5]
+              - [0.089, 0.5]
+              - [0.090, 0.5]
+              - [0.091, 0.5]
+              - [0.092, 0.5]
+              - [0.093, 0.5]
+              - [0.094, 0.5]
+              - [0.095, 0.5]
+          meta:
+            billed_units:
+              input_tokens: 480
+      - status: 200
+        body:
+          # LATER chunk's id is a SOUND string — the value a fall-through bug
+          # would wrongly surface as response_id.
+          id: cohere-embed-042b-chunkB-id
+          embeddings:
+            float:
+              - [0.096, 0.5]
+              - [0.097, 0.5]
+              - [0.098, 0.5]
+              - [0.099, 0.5]
+          meta:
+            billed_units:
+              input_tokens: 20
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          # Concrete stitched vectors, full 100-element list IN INPUT ORDER —
+          # chunk-A floats [0:96] then chunk-B floats [96:100] concatenated.
+          # The malformed first-chunk id does NOT impugn the payload.
+          vectors:
+            - [0.000, 0.5]
+            - [0.001, 0.5]
+            - [0.002, 0.5]
+            - [0.003, 0.5]
+            - [0.004, 0.5]
+            - [0.005, 0.5]
+            - [0.006, 0.5]
+            - [0.007, 0.5]
+            - [0.008, 0.5]
+            - [0.009, 0.5]
+            - [0.010, 0.5]
+            - [0.011, 0.5]
+            - [0.012, 0.5]
+            - [0.013, 0.5]
+            - [0.014, 0.5]
+            - [0.015, 0.5]
+            - [0.016, 0.5]
+            - [0.017, 0.5]
+            - [0.018, 0.5]
+            - [0.019, 0.5]
+            - [0.020, 0.5]
+            - [0.021, 0.5]
+            - [0.022, 0.5]
+            - [0.023, 0.5]
+            - [0.024, 0.5]
+            - [0.025, 0.5]
+            - [0.026, 0.5]
+            - [0.027, 0.5]
+            - [0.028, 0.5]
+            - [0.029, 0.5]
+            - [0.030, 0.5]
+            - [0.031, 0.5]
+            - [0.032, 0.5]
+            - [0.033, 0.5]
+            - [0.034, 0.5]
+            - [0.035, 0.5]
+            - [0.036, 0.5]
+            - [0.037, 0.5]
+            - [0.038, 0.5]
+            - [0.039, 0.5]
+            - [0.040, 0.5]
+            - [0.041, 0.5]
+            - [0.042, 0.5]
+            - [0.043, 0.5]
+            - [0.044, 0.5]
+            - [0.045, 0.5]
+            - [0.046, 0.5]
+            - [0.047, 0.5]
+            - [0.048, 0.5]
+            - [0.049, 0.5]
+            - [0.050, 0.5]
+            - [0.051, 0.5]
+            - [0.052, 0.5]
+            - [0.053, 0.5]
+            - [0.054, 0.5]
+            - [0.055, 0.5]
+            - [0.056, 0.5]
+            - [0.057, 0.5]
+            - [0.058, 0.5]
+            - [0.059, 0.5]
+            - [0.060, 0.5]
+            - [0.061, 0.5]
+            - [0.062, 0.5]
+            - [0.063, 0.5]
+            - [0.064, 0.5]
+            - [0.065, 0.5]
+            - [0.066, 0.5]
+            - [0.067, 0.5]
+            - [0.068, 0.5]
+            - [0.069, 0.5]
+            - [0.070, 0.5]
+            - [0.071, 0.5]
+            - [0.072, 0.5]
+            - [0.073, 0.5]
+            - [0.074, 0.5]
+            - [0.075, 0.5]
+            - [0.076, 0.5]
+            - [0.077, 0.5]
+            - [0.078, 0.5]
+            - [0.079, 0.5]
+            - [0.080, 0.5]
+            - [0.081, 0.5]
+            - [0.082, 0.5]
+            - [0.083, 0.5]
+            - [0.084, 0.5]
+            - [0.085, 0.5]
+            - [0.086, 0.5]
+            - [0.087, 0.5]
+            - [0.088, 0.5]
+            - [0.089, 0.5]
+            - [0.090, 0.5]
+            - [0.091, 0.5]
+            - [0.092, 0.5]
+            - [0.093, 0.5]
+            - [0.094, 0.5]
+            - [0.095, 0.5]
+            - [0.096, 0.5]
+            - [0.097, 0.5]
+            - [0.098, 0.5]
+            - [0.099, 0.5]
+          vectors_length: 100
+          dimensions: 2
+          inner_vector_lengths_all_equal: 2
+          model: cohere-embed-test
+          # response_id is the FIRST chunk's id, which is malformed => null.
+          # NOT chunk B's sound id (cohere-embed-042b-chunkB-id) — a mapping
+          # MUST NOT fall through to a later chunk's id — and NOT the
+          # stringified "99999". This is the discriminating assertion: a
+          # fall-through impl surfaces chunk B's id here and FAILS.
+          response_id: null
+          # usage is judged INDEPENDENTLY of the id — both chunks reported
+          # sound input_tokens (480 + 20), so the stitched usage is the real
+          # summed record. The malformed first-chunk id does not disturb it.
+          usage:
+            input_tokens: 500
+          # The chunk-and-stitch `raw` (§8 batch-chunking `raw` clause / 0096):
+          # the LIST of the per-chunk verbatim /v2/embed response OBJECTS, in
+          # request order — chunk A's object carrying the malformed numeric id
+          # 99999 verbatim, then chunk B's object carrying its sound string id.
+          raw:
+            - id: 99999
+              embeddings:
+                float:
+                  - [0.000, 0.5]
+                  - [0.001, 0.5]
+                  - [0.002, 0.5]
+                  - [0.003, 0.5]
+                  - [0.004, 0.5]
+                  - [0.005, 0.5]
+                  - [0.006, 0.5]
+                  - [0.007, 0.5]
+                  - [0.008, 0.5]
+                  - [0.009, 0.5]
+                  - [0.010, 0.5]
+                  - [0.011, 0.5]
+                  - [0.012, 0.5]
+                  - [0.013, 0.5]
+                  - [0.014, 0.5]
+                  - [0.015, 0.5]
+                  - [0.016, 0.5]
+                  - [0.017, 0.5]
+                  - [0.018, 0.5]
+                  - [0.019, 0.5]
+                  - [0.020, 0.5]
+                  - [0.021, 0.5]
+                  - [0.022, 0.5]
+                  - [0.023, 0.5]
+                  - [0.024, 0.5]
+                  - [0.025, 0.5]
+                  - [0.026, 0.5]
+                  - [0.027, 0.5]
+                  - [0.028, 0.5]
+                  - [0.029, 0.5]
+                  - [0.030, 0.5]
+                  - [0.031, 0.5]
+                  - [0.032, 0.5]
+                  - [0.033, 0.5]
+                  - [0.034, 0.5]
+                  - [0.035, 0.5]
+                  - [0.036, 0.5]
+                  - [0.037, 0.5]
+                  - [0.038, 0.5]
+                  - [0.039, 0.5]
+                  - [0.040, 0.5]
+                  - [0.041, 0.5]
+                  - [0.042, 0.5]
+                  - [0.043, 0.5]
+                  - [0.044, 0.5]
+                  - [0.045, 0.5]
+                  - [0.046, 0.5]
+                  - [0.047, 0.5]
+                  - [0.048, 0.5]
+                  - [0.049, 0.5]
+                  - [0.050, 0.5]
+                  - [0.051, 0.5]
+                  - [0.052, 0.5]
+                  - [0.053, 0.5]
+                  - [0.054, 0.5]
+                  - [0.055, 0.5]
+                  - [0.056, 0.5]
+                  - [0.057, 0.5]
+                  - [0.058, 0.5]
+                  - [0.059, 0.5]
+                  - [0.060, 0.5]
+                  - [0.061, 0.5]
+                  - [0.062, 0.5]
+                  - [0.063, 0.5]
+                  - [0.064, 0.5]
+                  - [0.065, 0.5]
+                  - [0.066, 0.5]
+                  - [0.067, 0.5]
+                  - [0.068, 0.5]
+                  - [0.069, 0.5]
+                  - [0.070, 0.5]
+                  - [0.071, 0.5]
+                  - [0.072, 0.5]
+                  - [0.073, 0.5]
+                  - [0.074, 0.5]
+                  - [0.075, 0.5]
+                  - [0.076, 0.5]
+                  - [0.077, 0.5]
+                  - [0.078, 0.5]
+                  - [0.079, 0.5]
+                  - [0.080, 0.5]
+                  - [0.081, 0.5]
+                  - [0.082, 0.5]
+                  - [0.083, 0.5]
+                  - [0.084, 0.5]
+                  - [0.085, 0.5]
+                  - [0.086, 0.5]
+                  - [0.087, 0.5]
+                  - [0.088, 0.5]
+                  - [0.089, 0.5]
+                  - [0.090, 0.5]
+                  - [0.091, 0.5]
+                  - [0.092, 0.5]
+                  - [0.093, 0.5]
+                  - [0.094, 0.5]
+                  - [0.095, 0.5]
+              meta:
+                billed_units:
+                  input_tokens: 480
+            - id: cohere-embed-042b-chunkB-id
+              embeddings:
+                float:
+                  - [0.096, 0.5]
+                  - [0.097, 0.5]
+                  - [0.098, 0.5]
+                  - [0.099, 0.5]
+              meta:
+                billed_units:
+                  input_tokens: 20
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              # Mirror: the nulled first-chunk id does not leak to the event.
+              response_id: null
+              # The summed usage IS present on the event (independence).
+              usage:
+                input_tokens: 500
+      invariants:
+        exactly_two_embed_requests_issued: true
+        chunk_texts_sizes_96_4_consecutive_slices: true
+        identical_per_call_params_across_chunks: true
+        over_cap_request_chunked_not_sent_whole: true
+        vectors_concatenated_in_input_order: true
+        vectors_length_matches_input_length: true
+        all_vectors_same_dimensionality: true
+        dimensions_field_matches_inner_vector_length: true
+        malformed_first_chunk_id_nulled: true
+        no_fall_through_to_later_chunk_id: true
+        response_id_not_coerced_to_string: true
+        usage_unaffected_by_malformed_first_chunk_id: true
+        stitched_usage_is_sum_of_sound_chunk_figures: true
+        no_provider_invalid_response_raised: true
+        both_chunk_responses_preserved_verbatim_on_raw_list: true
+        malformed_first_chunk_id_preserved_verbatim_on_raw: true
+        embedding_event_response_id_null_mirrors_response: true
+        embedding_event_usage_summed_record_mirrors_response: true
