@@ -1,0 +1,60 @@
+# §7 *Malformed usage counter* — a partially-malformed usage record.
+#
+# A usage counter present on the wire but malformed (here `prompt_tokens` is
+# the string "abc") is treated as *not reported*: that counter is null, the
+# OTHER counters stand, the record is still PRESENT, and complete() does NOT
+# raise. The completion succeeded — `message` and `finish_reason` are intact —
+# and the verbatim malformed value survives on `Response.raw`. The counter is
+# never coerced, clamped, or repaired.
+#
+# §6 conditions "the first three MUST be null together" on the provider
+# reporting NO usage; a record with two sound counters and one garbage one HAS
+# reported usage, so the outcome is {null, 50, 150}, not {null, null, null}.
+#
+# OpenAI-compatible mapping (§8.1 — the pre-0037 default, no `mapping` key):
+# `total_tokens` is a WIRE counter here (not derived), so a sound wire total
+# stands even though `prompt_tokens` is nulled (§7: a malformed wire total
+# would itself be nulled, but this total is sound).
+#
+# NOTE: the typed graph-engine §6 `LlmCompletionEvent.usage` MIRRORS this
+# response — a PRESENT record with prompt_tokens null, completion_tokens 50,
+# total_tokens 150 (not a null usage). llm-provider fixtures assert only the
+# `Response` surface; the event-mirror assertion lives in the observability
+# conformance suite (§5.5.3 renders the usage attributes from the event).
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        id: cc-068
+        object: chat.completion
+        created: 1700000000
+        model: test-model
+        choices:
+          - {index: 0, message: {role: assistant, content: "Hello."}, finish_reason: stop}
+        usage:
+          prompt_tokens: "abc"      # malformed — non-integer string
+          completion_tokens: 50     # sound
+          total_tokens: 150         # sound (wire total, not derived)
+
+calls:
+  - operation: complete
+    messages: [{role: user, content: "Hi"}]
+    expected:
+      response:
+        message: {role: assistant, content: "Hello.", tool_calls: null}
+        finish_reason: stop
+        usage:
+          prompt_tokens: null       # malformed → not reported
+          completion_tokens: 50     # stands
+          total_tokens: 150         # stands
+        raw_check:
+          # required_keys asserts raw.usage is PRESENT (key presence only — it
+          # does NOT pin the value). The verbatim malformed value is asserted by
+          # the adapter-enforced invariant below.
+          required_keys: [id, object, created, model, choices, usage]
+      invariants:
+        # raw.usage.prompt_tokens preserves the mock's malformed "abc"
+        # byte-for-value — the corrupt value stays inspectable on raw, never
+        # coerced, clamped, or repaired (llm-provider §6 / §7).
+        raw_usage_prompt_tokens_verbatim_malformed: true

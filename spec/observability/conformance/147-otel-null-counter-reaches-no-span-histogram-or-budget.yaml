@@ -1,0 +1,150 @@
+# observability §5.5.3 / §11.2 / §5.5.15 (proposal 0101): the LEAK-PREVENTION
+# end-to-end — the point of the proposal. A single completion whose
+# `prompt_tokens` is not reported (null) is asserted to reach NONE of the three
+# LLM usage surfaces in ONE fixture: the OTel span attribute, the token-usage
+# histogram observation, and the token-budget instrument. This is the "a rule
+# an observer routes around is not a rule" case (0101 Alternative #3): the
+# guards used to key on the usage RECORD being null, so a null COUNTER inside a
+# present record slipped past all three.
+#
+# One node renders a budgeted prompt (input_max_tokens 10) and calls the LLM;
+# enable_metrics=True; default OTel observer. Mock usage {prompt_tokens: null,
+# completion_tokens: 5, total_tokens: 15} — the {null, 5, 15} record of 0101
+# (malformed prompt_tokens nulled per llm-provider §7 *Malformed usage
+# counter*). Wire null is the post-nulling state; this fixture renders it, it
+# does not test the nulling (sibling llm-provider fixture).
+#
+# The sound OUTPUT / TOTAL counters ride every surface normally — the omission
+# is per-FIELD, isolated to the null prompt_tokens: the span still emits
+# gen_ai.usage.output_tokens / openarmature.llm.usage.total_tokens, the
+# histogram still records the "output" observation, and the (single, input)
+# budget being unevaluable leaves no exceeded/utilization signal.
+#
+# Composes 144 (span), 145 (histogram), and 146 case A (budget) into one
+# assertion so the three surfaces are proven to omit the SAME null counter
+# together. The Langfuse Generation surface is the fourth surface; it needs a
+# separate observer and is covered by fixture 148.
+
+cases:
+  - name: null_prompt_tokens_reaches_no_span_histogram_or_budget_surface
+    description: |
+      One LLM-calling node that renders a budgeted prompt (input_max_tokens
+      10, no total bound) and calls the LLM. enable_metrics=True; default OTel
+      observer. The mock returns usage {prompt_tokens: null, completion_tokens:
+      5, total_tokens: 15}. The single null prompt_tokens MUST reach none of:
+      - the SPAN — gen_ai.usage.input_tokens and
+        openarmature.llm.usage.prompt_tokens omitted (§5.5.3); and the only
+        (input) budget being unevaluable, openarmature.llm.token_budget.exceeded
+        absent (§5.5.15);
+      - the HISTOGRAM — no "input" token.usage observation (§11.2);
+      - the BUDGET instruments — no token_budget.utilization / .exceeded (§11.2).
+      The sound output / total counters ride all surfaces normally, proving the
+      omission is per-field.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          model: test-model
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: true
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          # Only input_max_tokens declared — the bound whose counter is null.
+          token_budget:
+            input_max_tokens: 10
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-147
+          object: chat.completion
+          model: "test-model-2026-07-15"
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          # {null, 5, 15}: prompt_tokens not reported. The bypass this
+          # proposal closes — a null counter inside a present record.
+          usage: {prompt_tokens: null, completion_tokens: 5, total_tokens: 15}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              # The event mirrors the response (graph-engine §6, proposal
+              # 0101): present record, null prompt_tokens — the single source
+              # all three surfaces read and all three omit.
+              usage:
+                prompt_tokens: null
+                completion_tokens: 5
+                total_tokens: 15
+              token_budget:
+                input_max_tokens: 10
+                total_max_tokens: null
+      span_tree:
+        - name: "openarmature.invocation"
+          children:
+            - name: "ask_llm"
+              children:
+                - name: "openarmature.llm.complete"
+                  attributes:
+                    # Sound counters ride the span (per-field omission).
+                    gen_ai.usage.output_tokens: 5
+                    openarmature.llm.usage.completion_tokens: 5
+                    openarmature.llm.usage.total_tokens: 15
+                    # Declared budget surfaces; evaluation is what's skipped.
+                    openarmature.prompt.token_budget.input_max_tokens: 10
+                  attributes_absent:
+                    # SURFACE 1 (span usage): the null counter reaches neither
+                    # input attribute (§5.5.3 per-field).
+                    - gen_ai.usage.input_tokens
+                    - openarmature.llm.usage.prompt_tokens
+                    # SURFACE 1 (span budget signal): the only bound is
+                    # unevaluable -> not set, absent not `false` (§5.5.15).
+                    - openarmature.llm.token_budget.exceeded
+                    - openarmature.prompt.token_budget.total_max_tokens
+                  children: []
+      metrics:
+        # SURFACE 2 (histogram): only the "output" observation records — the
+        # null prompt_tokens produces no "input" observation (§11.2).
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 5
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        # SURFACE 3 (budget instruments): NEITHER token_budget.utilization NOR
+        # token_budget.exceeded appears — the input bound was not evaluated.
+        # Asserted by absence from this exhaustive metrics: set + the invariant.
+      invariants:
+        # The one null counter reaches none of the three surfaces.
+        null_prompt_tokens_reaches_no_span_histogram_or_budget_surface: true
+        span_omits_both_input_usage_attributes: true
+        no_input_token_usage_observation: true
+        no_token_budget_instrument_observation_for_unevaluable_input_bound: true
+        exceeded_span_signal_absent_not_false: true

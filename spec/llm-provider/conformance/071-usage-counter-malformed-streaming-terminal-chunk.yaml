@@ -1,0 +1,64 @@
+# §6 *Streaming assembly* + §7 *Malformed usage counter* — a streamed
+# completion whose TERMINAL usage chunk carries a malformed counter.
+#
+# §6 sources usage "from the terminal chunk"; §7 nulls the malformed counter on
+# the normalized `Response.usage` exactly as for a non-streamed call. §6's
+# streaming clause requires the terminal chunk's usage block to be preserved
+# VERBATIM on the assembled `Response.raw`, so the corrupt value stays
+# inspectable — the same transparency guarantee a non-streamed call has.
+#
+# OpenAI-compatible streaming wire path (§8.1.6). This fixture uses the
+# `cases:` / `call:` streaming dialect of fixture 059 — the ONLY dialect the
+# harness wires SSE into (call.stream, the case-nested `mock_provider` with
+# responses[].stream_body, the "[DONE]" sentinel, stream_options.include_usage).
+# The terminal usage chunk carries empty choices + a usage block whose
+# prompt_tokens is malformed.
+
+cases:
+  - name: malformed_terminal_chunk_counter_nulled_sound_counters_stand_verbatim_on_raw
+    description: |
+      A complete(stream=True) call. The mocked SSE stream yields one content
+      chunk ("Hi.", finish_reason stop), then a terminal empty-choices usage
+      chunk carrying {prompt_tokens: "abc", completion_tokens: 3,
+      total_tokens: 10}, then [DONE]. The malformed terminal-chunk prompt_tokens
+      is nulled on the normalized Response.usage (§7); the sound counters stand;
+      the terminal chunk's usage block survives verbatim on the assembled raw
+      (§6 streaming); complete() does NOT raise.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "say hi"}
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "say hi"}
+      stream: true
+      stream_options: {include_usage: true}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - {id: cc-071, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {role: assistant, content: "Hi."}, finish_reason: stop}]}
+            - {id: cc-071, object: chat.completion.chunk, model: test-model, choices: [], usage: {prompt_tokens: "abc", completion_tokens: 3, total_tokens: 10}}
+            - "[DONE]"
+    expected:
+      response:
+        message:
+          role: assistant
+          content: "Hi."
+          tool_calls: null
+        finish_reason: stop
+        usage:
+          prompt_tokens: null       # malformed terminal-chunk counter => null
+          completion_tokens: 3      # sound
+          total_tokens: 10          # sound (wire total on the terminal chunk)
+        raw_check:
+          required_keys: [id, object, model, choices, usage]
+      invariants:
+        # §6 streaming: the terminal chunk's usage block survives on the
+        # assembled raw VERBATIM — prompt_tokens "abc" is inspectable there
+        # even though the normalized Response.usage.prompt_tokens is null.
+        terminal_chunk_usage_preserved_verbatim_on_raw: true
+        malformed_terminal_counter_nulled_on_normalized_usage: true
+        usage_and_finish_reason_sourced_from_terminal_chunks: true

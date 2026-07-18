@@ -1,0 +1,285 @@
+# observability §5.5.15 / §11.2 (proposal 0101): a token-budget bound whose
+# actual counter is NOT REPORTED is NOT EVALUATED — no token_budget.utilization
+# observation, no token_budget.exceeded increment, and no
+# openarmature.llm.token_budget.exceeded span signal set FOR THAT BOUND. A
+# comparison / ratio against a null is undefined — NOT `false` / `0`. This is
+# the guard that closes the "null comparison" leak in the 0083 budget
+# instruments (the reactive over-budget signal read `usage.prompt_tokens >
+# input_max_tokens`, a null comparison, before this proposal).
+#
+# Both cases use a null prompt_tokens: usage {prompt_tokens: null, ...} — the
+# {null, ...} record of proposal 0101 (malformed prompt_tokens nulled per
+# llm-provider §7 *Malformed usage counter*). Wire null is the post-nulling
+# state; these fixtures render it, they do not test the nulling (sibling
+# llm-provider fixture).
+#
+# Case A pins the NOT-false-NOT-0 rule with an input-only budget: the only
+# declared bound is unevaluable, so the exceeded span attribute is ABSENT (not
+# emitted as `false`) and neither budget instrument records. Case B pins
+# INDEPENDENCE: an input bound (null counter, not evaluated) beside a total
+# bound (sound total, exceeded) — the total bound still evaluates fully.
+#
+# Counterparts: 126 (input bound exceeded, sound counter), 129 (no budget
+# baseline). The not-recorded budget observations are expressed as 129 does:
+# the metrics: list carries only the recorded observations, with an invariant
+# naming the absence.
+#
+# Harness note (per conformance-adapter §3.2): the prompt's `token_budget`
+# object in `prompt_backend` carries the {input_max_tokens, total_max_tokens}
+# bounds the backend surfaces on Prompt.token_budget (prompt-management §3);
+# `renders_prompt:` makes the prompt active so LlmCompletionEvent.token_budget
+# and .usage are populated.
+
+cases:
+  - name: input_only_budget_not_evaluated_and_exceeded_signal_absent_when_prompt_tokens_null
+    description: |
+      One LLM-calling node that renders a budgeted prompt (input_max_tokens
+      10, no total bound) and calls the LLM. The mock returns usage
+      {prompt_tokens: null, completion_tokens: 5, total_tokens: 15} — the
+      input bound's actual counter (prompt_tokens) is not reported.
+      enable_metrics=True. The harness asserts:
+      - LlmCompletionEvent.usage mirrors the response: prompt_tokens null,
+        completion 5, total 15 (graph-engine §6, proposal 0101);
+      - LlmCompletionEvent.token_budget {input_max_tokens 10,
+        total_max_tokens null};
+      - openarmature.prompt.token_budget.input_max_tokens = 10 span attribute
+        (the DECLARED bound still surfaces);
+      - openarmature.llm.token_budget.exceeded is ABSENT — the only bound is
+        unevaluable, so the signal is not set (NOT `false`; §5.5.15 / §11.2,
+        proposal 0101);
+      - NEITHER token-budget instrument records an observation (no
+        utilization ratio over a null, no exceeded increment);
+      - the ordinary token.usage records the "output" observation only (input
+        counter null) and one duration observation (baseline unperturbed).
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          model: test-model
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: true
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          # Only input_max_tokens declared — total bound absent.
+          token_budget:
+            input_max_tokens: 10
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-146a
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          # prompt_tokens not reported -> the input bound cannot be evaluated.
+          usage: {prompt_tokens: null, completion_tokens: 5, total_tokens: 15}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              active_prompt:
+                name: "classify"
+                version: "v7"
+                label: "production"
+                template_hash: "abc123"
+                rendered_hash: "<any-string>"
+              # The event mirrors the response's null prompt_tokens
+              # (graph-engine §6, proposal 0101) — a present record with a
+              # null counter, not a null record.
+              usage:
+                prompt_tokens: null
+                completion_tokens: 5
+                total_tokens: 15
+              # Only the input bound declared.
+              token_budget:
+                input_max_tokens: 10
+                total_max_tokens: null
+      span_tree:
+        - name: "openarmature.invocation"
+          children:
+            - name: "ask_llm"
+              children:
+                - name: "openarmature.llm.complete"
+                  attributes:
+                    # The DECLARED budget still surfaces (§5.5.15) — the null
+                    # counter affects evaluation, not the declared attribute.
+                    openarmature.prompt.token_budget.input_max_tokens: 10
+                  attributes_absent:
+                    # NOT EVALUATED: the only bound's actual counter is null,
+                    # so the exceeded signal is not set — absent, NOT `false`
+                    # (§5.5.15 / §11.2, proposal 0101).
+                    - "openarmature.llm.token_budget.exceeded"
+                    # No total bound declared.
+                    - "openarmature.prompt.token_budget.total_max_tokens"
+                  children: []
+      metrics:
+        # Baseline token.usage: "output" records (completion sound); the
+        # "input" observation is absent (prompt_tokens null — fixture 145).
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 5
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+      invariants:
+        # The input bound is not evaluated: no utilization observation, no
+        # exceeded increment (a ratio / comparison against a null is
+        # undefined). Absence predicates over the captured set (129 idiom).
+        input_bound_not_evaluated_when_prompt_tokens_null: true
+        exceeded_span_signal_absent_not_false_when_only_bound_unevaluable: true
+        no_input_token_usage_observation_when_prompt_tokens_null: true
+
+  - name: input_bound_skipped_total_bound_still_evaluated_independence
+    description: |
+      Independence: an input bound (input_max_tokens 10, actual prompt_tokens
+      null -> not evaluated) beside a total bound (total_max_tokens 8, actual
+      total_tokens 12 -> exceeded) on the same call. enable_metrics=True. The
+      mock returns usage {prompt_tokens: null, completion_tokens: 5,
+      total_tokens: 12}. total_tokens 12 > total_max_tokens 8, so the total
+      bound is exceeded; the input bound's counter is null, so it is not
+      evaluated. The harness asserts:
+      - LlmCompletionEvent.token_budget {input_max_tokens 10,
+        total_max_tokens 8};
+      - both declared budgets surface on the span (input_max_tokens 10,
+        total_max_tokens 8);
+      - openarmature.llm.token_budget.exceeded = true (the TOTAL bound
+        crossed — the surviving evaluable bound sets the aggregate signal);
+      - token_budget.exceeded counter records once, kind "total" ONLY (NOT
+        kind "input" — the input bound was not evaluated);
+      - token_budget.utilization records the total ratio 12 / 8 = 1.5, kind
+        "total" ONLY (no "input" observation);
+      - baseline token.usage "output" observation + duration record.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          model: test-model
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: true
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          # Both bounds declared.
+          token_budget:
+            input_max_tokens: 10
+            total_max_tokens: 8
+    render_variables:
+      topic: "weather"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-146b
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          # prompt_tokens null (input bound unevaluable); total_tokens 12 > 8
+          # (total bound exceeded) — the two bounds evaluate independently.
+          usage: {prompt_tokens: null, completion_tokens: 5, total_tokens: 12}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              token_budget:
+                input_max_tokens: 10
+                total_max_tokens: 8
+      span_tree:
+        - name: "openarmature.invocation"
+          children:
+            - name: "ask_llm"
+              children:
+                - name: "openarmature.llm.complete"
+                  attributes:
+                    # Both declared budgets surface (§5.5.15).
+                    openarmature.prompt.token_budget.input_max_tokens: 10
+                    openarmature.prompt.token_budget.total_max_tokens: 8
+                    # The TOTAL bound crossed -> aggregate signal true. The
+                    # unevaluated input bound does not touch this.
+                    openarmature.llm.token_budget.exceeded: true
+                  children: []
+      metrics:
+        # Total bound exceeded -> counter increments once, kind "total". NO
+        # kind "input" increment (the input bound was not evaluated).
+        - instrument: "openarmature.gen_ai.client.token_budget.exceeded"
+          value: 1
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token_budget.kind: "total"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        # Total utilization 12 / 8 = 1.5, kind "total". NO "input" observation.
+        - instrument: "openarmature.gen_ai.client.token_budget.utilization"
+          value: 1.5
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token_budget.kind: "total"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        # Baseline token.usage: "output" only (input counter null).
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 5
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+      invariants:
+        # Independence: the null input counter suppresses ONLY the input
+        # bound; the total bound with a sound total evaluates fully.
+        input_bound_not_evaluated_when_prompt_tokens_null: true
+        total_bound_evaluated_when_total_tokens_sound: true
+        no_input_kind_budget_observation_when_prompt_tokens_null: true
