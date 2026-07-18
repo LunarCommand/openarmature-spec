@@ -1,0 +1,248 @@
+# retrieval-provider §7 *Malformed ancillary figures* — a malformed
+# ANCILLARY figure on a Cohere /v2/embed response is treated as NOT REPORTED,
+# never provider_invalid_response.
+#
+# Verifies §7's carve-out on the §8.4 Cohere embedding mapping: a figure that
+# is present on the wire but MALFORMED (a non-integer / negative / boolean /
+# string where an integer or string belongs) in an ancillary field (the
+# figures inside `usage`; `response_id`) is treated as not reported. The call
+# SUCCEEDS (no §7 category is raised — the vectors are sound), the figure is
+# NULLED (never fabricated, coerced, clamped, or repaired), and the verbatim
+# malformed value stays on `raw` (§4). Judged per figure, so the outcome
+# follows §4's existing record rules: a malformed EmbeddingUsage.input_tokens
+# (a single-figure record) collapses `usage` to null; a malformed top-level id
+# nulls `response_id`. The rule binds the TYPED EVENT too (graph-engine §6): a
+# figure not reported on the response MUST NOT be surfaced on
+# EmbeddingEvent.usage / EmbeddingEvent.response_id either. Locks:
+#   - Case A: sound embeddings.float alongside a MALFORMED
+#     meta.billed_units.input_tokens ("abc", a string) => EmbeddingResponse.usage
+#     null (single-figure collapse), vectors + dimensions intact, NO raise, the
+#     verbatim "abc" preserved on `raw`, and EmbeddingEvent.usage null to match.
+#     response_id is sound (a valid string id), so it surfaces normally — the
+#     malformed figure is judged independently.
+#   - Case B: sound meta.billed_units.input_tokens (6) alongside a MALFORMED
+#     top-level id (12345, a number where a string id is expected) =>
+#     EmbeddingResponse.response_id null, usage unaffected ({input_tokens: 6}),
+#     vectors intact, NO raise, the verbatim 12345 preserved on `raw`, and
+#     EmbeddingEvent.response_id null to match.
+#
+# The payload side is UNCHANGED (§7's enumerated payload invariants + 0097's
+# `document` rule stand); this fixture exercises only the ancillary carve-out.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 001's header (calls_embed /
+# mock_embedding), 032's header (mapping: cohere, cohere_embedding_provider,
+# the Cohere /v2/embed request + keyed-by-type response shapes,
+# expected_wire_request / expected_wire_request_absent_keys /
+# expected_wire_headers), 039's header (the Cohere embed `raw` assertion — the
+# verbatim deserialized response object on EmbeddingResponse.raw), and 033's
+# header (typed_observers: [{name, kind: typed_event_collector}] +
+# expected.observers.<name>.contains_event asserting an EmbeddingEvent's
+# fields — reused here to assert the event mirrors the nulled figure).
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: malformed_input_tokens_collapses_usage_to_null
+    description: |
+      2 inputs ["alpha", "beta"], default config. The mapping issues ONE POST
+      to {base_url}/v2/embed. The mocked Cohere response carries SOUND
+      embeddings.float (two 4-d vectors in input order) and a sound top-level
+      id, but meta.billed_units.input_tokens is the STRING "abc" — malformed
+      (a non-integer where an integer count belongs). Per §7 the figure is not
+      reported: EmbeddingUsage is a single-figure record, so a malformed
+      input_tokens collapses EmbeddingResponse.usage to null (§4 — the record
+      is present only when its figure is). The adapter MUST NOT raise
+      provider_invalid_response, MUST NOT coerce "abc" to a number or fabricate
+      a zero, and MUST leave the verbatim "abc" on `raw`. The vectors are
+      unaffected. EmbeddingEvent.usage MUST be null to match the response — a
+      figure not reported on the response is not surfaced on the event either.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha", "beta"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha", "beta"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-040a-id
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04]
+              - [0.11, 0.12, 0.13, 0.14]
+          texts: ["alpha", "beta"]
+          meta:
+            billed_units:
+              input_tokens: "abc"
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+            - [0.11, 0.12, 0.13, 0.14]
+          vectors_length: 2
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          # Sound id surfaces normally — the malformed figure is judged
+          # independently of the sound one.
+          response_id: cohere-embed-040a-id
+          # Single-figure collapse: the malformed input_tokens is not reported,
+          # so the whole EmbeddingUsage record is null (NOT {input_tokens: 0}
+          # and NOT {input_tokens: "abc"}).
+          usage: null
+          # The verbatim deserialized Cohere response (§4 raw) — the malformed
+          # "abc" is preserved byte-for-value, where the caller inspects what
+          # the provider actually sent.
+          raw:
+            id: cohere-embed-040a-id
+            embeddings:
+              float:
+                - [0.01, 0.02, 0.03, 0.04]
+                - [0.11, 0.12, 0.13, 0.14]
+            texts: ["alpha", "beta"]
+            meta:
+              billed_units:
+                input_tokens: "abc"
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              usage: null
+      invariants:
+        exactly_one_embed_request_issued: true
+        vectors_assembled_from_embeddings_float_in_input_order: true
+        vectors_length_matches_input_length: true
+        all_vectors_same_dimensionality: true
+        dimensions_field_matches_inner_vector_length: true
+        malformed_input_tokens_not_reported_usage_null: true
+        usage_not_coerced_or_fabricated: true
+        no_provider_invalid_response_raised: true
+        malformed_value_preserved_verbatim_on_raw: true
+        embedding_event_usage_null_mirrors_response: true
+
+  - name: malformed_response_id_nulled
+    description: |
+      2 inputs ["alpha", "beta"], default config, ONE POST to /v2/embed. The
+      mocked Cohere response carries SOUND embeddings.float and a sound
+      meta.billed_units.input_tokens (6), but the top-level id is the NUMBER
+      12345 — malformed (a number where a string id belongs). Per §7 the id is
+      not present: EmbeddingResponse.response_id is null (§4 — "when present;
+      null otherwise"). The adapter MUST NOT raise, MUST NOT stringify 12345 to
+      "12345" (a repaired figure is indistinguishable from a reported one), and
+      MUST leave the verbatim 12345 on `raw`. usage is unaffected — the
+      malformed id is judged independently of the sound token count.
+      EmbeddingEvent.response_id MUST be null to match the response.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha", "beta"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha", "beta"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: 12345
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04]
+              - [0.11, 0.12, 0.13, 0.14]
+          texts: ["alpha", "beta"]
+          meta:
+            billed_units:
+              input_tokens: 6
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+            - [0.11, 0.12, 0.13, 0.14]
+          vectors_length: 2
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          # Malformed id => not present => null. NOT the stringified "12345".
+          response_id: null
+          # Sound figure surfaces normally — judged independently of the id.
+          usage:
+            input_tokens: 6
+          # Verbatim response: the malformed numeric id 12345 preserved
+          # byte-for-value on `raw`.
+          raw:
+            id: 12345
+            embeddings:
+              float:
+                - [0.01, 0.02, 0.03, 0.04]
+                - [0.11, 0.12, 0.13, 0.14]
+            texts: ["alpha", "beta"]
+            meta:
+              billed_units:
+                input_tokens: 6
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              response_id: null
+      invariants:
+        exactly_one_embed_request_issued: true
+        vectors_assembled_from_embeddings_float_in_input_order: true
+        vectors_length_matches_input_length: true
+        dimensions_field_matches_inner_vector_length: true
+        malformed_response_id_nulled: true
+        response_id_not_coerced_to_string: true
+        usage_unaffected_by_malformed_response_id: true
+        no_provider_invalid_response_raised: true
+        malformed_id_preserved_verbatim_on_raw: true
+        embedding_event_response_id_null_mirrors_response: true

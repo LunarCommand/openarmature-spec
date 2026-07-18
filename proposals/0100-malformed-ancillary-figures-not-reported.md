@@ -1,15 +1,16 @@
 # 0100: A malformed ancillary figure is *not reported*, never a malformed response (retrieval-provider)
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-12
+- **Accepted:** 2026-07-17
 - **Targets:** spec/retrieval-provider/spec.md **§7** (the carve-out: a malformed *ancillary* figure MUST
   NOT raise `provider_invalid_response`), **§4** / **§6** (the `usage` / `response_id` rows — a
   returned-but-malformed record is not a returned record), and **§8** *Batch chunking* step 4 (the stitched
   figure when a chunk is malformed). spec/graph-engine/spec.md **§6** (the typed `EmbeddingEvent` /
   `RerankEvent` carry the same figures — the rule must bind them, or an implementation can null the
   response yet emit the garbage figure on the event). Conformance (at Accept): embedding (single-figure
-  collapse + `response_id`), rerank (partial record), and chunk-and-stitch fixtures, each also asserting
+  collapse + `response_id`), rerank (single-figure collapse), and chunk-and-stitch fixtures, each also asserting
   the typed event mirrors the response.
 - **Related:** 0093 (nullable provider usage records — established retrieval `usage = record | null`, the
   "a record is present when at least one figure is reported" rule this builds on, and the no-fabrication
@@ -191,9 +192,12 @@ against the event's separately-nullable `response_model`, is a distinct question
   single-figure collapse), vectors and dimensions intact, **no raise**, the corrupt value verbatim on
   `raw`, **and the typed `EmbeddingEvent.usage` null to match**. A second case: a malformed `response_id`
   → `null`, verbatim on `raw`.
-- **rerank** — the **partial record**: a sound `search_units` beside a malformed `input_tokens` ⇒ a
-  `RerankUsage` carrying `search_units` only, `input_tokens` null. `EmbeddingUsage` has a single figure and
-  so cannot express a partial record; rerank is where this half of the rule is exercised.
+- **rerank** — a malformed usage figure ⇒ `usage = null`, results sorted and intact, no raise, verbatim on
+  `raw`, and `RerankEvent.usage` null to match. (No *current* rerank mapping surfaces both usage figures —
+  Cohere reports `search_units` only, Jina `input_tokens` only, TEI none — so each mapping's single reported
+  figure collapses the record just as embedding's does. The two-figure partial record, where one figure
+  survives, is a consequence of the per-figure rule that no mapping can exercise yet; it is covered by the
+  rule's statement, not a fixture.)
 - **chunk-and-stitch** — one chunk of several reports a malformed `input_tokens` ⇒ the stitched
   `usage = null` (not a partial sum), with every chunk's verbatim response on `raw`.
 
@@ -210,7 +214,7 @@ and one that nulls the response while emitting the malformed figure on the typed
 non-conforming.
 
 Nothing previously specified changes: no record shape, no nullability, the no-fabrication rule (0093), and
-0097's `document` boundary all stand exactly as written. Tentative spec version target deferred to Accept.
+0097's `document` boundary all stand exactly as written. Ships as spec **v0.95.0**.
 
 ## Alternatives considered
 
