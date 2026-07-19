@@ -1,0 +1,1 @@
+../../proposals/0105-extras-managed-field-collision-rule.md

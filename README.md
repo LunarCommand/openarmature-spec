@@ -91,6 +91,16 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
   conformance-adapter `carries` error-field assertion beyond the llm-provider structured-output block, and
   ratify the migration / render error field surfaces the reference implementation already exposes
   (`registered_migrations_count`, `registry_description`, prompt `description`). Non-breaking.
+- **[0103](proposals/0103-retrieval-conformance-coverage.md)** (Draft) — close the §8.3 OpenAI mapping's two
+  conformance holes (its over-cap chunk-and-stitch and its `raw` shape are unexercised while the other mappings
+  are covered) and clarify that the §8 batch-chunking rule is count-based (the summed-token ceiling is
+  provider-enforced fail-loud). Non-breaking.
+- **[0104](proposals/0104-retrieval-id-error-clarifications.md)** (Draft) — pin two under-specified retrieval
+  edges: an empty-string `response_id` is `null` (absent), and §8.2 Jina maps a bare `400` to
+  `provider_invalid_request`.
+- **[0105](proposals/0105-extras-managed-field-collision-rule.md)** (Draft) — a general llm-provider §6 rule
+  for an extras key colliding with a mapping-managed wire field: merge if additive/list-shaped, reject pre-send
+  if a scalar mode-switch; generalizes 0099's `embedding_types` instance.
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
