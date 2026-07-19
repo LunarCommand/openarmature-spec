@@ -7,6 +7,9 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0105](proposals/0105-extras-managed-field-collision-rule.md) | Extras-key vs mapping-managed wire-field collision rule | llm-provider | Draft    | —               | —          |
+| [0104](proposals/0104-retrieval-id-error-clarifications.md) | Retrieval id/error clarifications — empty-string `response_id`, Jina bare-400 | retrieval-provider | Draft    | —               | —          |
+| [0103](proposals/0103-retrieval-conformance-coverage.md) | Retrieval conformance coverage — §8.3 over-cap, `raw`, count-vs-token boundary | retrieval-provider | Draft    | —               | —          |
 | [0102](proposals/0102-general-carries-error-field-assertion.md) | Generalize the `carries` error-field assertion; ratify migration & render error fields | conformance-adapter | Draft    | —               | —          |
 | [0101](proposals/0101-malformed-usage-counter-llm-observability.md) | A malformed usage counter is *not reported* — llm-provider + observability | llm-provider | Accepted | Pending         | —          |
 | [0100](proposals/0100-malformed-ancillary-figures-not-reported.md) | A malformed ancillary figure is *not reported*, never a malformed response (retrieval-provider) | retrieval-provider | Accepted | Pending         | —          |
