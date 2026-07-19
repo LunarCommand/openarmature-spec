@@ -9,7 +9,8 @@
   (the *merge* arm, ratifying 0099's mapping-local exception as the general rule) and the fail-loud truncation
   flag in **§8.1 / §8.2 / §8.4** (`truncate` / `truncation`, the *reject* arm). Conformance: a reject-arm fixture.
 - **Related:** 0099 (pinned the §8.4 `embedding_types` collision as a mapping-local exception and explicitly
-  left the general rule open — this closes it), and §6's *Extras pass-through* contract this carves out of
+  left the general rule open — this closes it), and §6's *Extras pass-through* contract, which this proposal
+  amends with a bounded carve-out
 - **Supersedes:**
 
 ## Summary
