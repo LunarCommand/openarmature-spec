@@ -87,7 +87,10 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-No proposals are currently in flight. New work opens as a numbered Draft proposal under [`proposals/`](proposals/).
+- **[0102](proposals/0102-general-carries-error-field-assertion.md)** (Draft) — generalize the
+  conformance-adapter `carries` error-field assertion beyond the llm-provider structured-output block, and
+  ratify the migration / render error field surfaces the reference implementation already exposes
+  (`registered_migrations_count`, `registry_description`, prompt `description`). Non-breaking.
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
