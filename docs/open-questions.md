@@ -754,6 +754,37 @@ short-horizon roadmap below.
   Neither exists today; deferred to a dedicated conformance-adapter follow-on
   after 0089.
 
+### Cross-cutting — `typed_observers` / `contains_event` directives undocumented
+
+- **The two directives that assert typed-event fields are load-bearing across
+  the suite yet have no entry in conformance-adapter §5.**
+  [candidate-for-new-proposal] — surfaced repeatedly through the observability
+  and retrieval fixture work (most recently the 0100 / 0101 malformed-figure
+  fixtures, which lean on `contains_event` to assert a counter is *present but
+  null* rather than absent). `typed_observers` registers one or more collectors
+  on a fixture (`- name: <collector>`, `kind: typed_event_collector`);
+  `contains_event` then asserts, under `expected.observers.<collector>`, that a
+  typed event was emitted with a given `event_type` and a `fields:` map (matched
+  by value, with the §5.10 value-matcher vocabulary — `<any-string>`, null,
+  etc.). Together they are the primary way the suite pins the graph-engine §6
+  typed-event families (`LlmCompletionEvent`, `LlmFailedEvent`, `EmbeddingEvent`,
+  `RerankEvent`, …). As of this writing **59 fixtures use `contains_event` and
+  68 use `typed_observers`** (concentrated in observability, with a retrieval
+  cluster), yet neither key appears anywhere in `spec/conformance-adapter/spec.md`
+  — an adapter author reverse-engineers both from the fixtures.
+  This is the same gap `carries` had before proposal 0098 gave it a normative
+  §5.12 home, and it wants the same treatment: a conformance-adapter §5.x
+  subsection defining the collector-registration directive, the `contains_event`
+  assertion shape, and — the point the malformed-figure work made sharp — the
+  **present-but-null vs absent** field semantics (a `fields:` entry asserting an
+  explicit `null` value MUST distinguish "field present and null" from "field
+  omitted", the exact distinction fixture 149's event-mirror assertion turns on).
+  Needs a proposal since it adds normative conformance-adapter text; deferred
+  until the conformance-adapter directive-documentation debt (this plus the
+  0089 failure-mock gap and the undocumented `cause` directive) is worth a
+  consolidating pass. The related `carries` naming-convention cleanup is
+  handled separately by proposal 0102.
+
 ---
 
 ## How to use this page
