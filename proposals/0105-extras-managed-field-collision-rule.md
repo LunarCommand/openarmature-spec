@@ -105,8 +105,8 @@ mapping MUST NOT silently drop it either); a value **equal** to the managed flag
 ### 4. Conformance
 
 A reject-arm fixture: an extras `truncate` colliding with a mapping's managed value raises
-`provider_invalid_request` pre-send (no wire request issued). The existing merge-arm fixture (039,
-`embedding_types`) already exercises §1's merge arm.
+`provider_invalid_request` pre-send (no wire request issued). The existing retrieval-provider merge-arm
+fixture (039, the `embedding_types` merge) already exercises §1's merge arm.
 
 ## Versioning
 
