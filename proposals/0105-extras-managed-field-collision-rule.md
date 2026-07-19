@@ -89,9 +89,9 @@ Add to §6's *Extras pass-through* a **managed-field collision** clause:
 
 Re-anchor 0099's `embedding_types` exception as an **instance** of §6's merge arm rather than a standalone
 mapping-local exception: `embedding_types` is a managed list-shaped field; an extras-supplied value merges with
-`"float"` (float-first, de-duplicated), per §1. The behavior is unchanged; only its framing generalizes.
+`"float"` (float-first, de-duplicated), per §1 above. The behavior is unchanged; only its framing generalizes.
 
-### 3. `truncate` — the reject arm (§8.2 / §8.4)
+### 3. `truncate` / `truncation` — the reject arm (§8.1 / §8.2 / §8.4)
 
 The TEI (§8.1), Jina (§8.2), and Cohere (§8.4) embed mappings each send a **managed fail-loud truncation flag**
 so an over-length input errors rather than being silently truncated — `truncate: false` (TEI; Jina
