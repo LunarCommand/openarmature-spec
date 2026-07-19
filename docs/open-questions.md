@@ -768,7 +768,7 @@ short-horizon roadmap below.
   by value, with the §5.10 value-matcher vocabulary — `<any-string>`, null,
   etc.). Together they are the primary way the suite pins the graph-engine §6
   typed-event families (`LlmCompletionEvent`, `LlmFailedEvent`, `EmbeddingEvent`,
-  `RerankEvent`, …). As of this writing **59 fixtures use `contains_event` and
+  `RerankEvent`, …). As of this writing **56 fixtures use `contains_event` and
   68 use `typed_observers`** (concentrated in observability, with a retrieval
   cluster), yet neither key appears anywhere in `spec/conformance-adapter/spec.md`
   — an adapter author reverse-engineers both from the fixtures.
