@@ -101,8 +101,8 @@ cases:
       concatenate the per-chunk vectors IN INPUT ORDER (5 vectors, vector i
       == the embedding for input i across the chunk boundaries).
       EmbeddingResponse.model is the bound id. OpenAI /v1/embeddings REPORTS
-      usage, so §8 step 4 SUMS the per-chunk prompt_tokens (2 + 2 + 1) into
-      EmbeddingUsage.input_tokens 5 — the sum branch, on the OpenAI mapping.
+      usage, so §8 step 4 SUMS the per-chunk prompt_tokens (10 + 20 + 5) into
+      EmbeddingUsage.input_tokens 35 — the sum branch, on the OpenAI mapping.
       OpenAI embeddings carry no top-level id, so response_id is null (the §8
       "first chunk's id" over a stream of no-ids). raw is the LIST of the 3
       per-chunk verbatim response OBJECTS, in request order. A mapping that

@@ -87,7 +87,7 @@ Cohere 037).
   equal dimensionality, `dimensions` field equal to the inner-vector length). `expected.final_state` pins
   the concrete 5-element `vectors` array, so a permuting or boundary-swapped stitch fails on the data itself.
 - `EmbeddingResponse.model` is the bound id; `response_id` is `null` (OpenAI surfaces none); `usage.input_tokens`
-  is `5` (the per-chunk `prompt_tokens` **summed**).
+  is `35` (the per-chunk `prompt_tokens` **summed**: 10 + 20 + 5).
 - `raw` is the list of the three per-chunk verbatim response **objects** in request order (each `data` in its
   emitted order, not re-sorted) — the chunk responses unstitched, not the flattened `vectors`.
 
@@ -98,5 +98,5 @@ Cohere 037).
 - A mis-ordered stitch (the distinct per-index first component surfaces a wrong vector at a chunk boundary).
 - Per-call params drifting across chunks, or a `dimensions` / `encoding_format` param leaked onto any chunk
   request.
-- Usage summed wrong (anything other than `5`), a `response_id` invented where OpenAI surfaces none, or `raw`
+- Usage summed wrong (anything other than `35`), a `response_id` invented where OpenAI surfaces none, or `raw`
   flattened / first-chunk-only instead of the list of per-chunk response objects.
