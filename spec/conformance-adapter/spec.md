@@ -948,7 +948,7 @@ flavor requires a proposal.
 
 A key **MUST NOT** coin a stem that names no field the error exposes: the vocabulary is derivable from the
 error's capability spec, not invented at the fixture. And an error field name **MUST NOT** end in a recognized
-flavor suffix, so a key parses unambiguously to exactly one (field, flavor) pair. A field name **may** end in
+flavor suffix, so a key parses unambiguously to exactly one (field, flavor) pair. A field name **MAY** end in
 other tokens — `registered_migrations_count` (pipeline-utilities §10.10) is a **bare field name** (`_count` is
 not a flavor), asserted by exact-equality, not a count-flavor on `registered_migrations`.
 
