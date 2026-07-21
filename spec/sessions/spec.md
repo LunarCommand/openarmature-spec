@@ -306,10 +306,13 @@ Six canonical error categories:
   error in the language's idiomatic form and MAY swallow, retry, or propagate it as a normal node
   failure (which the engine then handles per graph-engine §4).
 - **`session_state_migration_missing`** — `SessionStore.load()` returned a record with a `schema_version`
-  for which no migration chain to the current schema is registered. Non-transient.
+  for which no migration chain to the current schema is registered. Non-transient. Exposes the same fields as
+  its checkpoint counterpart (pipeline-utilities §10.10 — `from_version` / `to_version` /
+  `registered_migrations_count` / `registry_description`).
 - **`session_state_migration_chain_ambiguous`** — the registered migration set contains a duplicate
   `(from_version, to_version)` pair or multiple distinct shortest paths between source and target. Same
-  resolution semantics as the checkpoint category (pipeline-utilities §10.12).
+  resolution semantics as the checkpoint category, and the same exposed surface — the nullable
+  `(from_version, to_version)` pair (pipeline-utilities §10.10 / §10.12).
 - **`session_state_migration_failed`** — a registered migration function raised during chain application.
   The engine MUST surface this category (mirror of `checkpoint_state_migration_failed`, pipeline-utilities
   §10.12), preserving the raised exception as cause. Subsequent migrations in the chain MUST NOT run;
@@ -372,3 +375,4 @@ determinism.
 
 - created by [proposal 0020](../../proposals/0020-sessions-capability.md)
 - §3 *Identity scoping* gained a *Harness threading* paragraph noting that deployments wrapping the engine via a harness (per the harness capability spec) are responsible for resolving `session_id` from inbound traffic and threading it into every `invoke()` call in sessioned mode; stateless-mode harnesses never thread a `session_id`. Documentary cross-reference; no behavior change at the sessions layer (the omit-and-skip rule was already normative) by [proposal 0022](../../proposals/0022-harness-contract.md)
+- §10 `session_state_migration_missing` / `_chain_ambiguous` error field surfaces documented as inheriting their checkpoint counterparts (pipeline-utilities §10.10) — the missing error's `from_version` / `to_version` / `registered_migrations_count` / `registry_description`, and the ambiguous error's nullable `(from_version, to_version)` pair by [proposal 0102](../../proposals/0102-general-carries-error-field-assertion.md)

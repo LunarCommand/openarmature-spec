@@ -36,6 +36,5 @@ cases:
       carries:
         from_version: "v1"
         to_version: "v2"
-        duplicate_count: 2
     invariants:
       no_invoke_attempted: true
