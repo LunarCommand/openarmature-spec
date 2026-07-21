@@ -552,12 +552,12 @@ maps to the `EmbeddingResponse` vectors in input order — the mapping consumes 
 enforces a per-call cap of 2048 inputs, and an over-cap call chunk-and-stitches per the §8 *Batch chunking*
 rule. OpenAI additionally enforces a **summed-token ceiling** per request. That ceiling is **not** a
 chunking trigger: the §8 rule chunks by input **count** (the 2048-input cap) only, so a chunk whose inputs are
-within the 2048-input count cap but whose summed tokens exceed the provider's **per-request** token ceiling is
-**not** sub-chunked by an estimated token count — the over-token request is sent and the provider's rejection
-surfaces as `provider_invalid_request` (§7), fail-loud, with no partial or truncated result. The mapping
-performs **no** client-side token estimation; tokenization is model-specific and would diverge across
-implementations, and the vendor enforces its own token ceiling (the llm-provider §6 range-validation posture —
-forward intent, surface the provider's rejection).
+within the 2048-input count cap but whose summed tokens exceed the provider's **per-request** token ceiling
+**MUST NOT** be sub-chunked by an estimated token count — the over-token request is sent and the provider's
+rejection surfaces as `provider_invalid_request` (§7), fail-loud, with no partial or truncated result. The
+mapping **MUST NOT** perform client-side token estimation; tokenization is model-specific and would diverge
+across implementations, and the vendor enforces its own token ceiling (the llm-provider §6 range-validation
+posture — forward intent, surface the provider's rejection).
 
 **`input_type` (symmetric base wire; client-side prefix for asymmetric).** The OpenAI `/v1/embeddings`
 wire has no query/document parameter, so on the base wire `input_type` is **not realized** — an absent

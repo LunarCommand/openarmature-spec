@@ -968,7 +968,8 @@ The field has two roles, depending on whether the mapping's real per-call cap is
 
 - **A real construction cap** for a mapping whose per-call limit is genuinely configurable — TEI's
   `max-client-batch-size` (§8.1), which governs both TEI `/embed` (fixture 038, `chunk_size: 2`) and TEI
-  `/rerank` (fixtures 014 / 015 / 016, `chunk_size: 4`). Here `chunk_size` *is* that config.
+  `/rerank` (the rerank chunk-and-stitch fixture 015, `chunk_size: 4`; fixtures 014 / 016 set a larger
+  `chunk_size: 32` their document counts do not exceed). Here `chunk_size` *is* that config.
 - **A test-only cap override** for a mapping whose per-call limit is a **fixed vendor constant** — OpenAI's
   2048 inputs (§8.3), Cohere's 96 (§8.4). These caps are not construction-configurable in the real mapping;
   `chunk_size` overrides the fixed cap **for the conformance run only**, so a fixture can drive the chunking

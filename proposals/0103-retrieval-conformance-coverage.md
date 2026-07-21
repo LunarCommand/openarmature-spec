@@ -11,8 +11,9 @@
   MUST honor; a real config for a configurable-cap mapping like TEI, a test-only override for a fixed-cap
   mapping like OpenAI / Cohere), so the fixture below is self-enforcing cross-impl rather than fixture-header
   folklore. Conformance: a new **§8.3 OpenAI over-cap** chunk-and-stitch fixture (043, mirroring 037 Cohere /
-  038 TEI) with a second case pinning the count-vs-token fail-loud boundary, and **`raw`** assertions closing
-  the §8.3 OpenAI `raw` gap (the TEI / Cohere / Jina mappings already assert `raw`).
+  038 TEI) with two further cases (2–3) pinning the count-vs-token fail-loud boundary — case 3 with a
+  multi-input over-token chunk that discriminates a token-sub-chunker — and **`raw`** assertions closing the
+  §8.3 OpenAI `raw` gap (the TEI / Cohere / Jina mappings already assert `raw`).
 - **Related:** 0092 (the general §8 batch-chunking rule this covers for §8.3), 0093 (nullable usage — the
   stitched-usage assertion), 0096 (the `raw` `dict | list` + chunk-stitch `raw = list of per-request responses`
   rule this exercises)
@@ -130,7 +131,8 @@ against — so a fixed-cap chunking fixture is reachable cross-impl without side
 ### 4. Conformance
 
 Fixture 043 (new — §8.3 over-cap chunk-and-stitch with the chunked `raw` list and sum-usage branch [case 1],
-plus the count-vs-token fail-loud boundary [case 2]) plus a single-request `raw` assertion added to fixture 023.
+plus the count-vs-token fail-loud boundary [cases 2–3, case 3 discriminating a token-sub-chunker]) plus a
+single-request `raw` assertion added to fixture 023.
 No fixture is removed or re-keyed; 023 gains an assertion on an already-populated field.
 
 ## Versioning
