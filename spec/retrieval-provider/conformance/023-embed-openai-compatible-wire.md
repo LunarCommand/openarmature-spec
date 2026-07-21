@@ -13,7 +13,8 @@ array-form request to `{base_url}/v1/embeddings` with `Authorization: Bearer <ke
   list").
 - retrieval-provider §4 — `EmbeddingResponse` / `EmbeddingUsage` shapes: `vectors` length == `input`
   length, all inner vectors same dimensionality, `dimensions` field == inner length, `response_id` null
-  when the provider returns none.
+  when the provider returns none; `raw` (0096) is the verbatim provider response object for a
+  single-request call (**not** a one-element list — that list shape is the chunk-and-stitch case, 043).
 - retrieval-provider §8.3 OpenAI-compatible embeddings — *Construction*: API key sent as
   `Authorization: Bearer <key>`; `base_url` origin-only, mapping appends `/v1/embeddings`.
   `/v1/embeddings` request `{model, input: [str], dimensions?, encoding_format?}`; response
@@ -37,6 +38,8 @@ array-form request to `{base_url}/v1/embeddings` with `Authorization: Bearer <ke
 - The response `data` entries assemble to `EmbeddingResponse.vectors` keyed by **input order** (not
   array position) — distinct first components and out-of-order `data` make this load-bearing.
 - `usage.prompt_tokens` → `input_tokens`; `response_id` is null (OpenAI embeddings carry no id).
+- `raw` is the single verbatim response object (the exact `{object, data, model, usage}` body, `data` in
+  its emitted out-of-order form) — not re-sorted, not wrapped in a one-element list.
 
 **What fails:**
 

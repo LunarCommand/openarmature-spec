@@ -955,6 +955,34 @@ not a flavor), asserted by exact-equality, not a count-flavor on `registered_mig
 The sibling `cause` directive (`cause: { exception_type: … }`, used by the migration-failed fixtures) is a
 **separate** directive, not a `carries` flavor; it is out of scope here.
 
+### 5.14 Provider batch-chunking cap (`chunk_size`)
+
+An embedding- or rerank-provider construction block (`tei_embedding_provider`, `openai_embedding_provider`,
+`cohere_embedding_provider`, `tei_rerank_provider`, …) **MAY** carry a `chunk_size: <int>` field. It sets the
+**per-call cap** the mapping uses for chunk-and-stitch in that fixture — retrieval-provider §8 *Batch chunking*
+for embedding **inputs**, or the §8.1 mandatory rerank chunk-and-stitch for rerank **documents**: the largest
+number of items the mapping sends in a single provider request, above which it chunks-and-stitches. An adapter
+**MUST** honor `chunk_size` as that cap for the constructed provider, whatever the mapping.
+
+The field has two roles, depending on whether the mapping's real per-call cap is configurable:
+
+- **A real construction cap** for a mapping whose per-call limit is genuinely configurable — TEI's
+  `max-client-batch-size` (§8.1), which governs both TEI `/embed` (fixture 038, `chunk_size: 2`) and TEI
+  `/rerank` (fixtures 014 / 015 / 016, `chunk_size: 4`). Here `chunk_size` *is* that config.
+- **A test-only cap override** for a mapping whose per-call limit is a **fixed vendor constant** — OpenAI's
+  2048 inputs (§8.3), Cohere's 96 (§8.4). These caps are not construction-configurable in the real mapping;
+  `chunk_size` overrides the fixed cap **for the conformance run only**, so a fixture can drive the chunking
+  path with a small, reviewable input body instead of an impractical over-cap one (fixture 043 uses
+  `chunk_size: 2` in place of §8.3's fixed 2048 — a faithful over-cap body would need 2049 inputs). The real
+  mapping's fixed cap is unchanged: when `chunk_size` is **absent**, the mapping applies its own documented cap
+  (a fixed-cap mapping small enough to exercise with a real over-cap body needs no override — fixture 037
+  drives Cohere's 96 with a real 100-input body).
+
+An adapter that ignores `chunk_size` on a fixed-cap mapping sends the fixture's small input list in one
+under-cap request and fails the fixture's expected chunk count — so honoring the field is required to pass, not
+optional. This directive is what lets a small fixture exercise a large fixed cap; without it, cross-impl
+coverage of a fixed-cap mapping's chunking path would be unreachable.
+
 ## 6. Harness primitives
 
 Adapters MUST provide the following runtime primitives to satisfy directives in §5.
@@ -1280,3 +1308,4 @@ per-directory specialization lives there.
 - New §5.11 *Provider call-retry directives* documents the fixture surface for llm-provider §7.1's adaptive call-level retry: the `call.retry` adaptive fields `per_attempt_override` (the retry override schedule) and `reask: {template}` (a declarative stand-in for the caller's reask builder — the adapter renders the template with the `structured_output_invalid` error's `output_content` / `error_message` and wires it, contributing no text of its own), plus the `expected.wire_requests` per-attempt outbound-request assertion (`sampling`; `appended_messages` — the ordered `assistant`-output + `user`-correction pairs a reask retry appends, accumulating across retries; `messages` — the full outbound list, for the assistant-prefill continuation where a retry modifies the caller's trailing message; each asserted exactly or via `content_contains`), generalizing the single-request `expected_wire_request` provider-fixture convention to the retry-loop case; and an `attributes_absent` span-attribute directive for asserting a span carries no `retry_reason` (attempt 0) by [proposal 0095](../../proposals/0095-adaptive-call-level-retry.md)
 - §5.12 *Provider structured-output error assertion* — the three `carries` assertion keys that did not track the llm-provider §7 error field names are renamed (`raw_response_content` → `output_content`, `failure_description_present` → `error_message_present`, `failure_description_mentions` → `error_message_mentions`), and the section states the key-naming convention **normatively**, scoped to the `structured_output_invalid` block: a key MUST be named for the §7 error field it asserts plus an optional flavor suffix (bare field name = exact-equality, and a **subset match** when the field is a mapping such as `usage`; `_present` = presence not value, `true` present / `false` absent; `_mentions` = the value contains a given substring), the suffix set is **closed** (a new flavor requires a proposal), and a new key MUST derive its name from the field it asserts — so the vocabulary is derivable from §7 rather than enumerated. `carries` blocks asserting other raised errors (state-migration, prompt-management, sessions) are explicitly outside the rule. The remaining keys (`response_schema_present` / `finish_reason` / `usage`) already followed it. Breaking for an adapter reading the old names; the fixture corpus (022 / 023, 063 / 064) moves in the same version. §5.12's fixture-provenance citation is corrected in the same edit (the 0095 reask fixtures are `063 / 064`, not `062–067` — the others raise nothing) by [proposal 0098](../../proposals/0098-conformance-adapter-carries-key-alignment.md)
 - §5.13 *Raised-error field assertion* (`carries`) added — the capability-neutral general rule the `carries` directive lacked (a key MUST name a field the raised error's own capability spec defines it exposes; bare field = exact-equality, subset match for a mapping-valued field; `_present` / `_mentions` the closed flavor set; a key MUST NOT coin a stem with no backing field; an error field name MUST NOT end in a recognized flavor suffix so a key parses to one (field, flavor) pair). §5.12 retrofitted to reference it as the llm-provider `structured_output_invalid` instance, dropping its "governs the `structured_output_invalid` block only" scoping by [proposal 0102](../../proposals/0102-general-carries-error-field-assertion.md)
+- §5.14 *Provider batch-chunking cap* (`chunk_size`) added — documents the `chunk_size` construction directive an adapter MUST honor as an embedding- or rerank-provider's per-call cap for chunk-and-stitch (retrieval-provider §8 batch chunking for embedding inputs, §8.1 rerank chunk-and-stitch for rerank documents): a real construction cap for a configurable-cap mapping (TEI `max-client-batch-size`, governing TEI `/embed` and `/rerank`), a test-only override of a fixed vendor cap (OpenAI 2048, Cohere 96) so a fixture can drive the chunking path with a small body rather than an impractical over-cap one. Moves the affordance from fixture-header prose into the adapter contract, making a fixed-cap chunking fixture reachable cross-impl by [proposal 0103](../../proposals/0103-retrieval-conformance-coverage.md)

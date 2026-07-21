@@ -1,12 +1,18 @@
 # 0103: Retrieval conformance coverage — §8.3 over-cap, `raw`, and the count-vs-token boundary
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-18
+- **Accepted:** 2026-07-20
+- **Ships as:** v0.98.0
 - **Targets:** spec/retrieval-provider/spec.md **§8.3** (a prose clarification: the summed-token ceiling is
-  provider-enforced fail-loud, not a chunking trigger). Conformance: a new **§8.3 OpenAI over-cap**
-  chunk-and-stitch fixture (043, mirroring 037 Cohere / 038 TEI), and **`raw`** assertions closing the §8.3
-  OpenAI `raw` gap (the TEI / Cohere / Jina mappings already assert `raw`).
+  provider-enforced fail-loud, not a chunking trigger). spec/conformance-adapter/spec.md — a new **§5.14**
+  documenting the `chunk_size` embedding-provider construction directive (the per-call input cap an adapter
+  MUST honor; a real config for a configurable-cap mapping like TEI, a test-only override for a fixed-cap
+  mapping like OpenAI / Cohere), so the fixture below is self-enforcing cross-impl rather than fixture-header
+  folklore. Conformance: a new **§8.3 OpenAI over-cap** chunk-and-stitch fixture (043, mirroring 037 Cohere /
+  038 TEI) with a second case pinning the count-vs-token fail-loud boundary, and **`raw`** assertions closing
+  the §8.3 OpenAI `raw` gap (the TEI / Cohere / Jina mappings already assert `raw`).
 - **Related:** 0092 (the general §8 batch-chunking rule this covers for §8.3), 0093 (nullable usage — the
   stitched-usage assertion), 0096 (the `raw` `dict | list` + chunk-stitch `raw = list of per-request responses`
   rule this exercises)
@@ -55,26 +61,53 @@ not: §8's rule triggers only on "a maximum **input count** per request." A call
 inputs but together exceed the token ceiling is not sub-chunked — the provider rejects the over-token request
 and it surfaces as `provider_invalid_request` (§7). OA does not mandate client-side token estimation:
 tokenization is model-specific and would diverge across implementations, and OA forwards intent and lets the
-provider enforce its own vendor-internal limits (the §6 range-validation posture). Making this explicit prevents
-an implementation from adding token-based sub-chunking and diverging.
+provider enforce its own vendor-internal limits (the llm-provider §6 range-validation posture). Making this
+explicit prevents an implementation from adding token-based sub-chunking and diverging.
 
 ## Proposal
 
 ### 1. §8.3 prose — the count-vs-token boundary
 
 Clarify §8.3's cap sentence: the §8 batch-chunking rule is **count-based** and addresses the 2048-**input** cap
-only. The summed-token ceiling is **not** a chunking trigger; a call whose consecutive ≤2048-input chunks
-together exceed the token ceiling MUST NOT be sub-chunked by an estimated token count — the over-token request
-is sent and the provider's rejection surfaces as `provider_invalid_request` (§7), fail-loud, with no partial or
-truncated result. The mapping performs no client-side token estimation.
+only. The summed-token ceiling is **not** a chunking trigger; a chunk whose inputs are within the count cap but
+whose summed tokens exceed the provider's **per-request** token ceiling MUST NOT be sub-chunked by an estimated
+token count — the over-token request is sent and the provider's rejection surfaces as `provider_invalid_request`
+(§7), fail-loud, with no partial or truncated result. The mapping performs no client-side token estimation.
+Fixture 043 cases 2–3 (below) pin this — case 3 with a *multi-input* over-token chunk that discriminates a
+token-sub-chunker.
 
 ### 2. Fixture 043 — §8.3 OpenAI over-cap chunk-and-stitch
 
-Mirror 037 / 038 for the §8.3 OpenAI-compatible `/v1/embeddings` mapping: a caller `input` exceeding 2048
-produces consecutive ≤2048 requests (e.g. 2049 → sizes 2048, 1), each with **every request field but `input`
-identical** (model, `dimensions` when set, extras), vectors **stitched in input order** across the chunk
-boundary, `EmbeddingUsage.input_tokens` **summed** across chunks (per 0093), and `EmbeddingResponse.response_id`
-the **first** chunk's id. The mapping MUST NOT send an over-cap request.
+Mirror 037 / 038 for the §8.3 OpenAI-compatible `/v1/embeddings` mapping: an over-cap caller `input` produces
+consecutive ≤cap requests, each with **every request field but `input` identical** (model; no `dimensions` /
+`encoding_format` / `input_type` when unset), vectors **stitched in input order** across the chunk boundary,
+`EmbeddingUsage.input_tokens` **summed** across chunks (per 0093), and `EmbeddingResponse.response_id` the
+**first** chunk's id (null here — OpenAI carries no id). The mapping MUST NOT send an over-cap request.
+
+**Test-only cap override (conformance-adapter §5.14).** §8.3's OpenAI cap is a **fixed vendor 2048** — not
+construction-configurable like TEI's `max-client-batch-size` (038's real `chunk_size`), so a faithful over-cap
+body would need 2049 inputs, unreviewable in a fixture. The fixture instead supplies `chunk_size` on the
+`openai_embedding_provider` construction block as a test-only override of the fixed cap, exercising the chunking
+path with a small body — 5 inputs → `[2, 2, 1]`. So this override is **self-enforcing cross-impl** rather than
+fixture folklore, it is documented normatively in **conformance-adapter §5.14** (see §4a below): an adapter
+MUST honor `chunk_size` as the provider's per-call cap, so any implementation building its harness against the
+conformance-adapter spec derives the requirement without a side-channel reminder. 037 needs no override
+(Cohere's fixed 96 is testable with a real 100-input body); OpenAI's 2048 is not. Because OpenAI **reports**
+usage (unlike TEI), 043 is also the first §8.3 fixture to exercise §8 step 4's **sum-`input_tokens`** branch on
+this mapping, and its chunked `raw` is a list of response **objects** (distinct from 038's list of bare arrays).
+
+**Cases 2–3 — the count-vs-token fail-loud boundary.** Case 2: 3 inputs, `chunk_size: 2` → count-chunks
+`[2, 1]`; chunk A returns `200`, chunk B's single long input exceeds the summed-token ceiling and returns `400`.
+The `400` maps to `provider_invalid_request` and the whole call fails loud — no partial stitch, no
+`EmbeddingResponse` stored, both chunk requests on the wire before the raise. This closes the mid-chunk-failure
+gap (no prior fixture drove a chunked call in which one chunk fails). But chunk B is a single input — it cannot
+be token-sub-chunked either way — so case 2 alone does **not** discriminate a token-estimating sub-chunker.
+**Case 3** does: 2 inputs, `chunk_size: 2` → a **single** count-chunk of both, each individually under the
+per-request token ceiling but summed over it → `400`. A conforming mapping (count-chunking only, no token
+estimation) sends both as **one** request and fails loud; a token-sub-chunker would split them into two
+under-ceiling requests, get two `200`s, and wrongly succeed — issuing two requests and not raising. So
+`expected_wire_request_count: 1` plus the fail-loud outcome pin the §1 "no client-side token estimation" MUST
+that case 2 cannot.
 
 ### 3. §8.3 OpenAI `raw` assertions (0096 coverage)
 
@@ -85,10 +118,20 @@ Close the OpenAI `raw` gap (TEI / Cohere / Jina already assert `raw`), pinning b
 - **Single-request `raw` is the bare response.** Augment one existing single-request OpenAI fixture (023–027) to
   assert `raw` is that one verbatim response object, not a one-element list.
 
+### 4a. conformance-adapter §5.14 — the `chunk_size` directive
+
+Document `chunk_size` on an embedding-provider construction block as a normative conformance-adapter directive:
+the per-call input cap the mapping uses for §8 batch chunking, which an adapter **MUST** honor. It is a real
+construction cap for a configurable-cap mapping (TEI's `max-client-batch-size`) and a **test-only override** for
+a fixed-cap mapping (OpenAI 2048, Cohere 96), letting a fixture drive a fixed cap's chunking path with a small
+body. This moves the affordance from fixture-header prose into the adapter contract every implementation builds
+against — so a fixed-cap chunking fixture is reachable cross-impl without side-channel coordination.
+
 ### 4. Conformance
 
-Fixture 043 (new) plus the `raw` assertions on the augmented fixtures. No fixture is removed or re-keyed; the
-augmented fixtures gain assertions on an already-populated field.
+Fixture 043 (new — §8.3 over-cap chunk-and-stitch with the chunked `raw` list and sum-usage branch [case 1],
+plus the count-vs-token fail-loud boundary [case 2]) plus a single-request `raw` assertion added to fixture 023.
+No fixture is removed or re-keyed; 023 gains an assertion on an already-populated field.
 
 ## Versioning
 
