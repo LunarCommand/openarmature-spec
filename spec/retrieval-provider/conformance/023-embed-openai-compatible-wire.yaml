@@ -135,8 +135,26 @@ cases:
           response_id: null
           usage:
             input_tokens: 6
+          # Single-request `raw` (§4 / 0096): the ONE verbatim provider
+          # response object — the exact {object, data, model, usage} body the
+          # mock returned, `data` in its emitted (out-of-order) form, NOT
+          # re-sorted and NOT wrapped in a one-element list (that list shape
+          # is the chunk-and-stitch case — 043). Closes the §8.3 OpenAI `raw`
+          # gap for the single-request path (TEI 017 / Cohere / Jina already
+          # assert `raw`; the OpenAI mapping did not).
+          raw:
+            object: list
+            model: text-embedding-test
+            data:
+              - {object: embedding, index: 2, embedding: [0.21, 0.22, 0.23, 0.24]}
+              - {object: embedding, index: 0, embedding: [0.01, 0.02, 0.03, 0.04]}
+              - {object: embedding, index: 1, embedding: [0.11, 0.12, 0.13, 0.14]}
+            usage:
+              prompt_tokens: 6
+              total_tokens: 6
       invariants:
         wire_request_is_array_form: true
+        raw_is_single_verbatim_response_object_not_list: true
         wire_request_carries_model: true
         authorization_bearer_header_present: true
         vectors_length_matches_input_length: true

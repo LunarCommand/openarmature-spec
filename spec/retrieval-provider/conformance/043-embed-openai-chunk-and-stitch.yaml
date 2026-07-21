@@ -1,0 +1,397 @@
+# retrieval-provider §8 Batch chunking — OpenAI-compatible /v1/embeddings
+# MANDATORY chunk-and-stitch (§8.3, 2048-input cap). The FIRST §8.3 OpenAI
+# embedding chunk-and-stitch fixture (embedding chunk-and-stitch is also
+# exercised by Cohere 037, TEI 038, and Cohere 042), closing the
+# §8.3 OpenAI coverage hole: before this, an implementation could ship the
+# §8.3 mapping sending an over-cap `input` list un-chunked and still pass
+# the whole retrieval suite (037 covers Cohere, 038 covers TEI — neither
+# drives the OpenAI mapping's cap).
+#
+# Verifies the §8 *Batch chunking* rule on the §8.3 OpenAI-compatible
+# /v1/embeddings mapping: when a caller's input list exceeds the provider's
+# per-call input cap, the mapping MUST
+#   1. split the inputs into CONSECUTIVE <=cap slices, preserving order,
+#   2. issue ONE /v1/embeddings request per chunk with IDENTICAL per-call
+#      params,
+#   3. stitch — concatenate the per-chunk vectors IN INPUT ORDER so §4's
+#      one-vector-per-input and input-order invariants hold across the whole
+#      call, and
+#   4. sum the per-chunk EmbeddingUsage.input_tokens;
+#      EmbeddingResponse.response_id is the FIRST chunk's response id.
+# A mapping MUST NOT silently send an over-cap request.
+#
+# CAP OVERRIDE (test-only). §8.3's OpenAI cap is a FIXED vendor limit of
+# 2048 inputs — NOT construction-configurable, unlike TEI's genuinely
+# configurable `max-client-batch-size` (038's real `chunk_size`). A faithful
+# over-cap body would need 2049 inputs, which is not reviewable in a fixture.
+# So this fixture supplies `chunk_size: 2` on the openai_embedding_provider
+# construction block as a TEST-ONLY override of the fixed cap — the
+# conformance-adapter `chunk_size` directive (conformance-adapter §5.14),
+# which an adapter MUST honor as the provider's per-call input cap. The real
+# §8.3 mapping's cap stays 2048; the override exists solely to exercise the
+# chunking path with a small body. (037 did not need this — Cohere's fixed 96
+# is small enough to test with a real 100-input body; OpenAI's 2048 is not.)
+#
+# WHAT 043 ADDS over 037 / 038. OpenAI /v1/embeddings REPORTS usage
+# (`usage: {prompt_tokens, total_tokens}`), so this is the FIRST §8.3 fixture
+# to exercise §8 step 4's SUM-input_tokens branch (037 and 042 sum Cohere's
+# billed_units; 038 is the usage=null branch): per-chunk prompt_tokens
+# 10 + 20 + 5 sum to input_tokens 35. And the
+# chunk-and-stitch `raw` here is a LIST of per-chunk response OBJECTS (the
+# {object, data, model, usage} dicts) — distinct from 038's list of bare
+# vector arrays — exercising the object-shaped chunked `raw` (§8 raw stitch
+# clause / §4). OpenAI embeddings carry no top-level id, so the §8 "first
+# chunk's id" is null (like TEI, unlike Cohere).
+#
+# THREE CASES. Case 1 is the happy-path over-cap chunk-and-stitch (above).
+# Cases 2-3 pin the §8.3 count-vs-token boundary: the §8 rule chunks by input
+# COUNT only, so a chunk whose inputs are within the count cap but whose
+# summed tokens exceed the provider's per-request token ceiling is sent as-is
+# (NOT sub-chunked by an estimated token count) and its 400 fails the WHOLE
+# call loud as `provider_invalid_request` (§7), with no partial stitch. Case 2
+# uses a single-input over-token chunk (also closing the mid-chunk-failure
+# gap — chunk A succeeds, chunk B fails, no partial stitch). Case 3 is the
+# DISCRIMINATING case: a MULTI-input over-token chunk, which a conforming
+# mapping sends whole (1 request, fail loud) but a token-sub-chunker would
+# split into two under-ceiling requests and wrongly succeed — so case 3 is
+# what actually pins the no-token-estimation MUST that case 2 alone cannot.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 015's header (the chunk-and-stitch
+# path — expected_wire_request as a LIST of request bodies one per chunk in
+# arrival order, expected_wire_request_count pinning the request count,
+# mock_* entries dispatched one per request in arrival order) and 023's
+# header (mapping: openai, openai_embedding_provider construction block, the
+# OpenAI /v1/embeddings request `{"model", "input": [str]}` + `{object,
+# data: [{object, index, embedding}], model, usage}` response shapes,
+# Authorization: Bearer header, expected_wire_request_absent_keys). This
+# fixture adds the openai_embedding_provider `chunk_size` TEST-ONLY cap
+# override documented above. The harness MUST capture every outbound
+# /v1/embeddings request, assert the count matches the list length, and
+# compare each captured body key-by-key against the corresponding list
+# entry; mock_embedding entries are dispatched one per request in arrival
+# order, each the OpenAI response object for that chunk.
+
+mapping: openai
+
+openai_embedding_provider:
+  base_url: "https://api.openai.invalid"
+  model: text-embedding-test
+  api_key: "test-openai-key"
+  # TEST-ONLY override of §8.3's fixed 2048-input cap (see header). Exists
+  # solely to exercise the chunking path without a 2049-input body; the real
+  # §8.3 mapping is not construction-configurable.
+  chunk_size: 2
+
+cases:
+  - name: five_inputs_three_chunks_summed_usage_stitched_in_input_order
+    description: |
+      5 inputs, test-override chunk_size 2 (standing in for §8.3's fixed
+      2048 cap). The mapping issues exactly 3 /v1/embeddings requests with
+      `input` sizes [2, 2, 1] over the consecutive slices input[0:2],
+      input[2:4], input[4:5], with IDENTICAL per-call params on each — here
+      {"model": "text-embedding-test", "input": [...]} with NO dimensions,
+      NO encoding_format, NO input_type (no config supplied; §8.3's OpenAI
+      wire has no query/document field). Each chunk's mocked OpenAI response
+      is the {object, data, model, usage} shape, with `data` emitted OUT of
+      within-chunk order (index 1 before 0) so an adapter trusting array
+      position instead of the per-entry index / input order produces the
+      wrong mapping at a chunk boundary. Each embedding's first component ==
+      the ABSOLUTE input index / 10 (0.0 .. 0.4). The adapter MUST stitch:
+      concatenate the per-chunk vectors IN INPUT ORDER (5 vectors, vector i
+      == the embedding for input i across the chunk boundaries).
+      EmbeddingResponse.model is the bound id. OpenAI /v1/embeddings REPORTS
+      usage, so §8 step 4 SUMS the per-chunk prompt_tokens (10 + 20 + 5) into
+      EmbeddingUsage.input_tokens 35 — the sum branch, on the OpenAI mapping.
+      OpenAI embeddings carry no top-level id, so response_id is null (the §8
+      "first chunk's id" over a stream of no-ids). raw is the LIST of the 3
+      per-chunk verbatim response OBJECTS, in request order. A mapping that
+      sent all 5 inputs in one over-cap request, split into the wrong sizes,
+      mis-ordered the stitch, summed usage wrong, invented a response_id, or
+      leaked a dimensions / encoding_format param fails.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["e0", "e1", "e2", "e3", "e4"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    # One /v1/embeddings body per chunk, in arrival order. `input` sizes
+    # 2, 2, 1; identical per-call params on each (model present; dimensions,
+    # encoding_format, input_type absent on every chunk).
+    expected_wire_request:
+      - model: text-embedding-test
+        input: ["e0", "e1"]
+      - model: text-embedding-test
+        input: ["e2", "e3"]
+      - model: text-embedding-test
+        input: ["e4"]
+    expected_wire_request_count: 3
+    expected_wire_request_absent_keys: [dimensions, encoding_format, input_type, task]
+    expected_wire_headers:
+      Authorization: "Bearer test-openai-key"
+    # One OpenAI response object per chunk, in arrival order. `data` emitted
+    # out of within-chunk order (index 1 before 0) to make the input-order
+    # mapping load-bearing; first embedding component == absolute input
+    # index / 10. Each chunk reports usage.prompt_tokens so the stitch sums;
+    # the per-chunk values (10 / 20 / 5) are deliberately distinct from the
+    # chunk sizes (2 / 2 / 1) and their sum (35) from the input count (5), so
+    # summing is genuinely load-bearing — an impl reporting a chunk's or the
+    # input count instead of the true sum fails.
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 1, embedding: [0.1, 0.5]}
+            - {object: embedding, index: 0, embedding: [0.0, 0.5]}
+          usage:
+            prompt_tokens: 10
+            total_tokens: 10
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 1, embedding: [0.3, 0.5]}
+            - {object: embedding, index: 0, embedding: [0.2, 0.5]}
+          usage:
+            prompt_tokens: 20
+            total_tokens: 20
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.4, 0.5]}
+          usage:
+            prompt_tokens: 5
+            total_tokens: 5
+    expected:
+      final_state:
+        embedding_response:
+          # Concrete stitched vectors, full 5-element list IN INPUT ORDER:
+          # vector i == the embedding the mock returns for input i (chunk-A
+          # [0:2], chunk-B [2:4], chunk-C [4:5] concatenated, each chunk's
+          # data re-ordered by per-entry index). Pinning the data — not only
+          # the named order invariant — makes a permuting or boundary-swapped
+          # stitch fail on the assertion itself.
+          vectors:
+            - [0.0, 0.5]
+            - [0.1, 0.5]
+            - [0.2, 0.5]
+            - [0.3, 0.5]
+            - [0.4, 0.5]
+          vectors_length: 5
+          dimensions: 2
+          inner_vector_lengths_all_equal: 2
+          model: text-embedding-test
+          # OpenAI embeddings carry no top-level id; the §8 "first chunk's
+          # id" over a stream of no-ids is null (like TEI 038, unlike Cohere
+          # 037 whose /v2/embed returns a top-level id).
+          response_id: null
+          # OpenAI /v1/embeddings REPORTS usage, so §8 step 4 SUMS the
+          # per-chunk prompt_tokens: 10 + 20 + 5 = 35 (values chosen distinct
+          # from the chunk sizes and the input count so the sum is load-
+          # bearing). The sum branch on the OpenAI mapping (037 / 042 sum
+          # Cohere billed_units; 038 is usage=null).
+          usage:
+            input_tokens: 35
+          # The chunk-and-stitch `raw` (§8 batch-chunking `raw` clause / §4):
+          # the LIST of the 3 per-chunk verbatim responses, in request order
+          # — one entry per /v1/embeddings request, each entry that chunk's
+          # full {object, data, model, usage} OBJECT (data in the verbatim
+          # emitted order, NOT re-sorted). One level deeper than a
+          # single-request `raw` (023): NOT flattened into `vectors`, NOT
+          # first-chunk-only. Distinct from 038's list-of-bare-arrays — here
+          # the entries are response OBJECTS (object-shaped chunked raw).
+          raw:
+            - object: list
+              model: text-embedding-test
+              data:
+                - {object: embedding, index: 1, embedding: [0.1, 0.5]}
+                - {object: embedding, index: 0, embedding: [0.0, 0.5]}
+              usage:
+                prompt_tokens: 10
+                total_tokens: 10
+            - object: list
+              model: text-embedding-test
+              data:
+                - {object: embedding, index: 1, embedding: [0.3, 0.5]}
+                - {object: embedding, index: 0, embedding: [0.2, 0.5]}
+              usage:
+                prompt_tokens: 20
+                total_tokens: 20
+            - object: list
+              model: text-embedding-test
+              data:
+                - {object: embedding, index: 0, embedding: [0.4, 0.5]}
+              usage:
+                prompt_tokens: 5
+                total_tokens: 5
+      invariants:
+        exactly_three_embed_requests_issued: true
+        chunk_inputs_sizes_2_2_1_consecutive_slices: true
+        identical_per_call_params_across_chunks: true
+        chunk_requests_omit_dimensions_and_encoding_format: true
+        over_cap_request_chunked_not_sent_whole: true
+        vectors_concatenated_in_input_order: true
+        vectors_length_matches_input_length: true
+        all_vectors_same_dimensionality: true
+        dimensions_field_matches_inner_vector_length: true
+        model_is_bound_id: true
+        response_id_null_openai_surfaces_none: true
+        input_tokens_summed_across_chunks: true
+        raw_is_list_of_per_chunk_response_objects: true
+
+  - name: over_token_chunk_fails_loud_no_partial_stitch
+    description: |
+      The count-vs-token boundary (§8.3): the §8 rule chunks by input COUNT
+      only, and the summed-token ceiling is NOT a chunking trigger. 3 inputs,
+      test-override chunk_size 2, so the mapping chunks by count into [2, 1]
+      — chunk A [e0, e1] and chunk B [one very long input]. Chunk A returns
+      200. Chunk B's single input exceeds OpenAI's per-request token ceiling,
+      so OpenAI returns 400 — and the mapping does NOT sub-chunk chunk B by
+      an estimated token count (it is already a single input; there is
+      nothing to split, and OA performs no client-side token estimation).
+      The 400 maps to `provider_invalid_request` (§7) and the WHOLE call
+      fails loud: no partial stitch of chunk A's vectors, no
+      EmbeddingResponse stored. This pins the §8.3 clarification that an
+      over-token request is sent and fails loud rather than being
+      token-sub-chunked, and closes the "mid-chunk failure" coverage gap (no
+      prior fixture drove a chunk-and-stitch call in which one chunk fails).
+      An implementation that sub-chunked chunk B by tokens (issuing a
+      different request count), that partial-stitched chunk A and returned a
+      short result, or that swallowed the 400 fails.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input:
+            - "e0"
+            - "e1"
+            - "this single input is very long and on its own exceeds the provider per-request summed-token ceiling"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    # Count-based chunking still happens: 2 requests, `input` sizes [2, 1]
+    # (chunk A [e0, e1], chunk B the one long input) — chunk B is NOT
+    # sub-chunked by tokens (a single input cannot be, and OA does not
+    # estimate tokens). Both requests reach the wire before the call raises.
+    expected_wire_request:
+      - model: text-embedding-test
+        input: ["e0", "e1"]
+      - model: text-embedding-test
+        input:
+          - "this single input is very long and on its own exceeds the provider per-request summed-token ceiling"
+    expected_wire_request_count: 2
+    expected_wire_request_absent_keys: [dimensions, encoding_format, input_type, task]
+    # Chunk A succeeds; chunk B 400s on the token ceiling. Dispatched one per
+    # request in arrival order.
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.0, 0.5]}
+            - {object: embedding, index: 1, embedding: [0.1, 0.5]}
+          usage:
+            prompt_tokens: 2
+            total_tokens: 2
+      - status: 400
+        body:
+          error:
+            message: "This model's maximum context length is exceeded: the input exceeds the per-request token limit."
+            type: invalid_request_error
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        chunked_by_count_into_sizes_2_1: true
+        over_token_chunk_not_sub_chunked_by_tokens: true
+        both_chunk_requests_reached_wire_before_raise: true
+        over_token_400_maps_to_provider_invalid_request: true
+        whole_call_fails_loud_no_partial_stitch: true
+        no_embedding_response_stored_on_failure: true
+        exception_raised_out_of_embed_call: true
+
+  - name: multi_input_over_token_chunk_sent_whole_not_token_sub_chunked
+    description: |
+      The DISCRIMINATING count-vs-token case: an over-token chunk with
+      MULTIPLE inputs. 2 inputs, chunk_size 2, so count-chunking produces a
+      SINGLE chunk of both inputs (2 <= the cap; no over-cap chunking). Each
+      input is individually under the per-request token ceiling, but their
+      SUMMED tokens exceed it, so OpenAI returns 400 on that one request. A
+      conforming §8.3 mapping — which chunks by input COUNT only and performs
+      NO client-side token estimation — sends both inputs as ONE request
+      (count 1), gets the 400, and fails loud `provider_invalid_request`; no
+      EmbeddingResponse is stored. This case DISCRIMINATES a non-conforming
+      token-sub-chunker that case 2 could not: an impl that estimates tokens
+      and sub-chunks a multi-input over-token chunk would split these 2
+      inputs into TWO single-input requests, each under the ceiling, get two
+      200s, and return a stitched result — issuing 2 requests (not 1) and
+      NOT raising. So the single-request count and the fail-loud outcome
+      together fail any token-estimating sub-chunker. (Case 2's over-token
+      chunk was a single input, un-splittable, so it could not tell the two
+      apart; this case can.)
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input:
+            - "first long input, individually under the per-request token ceiling"
+            - "second long input, individually under the ceiling but over it when summed with the first"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    # Count-chunking sends BOTH inputs as ONE request (2 <= chunk_size 2): a
+    # conforming mapping does NOT token-sub-chunk. Exactly one request, both
+    # inputs in it. A token-sub-chunker would issue TWO single-input requests
+    # here and fail this count-1 assertion.
+    expected_wire_request:
+      - model: text-embedding-test
+        input:
+          - "first long input, individually under the per-request token ceiling"
+          - "second long input, individually under the ceiling but over it when summed with the first"
+    expected_wire_request_count: 1
+    expected_wire_request_absent_keys: [dimensions, encoding_format, input_type, task]
+    # The single 2-input request exceeds the summed-token ceiling -> 400.
+    mock_embedding:
+      - status: 400
+        body:
+          error:
+            message: "This model's maximum context length is exceeded: the combined inputs exceed the per-request token limit."
+            type: invalid_request_error
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        multi_input_chunk_sent_as_one_request_not_token_sub_chunked: true
+        exactly_one_request_issued: true
+        over_token_400_maps_to_provider_invalid_request: true
+        fails_loud_no_embedding_response_stored: true
+        exception_raised_out_of_embed_call: true
+        token_sub_chunker_would_issue_two_requests_and_fail: true

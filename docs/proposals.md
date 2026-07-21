@@ -9,7 +9,7 @@ lifecycle and the proposal template.
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
 | [0105](proposals/0105-extras-managed-field-collision-rule.md) | Extras-key vs mapping-managed wire-field collision rule | llm-provider | Draft    | —               | —          |
 | [0104](proposals/0104-retrieval-id-error-clarifications.md) | Retrieval id/error clarifications — empty-string `response_id`, Jina bare-400 | retrieval-provider | Draft    | —               | —          |
-| [0103](proposals/0103-retrieval-conformance-coverage.md) | Retrieval conformance coverage — §8.3 over-cap, `raw`, count-vs-token boundary | retrieval-provider | Draft    | —               | —          |
+| [0103](proposals/0103-retrieval-conformance-coverage.md) | Retrieval conformance coverage — §8.3 over-cap, `raw`, count-vs-token boundary | retrieval-provider | Accepted | Pending         | —          |
 | [0102](proposals/0102-general-carries-error-field-assertion.md) | Generalize the `carries` error-field assertion; ratify migration & render error fields | conformance-adapter | Accepted | Pending         | —          |
 | [0101](proposals/0101-malformed-usage-counter-llm-observability.md) | A malformed usage counter is *not reported* — llm-provider + observability | llm-provider | Accepted | Pending         | —          |
 | [0100](proposals/0100-malformed-ancillary-figures-not-reported.md) | A malformed ancillary figure is *not reported*, never a malformed response (retrieval-provider) | retrieval-provider | Accepted | Pending         | —          |
@@ -25,7 +25,7 @@ lifecycle and the proposal template.
 | [0090](proposals/0090-retrieval-provider-cohere-rerank-wire.md) | Cohere rerank wire mapping | retrieval-provider | Accepted | Shipped (0.16.0)| —          |
 | [0089](proposals/0089-embedding-rerank-typed-event-output.md) | Embedding / rerank typed-event output | graph-engine | Accepted | Shipped (0.16.0)| —          |
 | [0088](proposals/0088-observability-langfuse-parallel-branches-parity.md) | Langfuse parallel-branches mapping parity | observability | Accepted | Pending         | —          |
-| [0087](proposals/0087-conformance-adapter-directive-execution-order.md) | Within-node directive execution order | conformance-adapter | Accepted | Pending         | —          |
+| [0087](proposals/0087-conformance-adapter-directive-execution-order.md) | Within-node directive execution order | conformance-adapter | Accepted | Shipped (0.17.0)| —          |
 | [0086](proposals/0086-prompt-default-cache-ttl.md) | Service-wide default cache-TTL | prompt-management | Accepted | Pending         | —          |
 | [0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) | Nested fan-out checkpoint lineage | pipeline-utilities | Accepted | Partial (0.16.0)| —          |
 | [0084](proposals/0084-nested-fan-out-span-lineage.md) | Nested-fan-out span lineage chain | observability | Accepted | Pending         | —          |
