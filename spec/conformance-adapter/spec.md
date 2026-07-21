@@ -920,7 +920,7 @@ with the flavor suffixes (`_present` / `_mentions`) and the mapping-valued subse
 - **`usage: { ... }`** — the error's token `usage`: the llm-provider §6 usage record (the baseline counters
   `prompt_tokens` / `completion_tokens` / `total_tokens`, plus any optional §6 fields such as the cache
   counters `cached_tokens` / `cache_creation_tokens`), mandated on `structured_output_invalid` by 0082.
-  Asserted as a **subset match** per the convention above — a fixture naming only the baseline counters
+  Asserted as a **subset match** per §5.13 — a fixture naming only the baseline counters
   does not fail an implementation that also reports the optional ones.
 
 ### 5.13 Raised-error field assertion (`carries`)
