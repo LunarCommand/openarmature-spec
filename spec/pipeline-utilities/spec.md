@@ -1292,9 +1292,12 @@ class-independent intermediate the migration system requires.)
 New canonical runtime category: `checkpoint_state_migration_missing` — raised on
 `invoke(resume_invocation=X)` when the loaded record's `schema_version` does not match the
 current state schema's `schema_version` AND no chain of registered migrations connects the
-two. Non-transient. The error MUST carry at least the record's `schema_version`, the
-current schema's `schema_version`, and a description of the registered migration set (in a
-form appropriate to the host language) so the user can see what migrations would need to be
+two. Non-transient. The error MUST carry: **`from_version`** (the record's saved
+`schema_version`) and **`to_version`** (the current schema's `schema_version`); the
+**`registered_migrations_count`** (a non-negative integer — the number of registered
+migrations, so the user can see the size of the set that failed to bridge the gap); and a
+**`registry_description`** (a string rendering of the registered migration set, in a form
+appropriate to the host language) so the user can see what migrations would need to be
 added.
 
 New canonical runtime category: `checkpoint_state_migration_failed` — raised when a
@@ -1318,9 +1321,12 @@ from picking a unique chain. Two cases trigger this category:
   time when feasible by scanning the registered migration graph; load-time detection
   is acceptable when compile-time analysis is not.
 
-Non-transient. The error MUST identify the offending `(from_version, to_version)` pair
-(for the registration case) or the source / target version pair and a description of the
-conflicting paths (for the resolution case), in a form appropriate to the host language.
+Non-transient. The error MUST carry the offending `(from_version, to_version)` pair — the
+duplicate-registered pair for the registration case, the source / target version pair for
+the resolution case. Both are nullable (`from_version` / `to_version` may be `null` when a
+detection site does not have them), and together they are the ambiguous error's exposed
+surface: the pair identifies where the ambiguity is, which is the actionable diagnostic
+(the duplicate registration to remove, or the endpoints whose chain is ambiguous).
 
 The four migration-related categories — `checkpoint_record_invalid`,
 `checkpoint_state_migration_missing`, `checkpoint_state_migration_failed`, and
@@ -1991,3 +1997,4 @@ sources is the same caveat §7 documents for conditional middleware.)
 - §11 *Parallel branches* extended — §11.1.1 *Branch spec* gains an inline-callable branch form (`call`, an async function over the parent state returning a parent-shaped partial update, with no subgraph / state schema / `inputs` / `outputs`) as an alternative to the compiled-`subgraph` form (exactly one required, mixing allowed, `parallel_branches_invalid_branch_spec` compile error otherwise); §11.4 defines the callable branch's contribution (the returned partial update, merged via the parent reducer with no projection); new §11.10 *Conditional branches* adds an optional `when` predicate skipping a branch at dispatch (no work / contribution / events / span; all-skipped is a valid no-op distinct from `parallel_branches_no_branches`); §11.7 branch middleware (per-leg failure-isolation) and §11.5 cancellation apply to callable branches unchanged. New fixtures 073–075. Additive; existing subgraph branches unchanged by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
 - §9.3 *Per-instance fan-in* and §11.4 *Per-branch projection (out)* gained a pointer to the graph-engine §2 `projection_reducer_round_trip` compile-time warning: a field carried in via `inputs` and back out via `extra_outputs` (fan-out) or `outputs` (a `subgraph` branch) through the same subgraph field round-trips through the parent's reducer, doubling under a non-round-trip-idempotent reducer. No behavioral change — the warning is defined in graph-engine §2 by [proposal 0094](../../proposals/0094-subgraph-projection-declared-boundary.md)
 - §10.11 *Per-instance fan-out resume* gains an optional `enclosing_fan_out_lineage` field on each `fan_out_progress` entry (the outermost→innermost chain of enclosing fan-out instances, each `{namespace, fan_out_node_name, fan_out_index}`), so a fan-out nested inside an outer fan-out instance resumes correctly — entries keyed by `(namespace, fan_out_node_name, enclosing_fan_out_lineage)`, extending §10.11.1 exactly-once to nested fan-outs — plus a *No mis-skip across enclosing instances* invariant (on resume the engine MUST re-run rather than apply a non-matching or legacy-unlineaged entry's `completed` skips). The count-drift check re-resolves per lineage-qualified entry; §10.2's per-fan-out mapping framing, the §10.11 `namespace`-uniqueness claim, and the §10.7 skip decision are reconciled to the same-node multiplicity. New fixture `076`; the record-format addition is backward-compatible (flat records carry an empty lineage) by [proposal 0085](../../proposals/0085-nested-fan-out-checkpoint-lineage.md)
+- §10.10 migration-error field surfaces named: `checkpoint_state_migration_missing` carries `from_version` / `to_version` / `registered_migrations_count` (a non-negative integer) / `registry_description` (a string), replacing the prior unnamed "description of the registered migration set (in a form appropriate to the host language)"; `checkpoint_state_migration_chain_ambiguous` carries the nullable `(from_version, to_version)` pair as its whole exposed surface, dropping the un-nameable "description of the conflicting paths" prose. Ratifies the field surface the reference implementation already exposes by [proposal 0102](../../proposals/0102-general-carries-error-field-assertion.md)

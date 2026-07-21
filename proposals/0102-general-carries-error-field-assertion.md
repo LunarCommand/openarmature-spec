@@ -1,8 +1,10 @@
 # 0102: Generalize the `carries` error-field assertion; ratify the migration & render error field surfaces
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-18
+- **Accepted:** 2026-07-20
+- **Ships as:** v0.97.0
 - **Targets:** spec/conformance-adapter/spec.md — a new **general** section defining the capability-neutral
   `carries` convention (a key names a field the *raised error* exposes; bare = exact-equality, subset match
   for a mapping-valued field; `_present` / `_mentions`; the flavor set closed; **a key MUST NOT coin a stem
