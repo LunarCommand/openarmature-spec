@@ -304,10 +304,14 @@ response-side clause.
 
 ### Cross-cutting — `model` / `response_model` response-vs-event consistency
 
-- **A provider that returns a malformed or absent model identifier is
-  handled inconsistently between a response and its own typed event.**
-  [candidate-for-new-proposal] — surfaced drafting 0100 / 0101, which
-  scoped it out to keep the ancillary-figure rule clean.
+- **A provider that returns a malformed, absent, or empty-string model
+  identifier is handled inconsistently between a response and its own typed
+  event.** [candidate-for-new-proposal] — surfaced drafting 0100 / 0101, which
+  scoped it out to keep the ancillary-figure rule clean; 0104 added the
+  **empty-string** dimension by pinning that an empty-string `response_id` is
+  absent (not present-as-`""`) — the parallel empty-string question for the
+  non-nullable `model` / `response_model` is left to this same pass (does the
+  bound-id fallback treat `""` as absent, the way `response_id` now does?).
   `EmbeddingResponse.model` / `RerankResponse.model` (retrieval §4 / §6) are
   **non-nullable**, with an established fallback to the bound model
   identifier where the provider returns none (§8.4). But the typed events

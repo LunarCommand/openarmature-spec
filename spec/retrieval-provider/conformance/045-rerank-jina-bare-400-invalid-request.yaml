@@ -1,0 +1,82 @@
+# retrieval-provider §8.2 Jina *Errors* — a bare HTTP 400 maps to
+# provider_invalid_request, NOT the transient provider_unavailable.
+#
+# 0104 reconciles §8.2's error enumeration: it named only 422 (Jina's
+# over-length / validation status), so a bare 400 previously fell through to
+# the catch-all provider_unavailable — where §8.3 / §8.4 map a bare 400 to
+# provider_invalid_request and §8.1 TEI routes its malformed statuses
+# (413 / 422) to that same category, all treating a malformed request as
+# provider_invalid_request per the general §7 semantics. §8.2 was the outlier.
+# That was wrong on two counts: it diverged from every other mapping's
+# treatment of a malformed request, and provider_unavailable is a TRANSIENT
+# category (a caller may retry) while a 400 is a malformed request that will
+# NOT succeed on retry —
+# a request error misclassified as transient invites a pointless retry loop.
+#
+# This fixture pins the corrected mapping: a /v1/rerank call where Jina
+# returns HTTP 400 MUST classify as provider_invalid_request and raise out of
+# the rerank node — NOT provider_unavailable.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 018's / 020's headers (mapping: jina,
+# jina_rerank_provider / jina_embedding_provider construction blocks, the Jina
+# /v1/rerank request shape + Authorization: Bearer header) and 016's / 022's
+# headers (expected_error: {category, raised_from} error-assertion shape;
+# non-2xx mock_rerank entries under `mapping: jina`).
+
+mapping: jina
+
+jina_rerank_provider:
+  base_url: "https://api.jina.invalid"
+  model: jina-reranker-test
+  api_key: "test-jina-key"
+
+cases:
+  - name: bare_400_maps_to_provider_invalid_request_not_unavailable
+    description: |
+      A /v1/rerank call where Jina returns HTTP 400 (a bare malformed-request
+      status, distinct from the 422 over-length status 021 covers). The
+      adapter MUST classify it as provider_invalid_request (§8.2 *Errors*, as
+      reconciled by 0104: 400 -> provider_invalid_request) and raise out of the
+      rerank node — NOT provider_unavailable (which is transient and would
+      invite a pointless retry of a request that will not succeed). The wire
+      request still carries the Authorization: Bearer header. An adapter that
+      routes a bare 400 to provider_unavailable (the pre-0104 catch-all
+      behavior) fails.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+      return_documents: false
+      truncation: false
+    expected_wire_request_absent_keys: [top_n]
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 400
+        body:
+          detail: "Invalid request: the request body is malformed."
+    expected_error:
+      category: provider_invalid_request
+      raised_from: rerank_node
+    expected:
+      invariants:
+        exception_raised_out_of_rerank_call: true
+        bare_400_maps_to_provider_invalid_request: true
+        bare_400_not_misclassified_as_unavailable: true
+        authorization_bearer_header_present: true

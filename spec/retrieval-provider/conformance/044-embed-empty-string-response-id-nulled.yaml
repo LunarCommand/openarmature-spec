@@ -1,0 +1,142 @@
+# retrieval-provider §4 — an EMPTY-STRING response identifier is not a
+# present one; it is null. The sibling of 040's malformed-id case (a NUMBER
+# where a string belongs) for the EMPTY-STRING edge: §4 / §6 say response_id
+# is "the provider-returned response identifier when present; null otherwise,"
+# and 0104 pins that an empty string `""` is NOT present — it is not a usable
+# identifier (correlates nothing, matches no provider record), so it is
+# absent, not surfaced as present-as-`""`.
+#
+# This deliberately DIVERGES from 0097's empty-`document` handling: 0097 keeps
+# an empty-string `document` echo PRESENT (`""`), because `document` is
+# CONTENT — an empty echo is a faithful reproduction of what the provider
+# returned. `response_id` is an IDENTIFIER — an empty id carries no such
+# signal; it is simply the absence of an id. Content preserves the empty
+# value; an identifier collapses it to absent. The rule is stated at the level
+# of what the field is FOR.
+#
+# The rule binds the TYPED EVENT too (graph-engine §6): the adapter MUST NOT
+# surface `""` on EmbeddingEvent.response_id either — the observability spans
+# and Langfuse observations render from the event, so an empty id emitted
+# there would reach the trace surfaces regardless of the response.
+#
+# 2 inputs ["alpha", "beta"], default config, ONE POST to /v2/embed. The
+# mocked Cohere response carries SOUND embeddings.float and a sound
+# meta.billed_units.input_tokens (6), but the top-level id is the EMPTY STRING
+# "". Per 0104 the id is not present: EmbeddingResponse.response_id is null.
+# The adapter MUST NOT surface "" on response_id, MUST NOT raise, and MUST
+# leave the verbatim "" on `raw`. usage is unaffected — the empty id is judged
+# independently of the sound token count. EmbeddingEvent.response_id MUST be
+# null to match the response.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 001's header (calls_embed /
+# mock_embedding), 032's header (mapping: cohere, cohere_embedding_provider,
+# the Cohere /v2/embed request + keyed-by-type response shapes), and 040's
+# header (typed_observers: [{name, kind: typed_event_collector}] +
+# expected.observers.<name>.contains_event asserting an EmbeddingEvent's
+# fields). This fixture reuses that vocabulary for the empty-string-id edge.
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: empty_string_response_id_nulled
+    description: |
+      The mocked Cohere /v2/embed response carries sound embeddings.float and
+      a sound meta.billed_units.input_tokens (6), but the top-level id is the
+      EMPTY STRING "". Per 0104 an empty-string id is not a present identifier
+      (§4 — "when present; null otherwise"): EmbeddingResponse.response_id is
+      null, NOT "". The adapter MUST NOT surface the empty string on
+      response_id (an empty id is absent, not present-as-`""`), MUST NOT raise,
+      and MUST leave the verbatim "" on `raw`. usage is unaffected — the empty
+      id is judged independently of the sound token count.
+      EmbeddingEvent.response_id MUST be null to match the response. An adapter
+      that surfaced "" on response_id (or on the event) fails.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha", "beta"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha", "beta"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: ""
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04]
+              - [0.11, 0.12, 0.13, 0.14]
+          texts: ["alpha", "beta"]
+          meta:
+            billed_units:
+              input_tokens: 6
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+            - [0.11, 0.12, 0.13, 0.14]
+          vectors_length: 2
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          # Empty-string id => not present => null. NOT surfaced as "".
+          response_id: null
+          # Sound figure surfaces normally — judged independently of the id.
+          usage:
+            input_tokens: 6
+          # Verbatim response: the empty-string id "" preserved on `raw`, so a
+          # caller that wants the exact wire value still has it.
+          raw:
+            id: ""
+            embeddings:
+              float:
+                - [0.01, 0.02, 0.03, 0.04]
+                - [0.11, 0.12, 0.13, 0.14]
+            texts: ["alpha", "beta"]
+            meta:
+              billed_units:
+                input_tokens: 6
+      observers:
+        collector:
+          contains_event:
+            event_type: EmbeddingEvent
+            fields:
+              node_name: embed_node
+              response_id: null
+      invariants:
+        exactly_one_embed_request_issued: true
+        vectors_assembled_from_embeddings_float_in_input_order: true
+        vectors_length_matches_input_length: true
+        dimensions_field_matches_inner_vector_length: true
+        empty_string_response_id_nulled: true
+        response_id_empty_string_not_surfaced: true
+        usage_unaffected_by_empty_response_id: true
+        no_provider_invalid_response_raised: true
+        empty_id_preserved_verbatim_on_raw: true
+        embedding_event_response_id_null_mirrors_response: true
