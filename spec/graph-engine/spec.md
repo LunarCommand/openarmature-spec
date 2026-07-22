@@ -1033,7 +1033,7 @@ embedding-specific runtime-config in place of the LLM `RuntimeConfig`):
 | `provider` | string | The embedding provider identifier (matches `gen_ai.system` per observability §5.5.3). |
 | `model` | string | The model identifier the request was made against. |
 | `response_model` | string \| null | The model identifier the provider returned in the response (matches `gen_ai.response.model`). May be more specific than requested; null when the provider doesn't return a response model. |
-| `response_id` | string \| null | The provider-returned response identifier when present. Mirrors the response: a malformed identifier is not surfaced here either (retrieval-provider §7 *Malformed ancillary figures*). |
+| `response_id` | string \| null | The provider-returned response identifier when present. Mirrors the response: a malformed **or empty-string** identifier is not surfaced here either (a malformed identifier per retrieval-provider §7 *Malformed ancillary figures*; an empty-string one per §4 `EmbeddingResponse.response_id` — an empty string is not a present identifier). |
 | `usage` | record \| null | `EmbeddingUsage` record per retrieval-provider §4. May be null when the provider does not report usage. Mirrors the response: a figure the provider reported malformed is not surfaced here either (retrieval-provider §7 *Malformed ancillary figures*). |
 | `latency_ms` | float \| null | Wall-clock latency of the embedding call measured at the adapter boundary, in milliseconds. May be null when latency is not measured. Implementations MAY use a provider-reported latency value when the provider surfaces one, documenting which source is in use. |
 | `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `LlmCompletionEvent` (per observability §3.4). Default absent / null. |
@@ -1127,7 +1127,7 @@ rerank-specific substitutions (`query` + `documents` in place of `input_strings`
 | `provider` | string | The rerank provider identifier (matches `gen_ai.system` per observability §5.5.3). |
 | `model` | string | The model identifier the request was made against. |
 | `response_model` | string \| null | The model identifier the provider returned in the response (matches `gen_ai.response.model`). May be more specific than requested; null when the provider doesn't return a response model. |
-| `response_id` | string \| null | The provider-returned response identifier when present. Mirrors the response: a malformed identifier is not surfaced here either (retrieval-provider §7 *Malformed ancillary figures*). |
+| `response_id` | string \| null | The provider-returned response identifier when present. Mirrors the response: a malformed **or empty-string** identifier is not surfaced here either (a malformed identifier per retrieval-provider §7 *Malformed ancillary figures*; an empty-string one per §6 `RerankResponse.response_id` — an empty string is not a present identifier). |
 | `usage` | record \| null | `RerankUsage` record per retrieval-provider §6. May be null when the provider does not report usage. Mirrors the response: a figure the provider reported malformed is not surfaced here either (retrieval-provider §7 *Malformed ancillary figures*). |
 | `latency_ms` | float \| null | Wall-clock latency of the rerank call measured at the adapter boundary, in milliseconds. May be null when latency is not measured. |
 | `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `EmbeddingEvent` (per observability §3.4). Default absent / null. |

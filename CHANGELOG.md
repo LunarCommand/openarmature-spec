@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.99.0] — 2026-07-22
+
+**Changed**
+
+- **retrieval-provider — an empty-string `response_id` is `null` (absent), and §8.2 Jina maps a bare `400` to `provider_invalid_request`.** Two under-specified edges where mappings diverged. **(1)** §4 / §6 said `response_id` is "the provider-returned response identifier when present; `null` otherwise," and 0100 added that a **malformed** identifier is not a present one. 0104 extends that to the **empty string**: `""` is not a usable identifier (it correlates nothing, matches no provider record), so it is **absent** — `null`, not surfaced as present-as-`""` — on both `EmbeddingResponse` / `RerankResponse.response_id` and the typed `EmbeddingEvent` / `RerankEvent.response_id`, with the verbatim `""` preserved on `raw`. This deliberately **diverges from 0097**'s empty-`document` handling: `document` is *content* (an empty echo is a faithful reproduction, kept present), while `response_id` is an *identifier* (an empty id carries no signal, collapsed to absent) — the rule is at the level of what the field is for. **(2)** §8.2's Jina error enumeration named only `422`, so a bare `400` fell through to the transient `provider_unavailable`; 0104 maps a bare `400` to `provider_invalid_request` (a malformed request will not succeed on retry), aligning §8.2 with §8.1 / §8.3 / §8.4 and the general §7 semantics. ([proposal 0104](proposals/0104-retrieval-id-error-clarifications.md))
+
+**Notes**
+
+- **MINOR (pre-1.0), behavioral at two edges.** A mapping that surfaced `""` on `response_id`, or routed a Jina `400` to `provider_unavailable`, changes outcome in exactly those two cases; neither affects a well-formed response or a non-`400` error. Both are corrections of under-specified edges toward cross-mapping consistency. The `model` / `response_model` empty-value question remains a separate open question. Conformance: fixture 044 (empty-string `response_id` → `null`, response + typed event) and fixture 045 (Jina bare `400` → `provider_invalid_request`). Retrieval fixture count 43 → 45.
+
 ## [0.98.0] — 2026-07-20
 
 **Changed**

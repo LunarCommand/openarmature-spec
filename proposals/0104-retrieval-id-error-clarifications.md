@@ -1,8 +1,10 @@
 # 0104: Retrieval id/error clarifications — empty-string `response_id`, Jina bare-400
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-18
+- **Accepted:** 2026-07-22
+- **Ships as:** v0.99.0
 - **Targets:** spec/retrieval-provider/spec.md **§4 / §6** (the `response_id` rows — an empty-string identifier
   is not a present one), and **§8.2** (the Jina error mapping — a bare `400` maps to `provider_invalid_request`,
   not `provider_unavailable`). Conformance: one empty-string-`response_id` fixture and one Jina-`400` fixture.

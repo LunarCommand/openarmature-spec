@@ -8,7 +8,7 @@ lifecycle and the proposal template.
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
 | [0105](proposals/0105-extras-managed-field-collision-rule.md) | Extras-key vs mapping-managed wire-field collision rule | llm-provider | Draft    | —               | —          |
-| [0104](proposals/0104-retrieval-id-error-clarifications.md) | Retrieval id/error clarifications — empty-string `response_id`, Jina bare-400 | retrieval-provider | Draft    | —               | —          |
+| [0104](proposals/0104-retrieval-id-error-clarifications.md) | Retrieval id/error clarifications — empty-string `response_id`, Jina bare-400 | retrieval-provider | Accepted | Pending         | —          |
 | [0103](proposals/0103-retrieval-conformance-coverage.md) | Retrieval conformance coverage — §8.3 over-cap, `raw`, count-vs-token boundary | retrieval-provider | Accepted | Pending         | —          |
 | [0102](proposals/0102-general-carries-error-field-assertion.md) | Generalize the `carries` error-field assertion; ratify migration & render error fields | conformance-adapter | Accepted | Pending         | —          |
 | [0101](proposals/0101-malformed-usage-counter-llm-observability.md) | A malformed usage counter is *not reported* — llm-provider + observability | llm-provider | Accepted | Pending         | —          |
@@ -26,13 +26,13 @@ lifecycle and the proposal template.
 | [0089](proposals/0089-embedding-rerank-typed-event-output.md) | Embedding / rerank typed-event output | graph-engine | Accepted | Shipped (0.16.0)| —          |
 | [0088](proposals/0088-observability-langfuse-parallel-branches-parity.md) | Langfuse parallel-branches mapping parity | observability | Accepted | Pending         | —          |
 | [0087](proposals/0087-conformance-adapter-directive-execution-order.md) | Within-node directive execution order | conformance-adapter | Accepted | Shipped (0.17.0)| —          |
-| [0086](proposals/0086-prompt-default-cache-ttl.md) | Service-wide default cache-TTL | prompt-management | Accepted | Pending         | —          |
+| [0086](proposals/0086-prompt-default-cache-ttl.md) | Service-wide default cache-TTL | prompt-management | Accepted | Shipped (0.17.0)| —          |
 | [0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) | Nested fan-out checkpoint lineage | pipeline-utilities | Accepted | Partial (0.16.0)| —          |
 | [0084](proposals/0084-nested-fan-out-span-lineage.md) | Nested-fan-out span lineage chain | observability | Accepted | Pending         | —          |
 | [0083](proposals/0083-prompt-token-budget-observability.md) | Per-prompt token-budget observability | observability | Accepted | Pending         | —          |
 | [0082](proposals/0082-structured-output-failure-diagnostics.md) | Structured-output failure diagnostics | graph-engine | Accepted | Pending         | —          |
 | [0081](proposals/0081-conformance-adapter-value-matcher-vocabulary.md) | Value-matcher vocabulary | conformance-adapter | Accepted | Textual (0.16.0)| —          |
-| [0080](proposals/0080-prompt-group-arity-enforcement.md) | PromptGroup arity enforcement | prompt-management | Accepted | Pending         | —          |
+| [0080](proposals/0080-prompt-group-arity-enforcement.md) | PromptGroup arity enforcement | prompt-management | Accepted | Shipped (0.17.0)| —          |
 | [0079](proposals/0079-retrieval-provider-openai-compatible-embeddings.md) | OpenAI-compatible embeddings wire mapping | retrieval-provider | Accepted    | Shipped (0.16.0)| —          |
 | [0078](proposals/0078-retrieval-provider-jina-wire-mapping.md) | Jina wire mapping (rerank + embedding) | retrieval-provider | Accepted    | Shipped (0.16.0)| —          |
 | [0077](proposals/0077-retrieval-provider-tei-wire-mapping.md) | TEI wire mapping + asymmetric query/document embedding | retrieval-provider | Accepted    | Shipped (0.16.0)| —          |
