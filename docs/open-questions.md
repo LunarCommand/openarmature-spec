@@ -359,8 +359,9 @@ response-side clause.
   mapping itself manages?** [resolved-by-0105] — 0105 added the general rule
   to llm-provider §6 (*Managed-field collision*, inherited by retrieval §10):
   posture **(a)** below — a managed field governs a colliding key, **merged**
-  where list-shaped, **rejected pre-send** where a conflicting scalar (a
-  matching scalar is a no-op); each §8.x mapping MUST enumerate its managed
+  where list-shaped, **rejected pre-send** where a conflicting **non-additive**
+  value — a scalar mode-switch or an object the mapping constructs wholesale (a
+  matching value is a no-op); each §8.x mapping MUST enumerate its managed
   keys. It ratified 0099's `embedding_types` merge as an instance and declared
   the fail-loud `truncate` / `truncation` flags managed scalars (§8.1 / §8.2 /
   §8.4). Kept below for retrieval. Original framing (deferred by 0099, which
