@@ -1,0 +1,138 @@
+# retrieval-provider llm-provider §6 *Managed-field collision* (reject arm) —
+# the §8.1 TEI /embed managed `truncate` scalar, the RELIES-ON-DEFAULT case.
+#
+# The reject arm binds three mappings (§8.1 TEI, §8.2 Jina, §8.4 Cohere), but
+# TEI /embed is the materially-distinct one: unlike Cohere (which sends
+# truncate: "NONE" explicitly, fixture 046) and Jina /v1/embeddings (which
+# sends truncate: false explicitly, fixture 020), TEI /embed does NOT send
+# `truncate` at all — it relies on TEI's `false` default, keeping the body
+# minimal ({inputs[, prompt_name][, dimensions]}). So its reject arm keys on a
+# RELIED-UPON DEFAULT the mapping never emits: a conflicting extras `truncate`
+# would flip that default at the wire and silently truncate an over-length
+# input the mapping meant to fail loud on. Per §6, `truncate` is a managed
+# scalar on both TEI endpoints regardless of whether the flag is sent:
+#   - extras truncate true (conflicts with the relied-upon false) -> reject
+#     pre-send, provider_invalid_request, NO /embed request issued.
+#   - extras truncate false (equals the relied-upon default) -> redundant
+#     no-op; the normal /embed request goes out with the body still MINIMAL —
+#     `truncate` is NOT added to the wire (byte-identical to a call with no
+#     extras truncate), because the mapping relies on the default and the
+#     matching value is absorbed, not forwarded.
+#
+# Case 2 pins the matching-value wire outcome for a relied-upon-default field:
+# a matching extras value is OMITTED (default relied upon), NOT forwarded — the
+# opposite-looking-but-equivalent outcome to 046 case 2, where Cohere's
+# always-sent truncate: "NONE" stays on the wire unduplicated.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 013's header (mapping: tei,
+# tei_embedding_provider, the TEI /embed request `{inputs: [str]}` +
+# bare-vector-array response), 034's header (the pre-send-reject convention: NO
+# mock_embedding and NO expected_wire_request when the rejection is
+# client-side; no_embed_request_issued invariant), and 039's header
+# (calls_embed.config.extras — the §2 extras-pass-through bag; where an extras
+# key collides with a mapping-managed wire field, the §6 collision rule
+# governs).
+
+mapping: tei
+
+tei_embedding_provider:
+  base_url: "http://tei-embed.invalid"
+  model: tei-embed-test
+
+cases:
+  - name: conflicting_extras_truncate_rejected_pre_send
+    description: |
+      embed(config={extras: {truncate: true}}) against TEI /embed, which
+      normally sends NO truncate (relies on TEI's false default). The extras
+      `truncate: true` CONFLICTS with that relied-upon `false`: honoring it
+      would flip the default at the wire and make TEI silently truncate an
+      over-length input the §8.1 mapping fails loud on. Per §6's managed-field
+      collision reject arm, the mapping MUST raise provider_invalid_request
+      (§7) at the pre-send validation layer and MUST NOT issue any /embed
+      request — and MUST NOT silently drop the extras value or forward it
+      untouched onto the wire. This is the relied-upon-default reject: the
+      mapping intercepts a key it never otherwise sets on this endpoint.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha"]
+          config:
+            extras:
+              truncate: true
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        exception_raised_out_of_embed_call: true
+        conflicting_managed_truncate_rejected_pre_send: true
+        no_embed_request_issued: true
+        conflicting_value_not_silently_dropped: true
+        conflicting_value_not_forwarded_to_wire: true
+        relied_upon_default_reject_no_wire_field_to_intercept: true
+
+  - name: matching_extras_truncate_is_noop_body_stays_minimal
+    description: |
+      embed(config={extras: {truncate: false}}) against TEI /embed. The extras
+      `truncate: false` EQUALS the relied-upon default. Per §6's reject arm, a
+      matching value is a redundant no-op: the mapping does NOT reject, and the
+      normal /embed request goes out with the body still MINIMAL — `truncate`
+      is NOT added to the wire (byte-identical to a call with no extras
+      truncate). The matching value is absorbed, not forwarded. This pins the
+      matching-value wire outcome for a relied-upon-default field: omit, not
+      forward. The mocked TEI response is the bare vector array.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha"]
+          config:
+            extras:
+              truncate: false
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    # The body stays minimal: `truncate` is NOT on the wire even though a
+    # matching extras value was supplied (the mapping relies on the default and
+    # absorbs the matching value). prompt_name / dimensions absent as usual.
+    expected_wire_request:
+      inputs: ["alpha"]
+    expected_wire_request_absent_keys: [truncate, prompt_name, dimensions]
+    expected_wire_request_count: 1
+    mock_embedding:
+      - status: 200
+        body:
+          - [0.01, 0.02, 0.03, 0.04]
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: tei-embed-test
+          response_id: null
+          usage: null
+      invariants:
+        exactly_one_embed_request_issued: true
+        matching_extras_truncate_is_noop: true
+        matching_value_omitted_body_stays_minimal: true
+        truncate_absent_from_wire: true

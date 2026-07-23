@@ -521,6 +521,28 @@ body under whatever placement the wire-format mapping defines (e.g., §8.1's Ope
 mapping places undeclared keys at the request-body root). Undeclared fields are NOT validated by
 the spec; the provider's backend is the source of truth on what extra parameters it recognizes.
 
+**Managed-field collision.** The untouched pass-through above governs an undeclared key the wire-format
+mapping (§8) does **not** touch. A mapping MAY additionally **manage** a wire-body field — set it for the
+mapping's own correctness, because its response consumer reads a value keyed to that field, or because it
+enforces a mapping-level contract. A §8.x mapping that manages a field **MUST** enumerate the keys it manages.
+When an undeclared extras key **names a managed field**, the untouched pass-through does **not** apply; the
+mapping resolves the collision by the managed field's shape:
+
+- **Additive / list-shaped** managed field — the mapping's mandatory value(s) and the caller's value(s) are
+  **merged** in a deterministic order (the mapping's value(s) first), de-duplicated with first occurrence
+  winning, so a matching entry collapses to one.
+- **Non-additive** managed field whose override would break the mapping's contract or its response consumer —
+  a scalar mode-switch, or an object the mapping constructs wholesale (e.g. a structured-output `response_format`).
+  The caller's value and the mapping's are mutually exclusive, so there is nothing to merge: an extras value
+  **equal** to the managed value is a redundant no-op; a **conflicting** value is **rejected pre-send** with
+  `provider_invalid_request` (§7). A field the mapping constructs **only conditionally** (e.g. `response_format`
+  only when a `response_schema` is supplied, `stream_options` only when streaming) is managed **only when the
+  mapping is producing it**; when it is not, the field is unmanaged and keeps untouched pass-through.
+
+A mapping **MUST NOT** silently drop a conflicting extras value, and **MUST NOT** silently let it override the
+managed value. A key the mapping does **not** manage is unaffected — it keeps the untouched pass-through above
+verbatim. The managed set is **opt-in per mapping**; the default for every other undeclared key is unchanged.
+
 **Null-skip semantics.** A declared `RuntimeConfig` field with a value of `None` (Python `None`,
 TypeScript `undefined`, the language's equivalent "unset" sentinel) MUST be omitted from the wire
 request body. Such a value denotes "field not supplied for this call," distinct from "field
@@ -968,6 +990,19 @@ kwargs into the body; gateways like Bifrost passing straight through to vLLM). T
 MUST preserve key names and value types verbatim per §6's extras-pass-through contract; the §8.1
 mapping does NOT validate, rename, or transform undeclared keys.
 
+**Managed structural fields (§6 *Managed-field collision*).** The mapping sets several request-body-root
+fields for its own correctness that a caller does **not** supply as declared `RuntimeConfig` fields, so an
+undeclared extras key of the same name would collide with them at the root: **`model`** (the bound model
+identifier — §3 / §5 per-instance binding), **`messages`** and **`tools`** (the `complete()` arguments), and
+**`tool_choice`** (the §5 parameter). Each is a **managed non-additive field**: an extras-supplied value that
+**conflicts** with the mapping's value is **rejected pre-send** with `provider_invalid_request` (§7) —
+honoring it would silently replace the caller's conversation, tool set, or bound model (a caller who wants a
+different model binds a different provider instance); the mapping **MUST NOT** silently drop it or silently
+let it override. (A value equal to the managed value is a redundant no-op.) The wire key `stop` is **not**
+enumerated here: it is the realization of the **declared** `stop_sequences` field, a declared-field-vs-extras
+question deferred with the residual per-mapping audit (see `docs/open-questions.md`), not the managed-internal
+field rule.
+
 The §5 `tool_choice` parameter maps to OpenAI's `tool_choice` request-body field:
 
 | Spec `tool_choice` | OpenAI wire body |
@@ -1100,8 +1135,21 @@ behavioral contract at the spec layer is identical regardless of `strict`: valid
 post-receive against `response_schema`; failures raise `structured_output_invalid` (§7).
 
 When `complete()` is called without `response_schema` (or with `response_schema=None`), the
-request body MUST NOT include `response_format`. The v0.4.0 wire shape is preserved unchanged
-for free-form calls.
+mapping **MUST NOT construct** a `response_format` of its own; the v0.4.0 wire shape is preserved
+unchanged for free-form calls (absent an extras-supplied `response_format`, which rides the §6
+extras pass-through untouched — see the managed-field clause below).
+
+`response_format` is a **conditionally-managed** non-additive wire field (§6 *Managed-field collision*): it is
+managed **while the mapping is producing it** — the native path (§8.1.5) when a `response_schema` is supplied,
+where the mapping constructs `response_format` wholesale from the schema and its response consumer (§6 `parsed`,
+§7 `structured_output_invalid` validation) depends on the model being constrained to that schema. On that path,
+an extras-supplied `response_format` that **conflicts** with the mapping's schema-derived value is **rejected
+pre-send** with `provider_invalid_request` (§7) — honoring it would constrain the model to the caller's format
+while the mapping validates against `response_schema`, breaking structured output; the mapping **MUST NOT**
+silently drop it or silently let it override. (A value equal to the managed value is a redundant no-op.) When
+the mapping does **not** produce `response_format` — a free-form call (no schema), **or the §8.1.5.1
+prompt-augmentation fallback path** (a schema is supplied but the request is issued *without* `response_format`)
+— the field is unmanaged and an extras `response_format` rides the extras bag untouched.
 
 ##### 8.1.5.1 Fallback for providers without native structured output
 
@@ -1142,7 +1190,16 @@ Server-Sent Events streaming response and emits per-chunk `LlmTokenEvent`s (grap
 assembling the atomic `Response` per §6 *Streaming assembly*.
 
 - **Request** — `stream: true` in the request body, plus `stream_options: {include_usage: true}` so
-  the terminal chunk carries usage (OpenAI omits usage from streamed responses otherwise).
+  the terminal chunk carries usage (OpenAI omits usage from streamed responses otherwise). `stream_options` is
+  a **conditionally-managed** wire field (§6 *Managed-field collision*): while streaming, the mapping sets it for
+  the usage collection its §6 *Streaming assembly* consumer depends on. An extras-supplied `stream_options` that
+  **conflicts** with `{include_usage: true}` — e.g. `{include_usage: false}`, which would drop the terminal-chunk
+  usage the mapping reads — is **rejected pre-send** with `provider_invalid_request` (§7); the mapping
+  **MUST NOT** silently drop it or silently let it override (a matching value is a no-op). For a non-streaming
+  call the mapping sends no `stream_options`, so an extras `stream_options` is unmanaged and rides untouched.
+  The `stream` flag itself is **not** enumerated here — it is the realization of the **declared**
+  `complete(stream=…)` argument, a declared-field-vs-extras question deferred with the residual per-mapping audit
+  (see `docs/open-questions.md`), not the managed-internal field rule.
 - **Wire** — Server-Sent Events: each `data:` line is a chunk whose `choices[].delta` carries a
   `content` delta, `tool_calls` deltas (each with an `index` and partial `id` / `function.name` /
   `function.arguments` fields), and/or a reasoning delta (see below). The `data: [DONE]` sentinel
@@ -1788,3 +1845,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §5 `complete()` gained an optional `stream` flag (default off; return type unchanged — still `Response`), a *Streaming* rule (consume the wire incrementally + emit per-chunk `LlmTokenEvent`s; observably identical to the atomic path when no observer is attached), and a *Provider streaming support* rule (a mapping without streaming rejects `stream`-set calls with `provider_invalid_request`); §6 gained a *Streaming assembly* contract (content concatenation, reasoning-block assembly, tool-call-delta reassembly, terminal usage / finish_reason, structural identity with the atomic path); §8.1 gained §8.1.6 *Streaming* (OpenAI-compatible SSE: `stream_options.include_usage`, `[DONE]`, content / tool-call deltas, and the OpenAI-compatible reasoning-delta extension recognizing both `reasoning_content` and `reasoning`); §10 *Out of scope* lifted the blanket streaming deferral, replaced by narrower deferrals (node-body iterator consumption, tool-call-delta token events, Anthropic / Gemini streaming wire, non-completion streaming) by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
 - §5 `complete()`'s `retry` parameter extended to also accept an llm-provider retry-config (a superset of the pipeline-utilities §6.1 four-field record adding two optional fields); new §7.1 *Adaptive extensions (opt-in)* defining `per_attempt_override` — a declarative retry override schedule (attempt 0 uses the base `config`; the *i*-th override applies to retry *i*; a general `RuntimeConfig` partial merged onto base; last entry carries forward) — and `reask` — a caller-supplied corrective-message builder that makes `structured_output_invalid` retryable-for-this-call and, on each such failure, appends the model's raw output as an `assistant` message plus the builder's returned content as a `user` message to a working transcript that accumulates across reask retries (keeping the sequence role-alternating; the builder receives 0082's `output_content` + `error_message`; the implementation authors no prompt of its own, per charter §3.1 principle 7 *No built-in prompts*; reask reuses the `max_attempts` budget); the §7.1 per-attempt span gains an `openarmature.llm.retry_reason` (`transient` | `reask`) attribute on retry attempts; the *Common mistakes* classifier-widening bullet points `structured_output_invalid` at `reask` by [proposal 0095](../../proposals/0095-adaptive-call-level-retry.md)
 - §7 gains **Malformed usage counter** — a `Response.usage` counter that is present on the wire but malformed (a non-integer, a negative, a boolean) is treated as **not reported**, the per-field `null` §6 already permits: that counter is `null` and the others stand (§6's "the first three MUST be `null` together" is conditioned on *no* usage being reported, which a partially-malformed record does not satisfy). It MUST NOT raise `provider_invalid_response` (or any category) because of the counter — a genuine §6-shape parse failure still raises — and MUST NOT be fabricated, coerced, clamped, or repaired; the verbatim value stays on `Response.raw`. A **derived** `total_tokens` (§8.2) whose addend is not reported is itself `null`, never the surviving addend. §6's streaming `raw` assembly MUST preserve the terminal chunk's usage verbatim. This is a **reversal**: composing §6's "non-negative integer or `null`" counter type with §7's "cannot be parsed into the §6 shape" reservation, a strict implementation today raises on `"abc"`; from this version it MUST NOT. Reconciled across the surfaces a null counter renders through (graph-engine §6 `LlmCompletionEvent.usage` mirrors the response; observability §5.5.3 / §11.2 / §5.5.15 / §8.4.3 omit rather than emit / sum / compare / divide over a not-reported counter) by [proposal 0101](../../proposals/0101-malformed-usage-counter-llm-observability.md)
+- §6 *Extras pass-through* gains a **Managed-field collision** clause (inherited by retrieval-provider §10) — a bounded carve-out to untouched pass-through when an undeclared extras key names a wire field the mapping **manages** (sets for its own correctness / response consumer / a mapping-level contract; each §8.x mapping MUST enumerate its managed keys). An additive / list-shaped managed field **merges** the caller's value(s) with the mapping's (deterministic order, mapping-first, de-duplicated); a **non-additive** managed field — a scalar mode-switch **or an object the mapping constructs wholesale**, whose value is mutually exclusive with the caller's — takes a matching extras value as a redundant no-op and **rejects a conflicting one pre-send** `provider_invalid_request`, never silently dropping or overriding. A field the mapping produces only **conditionally** is managed only while it is producing it. Every unmanaged undeclared key keeps untouched pass-through. Generalizes 0099's mapping-local `embedding_types` exception. The OpenAI mapping (§8.1) enumerates its managed keys: the **structural** wire-root fields `model` / `messages` / `tools` / `tool_choice` (set for the mapping's own correctness — an override would silently replace the caller's conversation / tool set / bound model), and two **conditionally-managed non-additive** object fields — §8.1.5 `response_format` (managed while the mapping is producing it, i.e. the native structured-output path; unmanaged on a free-form call or the §8.1.5.1 fallback) and §8.1.6 `stream_options` (managed while streaming) — each a *reject*-arm key. The `stop` / `stream` wire fields (realizations of the declared `stop_sequences` / `complete(stream=…)`) and §8.2 `task` / §8.3 `encoding_format` are the *declared-field-vs-extras* residual, deferred to a follow-on by [proposal 0105](../../proposals/0105-extras-managed-field-collision-rule.md)

@@ -1,0 +1,152 @@
+# retrieval-provider llm-provider §6 *Managed-field collision* (reject arm) —
+# an extras key colliding with the §8.4 Cohere /v2/embed managed `truncate`
+# scalar.
+#
+# 0105 generalizes 0099's mapping-managed-field rule: §6 says an undeclared
+# extras key that NAMES a wire field the mapping MANAGES does NOT get untouched
+# pass-through. For a SCALAR managed field whose override would break the
+# mapping's contract, an extras value EQUAL to the managed value is a redundant
+# no-op, and a CONFLICTING value is REJECTED pre-send with
+# provider_invalid_request (§7). The mapping MUST NOT silently drop a
+# conflicting value, and MUST NOT silently let it override the managed one.
+#
+# §8.4 Cohere /v2/embed manages `truncate: "NONE"` (its fail-loud posture — an
+# over-length input errors rather than being silently truncated). So `truncate`
+# is a managed scalar:
+#   - extras truncate "END" (conflicts with "NONE") -> reject pre-send,
+#     provider_invalid_request, NO wire request issued (honoring it would
+#     silently truncate an over-length input the mapping meant to fail loud on).
+#   - extras truncate "NONE" (equals the managed value) -> redundant no-op; the
+#     normal /v2/embed request goes out with truncate "NONE" and returns
+#     vectors as usual.
+#
+# The two cases discriminate: an impl that always-rejects any extras `truncate`
+# fails case 2 (a matching value is a no-op, not a reject); an impl that
+# forwards it untouched fails case 1 (it would send truncate "END" and defeat
+# fail-loud); an impl that silently drops it fails case 1 (it must reject, not
+# swallow). This is the reject-arm counterpart to fixture 039's merge arm
+# (embedding_types).
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 001's header (calls_embed /
+# mock_embedding), 016's header (expected_error: {category, raised_from}), 032's
+# header (mapping: cohere, cohere_embedding_provider, the Cohere /v2/embed
+# request + keyed-by-type response), 034's header (the pre-send-reject
+# convention: NO mock_embedding and NO expected_wire_request when the rejection
+# is client-side; the no_embed_request_issued invariant asserts no /v2/embed
+# call was made), and 039's header (calls_embed.config.extras — the §2
+# extras-pass-through bag; where an extras key collides with a mapping-managed
+# wire field, the §6 collision rule governs).
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: conflicting_extras_truncate_rejected_pre_send
+    description: |
+      embed(config={extras: {truncate: "END"}}) — the caller supplies an
+      extras `truncate` that CONFLICTS with the mapping's managed
+      `truncate: "NONE"`. Honoring "END" would make Cohere silently truncate an
+      over-length input the §8.4 mapping deliberately fails loud on, defeating
+      its contract. Per §6's managed-field collision reject arm, the mapping
+      MUST raise provider_invalid_request (§7) at the pre-send validation layer
+      and MUST NOT issue any /v2/embed request. It MUST NOT silently drop the
+      extras value (hiding the caller's intent) and MUST NOT forward it
+      untouched onto the wire (breaking fail-loud). The §7 category exception
+      raises out of the embed node.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha"]
+          config:
+            extras:
+              truncate: "END"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        exception_raised_out_of_embed_call: true
+        conflicting_managed_truncate_rejected_pre_send: true
+        no_embed_request_issued: true
+        conflicting_value_not_silently_dropped: true
+        conflicting_value_not_forwarded_to_wire: true
+
+  - name: matching_extras_truncate_is_noop
+    description: |
+      embed(config={extras: {truncate: "NONE"}}) — the caller supplies an
+      extras `truncate` EQUAL to the mapping's managed `truncate: "NONE"`. Per
+      §6's reject arm, a value equal to the managed value is a redundant no-op:
+      the mapping does NOT reject, and the normal /v2/embed request goes out
+      with `truncate: "NONE"` (the managed value, unduplicated) — byte-identical
+      to a call with no extras truncate at all. The mocked response returns
+      vectors normally. This proves the reject arm keys on CONFLICT, not on the
+      mere presence of an extras `truncate`.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha"]
+          config:
+            extras:
+              truncate: "NONE"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-046-id
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04]
+          texts: ["alpha"]
+          meta:
+            billed_units:
+              input_tokens: 1
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          response_id: cohere-embed-046-id
+          usage:
+            input_tokens: 1
+      invariants:
+        exactly_one_embed_request_issued: true
+        matching_extras_truncate_is_noop: true
+        wire_truncate_is_managed_none_unduplicated: true

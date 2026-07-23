@@ -1,0 +1,132 @@
+# retrieval-provider llm-provider §6 *Managed-field collision* (reject arm) —
+# the §8.2 Jina /v1/rerank managed `truncation` scalar (the distinct-NAME case).
+#
+# §8.2 Jina names the fail-loud truncation flag `truncation` on /v1/rerank
+# (and `truncate` on /v1/embeddings — vendor inconsistency). The mapping sends
+# `truncation: false` explicitly on /v1/rerank so an over-length input errors
+# rather than being silently truncated. Per §6, `truncation` is a managed
+# scalar: an extras-supplied `truncation` conflicting with the mapping's
+# `false` is rejected pre-send with provider_invalid_request.
+#
+# This fixture covers the distinct wire-key NAME (`truncation`, not `truncate`)
+# on the rerank surface — the reject arm binds embed and rerank surfaces across
+# the vendor mappings, and this is the Jina rerank realization. Case 1 is the
+# conflict->reject; case 2 the matching-value no-op (the boolean `false` value
+# shape differs from Cohere's string `"NONE"`, so it is exercised here, not only
+# asserted by analogy). TEI /embed's distinct relied-upon-default case is
+# fixture 047.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 006's header (calls_rerank), 018's
+# header (mapping: jina, jina_rerank_provider, the Jina /v1/rerank request +
+# Authorization: Bearer header), 016's header (expected_error: {category,
+# raised_from}), 034's header (the pre-send-reject convention: NO mock_rerank
+# and NO expected_wire_request when the rejection is client-side, the
+# no_rerank_request_issued invariant), and 039's header (calls_*.config.extras
+# — the §2 extras-pass-through bag; a collision with a mapping-managed wire key
+# is governed by the §6 collision rule).
+
+mapping: jina
+
+jina_rerank_provider:
+  base_url: "https://api.jina.invalid"
+  model: jina-reranker-test
+  api_key: "test-jina-key"
+
+cases:
+  - name: conflicting_extras_truncation_rejected_pre_send
+    description: |
+      rerank(config={extras: {truncation: true}}) against Jina /v1/rerank,
+      which sends the managed `truncation: false` fail-loud flag. The extras
+      `truncation: true` CONFLICTS with the managed `false`: honoring it would
+      make Jina silently truncate an over-length (query, document) pair,
+      yielding a wrong relevance score the §8.2 mapping deliberately fails loud
+      on. Per §6's managed-field collision reject arm, the mapping MUST raise
+      provider_invalid_request (§7) at the pre-send validation layer and MUST
+      NOT issue any /v1/rerank request — and MUST NOT silently drop the extras
+      value or forward it untouched onto the wire. Exercises the distinct
+      `truncation` wire-key name on the rerank surface.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          config:
+            extras:
+              truncation: true
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_error:
+      category: provider_invalid_request
+      raised_from: rerank_node
+    expected:
+      invariants:
+        exception_raised_out_of_rerank_call: true
+        conflicting_managed_truncation_rejected_pre_send: true
+        no_rerank_request_issued: true
+        conflicting_value_not_silently_dropped: true
+        conflicting_value_not_forwarded_to_wire: true
+
+  - name: matching_extras_truncation_is_noop
+    description: |
+      rerank(config={extras: {truncation: false}}) — the caller supplies an
+      extras `truncation` EQUAL to the mapping's managed `truncation: false`.
+      Per §6's reject arm, a matching value is a redundant no-op: the mapping
+      does NOT reject, and the normal /v1/rerank request goes out with
+      `truncation: false` (the managed value, unduplicated) — byte-identical to
+      a call with no extras truncation. This proves the reject arm keys on
+      CONFLICT, not on the mere presence of an extras `truncation`; the boolean
+      `false` value shape differs from Cohere's string `"NONE"` (fixture 046
+      case 2), so it is exercised here rather than only asserted by analogy.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "what is the capital of france?"
+          documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+          config:
+            extras:
+              truncation: false
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-reranker-test
+      query: "what is the capital of france?"
+      documents: ["doc about berlin", "doc about paris", "doc about madrid"]
+      return_documents: false
+      truncation: false
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_rerank:
+      - status: 200
+        body:
+          model: jina-reranker-test
+          usage: {total_tokens: 57}
+          results:
+            - {index: 0, relevance_score: 0.42}
+            - {index: 1, relevance_score: 0.91}
+            - {index: 2, relevance_score: 0.08}
+    expected:
+      final_state:
+        rerank_response:
+          results_length: 3
+      invariants:
+        exactly_one_rerank_request_issued: true
+        matching_extras_truncation_is_noop: true
+        wire_truncation_is_managed_false_unduplicated: true

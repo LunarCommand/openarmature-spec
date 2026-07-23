@@ -452,7 +452,16 @@ the surface where a silently truncated `(query, document)` pair would yield a wr
 resulting TEI error (HTTP 413 / 422) maps to `provider_invalid_request` (§7). The `/embed` mapping
 relies on TEI's `false` default and does **not** add `truncate` to the request, keeping the body minimal
 (`{inputs[, prompt_name][, dimensions]}`) and byte-identical to the symmetric path when `input_type` is
-absent.
+absent. `truncate` is a **managed scalar** (llm-provider §6 *Managed-field collision*) on both endpoints —
+the fail-loud contract depends on `truncate` being `false`, whether the mapping sends it explicitly
+(`/rerank`) or relies on TEI's `false` default (`/embed`). An extras-supplied `truncate` **conflicting** with
+`false` is **rejected pre-send** with `provider_invalid_request` (§7) on either endpoint (a conflicting value
+defeats fail-loud — by overriding the explicit flag, or by flipping the relied-upon default at the wire); an
+extras `truncate: false` (equal to the managed value) is a redundant no-op: on `/rerank` the wire keeps its
+explicit `truncate: false`; on `/embed` the matching value is **omitted**, not added — the body stays minimal
+(`{inputs[, prompt_name][, dimensions]}`), byte-identical to a call with no extras `truncate`, since the mapping
+relies on TEI's default rather than sending the flag. The mapping **MUST NOT** silently drop or silently honor
+a conflicting value.
 
 **Errors.** TEI HTTP / transport failures map to the §7 categories per the shared enumeration:
 connection / 5xx → `provider_unavailable`; unknown model → `provider_invalid_model`; over-length /
@@ -516,7 +525,11 @@ does not chunk client-side.
 **`truncation` / `truncate` (fail-loud).** Jina names the flag `truncation` on `/v1/rerank` and
 `truncate` on `/v1/embeddings` (vendor inconsistency); the mapping sends the per-endpoint flag `false`
 so an over-length input errors rather than being silently truncated (consistent with §8.1's TEI
-fail-loud posture).
+fail-loud posture). The per-endpoint truncation flag is a **managed scalar** (llm-provider §6
+*Managed-field collision*): an extras-supplied value **conflicting** with the mapping's `false` is
+**rejected pre-send** with `provider_invalid_request` (§7) — honoring it would defeat the fail-loud posture,
+and the mapping **MUST NOT** silently drop or silently honor it; an extras value equal to `false` is a
+redundant no-op.
 
 **Errors.** Jina HTTP failures map to the §7 categories per the shared enumeration: `401` →
 `provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`;
@@ -546,7 +559,12 @@ bind the optional client-side `query_prefix` / `document_prefix` from §8.1 — 
 `{"model": str, "input": [str], "dimensions"?: int}`. `input` is always the array form (§3's "always a
 list"); `EmbeddingRuntimeConfig.dimensions` → wire `dimensions` (Matryoshka, on models that support it)
 when set. The mapping does **not** send `encoding_format` by default (OpenAI's wire default is
-`"float"`); `"base64"` rides the extras-pass-through bag. The response
+`"float"`); `"base64"` rides the extras-pass-through bag. (`encoding_format` is *structurally* a managed
+scalar under llm-provider §6 *Managed-field collision* — the mapping's response consumer reads
+`data[].embedding` as float vectors and depends on the `"float"` default, so a `"base64"` override would
+break §4's vector invariants — but §8.3 does **not** yet enumerate it as managed; output-encoding support is
+a deferred question, so `encoding_format` remains an unmanaged extras key here. See `docs/open-questions.md`.)
+The response
 `{object: "list", data: [{object: "embedding", index, embedding}], model, usage: {prompt_tokens, total_tokens}}`
 maps to the `EmbeddingResponse` vectors in input order — the mapping consumes `data` + `usage` (the
 `object` fields are OpenAI wire metadata); `usage.prompt_tokens` → `EmbeddingUsage.input_tokens`
@@ -664,11 +682,11 @@ models) when set; omitted otherwise (Cohere's model default applies). The mappin
 `embeddings.float` key the mapping reads) and consumes `embeddings.float`; other precisions (`int8` /
 `uint8` / `binary` / `ubinary` / `base64`) ride the extras-pass-through bag.
 
-**`embedding_types` is a mapping-managed wire key — a named exception to untouched pass-through.**
-llm-provider §6 forwards an undeclared extras key to the wire *untouched* and forbids transforming it, but
-scopes that to what "the wire-format mapping (§8)" defines. This mapping **manages** `embedding_types` (it
-must request `"float"` for its own response consumer), so §8.4 — not the untouched-pass-through default —
-governs a collision on that key:
+**`embedding_types` is a managed wire field — the *merge* arm of the llm-provider §6 managed-field collision
+rule.** §6 governs a collision between an undeclared extras key and a wire field the mapping **manages**: an
+additive / list-shaped managed field **merges**. This mapping manages `embedding_types` (it must request
+`"float"` for its own response consumer), and `embedding_types` is list-shaped, so an extras collision on it
+merges:
 
 - An extras-supplied `embedding_types` **MUST** be **merged** with the mapping's mandatory `"float"`, never
   replace it. A mapping **MUST NOT** let an extras-supplied value drop `"float"` from the request: doing so
@@ -681,13 +699,19 @@ governs a collision on that key:
   and therefore decidable by a conformance fixture that asserts the request body.
 - The caller reads the extra precisions off the verbatim response on `EmbeddingResponse.raw` (§4).
 
-This exception is **mapping-local and deliberate**. The general question — what happens when *any* extras
-key collides with *any* mapping-managed wire field — is not specified; see `docs/open-questions.md`.
+This is the merge arm of the general llm-provider §6 *Managed-field collision* rule, not a mapping-local
+exception. §8.4 **manages** two wire keys, per §6's enumeration requirement: `embedding_types` (list-shaped —
+**merge**, above) and `truncate` (scalar fail-loud flag — **reject**, below). Every other undeclared extras
+key keeps §6's untouched pass-through.
 
 It sends `truncate: "NONE"`
 so an over-length input **errors** (surfacing `provider_invalid_request` per §7) rather than being
 silently truncated — the §8.2 Jina embed fail-loud posture, and the point where §8.4's embed half
-diverges from its rerank half (which has no fail-loud option).
+diverges from its rerank half (which has no fail-loud option). `truncate` is a **managed scalar**
+(llm-provider §6 *Managed-field collision*): an extras-supplied `truncate` **conflicting** with the mapping's
+`"NONE"` is **rejected pre-send** with `provider_invalid_request` (§7) — honoring it would defeat the
+fail-loud posture, and the mapping **MUST NOT** silently drop or silently honor it; an extras `truncate: "NONE"`
+(equal to the managed value) is a redundant no-op.
 
 **Batch chunking.** Cohere `/v2/embed` enforces a **96-input per-call cap**; an over-cap call
 chunk-and-stitches per the §8 *Batch chunking* rule (consecutive ≤96 chunks, identical per-call
@@ -730,12 +754,15 @@ detail) unless the provider documents a tie-breaking rule; the spec MUST NOT ass
   `disable_llm_payload` by proposal 0059) gates payload from any provider call, including embedding
   payload (`input_strings`, `request_extras`, the Langfuse `output` vectors) and rerank payload
   (`query`, `documents`, the result document echoes).
-- **llm-provider §6** — the `RuntimeConfig` *Extras pass-through* contract (inherited): an undeclared
-  field MUST be forwarded to the wire body untouched, subject to what the wire-format mapping (§8)
-  defines. Two consequences this capability leans on: a **declared** field (`input_type`, `dimensions`)
-  can never ride the extras bag, since the bag carries only *undeclared* keys; and a mapping that
-  **manages** a wire key may govern a collision on it (§8.4 `embedding_types`) rather than forwarding
-  untouched.
+- **llm-provider §6** — the `RuntimeConfig` *Extras pass-through* contract **and its *Managed-field
+  collision* clause** (inherited): an undeclared field MUST be forwarded to the wire body untouched,
+  subject to what the wire-format mapping (§8) defines. Two consequences this capability leans on: a
+  **declared** field (`input_type`, `dimensions`) can never ride the extras bag, since the bag carries
+  only *undeclared* keys; and when an undeclared extras key names a wire field the mapping **manages**,
+  the untouched pass-through does **not** apply — the mapping **merges** a list-shaped managed field
+  (§8.4 `embedding_types`) or **rejects** a conflicting scalar pre-send `provider_invalid_request` (the
+  §8.1 / §8.2 / §8.4 fail-loud `truncate` / `truncation` flags). Each §8.x mapping enumerates its managed
+  keys; every other undeclared key keeps untouched pass-through.
 - **llm-provider §7** — error-category enumeration (inherited).
 - **pipeline-utilities §6 (middleware)** — `EmbeddingProvider` and `RerankProvider` calls are
   eligible for retry middleware identically to `complete()` calls.
@@ -781,3 +808,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §7 gains **Malformed ancillary figures** — a provider figure that is present on the wire but malformed (a non-integer token count, a negative, a boolean) in an *ancillary* field (`usage`, `response_id`) is treated as **not reported**, not `provider_invalid_response`: the call succeeds, the figure is nulled (never fabricated, coerced, or repaired), and the verbatim value stays on `raw`. Judged per figure — a malformed `EmbeddingUsage.input_tokens` collapses `usage` to null, a malformed `RerankUsage` figure beside a sound one keeps the sound one, a malformed `response_id` is null — so no record shape changes and no new nullability is added (the figures were already individually nullable per 0093). §4 / §6 `usage` + `response_id` rows and §8 *Batch chunking* step 4 (a malformed chunk ⇒ stitched `usage = null`, never a partial sum; a malformed first-chunk id ⇒ null, no fall-through) gain the carve-out, and the rule binds the graph-engine §6 `EmbeddingEvent` / `RerankEvent` figures so a nulled figure cannot leak to the observability surfaces that render from the event. Scoped to retrieval-provider (the llm-provider parallel is a separate change — its usage record is always-present, so a null counter needs an observability-guard reconciliation retrieval does not) by [proposal 0100](../../proposals/0100-malformed-ancillary-figures-not-reported.md)
 - §8.3 OpenAI — the cap sentence clarifies the count-vs-token boundary: the §8 *Batch chunking* rule chunks by input **count** (the 2048-input cap) only; the summed-token ceiling is **not** a chunking trigger — a call whose ≤2048-input chunks together exceed the token ceiling is sent and fails loud as `provider_invalid_request` (§7), with no client-side token estimation or sub-chunking. Conformance coverage added for the §8.3 mapping (the one embedding mapping whose over-cap chunk-and-stitch and `raw` were unexercised): new fixture 043 (case 1 over-cap chunk-and-stitch — also the first §8.3 sum-`input_tokens` fixture and the object-shaped chunked `raw`, using a test-only cap override since OpenAI's 2048 cap is not construction-configurable; cases 2–3 the count-vs-token fail-loud boundary — an over-token chunk is sent and fails loud `provider_invalid_request`, case 3 with a multi-input over-token chunk that discriminates a token-sub-chunker) and a single-request `raw` assertion on fixture 023 by [proposal 0103](../../proposals/0103-retrieval-conformance-coverage.md)
 - §4 / §6 `response_id` rows — an **empty-string** identifier, like a malformed one, is not a present identifier; it is `null` (an empty string is not a usable id, so it is absent, not present-as-`""`). Deliberately diverges from 0097's empty-`document` handling (content preserves an empty value; an identifier collapses it to absent). §8.2 Jina error mapping — a bare `400` maps to `provider_invalid_request` (a malformed request will not succeed on retry), not the transient `provider_unavailable`, aligning §8.2 with §8.1 / §8.3 / §8.4 and the general §7 semantics. Fixtures 044 (empty-string `response_id` → null) and 045 (Jina `400` → `provider_invalid_request`) by [proposal 0104](../../proposals/0104-retrieval-id-error-clarifications.md)
+- §8 managed-field collision (via llm-provider §6, inherited per §10) — the fail-loud truncation flag is a **managed scalar** in each retrieval mapping that carries one (embed and rerank surfaces): §8.1 TEI `truncate` (both endpoints), §8.2 Jina `truncation` (`/v1/rerank`) / `truncate` (`/v1/embeddings`), §8.4 Cohere `truncate: "NONE"` (`/v2/embed`): an extras-supplied value **conflicting** with the mapping's fail-loud value is **rejected pre-send** `provider_invalid_request` (honoring it would silently truncate an input the mapping fails loud on); a matching value is a no-op. §8.4's `embedding_types` merge (0099) is re-anchored as the *merge* arm of the same general §6 rule (behavior unchanged), and §8.4 now enumerates its two managed keys (`embedding_types` merge, `truncate` reject). Reject-arm fixtures across all three bound mappings — 046 (Cohere `/v2/embed` `truncate`), 047 (TEI `/embed` `truncate`, the relied-upon-default case + matching-value-omitted body-minimal outcome), 048 (Jina `/v1/rerank` `truncation`, the distinct name) — plus the §10 cross-spec touchpoint and §8.3's `encoding_format` note reconciled to the general rule by [proposal 0105](../../proposals/0105-extras-managed-field-collision-rule.md)
