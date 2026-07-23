@@ -4,7 +4,7 @@ Pins the **managed structural wire-field** arm of llm-provider §6 *Managed-fiel
 mapping. §8.1 sets several request-body-root fields for its own correctness that a caller does **not** supply
 as declared `RuntimeConfig` fields — `model` (the bound identifier), `messages` / `tools` (the `complete()`
 arguments), `tool_choice` (the §5 parameter) — so an undeclared extras key of the same name collides with them
-at the root (the request-body-root merge §8.1 codifies would let the caller's value silently
+at the root (the request-body-root merge codified in §8.1 would let the caller's value silently
 win). Each is a managed non-additive field: a conflicting extras value is rejected pre-send.
 
 This fixture exercises the mechanic on the clearest single-value case, `model` — the "silent re-route to a
