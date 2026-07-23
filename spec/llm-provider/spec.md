@@ -538,7 +538,7 @@ mapping resolves the collision by the managed field's shape:
   `provider_invalid_request` (§7). A field the mapping constructs **only conditionally** (e.g. `response_format`
   only when a `response_schema` is supplied, `stream_options` only when streaming) is managed **only when the
   mapping is producing it**; when it is not, the field is unmanaged and keeps untouched pass-through.
-  "Equal" and "conflicting" are judged by **decoded-value deep equality**: the caller's and the managed
+  "Equal" and "conflicting" **MUST** be judged by **decoded-value deep equality**: the caller's and the managed
   value are compared as parsed values, structurally — **objects** member-wise (member/key order
   irrelevant), **arrays** element-wise in order (array order IS significant), and **scalars** by value
   (numbers compared numerically, so `1` and `1.0` are equal). Insignificant serialization differences do
