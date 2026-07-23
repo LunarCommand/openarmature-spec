@@ -3,7 +3,7 @@
 **A workflow framework for LLM pipelines and tool-calling agents.**
 
 OpenArmature ships composable graph primitives — nodes, edges, typed state, conditional routing — plus the supporting
-infrastructure production LLM work needs: prompt management, evaluation, observability, and MCP tool integration. One
+infrastructure production LLM work needs: prompt management, embeddings and reranking, evaluation, observability, and MCP tool integration. One
 framework for both deterministic LLM pipelines and tool-calling agents.
 
 ---
@@ -363,7 +363,7 @@ paused-invocation record reusing the same persistence mechanism as checkpointing
 
 **Scope.** Uniform, intentionally narrow, stateless request/response surface over local (vLLM, Ollama, LM Studio)
 and remote (OpenAI, Anthropic, Google, Bifrost) providers — one `complete()` call, no history, no tool loop, no
-retry or routing. Covers content blocks and multimodal input, structured output, tool-choice, streaming, and
+routing (call-level retry is opt-in, off by default). Covers content blocks and multimodal input, structured output, tool-choice, streaming, and
 per-provider wire-format mappings.
 
 **Core abstractions.** `LLM`, `Message` (system, user, assistant, tool), content blocks, `ToolCall`, normalized
@@ -374,6 +374,9 @@ per-provider wire-format mappings.
 - Pre-flight health check with explicit `ready()` method — agents and pipelines fail fast on missing models
 - Structured output returns a parsed instance; a parse-or-validate failure surfaces as a typed failure carrying the
   raw response and its diagnostics
+- Call-level retry is opt-in and off by default: a per-attempt schedule may override `RuntimeConfig` across
+  retries, and a caller-authored `reask` builder makes a structured-output failure retryable in place — the
+  caller supplies the corrective message, the framework authors none (principle 7)
 - `tool_choice` constrains the request; the response is reported exactly as the provider sent it
 - Normalized `finish_reason` (`stop` / `length` / `tool_calls` / `content_filter` / `error`) is uniform across providers
 - Streaming is a first-class response mode alongside unary completion
@@ -388,14 +391,14 @@ text into embedding vectors, and re-scoring candidate documents against a query.
 `<domain>-provider` family.
 
 **Core abstractions.** `EmbeddingProvider` (`ready()` + `embed(list[str]) -> EmbeddingResponse`) and `RerankProvider`
-(`ready()` + `rerank(query, documents, *, top_k=None) -> RerankResponse` of relevance-sorted `ScoredDocument`
+(`ready()` + `rerank(query, documents, *, top_k=None, config=None) -> RerankResponse` of relevance-sorted `ScoredDocument`
 entries). Paired typed events on the graph-engine event union (`EmbeddingEvent` / `RerankEvent` and their failure
 variants).
 
 **Key decisions.**
 
 - The same narrow, stateless surface as LLM Provider — `ready()` plus a single call, no orchestration
-- A cross-vendor `input_type` knob (query vs document) for embeddings
+- A cross-vendor `input_type` knob for embeddings — `query` / `document`, extensible with further well-known values (e.g. `classification` / `clustering`) where a mapping's backend supports them
 - Per-provider wire-format mappings specified in-spec (TEI, Jina, OpenAI-compatible, Cohere), with a cross-mapping batch-chunking rule for over-cap embedding calls
 - Provider payloads carry the same privacy posture as LLM payloads, suppressible via the shared provider-payload flag
 - Observability maps onto dedicated Langfuse `Embedding` and `Retriever` observation types and an OTel GenAI
@@ -429,8 +432,9 @@ the `PromptBackend` interface.
 **Key decisions.**
 
 - `StrictUndefined` by default — unbound variables raise immediately instead of rendering empty strings
-- Langfuse backend (sibling package) fetches by name and label; local backend reads from filesystem; a per-fetch
-  cache TTL bounds staleness
+- Langfuse backend (sibling package) fetches by name and label; local backend reads from filesystem; staleness is
+  bounded by a per-fetch cache TTL over a service-wide `default_cache_ttl_seconds` default (precedence: per-call >
+  manager default > backend)
 - Each prompt may carry sampling parameters (mirroring `RuntimeConfig`) and an advisory, observability-only
   `token_budget` (input / total ceilings) that never alters the request
 - Fallback: if Langfuse fetch fails, fall back to local template with warning
