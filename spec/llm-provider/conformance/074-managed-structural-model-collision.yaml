@@ -7,8 +7,8 @@
 # `messages` / `tools` (the complete() arguments), `tool_choice` (the §5
 # parameter). Each is a managed non-additive field — an extras override would
 # silently replace the caller's conversation, tool set, or bound model, via the
-# OpenAI-SDK `extra_body`-style root merge §8.1 codifies. Per §6, a conflicting
-# extras value is rejected pre-send.
+# request-body-root merge §8.1 codifies. Per §6, a conflicting extras value is
+# rejected pre-send.
 #
 # This fixture pins the mechanic on the clearest single-value case, `model`
 # (the "silent re-route to a different model" failure); `messages` / `tools` /
