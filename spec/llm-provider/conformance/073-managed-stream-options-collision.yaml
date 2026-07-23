@@ -1,0 +1,102 @@
+# llm-provider §6 *Managed-field collision* (reject arm) — the §8.1.6
+# conditionally-managed `stream_options` field.
+#
+# §8.1.6: while streaming, the OpenAI mapping sets `stream: true` plus
+# `stream_options: {include_usage: true}` so the terminal chunk carries usage
+# (OpenAI omits usage from streamed responses otherwise). The mapping's §6
+# *Streaming assembly* consumer depends on that terminal-chunk usage. So
+# `stream_options` is a CONDITIONALLY-managed field (managed while streaming):
+#   - streaming + extras stream_options {include_usage: false} (conflicts) ->
+#     reject pre-send, provider_invalid_request, NO request issued. Honoring it
+#     would drop the terminal-chunk usage the mapping reads, silently breaking
+#     Response.usage.
+#   - NON-streaming + extras stream_options -> the mapping sends no stream /
+#     stream_options, so the field is UNMANAGED and the extras value rides the
+#     bag untouched — the mapping does not manage it when not streaming;
+#     whether the real backend accepts the stray key is caller-beware per §6
+#     (OpenAI itself requires stream_options only with stream: true). Proves
+#     stream_options is conditionally managed.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 005's header (mapping: openai default,
+# expected_wire_request), 032's header (config.extras pass-through bag), 059's
+# header (the OpenAI streaming request shape: stream: true + stream_options),
+# and 060's header (the pre-send reject convention: mock_provider.responses: []
+# so a sent request fails the test; expected.raises: {category};
+# no_token_events_emitted on the rejected stream path).
+
+cases:
+  - name: extras_stream_options_conflicts_rejected_pre_send
+    description: |
+      complete(stream=True, config={extras: {stream_options: {include_usage:
+      false}}}). The streaming mapping sets stream_options: {include_usage:
+      true} (§8.1.6); the caller's extras stream_options — an UNDECLARED key —
+      names that managed field, and {include_usage: false} conflicts: it would
+      drop the terminal-chunk usage the mapping's §6 Streaming assembly consumer
+      reads, silently breaking Response.usage. Per §6's managed-field collision
+      reject arm, the mapping MUST raise provider_invalid_request at pre-send
+      validation and MUST NOT issue any request — and MUST NOT silently drop or
+      forward the value. No LlmTokenEvent is emitted (the reject is pre-send).
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "stream this"}
+      config:
+        extras:
+          stream_options: {include_usage: false}
+    mock_provider:
+      # Never reached — rejection is pre-send. A sent request fails the test.
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request
+      no_token_events_emitted: true
+      invariants:
+        conditionally_managed_stream_options_conflict_rejected_pre_send: true
+        no_request_issued: true
+        stream_options_neither_dropped_nor_forwarded: true
+
+  - name: extras_stream_options_without_streaming_rides_untouched
+    description: |
+      complete(config={extras: {stream_options: {include_usage: false}}})
+      NON-streaming (stream unset). The mapping sends no stream / stream_options
+      (§8.1.6 — those are the streaming request fields), so stream_options is
+      UNMANAGED: the extras value rides the extras bag untouched onto the wire
+      — the mapping does not manage it when not streaming (whether the backend
+      accepts the stray key is caller-beware per §6; OpenAI itself requires
+      stream_options only with stream: true) — and the atomic call proceeds
+      normally. Proves stream_options is CONDITIONALLY managed — only while
+      streaming.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "atomic this"}
+      config:
+        extras:
+          stream_options: {include_usage: false}
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "atomic this"}
+      # The extras stream_options rides untouched — the mapping manages nothing
+      # here (not streaming), so untouched pass-through governs.
+      stream_options: {include_usage: false}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-073
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+      invariants:
+        non_streaming_stream_options_unmanaged_rides_untouched: true

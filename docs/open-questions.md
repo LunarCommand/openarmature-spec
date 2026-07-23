@@ -356,8 +356,15 @@ response-side clause.
 ### Cross-cutting — extras key vs mapping-managed wire field
 
 - **What happens when an extras-bag key collides with a wire field the
-  mapping itself manages?** [candidate-for-new-proposal] — deferred by 0099,
-  which pinned one instance and explicitly declined the general rule.
+  mapping itself manages?** [resolved-by-0105] — 0105 added the general rule
+  to llm-provider §6 (*Managed-field collision*, inherited by retrieval §10):
+  posture **(a)** below — a managed field governs a colliding key, **merged**
+  where list-shaped, **rejected pre-send** where a conflicting scalar (a
+  matching scalar is a no-op); each §8.x mapping MUST enumerate its managed
+  keys. It ratified 0099's `embedding_types` merge as an instance and declared
+  the fail-loud `truncate` / `truncation` flags managed scalars (§8.1 / §8.2 /
+  §8.4). Kept below for retrieval. Original framing (deferred by 0099, which
+  pinned one instance and explicitly declined the general rule):
   llm-provider §6 says an *undeclared* field is forwarded to the wire body
   **untouched** and "MUST NOT translate, rename, or otherwise transform" it —
   but scopes that to what "the wire-format mapping (§8)" defines, and says
@@ -382,6 +389,25 @@ response-side clause.
   declared by each mapping (precise, but re-derived per vendor and leaves the
   default undefined). Auditing every §8.x mapping for managed-field-vs-extras
   interactions is most of the work.
+- **Remaining follow-on (post-0105): the *declared-field-vs-extras* collision,
+  and the `encoding_format` scalar.** [candidate-for-new-proposal] — 0105 added
+  the general managed-field rule and enumerated the *managed-internal* keys
+  across both capabilities (retrieval `embedding_types` merge + the §8.1 / §8.2 /
+  §8.4 truncation-flag reject; llm-provider §8.1 structural `model` / `messages` /
+  `tools` / `tool_choice`, §8.1.5 `response_format`, §8.1.6 `stream_options`
+  reject). What it **deferred** is a structurally different collision: a wire key
+  that **realizes a declared OA field** shadowed by an extras key of the wire
+  name — **§8.2 Jina `task`** (from the declared `input_type`), llm **`stop`**
+  (from `stop_sequences`), and llm **`stream`** (from `complete(stream=…)`). These
+  are *not* the managed-internal-field rule (the caller has a declared way to set
+  the field; the extras key uses the wire name); the design question — does the
+  wire-name extras override the declared-field realization, or is it rejected /
+  merged — needs its own pass and must be settled uniformly for all three, since
+  they share the mechanism. Also open: **§8.3's `encoding_format`** (a scalar
+  mode-switch structurally parallel to the reject arm — see the §8.3 base64 entry
+  below, and the deferred output-encoding work; a reject-now would become a
+  reject-then-reverse once base64 output support lands). Each needs a per-field
+  decision.
 
 ### Cross-cutting — §8.3 `encoding_format: "base64"` advertised via extras
 

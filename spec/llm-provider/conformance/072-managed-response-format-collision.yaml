@@ -1,0 +1,110 @@
+# llm-provider §6 *Managed-field collision* (reject arm) — the §8.1.5
+# conditionally-managed `response_format` object field. The FIRST llm-provider
+# managed-field-collision fixture: 0105 defined the general rule in §6, but its
+# concrete managed keys were all in retrieval (embedding_types, truncate). This
+# pins the llm-provider instance.
+#
+# §8.1.5: when a response_schema is supplied, the OpenAI mapping constructs a
+# `response_format` wire field from the schema, and its own response consumer
+# (§6 `parsed`, §7 `structured_output_invalid` validation) depends on the model
+# being constrained to that schema. So `response_format` is a CONDITIONALLY-
+# managed non-additive OBJECT field (the reject arm, broadened by 0105 from
+# scalar to any mutually-exclusive value the mapping constructs wholesale):
+#   - response_schema present + extras response_format (conflicts) -> reject
+#     pre-send, provider_invalid_request, NO request issued. Honoring the
+#     caller's format would drop the schema constraint the §7 validation reads.
+#   - NO response_schema + extras response_format -> the mapping produces no
+#     response_format, so the field is UNMANAGED and the extras value rides the
+#     bag untouched onto the wire. Proves response_format is conditionally
+#     managed (an impl that ALWAYS rejects an extras response_format, even with
+#     no schema, over-rejects and fails case 2).
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 005's header (mapping: openai default,
+# calls / expected_wire_request), 026's header (structured-output wire:
+# response_schema -> response_format {type: json_schema, json_schema}), 032's
+# header (config.extras — the §6 undeclared-field pass-through bag), and 060's
+# header (the pre-send reject convention: mock_provider.responses: [] so a sent
+# request fails the test; expected.raises: {category}).
+
+cases:
+  - name: extras_response_format_conflicts_with_schema_rejected_pre_send
+    description: |
+      complete(response_schema=..., config={extras: {response_format: {type:
+      "json_object"}}}). The mapping constructs response_format from the schema
+      (§8.1.5); the caller's extras response_format — an UNDECLARED key — names
+      that managed field. `{type: "json_object"}` (unconstrained JSON) conflicts
+      with the mapping's schema-constrained format: they are mutually exclusive.
+      Per §6's managed-field collision reject arm, the mapping MUST raise
+      provider_invalid_request at pre-send validation and MUST NOT issue any
+      request — and MUST NOT silently drop the extras value or forward it
+      untouched. Honoring it would constrain the model to unconstrained JSON
+      while the mapping validates against response_schema, breaking structured
+      output.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate."}
+      response_schema:
+        type: object
+        properties:
+          value: {type: integer}
+        required: [value]
+        additionalProperties: false
+      config:
+        extras:
+          response_format: {type: "json_object"}
+    mock_provider:
+      capabilities:
+        supports_native_response_format: true
+      # Never reached — rejection is pre-send. A sent request fails the test.
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request
+      invariants:
+        conditionally_managed_response_format_conflict_rejected_pre_send: true
+        no_request_issued: true
+        extras_response_format_neither_dropped_nor_forwarded: true
+
+  - name: extras_response_format_without_schema_rides_untouched
+    description: |
+      complete(config={extras: {response_format: {type: "json_object"}}}) with
+      NO response_schema. The mapping produces NO response_format (§8.1.5 — the
+      request body MUST NOT include it for free-form calls), so response_format
+      is UNMANAGED here: the extras response_format rides the extras bag
+      untouched onto the wire (per §6 pass-through), and the call proceeds
+      normally. This proves response_format is CONDITIONALLY managed — managed
+      only while the mapping is producing it from a schema.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate."}
+      config:
+        extras:
+          response_format: {type: "json_object"}
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "Generate."}
+      # The extras response_format rides untouched — the mapping manages nothing
+      # here (no schema), so untouched pass-through governs.
+      response_format: {type: "json_object"}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-test-072
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "{}"}, finish_reason: stop}
+            usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      response:
+        message: {role: assistant, content: "{}", tool_calls: null}
+        finish_reason: stop
+      invariants:
+        no_schema_response_format_unmanaged_rides_untouched: true
+        extras_response_format_on_wire_when_unmanaged: true
