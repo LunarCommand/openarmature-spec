@@ -2,7 +2,7 @@
 
 **A workflow framework for LLM pipelines and tool-calling agents.**
 
-OpenArmature ships composable graph primitives — nodes, edges, typed state, conditional routing — plus the supporting
+OpenArmature ships composable graph primitives (nodes, edges, typed state, conditional routing) plus the supporting
 infrastructure production LLM work needs: prompt management, embeddings and reranking, evaluation, observability, and MCP tool integration. One
 framework for both deterministic LLM pipelines and tool-calling agents.
 
@@ -16,12 +16,12 @@ The current landscape for building production LLM systems splits cleanly into tw
 pipelines well:
 
 **Agent frameworks** (LangChain/LangGraph, CrewAI, OpenAI Agents SDK, Claude Agent SDK, Pydantic AI, OpenAI Swarm) are
-built around the tool-calling loop. State is typically a message list. Control flow is LLM-driven — the model decides
-the next step. These frameworks are excellent for conversational agents and autonomous loops. They are awkward for
+built around the tool-calling loop. State is typically a message list. Control flow is LLM-driven, with the model
+deciding the next step. These frameworks are excellent for conversational agents and autonomous loops. They are awkward for
 deterministic pipelines where the control flow is known up front and LLMs are one of several processing steps.
 
-The friction is specific: a document extraction or content analysis pipeline doesn't need conversation history — it
-needs structured data flow between stages. Forcing a deterministic sequence of LLM calls through a `MessagesState` or
+The friction is specific: a document extraction or content analysis pipeline needs structured data flow between
+stages, not conversation history. Forcing a deterministic sequence of LLM calls through a `MessagesState` or
 `ToolNode` imposes a conversation abstraction on non-conversation work: token overhead for history that nothing reads,
 and a loop-shaped control model where a linear sequence of typed Pydantic contracts would be clearer and cheaper.
 
@@ -34,23 +34,23 @@ The mismatches are specific, not cosmetic:
 
 - **Rate limiting.** Generic orchestrators throttle by concurrent tasks. LLM providers throttle by tokens per minute.
   A concurrency limit of 8 can still hit a TPM ceiling when chunks vary in size.
-- **Retry semantics.** Standard retry re-invokes the failed call. LLM failures often need something different — a
+- **Retry semantics.** Standard retry re-invokes the failed call. LLM failures often need something different: a
   retry with the validation error appended to the prompt, a fallback to a smaller model, a switch from JSON mode to
   text-plus-parse, or a regeneration with a higher temperature.
 - **Semantic failure.** A task-level orchestrator reports success when the function returned without exception. LLM
-  steps routinely succeed at the process level while producing garbage — a hallucinated JSON schema that breaks the
+  steps routinely succeed at the process level while producing garbage: a hallucinated JSON schema that breaks the
   next stage, a plausible-looking answer that fails evaluation. Observability that treats these as success is
   observability that hides the actual failure mode.
 
 None of this is an oversight in the orchestrators. It is outside the scope those tools were designed for.
 
-**LCEL is retired.** LangChain's pipeline DSL is being wound down. The chain-of-operations model did not survive —
-developers rejected it for the same reason most DSLs fail: they wanted Python control flow (`for`, `if`, explicit
+**LCEL is retired.** LangChain's pipeline DSL is being wound down. The chain-of-operations model did not survive.
+Developers rejected it for the same reason most DSLs fail: they wanted Python control flow (`for`, `if`, explicit
 `await`), not pipe operators that hid the underlying `asyncio`. OpenArmature's bet is that Python-native graph
 construction beats any DSL, no matter how elegant.
 
-The work in the middle — content analysis pipelines, creator/lead sourcing, forecasting systems, large-scale data
-enrichment, multi-stage extraction, document processing — is mostly deterministic with LLM steps for reasoning. It has
+The work in the middle (content analysis pipelines, creator/lead sourcing, forecasting systems, large-scale data
+enrichment, multi-stage extraction, document processing) is mostly deterministic with LLM steps for reasoning. It has
 no dedicated framework. Teams doing this work either:
 
 - Shoehorn into LangGraph with fake tool-calling loops
@@ -93,17 +93,17 @@ does.
 
 A single workflow framework with:
 
-1. **Graph primitives** — typed state, nodes as async functions, static and conditional edges, reducers, middleware,
+1. **Graph primitives**: typed state, nodes as async functions, static and conditional edges, reducers, middleware,
    subgraphs. Works for pipelines (deterministic control flow) and agents (LLM-driven control flow).
-2. **Pipeline-first utilities** — checkpoint/resume, batch processing with partial failure handling, rate limiting,
+2. **Pipeline-first utilities**: checkpoint/resume, batch processing with partial failure handling, rate limiting,
    structured-output repair, typed inter-stage contracts, per-item vs per-stage resource lifecycle. These are the
    patterns every LLM pipeline rebuilds.
-3. **Production infrastructure** — prompt management with dual backends (Langfuse + local Jinja2), evaluation with
+3. **Production infrastructure**: prompt management with dual backends (Langfuse + local Jinja2), evaluation with
    persistent history, ambient observability, structured logging, MCP with cold-start handling and retry. These are
    non-optional for production LLM work.
-4. **MCP-native tools** — discovery, schema conversion, cold-start handling, retry policy, session lifecycle are
+4. **MCP-native tools**: discovery, schema conversion, cold-start handling, retry policy, session lifecycle are
    first-class. Remote and local tools use the same interface.
-5. **Composable ecosystem** — core package plus sibling packages (`openarmature-eval`, `openarmature-langfuse`,
+5. **Composable ecosystem**: core package plus sibling packages (`openarmature-eval`, `openarmature-langfuse`,
    `openarmature-otel`). Swap backends by installing a different sibling.
 
 Target audience: teams building LLM pipelines. Non-LLM pipelines work as a byproduct. Tool-calling agents are a
@@ -125,7 +125,7 @@ the patterns below are distilled observations, not retrofits.
 | LLM pipeline (creator sourcing)    | Checkpoint/resumability, batch processing with incremental persistence, per-stage rerun from checkpoint                                                       |
 | Non-LLM ML pipeline (GPU audio)    | Resource lifecycle management, per-item vs per-stage strategies, Ghost Track recovery                                                                         |
 | Tool-calling agent (game)          | Tiered decision-making, conversation memory reconstruction from external state                                                                                |
-| Minimal LLM pipeline (forecasting) | "Calculate first, reason second" — deterministic computation followed by LLM narrative generation                                                             |
+| Minimal LLM pipeline (forecasting) | "Calculate first, reason second": deterministic computation followed by LLM narrative generation                                                             |
 | MCP tooling (CLI)                  | MCP server exploration, schema discovery, connection diagnostics                                                                                              |
 
 ### 2.2 Distilled Patterns
@@ -149,7 +149,7 @@ stage holds GPU memory indefinitely. Both patterns are valid; the framework shou
 **Partial failure is the default.** In a 1,000-item batch, some items will fail. Pipelines should not halt unless
 configured to. Per-item exceptions collected and reported without stopping the batch is the expected behavior.
 
-**Rate limiting scope is composable, not fixed.** Provider/model TPM is the base layer (to avoid 429s — limits vary
+**Rate limiting scope is composable, not fixed.** Provider/model TPM is the base layer (to avoid 429s, since limits vary
 by model, not just by provider). Pipelines frequently need finer scopes on top: per-node throttling to prevent a
 high-fanout step from starving others on the same model, or per-prompt budgets when several prompts share a model but
 have different cost/latency targets. The framework should let developers compose limiters at whichever scopes their
@@ -181,7 +181,7 @@ LLM generates narrative or interpretation. The framework should make the boundar
 **1. LLM pipelines and agents share primitives.** The graph engine is agnostic to whether control flow is LLM-driven or
 deterministic. Pipeline utilities are first-class in core, not an afterthought. Agents work with the same primitives.
 
-**2. The engine is content-agnostic.** A node is an opaque IO boundary — a black-box async function that returns a
+**2. The engine is content-agnostic.** A node is an opaque IO boundary, a black-box async function that returns a
 partial update. The engine has no concept of LLMs, tools, or external systems, so validation, retry, and recovery of
 external inputs (JSON parsing, schema drift, truncated responses, timeouts) are node-internal concerns.
 `NodeException` with `recoverable_state` is the crash-context primitive; patterns built on top (retries, graceful
@@ -206,7 +206,7 @@ first-class ecosystem citizen.
 no default personas. Every prompt the LLM sees is authored by the developer.
 
 **8. Transparency over abstraction.** The framework adds structure but never hides what's underneath. Provider
-responses, exception causes, intermediate state, and routing decisions are exposed alongside their normalized views —
+responses, exception causes, intermediate state, and routing decisions are exposed alongside their normalized views,
 not behind escape hatches, but as first-class fields users can read directly. Hiding implementation details from users
 hides failures from users; OpenArmature defaults the other way. Principle 7 ("No built-in prompts") is one specific
 case of this rule; the rule itself is general.
@@ -289,8 +289,8 @@ This section summarizes each module's scope, core abstractions, and key design d
 composition, async compilation. Owns the typed observer event union the observability layer consumes.
 
 **Core abstractions.** `Graph`, `State`, `Message`, `Node`, `Edge`, reducers (`append_messages`, `merge_dict`,
-`last_write_wins`, custom). The typed observer event stream — `NodeEvent` plus the LLM, embedding, rerank, tool, and
-token-budget event variants — is emitted from here.
+`last_write_wins`, custom). The typed observer event stream (`NodeEvent` plus the LLM, embedding, rerank, tool, and
+token-budget event variants) is emitted from here.
 
 **Key decisions.**
 
@@ -299,7 +299,7 @@ token-budget event variants — is emitted from here.
 - Edges are Python callables returning the next node name or `Graph.END`
 - Subgraphs compose as single nodes; parent state flows in and out
 - Middleware wraps nodes (logging, retry, timing) without changing node signatures
-- Execution emits a typed event stream that observers consume — the substrate the observability layer maps onto
+- Execution emits a typed event stream that observers consume, the substrate the observability layer maps onto
   spans, logs, and metrics
 
 ### 4.2 Pipeline Utilities
@@ -312,11 +312,11 @@ audience.
 - `@step` decorator for pipeline stages with typed input/output contracts
 - `StepRegistry` for discovery and ordering
 - `Checkpoint` for persistence between stages (and optionally between items)
-- `batch_process()` — async batch executor with partial failure collection, rate limiting, progress reporting
-- `chunk_with_overlap()` — text chunking with configurable overlap for context continuity
-- `structured_output()` — wrapper that retries on Pydantic validation failure with error context
-- `RateLimiter` — token-bucket with composable scopes (per-model, per-node, per-prompt) that stack
-- `ResourceLifecycle` — context manager for per-stage resource loading (GPU models, connection pools)
+- `batch_process()`: async batch executor with partial failure collection, rate limiting, progress reporting
+- `chunk_with_overlap()`: text chunking with configurable overlap for context continuity
+- `structured_output()`: wrapper that retries on Pydantic validation failure with error context
+- `RateLimiter`: token-bucket with composable scopes (per-model, per-node, per-prompt) that stack
+- `ResourceLifecycle`: context manager for per-stage resource loading (GPU models, connection pools)
 
 **Key decisions.**
 
@@ -330,7 +330,7 @@ audience.
 ### 4.3 Sessions
 
 **Scope.** Named, typed state records that persist across multiple `invoke()` calls under a stable caller-supplied
-identifier — the contract for multi-turn and resumable workloads that outlive a single invocation.
+identifier, the contract for multi-turn and resumable workloads that outlive a single invocation.
 
 **Core abstractions.** `SessionStore` protocol, `SessionRecord`, per-graph registration (`with_session_store(...)`).
 Reference implementations bundle an in-memory and an embedded-database (SQLite) backend; production stores (Redis,
@@ -346,7 +346,7 @@ Postgres, DynamoDB) layer in as sibling packages.
 ### 4.4 Suspension
 
 **Scope.** How an in-progress invocation intentionally pauses at a node, persists its state under a typed signal
-descriptor, and later resumes — merging a resume payload into state. The load-bearing case is stateless workers:
+descriptor, and later resumes, merging a resume payload into state. The load-bearing case is stateless workers:
 suspend on one machine, resume on another with nothing held in worker memory between.
 
 **Core abstractions.** `suspend(...)` invoked from inside a node body; a typed suspension signal descriptor; a
@@ -362,7 +362,7 @@ paused-invocation record reusing the same persistence mechanism as checkpointing
 ### 4.5 LLM Provider Abstraction
 
 **Scope.** Uniform, intentionally narrow, stateless request/response surface over local (vLLM, Ollama, LM Studio)
-and remote (OpenAI, Anthropic, Google, Bifrost) providers — one `complete()` call, no history, no tool loop, no
+and remote (OpenAI, Anthropic, Google, Bifrost) providers: one `complete()` call, no history, no tool loop, no
 routing (call-level retry is opt-in, off by default). Covers content blocks and multimodal input, structured output, tool-choice, streaming, and
 per-provider wire-format mappings.
 
@@ -371,12 +371,12 @@ per-provider wire-format mappings.
 
 **Key decisions.**
 
-- Pre-flight health check with explicit `ready()` method — agents and pipelines fail fast on missing models
+- Pre-flight health check with explicit `ready()` method, so agents and pipelines fail fast on missing models
 - Structured output returns a parsed instance; a parse-or-validate failure surfaces as a typed failure carrying the
   raw response and its diagnostics
 - Call-level retry is opt-in and off by default: a per-attempt schedule may override `RuntimeConfig` across
-  retries, and a caller-authored `reask` builder makes a structured-output failure retryable in place — the
-  caller supplies the corrective message, the framework authors none (principle 7)
+  retries, and a caller-authored `reask` builder makes a structured-output failure retryable in place, with the
+  caller supplying the corrective message and the framework authoring none (principle 7)
 - `tool_choice` constrains the request; the response is reported exactly as the provider sent it
 - Normalized `finish_reason` (`stop` / `length` / `tool_calls` / `content_filter` / `error`) is uniform across providers
 - Streaming is a first-class response mode alongside unary completion
@@ -386,7 +386,7 @@ per-provider wire-format mappings.
 
 ### 4.6 Retrieval Provider
 
-**Scope.** Retrieval-primitive provider operations — a sibling capability to LLM Provider, not a subtype: turning
+**Scope.** Retrieval-primitive provider operations, a sibling capability to LLM Provider (not a subtype): turning
 text into embedding vectors, and re-scoring candidate documents against a query. The first member of the
 `<domain>-provider` family.
 
@@ -397,8 +397,8 @@ variants).
 
 **Key decisions.**
 
-- The same narrow, stateless surface as LLM Provider — `ready()` plus a single call, no orchestration
-- A cross-vendor `input_type` knob for embeddings — `query` / `document`, extensible with further well-known values (e.g. `classification` / `clustering`) where a mapping's backend supports them
+- The same narrow, stateless surface as LLM Provider: `ready()` plus a single call, no orchestration
+- A cross-vendor `input_type` knob for embeddings: `query` / `document`, extensible with further well-known values (e.g. `classification` / `clustering`) where a mapping's backend supports them
 - Per-provider wire-format mappings specified in-spec (TEI, Jina, OpenAI-compatible, Cohere), with a cross-mapping batch-chunking rule for over-cap embedding calls
 - Provider payloads carry the same privacy posture as LLM payloads, suppressible via the shared provider-payload flag
 - Observability maps onto dedicated Langfuse `Embedding` and `Retriever` observation types and an OTel GenAI
@@ -431,7 +431,7 @@ the `PromptBackend` interface.
 
 **Key decisions.**
 
-- `StrictUndefined` by default — unbound variables raise immediately instead of rendering empty strings
+- `StrictUndefined` by default, so unbound variables raise immediately instead of rendering empty strings
 - Langfuse backend (sibling package) fetches by name and label; local backend reads from filesystem; staleness is
   bounded by a per-fetch cache TTL over a service-wide `default_cache_ttl_seconds` default (precedence: per-call >
   manager default > backend)
@@ -496,8 +496,8 @@ development. Correlation IDs auto-injected from observability context.
 
 ### 4.12 Harness and Deployment
 
-**Scope.** The abstract contract a harness follows when wrapping the OA engine to serve a deployment runtime — HTTP
-server, event bus, queue worker, or CLI repl: turn semantics, inbound dispatch-path classification, turn-boundary
+**Scope.** The abstract contract a harness follows when wrapping the OA engine to serve a deployment runtime (HTTP
+server, event bus, queue worker, or CLI repl): turn semantics, inbound dispatch-path classification, turn-boundary
 error categorization, and the sessioned-vs-stateless mode distinction. A chat-shaped sub-spec layers the canonical
 chat-loop deployment on top.
 
@@ -516,7 +516,7 @@ send-and-reply surface with suspension / HITL handling. Concrete harnesses ship 
 
 ### 4.13 Conformance Adapter
 
-**Scope.** The language-agnostic conformance system every implementation builds against — the meta-capability that
+**Scope.** The language-agnostic conformance system every implementation builds against, the meta-capability that
 makes "same behavior across languages" verifiable rather than aspirational. Defines the fixture file schema, the
 directive vocabulary, the harness primitives an implementation must provide, and the per-language adapter pattern
 that runs the shared fixtures as host-runtime tests.
@@ -688,69 +688,7 @@ monorepo. Different language tooling, different contributor pools, different rel
 
 **Risks.**
 
-- TypeScript never ships (Python absorbs all attention) — mitigate by extracting the spec as an explicit artifact
-- Spec drift between implementations — mitigate by requiring conformance tests to pass before either language releases
-- Idiom mismatch (e.g., Python decorators vs TS middleware) — accept that APIs will differ in syntax while matching in
+- TypeScript never ships (Python absorbs all attention), mitigated by extracting the spec as an explicit artifact
+- Spec drift between implementations, mitigated by requiring conformance tests to pass before either language releases
+- Idiom mismatch (e.g., Python decorators vs TS middleware), accepted: APIs will differ in syntax while matching in
   behavior
-
----
-
-## 7. Implementation Plan
-
-### 7.1 Phasing
-
-> **Status.** The plan below has been followed through spec extraction — the language-agnostic specification
-> and its conformance suite are the artifact this repository holds, and a reference implementation builds
-> against them. The specified surface has grown past the v0–v2 module list (see §4 and the per-capability
-> specs for the current scope); the phases remain as the rationale for the build order.
-
-**v0 — Graph + Pipeline Utilities.** Ship the graph engine and pipeline utilities. Enough to build a working LLM
-pipeline end-to-end with basic LLM provider abstraction. No MCP, no eval, no observability yet. Goal: validate the core
-primitives against two or three real pipeline builds.
-
-**v1 — LLM Provider + Tools + MCP.** Add production-grade LLM abstraction (local + remote providers, structured output
-with repair) and the tool system with MCP support (discovery, retry, cold-start handling). Goal: the framework can build
-a tool-calling agent, not just a pipeline.
-
-**v2 — Supporting Infrastructure.** Add prompt management, observability (core interfaces + `openarmature-langfuse` +
-`openarmature-otel`), structured logging. This is where the "glue tax" savings materialize. Goal: a real production
-deployment can use OpenArmature end-to-end.
-
-**v3 — Evaluation + Ecosystem.** Ship `openarmature-eval` with test runner, SQLite persistence, trend charts, CLI. Build
-local dev tooling (mock MCP servers, prompt REPL). Extract the spec and begin TypeScript port.
-
-### 7.2 Risks
-
-**Scope too broad for a small team.** Mitigation: phasing above. Each phase produces a shippable artifact that is useful
-on its own.
-
-**Graph engine is overkill for simple pipelines.** Mitigation: pipeline utilities work without explicit graph
-construction for straightforward linear flows. The graph is the escape hatch for complex topology, not the only way in.
-
-**MCP ecosystem instability.** Mitigation: core interfaces abstract transport; new MCP transports slot in as ToolSet
-backends.
-
-**Observability backend lock-in.** Mitigation: observability is interface-first. Backends are swappable siblings.
-
-**TypeScript port never ships.** Mitigation: extract the spec as an explicit artifact in v3; build the conformance test
-suite as part of v3 so TS work has a clear target.
-
-**Eval framework duplicates DeepEval.** Mitigation: `openarmature-eval` focuses on persistence, trends, and
-LLM-pipeline-specific metrics. Integration with DeepEval metrics as adapters is an option, not a replacement.
-
-### 7.3 What Is Hard
-
-**Graph engine semantics.** State reducers, subgraph composition, middleware ordering, and conditional edges interact.
-Getting the model right before shipping is critical — changes post-v0 will break users.
-
-**Pydantic validation feedback loop.** Structured-output repair needs the validation error in the retry prompt. Making
-this automatic, language-model-aware, and low-friction requires care.
-
-**MCP production hardening.** Cold-start handling, session lifecycle, and retry classification are ecosystem-dependent.
-Testing against real MCP servers (not mocks) during v1 is essential.
-
-**Observability provider isolation.** The Langfuse v3 / OTEL span duplication trap is subtle. The framework needs to
-prevent it by default without blocking users who want a shared TracerProvider.
-
-**Spec extraction without Python leakage.** When the spec is written, Python idioms (decorators, async generators,
-context managers) should not leak into the protocol. The spec describes behavior; each language implements idiomatically.
