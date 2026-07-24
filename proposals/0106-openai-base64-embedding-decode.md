@@ -20,7 +20,7 @@
 `"base64"` rides the extras-pass-through bag." But the mapping's response consumer reads `data[].embedding` as
 float vectors, so when a caller actually sets `encoding_format: "base64"` the provider returns each embedding as
 a **base64 string**, which the consumer cannot read as a vector — it blows §4's dimensionality invariants and
-fails the call `provider_invalid_response`. The advertised knob cannot work. This is the same false-promise
+fails the call with `provider_invalid_response`. The advertised knob cannot work. This is the same false-promise
 shape 0099 removed from §8.4, left unpinned in §8.3 and explicitly deferred by 0105.
 
 This proposal makes the knob real by decoding the base64 response:
