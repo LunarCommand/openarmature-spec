@@ -1,0 +1,1 @@
+../../proposals/0106-openai-base64-embedding-decode.md
