@@ -363,8 +363,8 @@ paused-invocation record reusing the same persistence mechanism as checkpointing
 
 **Scope.** Uniform, intentionally narrow, stateless request/response surface over local (vLLM, Ollama, LM Studio)
 and remote (OpenAI, Anthropic, Google, Bifrost) providers: one `complete()` call, no history, no tool loop, no
-routing (call-level retry is opt-in, off by default). Covers content blocks and multimodal input, structured output, tool-choice, streaming, and
-per-provider wire-format mappings.
+routing. Call-level retry is opt-in and off by default. Covers content blocks and multimodal input, structured
+output, tool-choice, streaming, and per-provider wire-format mappings.
 
 **Core abstractions.** `LLM`, `Message` (system, user, assistant, tool), content blocks, `ToolCall`, normalized
 `finish_reason`, provider presets (`LLM.vllm(...)`, `LLM.openai(...)`, `LLM.anthropic(...)`, `LLM.bifrost(...)`).
