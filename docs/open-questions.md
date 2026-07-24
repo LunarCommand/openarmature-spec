@@ -783,7 +783,8 @@ short-horizon roadmap below.
   body's `type` / `message` map deterministically onto the event's `error_type` /
   `error_message` — either enables cross-impl literal assertion of those fields.
   Neither exists today; deferred to a dedicated conformance-adapter follow-on
-  after 0089.
+  after 0089 — part of the same consolidating **directive-documentation pass**
+  as the `typed_observers` / `contains_event` and `cause` gaps below.
 
 ### Cross-cutting — `typed_observers` / `contains_event` directives undocumented
 
@@ -799,8 +800,8 @@ short-horizon roadmap below.
   by value, with the §5.10 value-matcher vocabulary — `<any-string>`, null,
   etc.). Together they are the primary way the suite pins the graph-engine §6
   typed-event families (`LlmCompletionEvent`, `LlmFailedEvent`, `EmbeddingEvent`,
-  `RerankEvent`, …). As of this writing **56 fixtures use `contains_event` and
-  68 use `typed_observers`** (concentrated in observability, with a retrieval
+  `RerankEvent`, …). Many fixtures across the suite use `contains_event` and
+  `typed_observers` (concentrated in observability, with a retrieval
   cluster), yet neither key appears anywhere in `spec/conformance-adapter/spec.md`
   — an adapter author reverse-engineers both from the fixtures.
   This is the same gap `carries` had before proposal 0098 gave it a normative
