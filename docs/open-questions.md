@@ -609,6 +609,29 @@ response-side clause.
     Langfuse types add no semantic precision over the existing `Trace` /
     `Span` mapping for OA's model.
 
+### 0083 — a declared `token_budget` bound of `0`
+
+- **What should a `0` token-budget bound signal?** [candidate-for-new-proposal]
+  — surfaced implementing 0083. prompt-management §3 declares the bounds
+  **non-negative**, so `0` is a legal `input_max_tokens` / `total_max_tokens`,
+  but the observability text never defines the `0` case, and `0` makes the §11.2
+  utilization ratio (`actual / 0`) undefined. §5.5.15's `exceeded` attribute is a
+  strict `>` (`usage.prompt_tokens > input_max_tokens`), so a `0` bound is
+  **already** exceeded by any positive usage — the `exceeded` span attribute and
+  the §11.2 exceeded **counter** are therefore defined for `0` (they fire). The
+  only genuinely-undefined surface is the **utilization histogram** (no ratio for
+  a `0` denominator). Two things to pin, either of which needs a fixture and so a
+  proposal:
+  1. **Normatively define the utilization `÷0` handling** — the recommended
+     interim is to **skip the histogram sample** for a `0` denominator (an omitted
+     sample beats a synthesized sentinel bucket), while `exceeded` and the counter
+     fire per §5.5.15. Without a fixture, two impls could diverge (skip vs
+     sentinel vs skip-everything).
+  2. **Consider tightening prompt-management §3 to positive bounds (`>= 1`)** —
+     which would make `0` invalid at the source and moot the whole question. This
+     is a **breaking** §3 change and would need its own proposal; noted as the
+     cleanest long-term option, not a commitment.
+
 ## Forward-looking provider capabilities
 
 Each new provider domain lands as its own capability following the
