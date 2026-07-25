@@ -1,0 +1,1 @@
+../../proposals/0107-conformance-adapter-directive-vocabulary.md
