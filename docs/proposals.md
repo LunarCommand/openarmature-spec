@@ -9,7 +9,7 @@ lifecycle and the proposal template.
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
 | [0108](proposals/0108-declared-field-vs-extras-collision.md) | Declared-field-vs-extras wire-key collision | llm-provider | Draft    | —               | —          |
 | [0107](proposals/0107-conformance-adapter-directive-vocabulary.md) | Document the conformance-adapter directive vocabulary | conformance-adapter | Draft    | —               | —          |
-| [0106](proposals/0106-openai-base64-embedding-decode.md) | §8.3 base64 embedding output-encoding — decode support | retrieval-provider | Draft    | —               | —          |
+| [0106](proposals/0106-openai-base64-embedding-decode.md) | §8.3 base64 embedding output-encoding — decode support | retrieval-provider | Accepted | Pending         | —          |
 | [0105](proposals/0105-extras-managed-field-collision-rule.md) | Extras-key vs mapping-managed wire-field collision rule | llm-provider | Accepted | Pending         | —          |
 | [0104](proposals/0104-retrieval-id-error-clarifications.md) | Retrieval id/error clarifications — empty-string `response_id`, Jina bare-400 | retrieval-provider | Accepted | Pending         | —          |
 | [0103](proposals/0103-retrieval-conformance-coverage.md) | Retrieval conformance coverage — §8.3 over-cap, `raw`, count-vs-token boundary | retrieval-provider | Accepted | Pending         | —          |
@@ -32,7 +32,7 @@ lifecycle and the proposal template.
 | [0086](proposals/0086-prompt-default-cache-ttl.md) | Service-wide default cache-TTL | prompt-management | Accepted | Shipped (0.17.0)| —          |
 | [0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) | Nested fan-out checkpoint lineage | pipeline-utilities | Accepted | Partial (0.16.0)| —          |
 | [0084](proposals/0084-nested-fan-out-span-lineage.md) | Nested-fan-out span lineage chain | observability | Accepted | Pending         | —          |
-| [0083](proposals/0083-prompt-token-budget-observability.md) | Per-prompt token-budget observability | observability | Accepted | Pending         | —          |
+| [0083](proposals/0083-prompt-token-budget-observability.md) | Per-prompt token-budget observability | observability | Accepted | Shipped (0.17.0)| —          |
 | [0082](proposals/0082-structured-output-failure-diagnostics.md) | Structured-output failure diagnostics | graph-engine | Accepted | Shipped (0.17.0)| —          |
 | [0081](proposals/0081-conformance-adapter-value-matcher-vocabulary.md) | Value-matcher vocabulary | conformance-adapter | Accepted | Textual (0.16.0)| —          |
 | [0080](proposals/0080-prompt-group-arity-enforcement.md) | PromptGroup arity enforcement | prompt-management | Accepted | Shipped (0.17.0)| —          |

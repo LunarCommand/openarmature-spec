@@ -558,12 +558,21 @@ bind the optional client-side `query_prefix` / `document_prefix` from §8.1 — 
 **`/v1/embeddings`.** `POST {base_url}/v1/embeddings` with
 `{"model": str, "input": [str], "dimensions"?: int}`. `input` is always the array form (§3's "always a
 list"); `EmbeddingRuntimeConfig.dimensions` → wire `dimensions` (Matryoshka, on models that support it)
-when set. The mapping does **not** send `encoding_format` by default (OpenAI's wire default is
-`"float"`); `"base64"` rides the extras-pass-through bag. (`encoding_format` is *structurally* a managed
-scalar under llm-provider §6 *Managed-field collision* — the mapping's response consumer reads
-`data[].embedding` as float vectors and depends on the `"float"` default, so a `"base64"` override would
-break §4's vector invariants — but §8.3 does **not** yet enumerate it as managed; output-encoding support is
-a deferred question, so `encoding_format` remains an unmanaged extras key here. See `docs/open-questions.md`.)
+when set. The mapping does **not** send `encoding_format` by default (OpenAI's wire default is `"float"`); a caller MAY
+set `encoding_format: "base64"` through the extras-pass-through bag to request the compact base64 encoding. The
+response consumer decodes each `data[].embedding` by its **wire shape**: a **JSON array whose every element is a
+number** is the float vector verbatim; a **base64 string** is decoded as a base64-encoded array of **little-endian IEEE-754
+single-precision (float32)** values — base64-decode to bytes, then read consecutive 4-byte little-endian float32
+values in order — yielding the same float vector; **any other shape** (`null`, a number, a boolean, an object,
+or an array of non-numbers) is a malformed response and MUST raise `provider_invalid_response` (§7). The shape
+dispatch is **exhaustive**. §4's vector invariants apply to the **decoded** vectors. A base64 string that is not
+valid base64, or whose decoded byte length is not a whole multiple of 4 (so it does not partition into float32
+values), MUST likewise raise `provider_invalid_response`, fail-loud — the mapping MUST NOT return a truncated or
+padded vector — with the verbatim (undecoded) provider response preserved on `raw`. Because the consumer keys on
+the response **shape** rather than the request parameter, `encoding_format` is an **unmanaged** extras key (no §6
+*Managed-field collision* arises) and the wire default stays `"float"`. Base64 composes with the §8 *Batch
+chunking* rule: each per-chunk response's embeddings decode independently by shape, and `raw` is the list of the
+per-request responses with their base64 strings preserved verbatim.
 The response
 `{object: "list", data: [{object: "embedding", index, embedding}], model, usage: {prompt_tokens, total_tokens}}`
 maps to the `EmbeddingResponse` vectors in input order — the mapping consumes `data` + `usage` (the
