@@ -87,7 +87,9 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-No proposals are currently in flight. New work opens as a numbered Draft proposal under [`proposals/`](proposals/).
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0106](proposals/0106-openai-base64-embedding-decode.md) | Draft | retrieval-provider §8.3 | §8.3 OpenAI-compatible embeddings decode a base64 `data[].embedding` (little-endian float32) to float vectors, turning the advertised-but-broken `encoding_format: "base64"` extras knob into a working opt-in; malformed base64 → `provider_invalid_response`; float stays the wire default |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
