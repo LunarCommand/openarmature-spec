@@ -413,7 +413,7 @@ response-side clause.
 ### Cross-cutting — §8.3 `encoding_format: "base64"` advertised via extras
 
 - **§8.3 advertises a knob that would break its own response consumer.**
-  [candidate-for-new-proposal] — surfaced auditing 0099. §8.3 says the mapping
+  [resolved-by-0106] — surfaced auditing 0099. §8.3 says the mapping
   "does not send `encoding_format` by default (OpenAI's wire default is
   `\"float\"`); `\"base64\"` rides the extras-pass-through bag." Unlike 0099's
   `embedding_types` case this is *not* a managed-field collision — the key is
@@ -426,7 +426,12 @@ response-side clause.
   the one left unpinned. Options: state that the mapping requires `float` and
   define what happens when `base64` is supplied (reject pre-send, or decode
   it), or stop advertising the knob. Needs a proposal either way, since it
-  changes §8.3 behavior.
+  changes §8.3 behavior. **Resolved by 0106** (Accepted, v0.101.0): the consumer
+  **decodes** it — `data[].embedding` is read by wire shape (number array →
+  verbatim; base64 string → little-endian float32 decode; any other shape, or a
+  malformed base64, → `provider_invalid_response`), `encoding_format` stays an
+  unmanaged extras key (shape-driven, not a managed-field collision), and float
+  stays the wire default.
 
 ### Cross-cutting — §8 embedding-mapping per-call input caps
 

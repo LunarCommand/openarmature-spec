@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.101.0] — 2026-07-24
+
+**Changed**
+
+- **retrieval-provider §8.3 — base64 embedding output-encoding is decoded, not broken.** §8.3 advertised that a caller could request OpenAI's compact base64 embedding encoding through the extras bag (`encoding_format: "base64"`), but the response consumer read `data[].embedding` as float arrays, so a base64 response came back as **strings** that blew §4's dimensionality invariants and failed the call with `provider_invalid_response` — a knob advertised but unable to work (the false-promise shape 0099 purged from §8.4 Cohere, left unpinned in §8.3). 0106 makes it real: the §8.3 consumer decodes `data[].embedding` by its **wire shape** — a JSON number array is the float vector verbatim; a **base64 string** is decoded as a base64-encoded array of **little-endian IEEE-754 single-precision (float32)** values, yielding the same vector; **any other shape** (`null`, a number, a boolean, an object, an array of non-numbers) raises `provider_invalid_response`, and the dispatch is **exhaustive**. A base64 string that is not valid base64, or whose decoded byte length is not a whole multiple of 4, likewise raises `provider_invalid_response`, fail-loud (no truncated or padded vector), with the verbatim response preserved on `raw`. `encoding_format` stays an **unmanaged** extras key (the consumer keys on the response *shape*, not the request parameter, so no §6 *Managed-field collision* arises), the wire default stays `"float"` (base64 is a caller opt-in — ecosystem-safe across the OpenAI-compatible backends §8.3 targets, whose base64 support is uneven), and base64 composes with the §8 *Batch chunking* rule (per-chunk shape decode; `raw` is the list of per-request responses with base64 preserved). ([proposal 0106](proposals/0106-openai-base64-embedding-decode.md))
+
+**Notes**
+
+- **MINOR (pre-1.0), additive.** A base64 `encoding_format` call that previously failed `provider_invalid_response` now succeeds and returns decoded float vectors; the prior behavior was a broken advertised knob (undefined in practice), so this **adds** working behavior rather than changing a working contract. The float path, the wire default, `raw`, and every other §8.3 surface are unchanged — no regression for existing callers. Resolves the §8.3 base64 open question. The base64 wire format (little-endian float32, base64-encoded) is recorded in `docs/compatibility.md`. Conformance: retrieval fixtures 049 (base64 round-trip decode, `raw` preserved verbatim) and 050 (malformed base64 byte length + non-conforming embedding shape → `provider_invalid_response`, exhaustive dispatch). Retrieval fixture count 48 → 50.
+
 ## [0.100.0] — 2026-07-23
 
 **Changed**

@@ -1,0 +1,122 @@
+# retrieval-provider §8.3 OpenAI-compatible /v1/embeddings — base64
+# output-encoding decode (proposal 0106).
+#
+# §8.3 lets a caller request the compact base64 embedding encoding through
+# the extras bag (`encoding_format: "base64"`). The mapping's response
+# consumer decodes `data[].embedding` by its WIRE SHAPE: a JSON number
+# array is the float vector verbatim (the default float path — fixture
+# 023); a base64 STRING is decoded as a base64-encoded array of
+# little-endian IEEE-754 single-precision (float32) values, yielding the
+# same float vector. Both encodings produce identical vectors; §4's
+# invariants apply to the DECODED vectors.
+#
+# This fixture pins the base64 path: the extras `encoding_format: "base64"`
+# forwards to the wire untouched (§6 — it stays an UNMANAGED extras key,
+# since the consumer keys on the response shape, not the request param),
+# the base64 response decodes to the intended float vectors IN INPUT
+# ORDER, and `raw` preserves the base64 STRINGS verbatim (decoded on
+# `vectors`, not on `raw`).
+#
+# The three base64 strings encode exactly-representable float32 vectors so
+# the decode is bit-exact:
+#   "AAAAPwAAgD4AAAA+AABAPw==" -> [0.5, 0.25, 0.125, 0.75]
+#   "AACAPwAAAAAAAAC/AAAAQA==" -> [1.0, 0.0, -0.5, 2.0]
+#   "AADAPgAAAL4AACA/AADAvw==" -> [0.375, -0.125, 0.625, -1.5]
+# The response `data` is emitted OUT of natural order (index 2, 0, 1) so
+# an adapter that trusted array position over the input-order `index`
+# would produce the wrong mapping.
+#
+# Per-directory harness directives per conformance-adapter §3.2; the
+# `mapping: openai` / openai_embedding_provider / expected_wire_request
+# vocabulary is defined in fixture 023's header.
+
+mapping: openai
+
+openai_embedding_provider:
+  base_url: "https://api.openai.invalid"
+  model: text-embedding-test
+  api_key: "test-openai-key"
+
+cases:
+  - name: base64_encoding_decodes_to_float_vectors_in_input_order
+    description: |
+      embed() over 3 inputs with config={extras: {encoding_format:
+      "base64"}}. The wire request carries encoding_format: "base64" (the
+      extras key rides untouched). The mocked OpenAI response returns
+      data[].embedding as base64 STRINGS, emitted out of order (index 2,
+      0, 1). The adapter MUST decode each base64 string as a little-endian
+      float32 array and return EmbeddingResponse.vectors in INPUT order
+      (vector i == decode of input i's embedding), with `raw` carrying the
+      base64 strings verbatim.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string", "beta string", "gamma string"]
+          config:
+            extras:
+              encoding_format: "base64"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: text-embedding-test
+      input: ["alpha string", "beta string", "gamma string"]
+      encoding_format: "base64"
+    expected_wire_request_absent_keys: [dimensions, input_type, task]
+    expected_wire_headers:
+      Authorization: "Bearer test-openai-key"
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 2, embedding: "AADAPgAAAL4AACA/AADAvw=="}
+            - {object: embedding, index: 0, embedding: "AAAAPwAAgD4AAAA+AABAPw=="}
+            - {object: embedding, index: 1, embedding: "AACAPwAAAAAAAAC/AAAAQA=="}
+          usage:
+            prompt_tokens: 6
+            total_tokens: 6
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.5, 0.25, 0.125, 0.75]
+            - [1.0, 0.0, -0.5, 2.0]
+            - [0.375, -0.125, 0.625, -1.5]
+          vectors_length: 3
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: text-embedding-test
+          response_id: null
+          usage:
+            input_tokens: 6
+          # `raw` is the verbatim provider response: the base64 STRINGS as
+          # sent, `data` in its emitted (out-of-order) form, NOT decoded
+          # and NOT re-sorted. The decoded floats live on `vectors`; the
+          # mapping MUST NOT rewrite `raw`'s embeddings to the decoded form.
+          raw:
+            object: list
+            model: text-embedding-test
+            data:
+              - {object: embedding, index: 2, embedding: "AADAPgAAAL4AACA/AADAvw=="}
+              - {object: embedding, index: 0, embedding: "AAAAPwAAgD4AAAA+AABAPw=="}
+              - {object: embedding, index: 1, embedding: "AACAPwAAAAAAAAC/AAAAQA=="}
+            usage:
+              prompt_tokens: 6
+              total_tokens: 6
+      invariants:
+        encoding_format_base64_forwarded_to_wire: true
+        base64_embedding_decoded_to_float_vector: true
+        decoded_vectors_in_input_order: true
+        raw_preserves_base64_strings_verbatim: true
+        all_vectors_same_dimensionality: true
+        dimensions_field_matches_inner_vector_length: true
+        response_id_null_when_openai_omits: true

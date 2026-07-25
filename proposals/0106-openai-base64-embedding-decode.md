@@ -1,9 +1,10 @@
 # 0106: §8.3 base64 embedding output-encoding — decode support
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-23
-- **Ships as:** _assigned at acceptance (MINOR)_
+- **Accepted:** 2026-07-24
+- **Ships as:** v0.101.0
 - **Targets:** spec/retrieval-provider/spec.md **§8.3** (*OpenAI-compatible embeddings* — replace the deferred
   `encoding_format` note with a **shape-driven decode** contract for `data[].embedding`, so a base64 response is
   decoded to float vectors rather than breaking the consumer). Conformance: new §8.3 fixtures for the base64

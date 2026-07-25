@@ -1,0 +1,114 @@
+# retrieval-provider §8.3 OpenAI-compatible /v1/embeddings — malformed
+# base64 / non-conforming embedding shape (proposal 0106).
+#
+# 0106's §8.3 decode dispatch is EXHAUSTIVE: `data[].embedding` is either a
+# JSON number array (float, verbatim) or a base64 string (decoded as a
+# little-endian float32 array). Anything else — or a base64 string that
+# cannot form a whole float32 vector — is a MALFORMED response and MUST
+# raise provider_invalid_response (§7), fail-loud, NOT a truncated or
+# padded vector.
+#
+# Two boundary cases:
+#   1. A base64 string whose decoded byte length is NOT a whole multiple
+#      of 4 (so it does not partition into float32 values): "AAAAPwAA"
+#      decodes to 6 bytes -> not divisible by 4 -> malformed.
+#   2. A `data[].embedding` of a NON-CONFORMING shape (neither a number
+#      array nor a string): here an object `{}` -> the exhaustive-dispatch
+#      "any other shape" arm -> malformed.
+#
+# Both issue the request (a 200 response with a bad body) and raise on
+# decode, so — unlike a pre-send reject (046/047) — the request IS issued;
+# the error is raised out of the embed call. `mapping: openai` /
+# openai_embedding_provider / expected_error vocabulary per fixture 023 /
+# 003 headers.
+
+mapping: openai
+
+openai_embedding_provider:
+  base_url: "https://api.openai.invalid"
+  model: text-embedding-test
+  api_key: "test-openai-key"
+
+cases:
+  - name: base64_byte_length_not_multiple_of_4_raises
+    description: |
+      embed(config={extras: {encoding_format: "base64"}}) over one input.
+      The mock returns data[0].embedding as the base64 string "AAAAPwAA",
+      which decodes to 6 bytes — not a whole multiple of 4, so it cannot
+      partition into float32 values. The adapter MUST raise
+      provider_invalid_response and MUST NOT return a truncated (1-float)
+      or zero-padded (2-float) vector.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            extras:
+              encoding_format: "base64"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: "AAAAPwAA"}
+          usage:
+            prompt_tokens: 2
+            total_tokens: 2
+    expected_error:
+      category: provider_invalid_response
+      raised_from: embed_node
+    expected:
+      invariants:
+        exactly_one_embed_request_issued: true
+        malformed_base64_raises_provider_invalid_response: true
+        malformed_base64_not_truncated_or_padded: true
+
+  - name: non_conforming_embedding_shape_raises
+    description: |
+      embed() over one input. The mock returns data[0].embedding as an
+      OBJECT `{}` — neither a JSON number array nor a base64 string. Per
+      0106's exhaustive shape dispatch, any other shape (null, a number, a
+      boolean, an object, an array of non-numbers) is a malformed response.
+      The adapter MUST raise provider_invalid_response.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: {}}
+          usage:
+            prompt_tokens: 2
+            total_tokens: 2
+    expected_error:
+      category: provider_invalid_response
+      raised_from: embed_node
+    expected:
+      invariants:
+        exactly_one_embed_request_issued: true
+        non_conforming_embedding_shape_raises_provider_invalid_response: true
