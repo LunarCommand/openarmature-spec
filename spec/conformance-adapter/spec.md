@@ -566,6 +566,35 @@ provides at the capability-directory level — an in-memory OTel `SpanExporter` 
 the observability fixture suite, an in-memory Langfuse client wrapper, etc. The per-directory
 harness contract (per §3.2) documents this; see also §6 *Harness primitives*.
 
+**Typed-event collector directives.** Beyond the raw `observers[]` registration above, fixtures assert the
+graph-engine §6 **typed event families** via a dedicated collector:
+
+- **`typed_observers: [{name: <collector>, kind: typed_event_collector, filter_event_type?: <EventType>}]`** —
+  a top-level list registering one or more typed-event collectors. A `typed_event_collector` retains every typed
+  event it receives in **observer-internal storage** (observers MUST NOT mutate state per graph-engine §6; the
+  harness reads the events back via introspection, with no state-field round-trip). The optional
+  `filter_event_type` narrows a collector to a single family. The captured families are the graph-engine §6
+  typed events: `LlmCompletionEvent`, `LlmFailedEvent`, `LlmTokenEvent`, `LlmTokenFailedEvent`, `EmbeddingEvent`,
+  `EmbeddingFailedEvent`, `RerankEvent`, `RerankFailedEvent`, `ToolCallEvent`, `ToolCallFailedEvent`, and
+  `NodeEvent`.
+- **`contains_event: {event_type: <EventType>, fields: {<field>: <expected>, ...}}`** — appears under
+  `expected.observers.<collector>` and asserts the collector's storage holds an event of `event_type` whose
+  `fields` match by value (each per the §5.10 *Value matchers* vocabulary — format tokens, first-occurrence
+  bindings, assertion sub-keys, or a literal scalar / nested mapping). Sibling assertion forms on the same slot:
+  **`contains_event_of_type: <EventType>`** and **`contains_exactly_one_event_of_type: <EventType>`** (presence
+  / exactly-one, no field match), and per-family counts as either a single **`event_count: {event_type: <T>,
+  count: <N>}`** (one mapping) or a list **`event_counts: [{event_type: <T>, count: <N>}, ...]`** — `count: 0`
+  asserts a family is **absent**, the mutual-exclusion form.
+
+  **Present-but-null vs absent in `contains_event.fields`.** The distinction is expressed **structurally**, not
+  via a suffix: a `fields:` entry written as a literal `null` matches only a field that is **present and null**
+  (distinct from a field the event omits); a `fields:` entry written as a **nested mapping** (e.g.
+  `usage: {prompt_tokens: null, ...}`) requires the field to be a **present record** — a null-valued or omitted
+  field cannot satisfy a nested-mapping expectation; and **omitting** a key from `fields:` asserts **nothing**
+  about that field. This three-way distinction (present-and-null / present-record / no-assertion) is
+  load-bearing — it is what lets a fixture assert an event mirrors a present-record-of-null-counters rather than
+  a null record, or a nulled figure rather than a verbatim wire value.
+
 ### 5.6 Persistence directives
 
 These directives appear at top level and configure persistence backends.
@@ -754,6 +783,15 @@ These directives appear under per-invocation or per-case `expected:` blocks and 
   deterministic ratio, plus `kind`, per §11.4). With the observer's
   `enable_metrics` off, no measurements are recorded — a `metrics: []` assertion confirms the opt-in
   gate. See §6.9 for the primitive and the `enable_metrics` configuration.
+- **`caught_exception: {category: <category|null>, message: <str>, chain: [{category, message?, carrier}, ...]}`**
+  — the failure-isolation event **cause-chain assertion** (pipeline-utilities §6.3). Asserts the structured
+  `caught_exception` on a failure-isolation outcome: an ordered `chain` of `{category, message?, carrier}` links
+  (outermost→innermost), plus the **derived** top-level `category` / `message` — the `category` is the outermost non-carrier
+  link with a non-empty category (else `null`); the `message` is that link's message, or (when no non-carrier
+  link has a category) the outermost non-carrier link's message. A **carrier** link is a graph-engine §4
+  `node_exception` wrapper (`carrier: true`) whose engine-internal `message` is not pinned (subset match on
+  `{carrier, category}` only). Distinct from the §5.1 mock-**input** `cause:` directive (which *constructs* the
+  chained error a failure mock raises); this asserts the *resulting* chain.
 
 ### 5.9 Invariant assertions
 
@@ -983,6 +1021,83 @@ An adapter that ignores `chunk_size` on a fixed-cap mapping sends the fixture's 
 under-cap request and fails the fixture's expected chunk count — so honoring the field is required to pass, not
 optional. This directive is what lets a small fixture exercise a large fixed cap; without it, cross-impl
 coverage of a fixed-cap mapping's chunking path would be unreachable.
+
+### 5.15 Retrieval-provider directives
+
+The retrieval-provider fixtures (embedding + rerank) use a construction / call / mock / wire-assertion
+vocabulary that parallels the llm-provider fixture directives; this subsection gives it a normative home. Some
+retrieval assertions reuse directives documented elsewhere — `expected_error: {category, raised_from}` (§5.8),
+the `chunk_size` provider cap (§5.14), and the `typed_observers` / `contains_event` typed-event assertions
+(§5.5); those are cross-referenced, not redefined here.
+
+**Provider construction blocks** — suite-level, one per bound provider; the block name selects the vendor and
+its fields are the §8.x *Construction* parameters:
+
+- **`tei_embedding_provider: {base_url, model, input_type_prompt_map, query_prefix?, document_prefix?}`** — a
+  bound TEI `EmbeddingProvider` (retrieval-provider §8.1). `input_type_prompt_map` maps OA `input_type` → TEI
+  `prompt_name` (e.g. `{query: "query", document: "passage"}`); the optional prefixes are the client-side
+  fallback. TEI is a per-deployment host, so there is no `api_key`.
+- **`tei_rerank_provider: {base_url, model, chunk_size}`** — a bound TEI `RerankProvider` (§8.1). `chunk_size`
+  is the rerank client-batch chunk size (default 32; see §5.14).
+- **`jina_embedding_provider` / `jina_rerank_provider: {base_url, model, api_key}`** — a bound Jina provider
+  (§8.2). `api_key` is sent as `Authorization: Bearer <key>`; `base_url` is origin-only (the mapping appends the
+  path, e.g. `/v1/rerank`).
+- **`openai_embedding_provider: {base_url, model, api_key, query_prefix?, document_prefix?}`** — a bound
+  OpenAI-compatible `EmbeddingProvider` (§8.3). `api_key` as `Authorization: Bearer <key>`; `base_url` defaults
+  to the OpenAI origin and is overridable for any compatible backend; the optional prefixes are off by default
+  (asymmetric-model client-side prefixing). MAY carry the §5.14 `chunk_size` test-only cap override.
+- **`cohere_embedding_provider` / `cohere_rerank_provider: {base_url, model, api_key}`** — a bound Cohere
+  provider (§8.4), one instance per endpoint sharing the hosted endpoint.
+
+**`mapping: <name>`** — a suite-level scalar selecting the §8.x vendor wire mapping under test: `tei` (§8.1),
+`jina` (§8.2), `openai` (§8.3), `cohere` (§8.4). Under a `mapping:`, the fixture's mocks and wire assertions use
+that vendor's **real** wire shapes (the request the mapping MUST send, the response it MUST consume). **Absent**,
+the harness-internal stand-in shape used by the pre-wire-mapping fixtures applies.
+
+**Call directives** (node-level):
+
+- **`calls_embed: {input: [str], config?: {...}, stores_response_in: <field>}`** — the node calls the bound
+  `EmbeddingProvider.embed()` with `input` (and optional `config` — `dimensions`, `input_type`, and the §6
+  `extras` bag) and stores the returned `EmbeddingResponse` in the named state field.
+- **`calls_rerank: {query: str, documents: [str], top_k?: int, config?: {...}, model?: <id>,
+  stores_response_in: <field>}`** — the node calls `RerankProvider.rerank()` and stores the `RerankResponse`;
+  `top_k`, `config` (`return_documents`, and the `extras` bag), and `model` are optional.
+
+**Response mocks** (suite-level lists; one `{status, body?}` entry dispatched per call in arrival order):
+
+- **`mock_embedding: [{status, body?}, ...]`** / **`mock_rerank: [{status, body?}, ...]`** — the mock provider's
+  responses; `status` is required and `body` is optional. When present, `body` is the vendor's real wire shape
+  under a `mapping:` (e.g. OpenAI `{object, data, model, usage}`, TEI's bare vector array), or the
+  harness-internal stand-in absent a `mapping:`. A non-2xx `status` drives the wire-error path (mapped to a §7
+  `error_category`); such an entry MAY omit `body` and supply literal error detail via `raises` instead (as in
+  fixtures 150 / 151). A **non-2xx** mock entry MAY carry a
+  **`raises: {error_type, message}`** sub-directive — the retrieval analogue of the tool path's
+  `mock_tool: {raises: {error_type, message}}` — that overrides only the exception's **literal** `error_type` /
+  `error_message` (the mock `message` maps to the event's `error_message`) **while the `status` still fixes the
+  deterministic §7 `error_category`**, so a fixture can assert those two fields literally rather than by format.
+  `raises` is not used without a `status` (retrieval has no other category source).
+
+**Wire-request assertions** (case-level):
+
+- **`expected_wire_request: {...}`** — the request body the mapping MUST produce. The harness captures the
+  outbound body and compares **key-by-key** (key order not significant); a field **absent** from
+  `expected_wire_request` MUST be absent on the wire. For a chunk-and-stitch call it is a **list** of bodies,
+  one per request in arrival order.
+- **`expected_wire_request_count: <int>`** — the number of outbound requests the call MUST issue (pins the
+  chunk count).
+- **`expected_wire_request_absent_keys: [<key>, ...]`** — each named key MUST be **absent** from the outbound
+  body (an explicit, positive absence assertion, complementing the absent-field rule above).
+- **`expected_wire_headers: {<name>: <value>, ...}`** — a **subset** match: each listed HTTP request header MUST
+  be present with the given value (other headers MAY be present; header names case-insensitive). Primary use:
+  `Authorization: "Bearer <api_key>"` from the provider block's `api_key`.
+
+**Pre-send-reject invariants** (under `expected.invariants`):
+
+- **`no_embed_request_issued: true`** / **`no_rerank_request_issued: true`** — assert that **no** `/embed`
+  (resp. `/rerank`) wire request was issued: the §7 error category was raised client-side at the pre-send
+  validation layer. These pair with the pre-send-reject fixture convention — **no** `mock_embedding` /
+  `mock_rerank` entry and **no** `expected_wire_request` (nothing leaves, so nothing to mock), while
+  `expected_error` (§5.8) still asserts the category and `raised_from` node.
 
 ## 6. Harness primitives
 

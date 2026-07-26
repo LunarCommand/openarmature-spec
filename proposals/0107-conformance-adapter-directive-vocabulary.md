@@ -1,9 +1,10 @@
 # 0107: Document the conformance-adapter directive vocabulary
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-24
-- **Ships as:** _assigned at acceptance (MINOR)_
+- **Accepted:** 2026-07-26
+- **Ships as:** v0.102.0
 - **Targets:** spec/conformance-adapter/spec.md **§5** (*Directive vocabulary*) — give a normative home to the
   load-bearing directives that currently exist **only in fixture headers**, so an adapter author reads the spec
   rather than reverse-engineering the fixtures. Two families: (a) the **retrieval-provider construction / wire /
@@ -65,9 +66,9 @@ the structure of §5.11 (*Provider call-retry directives*). It defines:
 - **Wire assertions** — `expected_wire_request` (the request body the mapping MUST produce),
   `expected_wire_request_absent_keys` (keys that MUST NOT appear), and `expected_wire_headers` (headers the
   mapping MUST send, e.g. `Authorization: Bearer <key>`).
-- **Error assertions** — `expected_error: {category, raised_from}` (the §7 category and the node the error is
-  raised out of), and the `no_embed_request_issued` / `no_rerank_request_issued` invariants that assert a
-  **pre-send** rejection issued no wire request.
+- **Pre-send-reject invariants** — the `no_embed_request_issued` / `no_rerank_request_issued` invariants that
+  assert a **pre-send** rejection issued no wire request. (`expected_error: {category, raised_from}` is **already**
+  documented at §5.8 — the audit confirmed it — so §5.15 cross-references it rather than re-documenting.)
 
 This is a lift-and-normalize of the definitions currently in the headers of fixtures 001 (base mock), 013 (TEI
 wire vocabulary), 018 (Jina headers), 023 (OpenAI-compatible), and their siblings. No fixture changes; the
@@ -85,33 +86,41 @@ Extend §5.5 (*Observer / observability directives*) to define:
   pins the **present-but-null vs absent** distinction: a `fields:` entry asserting an explicit `null` MUST match
   only a field that is *present and null*, distinct from an omitted field.
 
-### 3. §5.8 — the `cause` failure-isolation assertion
+### 3. §5.8 — the `caught_exception` cause-chain assertion
 
-Document `cause` under §5.8 (*Expected-outcome directives*), **not** §5.5: it asserts the structured
-`caught_exception` cause chain on a failure-isolation outcome (pipeline-utilities §6.3) — an outcome assertion,
-not an observability directive. Currently used across the failure-isolation fixtures but defined nowhere in §5;
-this gives it a home aligned with the §6.3 cause-chain shape (`{category, message, carrier}` links plus the
-derived top-level category and message).
+Document the **`caught_exception`** cause-chain *assertion* under §5.8 (*Expected-outcome directives*): it
+asserts the structured cause chain on a failure-isolation outcome (pipeline-utilities §6.3) — an ordered `chain`
+of `{category, message, carrier}` links plus the derived top-level category/message. The audit clarified an
+input-vs-assertion split the enumeration blurred: the mock-**input** `cause:` directive (which *constructs* the
+chained error a failure mock raises, proposal 0070) is **already** documented at §5.1; the missing piece is the
+**assertion** side (`caught_exception`), which appears in no §5 entry. §5.8 documents the assertion and
+cross-references the §5.1 input directive.
 
 ### 4. Retrieval failure-mock error-field directive (the 0089 gap — additive)
 
-The tool failure mock supplies literal `error_type` / `error_message` via a `raises: {error_type, message}`
-directive, so tool-failure fixtures pin those fields literally. The embedding/rerank failure path is
-HTTP-mock-triggered (a status code → a §7 `error_category`), with **no** directive to supply literal
-`error_type` / `error_message` — so fixtures 137 / 138 assert those two event fields only by format
-(`<any-string>`), not literally. Define the retrieval analogue so a retrieval failure fixture can pin the
-event's `error_type` / `error_message` cross-impl. This is the one net-new directive; it lands with a fixture
-that asserts the literal fields on an embedding failure.
+The tool failure mock supplies literal `error_type` / `error_message` via a `mock_tool: {raises: {error_type,
+message}}` directive, so tool-failure fixtures pin those fields literally. The embedding/rerank failure path is
+HTTP-status-triggered (a status code → a §7 `error_category`), with **no** directive to supply literal
+`error_type` / `error_message` — so the embedding/rerank Langfuse-failure fixtures (137 / 138) assert those two
+observation-metadata fields only by format (`<any-string>`). Define the retrieval analogue: a `mock_embedding` /
+`mock_rerank` entry MAY carry `raises: {error_type, message}` (§5.15) supplying the literal exception values
+while the `status` still fixes the deterministic `error_category`. This is the one net-new directive; it lands
+with observability fixtures **150** / **151**, the literal-asserting siblings of 137 / 138 (embedding and
+rerank) — the error fields live on the Langfuse observation metadata (not the typed event, which carries
+`error_category` only), so the demonstrating fixtures are observability ones.
 
 ### 5. Conformance
 
 The §5.15, §5.5, and §5.8 directives are documentation of directives shipped fixtures already exercise — no
-fixture changes. The §4 failure-mock directive lands with **one** new retrieval failure fixture asserting literal
-`error_type` / `error_message` on an embedding failure (the case 137/138 could only assert by format).
+fixture changes. The §4 failure-mock directive lands with **two** new fixtures — observability **150** / **151**, the
+literal-asserting siblings of 137 / 138 (embedding and rerank), asserting the literal `error_type` /
+`error_message` on a failure (which 137/138 could only assert by format).
 
-**Full audit at acceptance.** The accept MUST audit every fixture-header-defined directive against §5 and give a
-home to any this proposal's enumeration missed, so **no** header-only directive survives — otherwise the debt
-this closes simply re-forms around the straggler.
+**Full audit at acceptance — done.** The accept audited every fixture-header-defined directive against §5. It
+confirmed `expected_error` is already §5.8 and the mock-**input** `cause:` is already §5.1 (both de-duped, not
+re-documented), and found the genuinely-missing set now documented: the §5.15 retrieval
+construction/call/mock/wire directives, the §5.5 `typed_observers` / `contains_event`, and the §5.8
+`caught_exception` assertion. No header-only directive is left behind.
 
 ## Versioning
 
