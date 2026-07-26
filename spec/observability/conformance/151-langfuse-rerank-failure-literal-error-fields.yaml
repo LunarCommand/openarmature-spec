@@ -1,0 +1,79 @@
+# observability §8.4.7 — a rerank failure's error_type / error_message
+# asserted LITERALLY (proposal 0107).
+#
+# The rerank sibling of fixture 150 (embedding). Fixture 138 renders the same
+# ERROR-level `Retriever` observation but can only assert error_type /
+# error_message by FORMAT (`<any-string>`): its failure is HTTP-status-triggered
+# (mock_rerank 503 -> provider_unavailable), and the vendor `type` / `message`
+# in the mock body are impl-derived, so their values are not cross-impl
+# deterministic.
+#
+# 0107's `raises: {error_type, message}` sub-directive (conformance-adapter
+# §5.15) — carried on a non-2xx mock_rerank entry — overrides the exception's
+# literal error_type / error_message while the `status` still fixes the
+# deterministic §7 error_category (provider_unavailable), so the observation's
+# error_type / error_message can be asserted literally. This closes the 137/138
+# literal-assertion gap for the rerank path.
+
+cases:
+  - name: rerank_failure_error_fields_asserted_literally
+    description: |
+      One rerank call that fails: the mock_rerank entry carries status: 503
+      (-> provider_unavailable §7 category) AND raises: {error_type:
+      "ServiceUnavailableError", message: "the rerank endpoint returned 503"}
+      — the literal exception values. The Retriever observation MUST emit at
+      ERROR level with statusMessage = "provider_unavailable" and metadata
+      error_type / error_message equal to the LITERAL values from `raises`
+      (not `<any-string>`). No output (no response received); request-side
+      identity metadata survives.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "paris"
+          documents: ["doc one", "doc two"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 503
+        raises:
+          error_type: "ServiceUnavailableError"
+          message: "the rerank endpoint returned 503"
+    langfuse_observer:
+      disable_provider_payload: true
+    expected_error:
+      category: provider_unavailable
+      raised_from: rerank_node
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "rerank_node"
+            children:
+              - type: retriever
+                name: "openarmature.rerank.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"
+                input: null
+                output: null
+                metadata:
+                  openarmature_query_length: 5
+                  openarmature_document_count: 2
+                  openarmature_top_k: 2
+                  error_type: "ServiceUnavailableError"
+                  error_message: "the rerank endpoint returned 503"
+                children: []
+      invariants:
+        error_type_asserted_literally_from_raises: true
+        error_message_asserted_literally_from_raises: true
+        error_category_still_from_status: true
+        failure_observation_carries_no_output: true

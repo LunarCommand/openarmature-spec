@@ -1,0 +1,75 @@
+# observability §8.4.5 — an embedding failure's error_type / error_message
+# asserted LITERALLY (proposal 0107).
+#
+# Fixture 137 renders the same ERROR-level Embedding observation but can only
+# assert error_type / error_message by FORMAT (`<any-string>`): its failure is
+# HTTP-status-triggered (mock_embedding 503 -> provider_unavailable), and the
+# vendor `type` / `message` in the mock body are impl-derived, so their exact
+# values are not cross-impl deterministic.
+#
+# 0107 adds the `raises: {error_type, message}` sub-directive on a
+# mock_embedding entry (conformance-adapter §5.15 — the retrieval analogue of
+# the tool path's mock_tool: {raises: {error_type, message}}, fixture 098). It
+# makes the failing embed() raise with those LITERAL exception values, so the
+# observation's error_type / error_message can be asserted literally while the
+# `status` still fixes the deterministic §7 error_category (provider_unavailable).
+# This closes the 137/138 literal-assertion gap.
+
+cases:
+  - name: embedding_failure_error_fields_asserted_literally
+    description: |
+      One embedding call that fails: the mock_embedding entry carries
+      status: 503 (-> provider_unavailable §7 category) AND
+      raises: {error_type: "ServiceUnavailableError", message: "the embedding
+      endpoint returned 503"} — the literal exception values. The Embedding
+      observation MUST emit at ERROR level with statusMessage =
+      "provider_unavailable" and metadata error_type / error_message equal to
+      the LITERAL values from `raises` (not `<any-string>`). No output (no
+      response received); request-side openarmature_input_count survives.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query one", "query two"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 503
+        raises:
+          error_type: "ServiceUnavailableError"
+          message: "the embedding endpoint returned 503"
+    langfuse_observer:
+      disable_provider_payload: true
+    expected_error:
+      category: provider_unavailable
+      raised_from: embed_node
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "embed_node"
+            children:
+              - type: embedding
+                name: "openarmature.embedding.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"
+                input: null
+                output: null
+                metadata:
+                  openarmature_input_count: 2
+                  error_type: "ServiceUnavailableError"
+                  error_message: "the embedding endpoint returned 503"
+                children: []
+      invariants:
+        error_type_asserted_literally_from_raises: true
+        error_message_asserted_literally_from_raises: true
+        error_category_still_from_status: true
+        failure_observation_carries_no_output: true

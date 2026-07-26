@@ -8,7 +8,7 @@ lifecycle and the proposal template.
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
 | [0108](proposals/0108-declared-field-vs-extras-collision.md) | Declared-field-vs-extras wire-key collision | llm-provider | Draft    | —               | —          |
-| [0107](proposals/0107-conformance-adapter-directive-vocabulary.md) | Document the conformance-adapter directive vocabulary | conformance-adapter | Draft    | —               | —          |
+| [0107](proposals/0107-conformance-adapter-directive-vocabulary.md) | Document the conformance-adapter directive vocabulary | conformance-adapter | Accepted | Pending         | —          |
 | [0106](proposals/0106-openai-base64-embedding-decode.md) | §8.3 base64 embedding output-encoding — decode support | retrieval-provider | Accepted | Pending         | —          |
 | [0105](proposals/0105-extras-managed-field-collision-rule.md) | Extras-key vs mapping-managed wire-field collision rule | llm-provider | Accepted | Pending         | —          |
 | [0104](proposals/0104-retrieval-id-error-clarifications.md) | Retrieval id/error clarifications — empty-string `response_id`, Jina bare-400 | retrieval-provider | Accepted | Pending         | —          |
@@ -31,7 +31,7 @@ lifecycle and the proposal template.
 | [0087](proposals/0087-conformance-adapter-directive-execution-order.md) | Within-node directive execution order | conformance-adapter | Accepted | Shipped (0.17.0)| —          |
 | [0086](proposals/0086-prompt-default-cache-ttl.md) | Service-wide default cache-TTL | prompt-management | Accepted | Shipped (0.17.0)| —          |
 | [0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) | Nested fan-out checkpoint lineage | pipeline-utilities | Accepted | Partial (0.16.0)| —          |
-| [0084](proposals/0084-nested-fan-out-span-lineage.md) | Nested-fan-out span lineage chain | observability | Accepted | Pending         | —          |
+| [0084](proposals/0084-nested-fan-out-span-lineage.md) | Nested-fan-out span lineage chain | observability | Accepted | Partial (0.17.0)| —          |
 | [0083](proposals/0083-prompt-token-budget-observability.md) | Per-prompt token-budget observability | observability | Accepted | Shipped (0.17.0)| —          |
 | [0082](proposals/0082-structured-output-failure-diagnostics.md) | Structured-output failure diagnostics | graph-engine | Accepted | Shipped (0.17.0)| —          |
 | [0081](proposals/0081-conformance-adapter-value-matcher-vocabulary.md) | Value-matcher vocabulary | conformance-adapter | Accepted | Textual (0.16.0)| —          |
@@ -48,7 +48,7 @@ lifecycle and the proposal template.
 | [0070](proposals/0070-conformance-adapter-crash-injection-and-cause-chaining.md) | Crash-injection + cause-chaining adapter directives | conformance-adapter | Accepted | Shipped (0.14.0)| —          |
 | [0069](proposals/0069-pipeline-utilities-fan-out-degrade-refinements.md) | Fan-out degrade contribution refinements | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0068](proposals/0068-pipeline-utilities-failure-isolation-cause-chain.md) | Failure-isolation event structured cause chain | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
-| [0067](proposals/0067-observability-genai-metrics.md) | OTel GenAI metrics | observability       | Accepted | Partial (0.15.0)| —          |
+| [0067](proposals/0067-observability-genai-metrics.md) | OTel GenAI metrics | observability       | Accepted | Shipped (0.17.0)| —          |
 | [0066](proposals/0066-pipeline-utilities-fan-out-degrade-contribution.md) | Fan-out failure-isolation degrade contribution           | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0065](proposals/0065-pipeline-utilities-failure-isolation-cause-fidelity.md) | Failure-isolation cause-fidelity at wrapping sites        | pipeline-utilities  | Accepted | Shipped (0.14.0)| —          |
 | [0064](proposals/0064-observability-langfuse-session-user-promotion.md) | Langfuse session / user trace-field population            | observability       | Accepted | Partial (0.15.0)| —          |

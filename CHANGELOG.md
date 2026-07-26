@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.102.0] — 2026-07-26
+
+**Changed**
+
+- **conformance-adapter §5 — a normative home for header-only fixture directives.** A large, load-bearing set of conformance directives lived only in fixture-header comments, so an adapter author reverse-engineered each from whichever fixture introduced it (the debt 0098 fixed for `carries`). 0107 lifts them into §5: a new **§5.15 *Retrieval-provider directives*** documents the retrieval construction/call/mock/wire vocabulary (the per-vendor `*_provider` construction blocks, the `mapping:` selector, `calls_embed` / `calls_rerank`, `mock_embedding` / `mock_rerank`, `expected_wire_request` / `_count` / `_absent_keys`, `expected_wire_headers`, and the `no_embed_request_issued` / `no_rerank_request_issued` pre-send invariants); **§5.5** gains `typed_observers` and `contains_event` (with the structural **present-but-null vs absent** distinction fixture 149 turns on); and **§5.8** gains the `caught_exception` cause-chain **assertion** (pipeline-utilities §6.3). The accept's full audit confirmed `expected_error` was already §5.8 and the mock-**input** `cause:` directive already §5.1, so both are cross-referenced rather than re-documented. ([proposal 0107](proposals/0107-conformance-adapter-directive-vocabulary.md))
+
+**Notes**
+
+- **MINOR (pre-1.0), almost entirely documentation.** The retrieval and typed-observer directives already behave as their fixture headers describe; §5 gains their normative definitions and no shipped fixture changes. The single **additive** behavioral piece is a `mock_embedding` / `mock_rerank` `raises: {error_type, message}` sub-directive (§5.15) — the retrieval analogue of the tool path's `mock_tool: {raises: …}` — which supplies literal exception values so an embedding/rerank failure's `error_type` / `error_message` can be asserted literally (the 137/138 gap). It lands with observability fixtures **150** and **151** (the literal-asserting siblings of 137 / 138, for embedding and rerank). No existing fixture's outcome changes. Resolves the conformance-adapter directive-documentation open questions. Observability fixture count 149 → 151.
+
 ## [0.101.0] — 2026-07-24
 
 **Changed**

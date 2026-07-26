@@ -797,7 +797,7 @@ short-horizon roadmap below.
 ### 0089 — embedding / rerank failure-mock error-field vocabulary
 
 - **No `raises: {error_type, message}` equivalent for embedding / rerank failure
-  mocks.** [candidate-for-new-proposal] — surfaced authoring 0089's
+  mocks.** [resolved-by-0107] — surfaced authoring 0089's
   failure-observation fixtures (137 / 138). The tool failure mock supplies literal
   `error_type` / `error_message` via a `raises: {error_type, message}` directive,
   so the tool failure fixture pins those values literally; the embedding / rerank
@@ -812,13 +812,16 @@ short-horizon roadmap below.
   `error_message` — either enables cross-impl literal assertion of those fields.
   Neither exists today; deferred to a dedicated conformance-adapter follow-on
   after 0089 — part of the same consolidating **directive-documentation pass**
-  as the `typed_observers` / `contains_event` and `cause` gaps below.
+  as the `typed_observers` / `contains_event` and `cause` gaps below. **Resolved by
+  0107** (v0.102.0): the `mock_embedding` / `mock_rerank` `raises: {error_type,
+  message}` sub-directive (§5.15) supplies literal exception values, and
+  observability fixtures 150 (embedding) and 151 (rerank) assert them literally.
 
 ### Cross-cutting — `typed_observers` / `contains_event` directives undocumented
 
 - **The two directives that assert typed-event fields are load-bearing across
   the suite yet have no entry in conformance-adapter §5.**
-  [candidate-for-new-proposal] — surfaced repeatedly through the observability
+  [resolved-by-0107] — surfaced repeatedly through the observability
   and retrieval fixture work (most recently the 0100 / 0101 malformed-figure
   fixtures, which lean on `contains_event` to assert a counter is *present but
   null* rather than absent). `typed_observers` registers one or more collectors
@@ -843,7 +846,10 @@ short-horizon roadmap below.
   until the conformance-adapter directive-documentation debt (this plus the
   0089 failure-mock gap and the undocumented `cause` directive) is worth a
   consolidating pass. The related `carries` naming-convention cleanup is
-  handled separately by proposal 0102.
+  handled separately by proposal 0102. **Resolved by 0107** (v0.102.0): §5.5 now
+  documents `typed_observers` / `contains_event` (including the present-but-null vs
+  absent structural rule); §5.8 documents the `caught_exception` assertion; the
+  audit found the mock-input `cause:` directive was already §5.1.
 
 ---
 
