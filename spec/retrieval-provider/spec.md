@@ -514,9 +514,12 @@ embedding models the accepted `task` values differ (some accept `classification`
 some accept neither), and a provider is bound to a model *identifier* with no model-capability registry to
 consult, so the mapping cannot promise those values. Jina's other `task` values (e.g. `text-matching`,
 `classification`, `clustering` — model-dependent) are therefore reached via the extras-pass-through bag,
-not `input_type`. That path works here precisely because `task` is an *undeclared* key (so it rides the
-bag, unlike a declared field) and is *omitted* when `input_type` is absent (so nothing the mapping manages
-collides with it). `EmbeddingRuntimeConfig.dimensions` → Jina's
+not `input_type`. Because `task` is the wire realization of the declared `input_type` (§6 clause (b)), it is a
+**managed non-additive** field **while `input_type` is set**: a matching extras `task` is a redundant no-op, a
+**conflicting** one is **rejected pre-send** `provider_invalid_request` (§7). When `input_type` is **absent** the
+mapping emits no `task`, so an extras `task` is unmanaged and rides the bag untouched — the escape hatch that
+carries a model-specific value (`text-matching`, `classification`, …) the closed `input_type` set does not
+model. `EmbeddingRuntimeConfig.dimensions` → Jina's
 `dimensions` (Matryoshka) when set. The response `{model, usage, data: [{index, embedding}]}` maps to the
 `EmbeddingResponse` vectors in input order. Jina enforces **no** per-call input cap (it batches
 server-side by token count), so the §8 *Batch chunking* rule's no-cap branch applies — the embed mapping
@@ -766,12 +769,19 @@ detail) unless the provider documents a tie-breaking rule; the spec MUST NOT ass
 - **llm-provider §6** — the `RuntimeConfig` *Extras pass-through* contract **and its *Managed-field
   collision* clause** (inherited): an undeclared field MUST be forwarded to the wire body untouched,
   subject to what the wire-format mapping (§8) defines. Two consequences this capability leans on: a
-  **declared** field (`input_type`, `dimensions`) can never ride the extras bag, since the bag carries
-  only *undeclared* keys; and when an undeclared extras key names a wire field the mapping **manages**,
+  **declared** field's *value* is set through its declared slot, never through the extras bag (the bag carries
+  only *undeclared* keys) — though a key whose **name** matches a declared field's wire realization
+  (`dimensions`, or Jina's `task`) may still appear in the bag as an undeclared colliding key, governed by the
+  realization rule below; and when an undeclared extras key names a wire field the mapping **manages**,
   the untouched pass-through does **not** apply — the mapping **merges** a list-shaped managed field
   (§8.4 `embedding_types`) or **rejects** a conflicting scalar pre-send `provider_invalid_request` (the
-  §8.1 / §8.2 / §8.4 fail-loud `truncate` / `truncation` flags). Each §8.x mapping enumerates its managed
-  keys; every other undeclared key keeps untouched pass-through.
+  §8.1 / §8.2 / §8.4 fail-loud `truncate` / `truncation` flags). A wire field is **also** managed when it is the
+  **realization of a declared field**, **while the mapping is producing it** (§6 clause (b)): an extras key
+  naming that wire key is governed by the same arms while the declared field is set, and rides untouched when it
+  is absent (the escape hatch). The retrieval realizations are `input_type` → Jina's `task` (§8.2, non-additive)
+  and `dimensions` → `dimensions` (§8.1 TEI / §8.3 OpenAI) or `output_dimension` (§8.4 Cohere) (non-additive
+  scalar). Each §8.x mapping enumerates its managed keys; every other undeclared key keeps untouched
+  pass-through.
 - **llm-provider §7** — error-category enumeration (inherited).
 - **pipeline-utilities §6 (middleware)** — `EmbeddingProvider` and `RerankProvider` calls are
   eligible for retry middleware identically to `complete()` calls.
@@ -818,3 +828,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §8.3 OpenAI — the cap sentence clarifies the count-vs-token boundary: the §8 *Batch chunking* rule chunks by input **count** (the 2048-input cap) only; the summed-token ceiling is **not** a chunking trigger — a call whose ≤2048-input chunks together exceed the token ceiling is sent and fails loud as `provider_invalid_request` (§7), with no client-side token estimation or sub-chunking. Conformance coverage added for the §8.3 mapping (the one embedding mapping whose over-cap chunk-and-stitch and `raw` were unexercised): new fixture 043 (case 1 over-cap chunk-and-stitch — also the first §8.3 sum-`input_tokens` fixture and the object-shaped chunked `raw`, using a test-only cap override since OpenAI's 2048 cap is not construction-configurable; cases 2–3 the count-vs-token fail-loud boundary — an over-token chunk is sent and fails loud `provider_invalid_request`, case 3 with a multi-input over-token chunk that discriminates a token-sub-chunker) and a single-request `raw` assertion on fixture 023 by [proposal 0103](../../proposals/0103-retrieval-conformance-coverage.md)
 - §4 / §6 `response_id` rows — an **empty-string** identifier, like a malformed one, is not a present identifier; it is `null` (an empty string is not a usable id, so it is absent, not present-as-`""`). Deliberately diverges from 0097's empty-`document` handling (content preserves an empty value; an identifier collapses it to absent). §8.2 Jina error mapping — a bare `400` maps to `provider_invalid_request` (a malformed request will not succeed on retry), not the transient `provider_unavailable`, aligning §8.2 with §8.1 / §8.3 / §8.4 and the general §7 semantics. Fixtures 044 (empty-string `response_id` → null) and 045 (Jina `400` → `provider_invalid_request`) by [proposal 0104](../../proposals/0104-retrieval-id-error-clarifications.md)
 - §8 managed-field collision (via llm-provider §6, inherited per §10) — the fail-loud truncation flag is a **managed scalar** in each retrieval mapping that carries one (embed and rerank surfaces): §8.1 TEI `truncate` (both endpoints), §8.2 Jina `truncation` (`/v1/rerank`) / `truncate` (`/v1/embeddings`), §8.4 Cohere `truncate: "NONE"` (`/v2/embed`): an extras-supplied value **conflicting** with the mapping's fail-loud value is **rejected pre-send** `provider_invalid_request` (honoring it would silently truncate an input the mapping fails loud on); a matching value is a no-op. §8.4's `embedding_types` merge (0099) is re-anchored as the *merge* arm of the same general §6 rule (behavior unchanged), and §8.4 now enumerates its two managed keys (`embedding_types` merge, `truncate` reject). Reject-arm fixtures across all three bound mappings — 046 (Cohere `/v2/embed` `truncate`), 047 (TEI `/embed` `truncate`, the relied-upon-default case + matching-value-omitted body-minimal outcome), 048 (Jina `/v1/rerank` `truncation`, the distinct name) — plus the §10 cross-spec touchpoint and §8.3's `encoding_format` note reconciled to the general rule by [proposal 0105](../../proposals/0105-extras-managed-field-collision-rule.md)
+- §10's inherited *Managed-field collision* clause extended for **declared-field realizations** (llm-provider §6 clause (b)): a wire key realizing a declared field is managed **while produced**. §8.2 Jina **`task`** (realizing the declared `input_type`) is a managed non-additive field while `input_type` is set — a conflicting extras `task` rejects pre-send `provider_invalid_request`, a matching one is a no-op — and rides untouched when `input_type` is absent (the escape hatch for a model-specific `task` the closed `input_type` set does not model, reconciling 0099's note); `dimensions` → `dimensions` (§8.1 TEI / §8.3 OpenAI) / `output_dimension` (§8.4 Cohere) is a managed non-additive scalar on the same rule by [proposal 0108](../../proposals/0108-declared-field-vs-extras-collision.md)

@@ -13,9 +13,9 @@
 # This fixture pins the mechanic on the clearest single-value case, `model`
 # (the "silent re-route to a different model" failure); `messages` / `tools` /
 # `tool_choice` share the same managed-internal-wire-root reject mechanic. (The
-# `stop` wire field is NOT managed-internal — it realizes the declared
-# `stop_sequences`, a declared-field-vs-extras question deferred with the
-# residual audit; see docs/open-questions.md.)
+# `stop` wire field is managed by a DIFFERENT arm — it realizes the declared
+# `stop_sequences` (§6 clause (b), a list-shaped MERGE; see fixture 076), not
+# the managed-internal structural rule this fixture covers.)
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 005's header (mapping: openai default,

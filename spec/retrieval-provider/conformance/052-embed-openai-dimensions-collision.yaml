@@ -1,0 +1,114 @@
+# retrieval-provider §8.3 OpenAI-compatible + llm-provider §6 clause (b)
+# (inherited via §10) — the SAME-NAME declared-field realization `dimensions`
+# (the retrieval analogue of the llm scalar case, fixture 075).
+#
+# §8.3 realizes the declared `EmbeddingRuntimeConfig.dimensions` as the wire
+# `dimensions` field (same name). Per §6 clause (b), while `dimensions` is set
+# the wire key is a managed NON-ADDITIVE scalar: a conflicting extras
+# `dimensions` is rejected pre-send, a matching one is a no-op. This pins the
+# retrieval same-name arm §10 enumerates (reconciling §10's "a same-NAME key may
+# still appear in the bag as an undeclared colliding key" clause), mirroring the
+# llm `temperature` collision (075).
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 023's/024's header (mapping: openai,
+# openai_embedding_provider, calls_embed, the /v1/embeddings {model, input,
+# dimensions} request + {object, data, model, usage} response,
+# expected_wire_request / expected_wire_headers), 034's header (the
+# pre-send-reject convention: NO mock_embedding + NO expected_wire_request, the
+# no_embed_request_issued invariant), 016's header (expected_error:
+# {category, raised_from}), and 039's header (calls_*.config.extras bag).
+
+mapping: openai
+
+openai_embedding_provider:
+  base_url: "https://api.openai.invalid"
+  model: text-embedding-test
+  api_key: "test-openai-key"
+
+cases:
+  - name: conflicting_extras_dimensions_rejected_pre_send
+    description: |
+      embed(config={dimensions: 4, extras: {dimensions: 8}}). The declared
+      `dimensions` (4) is realized as the wire `dimensions` field; the extras
+      `dimensions` (8, an UNDECLARED key of the same wire name) CONFLICTS. Per
+      §6 clause (b) (managed non-additive while `dimensions` is set), the mapping
+      MUST raise provider_invalid_request (§7) at pre-send validation and MUST
+      NOT issue any /v1/embeddings request, and MUST NOT drop or forward the
+      extras value.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            dimensions: 4
+            extras:
+              dimensions: 8
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        declared_dimensions_conflict_rejected_pre_send: true
+        no_embed_request_issued: true
+        extras_dimensions_neither_dropped_nor_forwarded: true
+
+  - name: matching_extras_dimensions_is_no_op
+    description: |
+      embed(config={dimensions: 4, extras: {dimensions: 4}}). The extras
+      `dimensions` EQUALS the declared value (4), so it is a redundant no-op:
+      the wire request carries the single `dimensions: 4` and the call proceeds.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            dimensions: 4
+            extras:
+              dimensions: 4
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: text-embedding-test
+      input: ["alpha string"]
+      dimensions: 4
+    expected_wire_headers:
+      Authorization: "Bearer test-openai-key"
+    mock_embedding:
+      - status: 200
+        body:
+          object: list
+          model: text-embedding-test
+          data:
+            - {object: embedding, index: 0, embedding: [0.01, 0.02, 0.03, 0.04]}
+          usage:
+            prompt_tokens: 2
+            total_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: text-embedding-test
+      invariants:
+        matching_extras_dimensions_no_op: true
+        wire_dimensions_is_declared_value_once: true

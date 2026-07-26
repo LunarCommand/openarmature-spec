@@ -1,9 +1,10 @@
 # 0108: Declared-field-vs-extras wire-key collision
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-24
-- **Ships as:** _assigned at acceptance (MINOR)_
+- **Accepted:** 2026-07-26
+- **Ships as:** v0.103.0
 - **Targets:** spec/llm-provider/spec.md **§6** (extend the *Managed-field collision* rule: a wire key the
   mapping produces as the realization of a **declared** OA field is managed while produced — **general**, over
   every declared field; the case 0105 deferred), **§8.1 / §8.2 / §8.3** (enumerate the declared-field

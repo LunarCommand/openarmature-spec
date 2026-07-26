@@ -31,6 +31,5 @@ mechanic.
 - Forwarding a conflicting extras `model` onto the wire (silently re-routing the call), or silently dropping
   it, or issuing any request (the rejection is pre-send).
 
-**Not managed here:** the `stop` wire field realizes the *declared* `stop_sequences` — a
-declared-field-vs-extras question deferred with the residual per-mapping audit (`docs/open-questions.md`), not
-the managed-internal structural rule.
+**A different arm:** the `stop` wire field realizes the *declared* `stop_sequences` — managed by §6 clause (b)
+as a list-shaped **merge** (fixture 076), not the managed-internal structural rule this fixture covers.

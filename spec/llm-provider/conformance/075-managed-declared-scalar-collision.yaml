@@ -1,0 +1,96 @@
+# llm-provider §6 *Managed-field collision*, clause (b) — a wire key that
+# realizes a DECLARED OA field, on the reject arm (a non-additive scalar).
+#
+# §6 clause (b) (proposal 0108): a wire field is managed not only when the
+# mapping sets it for its own correctness (0105) but also when it is the wire
+# realization of a declared RuntimeConfig field, while the caller sets it. The
+# scalar sampling fields (temperature / top_p / max_tokens / seed /
+# frequency_penalty / presence_penalty) are managed NON-ADDITIVE while set: a
+# matching extras value of the same wire name is a redundant no-op; a
+# CONFLICTING one is rejected pre-send provider_invalid_request. This closes the
+# silent double-set where an extras temperature would override the declared one.
+#
+# This fixture pins the general scalar arm on `temperature` (wire name == the
+# declared name on OpenAI); top_p / max_tokens / seed / retrieval `dimensions`
+# share the mechanic. Case 1 is conflict->reject; case 2 the matching no-op
+# (the declared value is what reaches the wire).
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 005's header (mapping: openai default,
+# the bound model becomes the wire `model` field), 032's header (config declared
+# RuntimeConfig fields + config.extras — the §6 undeclared pass-through bag that
+# lands keys at the request-body root), 013's header (expected_wire_request),
+# and 074's header (the pre-send-reject convention: mock_provider.responses: []
+# so a sent request fails the test; expected.raises: {category}).
+
+cases:
+  - name: extras_temperature_conflicts_with_declared_rejected_pre_send
+    description: |
+      complete(config={temperature: 0.7, extras: {temperature: 0.2}}). The
+      declared RuntimeConfig.temperature (0.7) is realized on the OpenAI wire
+      under the same name; the caller's extras `temperature` — an UNDECLARED
+      key of that wire name — collides with it at the request-body root, and
+      0.2 CONFLICTS with the declared 0.7. Per §6 clause (b) (temperature is a
+      managed declared-field realization while the caller sets it) on the
+      reject arm, the mapping MUST raise provider_invalid_request at pre-send
+      validation and MUST NOT issue any request: honoring 0.2 would silently
+      override the caller's declared 0.7. The mapping MUST NOT silently drop
+      the extras value or forward it untouched.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "hi"}
+      config:
+        temperature: 0.7
+        extras:
+          temperature: 0.2
+    mock_provider:
+      # Never reached — rejection is pre-send. A sent request fails the test.
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request
+      invariants:
+        declared_scalar_temperature_conflict_rejected_pre_send: true
+        no_request_issued: true
+        declared_temperature_not_silently_overridden: true
+        extras_temperature_neither_dropped_nor_forwarded: true
+
+  - name: extras_temperature_matching_declared_is_no_op
+    description: |
+      complete(config={temperature: 0.7, extras: {temperature: 0.7}}). The
+      extras `temperature` EQUALS the declared value (0.7), so it is a redundant
+      no-op: the mapping emits the single realized wire `temperature: 0.7` and
+      the call proceeds normally. The wire body carries the declared value once
+      (not duplicated, not the extras value winning).
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "hi"}
+      config:
+        temperature: 0.7
+        extras:
+          temperature: 0.7
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "hi"}
+      temperature: 0.7
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-075
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            usage: {prompt_tokens: 2, completion_tokens: 1, total_tokens: 3}
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+      invariants:
+        matching_extras_temperature_no_op: true
+        wire_temperature_is_declared_value_once: true

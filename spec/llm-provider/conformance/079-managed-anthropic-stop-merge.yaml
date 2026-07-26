@@ -1,0 +1,79 @@
+# llm-provider §6 *Managed-field collision* clause (b) / §8.2 — the MERGE arm
+# on the Anthropic `stop_sequences` realization (the same wire NAME as the
+# declared field — no rename, unlike OpenAI's `stop`).
+#
+# While the declared `stop_sequences` is set, §8.2 emits it under the wire name
+# `stop_sequences`; a colliding extras `stop_sequences` MERGES per §6 (declared
+# value(s) first, de-duplicated first-occurrence-wins). Anthropic's
+# `stop_sequences` is ARRAY-ONLY, so — unlike OpenAI's string-or-array `stop`
+# (fixture 076 case 3) — there is NO scalar-string coercion arm here; this
+# fixture deliberately exercises only array-valued extras.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 037's header (mapping: anthropic, the
+# bound model `claude-test`, the Anthropic {type: message, ...} response +
+# max_tokens-required rule), 032's header (config declared fields +
+# config.extras pass-through bag), and 013's header (mock 200 +
+# expected_wire_request).
+
+mapping: anthropic
+
+cases:
+  - name: extras_stop_sequences_merges_with_declared
+    description: |
+      complete(config={max_tokens: 64, stop_sequences: ["STOP"], extras:
+      {stop_sequences: ["END"]}}). The declared `stop_sequences` (["STOP"]) is
+      emitted under Anthropic's native wire name; the extras `stop_sequences`
+      (["END"]) collides and MERGES: declared first, de-duplicated. The wire
+      `stop_sequences` MUST be ["STOP", "END"].
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      config:
+        max_tokens: 64
+        stop_sequences: ["STOP"]
+        extras:
+          stop_sequences: ["END"]
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 64
+      messages: [{role: user, content: "hi"}]
+      stop_sequences: ["STOP", "END"]
+    mock_provider:
+      responses:
+        - status: 200
+          body: {type: message, id: msg_079a, model: claude-test, role: assistant, content: [{type: text, text: "ok"}], stop_reason: end_turn, usage: {input_tokens: 3, output_tokens: 1}}
+    expected:
+      response: {finish_reason: stop}
+      invariants:
+        wire_stop_sequences_is_merged_union: true
+        declared_first_in_merge_order: true
+        no_scalar_string_coercion_on_anthropic: true
+
+  - name: matching_extras_stop_sequences_collapses_dedup
+    description: |
+      complete(config={max_tokens: 64, stop_sequences: ["STOP"], extras:
+      {stop_sequences: ["STOP"]}}). The extras matches the declared value;
+      de-duplication collapses it, so the wire `stop_sequences` MUST be the
+      single-element ["STOP"].
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      config:
+        max_tokens: 64
+        stop_sequences: ["STOP"]
+        extras:
+          stop_sequences: ["STOP"]
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 64
+      messages: [{role: user, content: "hi"}]
+      stop_sequences: ["STOP"]
+    mock_provider:
+      responses:
+        - status: 200
+          body: {type: message, id: msg_079b, model: claude-test, role: assistant, content: [{type: text, text: "ok"}], stop_reason: end_turn, usage: {input_tokens: 3, output_tokens: 1}}
+    expected:
+      response: {finish_reason: stop}
+      invariants:
+        matching_stop_sequences_collapses_to_single_element: true
