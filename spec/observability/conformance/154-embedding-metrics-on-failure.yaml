@@ -1,0 +1,50 @@
+# observability §11.2 / §11.3 (proposals 0067 + 0093) — the embedding FAILURE
+# duration metric. §11 records openarmature.gen_ai.client.operation.duration on
+# EVERY attempt including failures (error.type = the §7 category from the typed
+# EmbeddingFailedEvent), and NO token.usage observation on a failure (no usage
+# record to source). The LLM path pins this via fixture 090; the embedding path
+# had only success fixtures (089 usage, 143 no-usage), so this closes the
+# embedding failure-duration coverage gap (v0.103.1 PATCH — pins already-normative
+# §11 behavior, no new spec). It is the embedding analogue of 090.
+
+cases:
+  - name: errored_embedding_records_duration_with_error_type
+    description: |
+      One embedding-calling node, enable_metrics=True; the mock provider returns
+      503 => provider_unavailable, so EmbeddingProvider.embed() raises
+      (EmbeddingFailedEvent dispatched, exception propagates). Per §11 the
+      duration histogram records exactly one observation carrying
+      error.type="provider_unavailable" (operation "embeddings"); NO
+      token.usage observation is recorded (a failed call returned no usage
+      record). Mirrors the LLM-path fixture 090.
+    state:
+      fields:
+        emb: {type: record, default: null}
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha", "beta"]
+          stores_response_in: emb
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    enable_metrics: true
+    mock_embedding:
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+    expected_error:
+      category: provider_unavailable
+      raised_from: embed_node
+    expected:
+      metrics:
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "embeddings"
+            gen_ai.request.model: "test-embed-model"
+            gen_ai.system: "openai"
+            error.type: "provider_unavailable"
+      invariants:
+        errored_embedding_records_duration_with_error_type: true
+        no_token_usage_observation_on_failure: true

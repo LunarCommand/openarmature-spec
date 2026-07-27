@@ -1,0 +1,162 @@
+# OTel orphan LLM-span fallback under MIXED nesting -- innermost-wins
+# (proposal 0084, §5.5 *Lineage-resolved parent* + §4.3). When an orphan call
+# is enclosed by wrappers of DIFFERENT kinds (a per-branch dispatch span AND a
+# fan-out instance span), §4.3 resolves it to the INNERMOST. 0084's shipped
+# fixtures cover only fan-out-in-fan-out (133); this pins the mixed-kind case
+# (v0.103.1 PATCH -- already-normative §4.3 / §5.5, no new spec). Complements
+# 152 (branch dispatch as the sole wrapper) and 133 (fan-out instance as the
+# sole wrapper).
+#
+# Orphan primitive `calls_llm_from_wrapper` is defined in 133's header.
+#
+# Topology: a parallel-branches node `dispatcher` over two branches -- `work`
+# (a subgraph whose inner fan-out runs a `leaf` subgraph whose `guard` issues
+# one orphan LLM call, pre-phase) and `idle` (a trivial sibling so the
+# parallel-branches node is non-degenerate, >= 2 branches). The orphan's
+# enclosing wrappers are the OUTER `work` dispatch span and the INNER fan-out
+# instance span; per §4.3 the orphan parents under the INNERMOST (the fan-out
+# instance span), NOT the enclosing `work` branch dispatch span.
+
+subgraphs:
+  leaf:
+    state:
+      fields:
+        seed: {type: int, default: 0}
+        marker: {type: int, default: 0}
+    entry: guard
+    nodes:
+      guard:
+        update: {marker: 1}
+        calls_llm_from_wrapper:
+          phase: pre
+          messages: [{role: user, content: "guardrail check"}]
+    edges:
+      - {from: guard, to: END}
+
+  work_sg:
+    state:
+      fields:
+        inner_seeds: {type: list<int>, default: [0]}
+        inner_markers: {type: list<int>, reducer: append, default: []}
+    entry: inner_fan_out
+    nodes:
+      inner_fan_out:
+        fan_out:
+          subgraph: leaf
+          items_field: inner_seeds
+          item_field: seed
+          collect_field: marker
+          target_field: inner_markers
+          error_policy: collect
+    edges:
+      - {from: inner_fan_out, to: END}
+
+  idle_sg:
+    state:
+      fields:
+        done: {type: int, default: 0}
+    entry: idle_node
+    nodes:
+      idle_node:
+        update: {done: 1}
+    edges:
+      - {from: idle_node, to: END}
+
+cases:
+  - name: orphan_llm_call_parents_under_innermost_fan_out_instance_not_branch
+    description: |
+      A parallel-branches node dispatches `work` and `idle`. The `work` branch
+      runs an inner fan-out (one instance) over a `leaf` subgraph whose `guard`
+      issues one LLM call from its wrapper's pre-phase (node span not open).
+      The orphan span is enclosed by TWO wrappers of different kinds -- the
+      `work` branch DISPATCH span (outer) and the fan-out INSTANCE span
+      (inner). Per §4.3 it parents under the INNERMOST -- the fan-out instance
+      span -- never the `work` dispatch span, the fan-out / parallel-branches
+      NODE spans, the invocation, or the (not-yet-open) `guard` node span. The
+      `idle` branch keeps the parallel-branches node non-degenerate.
+    state:
+      fields:
+        done: {type: int, default: 0}
+    entry: dispatcher
+    nodes:
+      dispatcher:
+        parallel_branches:
+          branches:
+            work: {subgraph: work_sg}
+            idle: {subgraph: idle_sg}
+          error_policy: fail_fast
+    edges:
+      - {from: dispatcher, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-153
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "dispatcher"                       # parallel-branches NODE span
+              status: OK
+              attributes:
+                openarmature.parallel_branches.branch_count: 2
+                openarmature.parallel_branches.error_policy: "fail_fast"
+              children:
+                - name: "work"                         # `work` branch dispatch span (OUTER wrapper)
+                  status: OK
+                  attributes:
+                    openarmature.node.branch_name: "work"
+                    openarmature.parallel_branches.parent_node_name: "dispatcher"
+                  children:
+                    - name: "inner_fan_out"            # fan-out NODE span (inside `work`)
+                      status: OK
+                      attributes:
+                        openarmature.fan_out.item_count: 1
+                        openarmature.fan_out.error_policy: "collect"
+                      children:
+                        - name: "inner_fan_out"        # fan-out INSTANCE span (INNER wrapper -- innermost)
+                          status: OK
+                          attributes:
+                            openarmature.node.fan_out_index: 0
+                            openarmature.fan_out.parent_node_name: "inner_fan_out"
+                          children:
+                            # Orphan span parents under the INNERMOST wrapper
+                            # (the fan-out instance span), NOT the enclosing
+                            # `work` branch dispatch span -- §4.3 innermost-wins.
+                            - name: "openarmature.llm.complete"
+                              status: OK
+                              attributes:
+                                openarmature.llm.model: "test-model"
+                                openarmature.llm.finish_reason: "stop"
+                              children: []
+                            - name: "guard"            # leaf node span (sibling of the orphan span)
+                              status: OK
+                              children: []
+                - name: "idle"                         # `idle` branch dispatch span
+                  status: OK
+                  attributes:
+                    openarmature.node.branch_name: "idle"
+                    openarmature.parallel_branches.parent_node_name: "dispatcher"
+                  children:
+                    - name: "idle_node"
+                      status: OK
+                      children: []
+      invariants:
+        # Mixed-kind nesting: the orphan resolves to the INNERMOST enclosing
+        # wrapper (the fan-out instance span), not the outer `work` branch
+        # dispatch span.
+        orphan_llm_span_parents_under_innermost_fan_out_instance: true
+        orphan_llm_span_not_under_work_branch_dispatch_span: true
+        # Never a NODE span (fan-out / parallel-branches) or the invocation.
+        orphan_llm_span_not_under_node_or_invocation: true
+        # Sibling of the calling-node span, not its child (pre-phase call).
+        orphan_llm_span_sibling_of_guard_node_span: true
+        # Dispatch spans close in declaration order despite concurrent branches.
+        dispatch_spans_close_in_declaration_order: ["work", "idle"]
+        llm_provider_span_count: 1

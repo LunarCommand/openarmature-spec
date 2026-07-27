@@ -4,6 +4,12 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.103.1] — 2026-07-26
+
+**Fixed**
+
+- **Conformance coverage — three fixture gaps closed (no spec change).** Adds observability fixtures pinning behavior that was already normative but conformance-untested. **152** (orphan LLM-span fallback inside a parallel branch — routed by `branch_name` to the per-branch dispatch span) and **153** (mixed-nesting orphan — innermost-wins per §4.3: a fan-out instance span nested inside a branch dispatch span) close the per-branch and mixed-kind arms of 0084's §5.5 orphan fallback that fixtures 132–134 left fan-out-only. **154** (embedding metrics on failure — duration + `error.type` from `EmbeddingFailedEvent`, and no `token.usage` observation) closes the embedding counterpart of the LLM failure-metrics fixture 090 (§11). All pin already-normative behavior (no spec-text change); surfaced by downstream review during Python's v0.17.0 implementation. Observability fixture count 151 → 154.
+
 ## [0.103.0] — 2026-07-26
 
 **Changed**
