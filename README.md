@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0109](proposals/0109-token-budget-failure-parity-and-extra-keys.md) | Draft | observability §8.4.3, prompt-management §3 / §5 | Langfuse failure-path `token_budget_exceeded` flag (parity with the OTel exceeded attribute, surviving ERROR precedence) + converge `token_budget` config extra-key handling to tolerate-and-filter (recognized bounds apply, unrecognized keys ignored) |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 

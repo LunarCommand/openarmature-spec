@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0109](proposals/0109-token-budget-failure-parity-and-extra-keys.md) | Token-budget failure-path parity and config extra-key handling | observability | Draft    | —               | —          |
 | [0108](proposals/0108-declared-field-vs-extras-collision.md) | Declared-field-vs-extras wire-key collision | llm-provider | Accepted | Pending         | —          |
 | [0107](proposals/0107-conformance-adapter-directive-vocabulary.md) | Document the conformance-adapter directive vocabulary | conformance-adapter | Accepted | Pending         | —          |
 | [0106](proposals/0106-openai-base64-embedding-decode.md) | §8.3 base64 embedding output-encoding — decode support | retrieval-provider | Accepted | Pending         | —          |
