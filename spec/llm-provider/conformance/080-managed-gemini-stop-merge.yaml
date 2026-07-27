@@ -1,0 +1,91 @@
+# llm-provider §6 *Managed-field collision* clause (b) / §8.3 — the MERGE arm
+# on the Gemini `stopSequences` realization, whose collision happens UNDER
+# `generationConfig` (not the request root).
+#
+# §8.3 nests sampling parameters under `generationConfig`, and places undeclared
+# extras there too. The declared `stop_sequences` is realized as
+# `generationConfig.stopSequences` (camelCase); a colliding extras
+# `stopSequences` (the camelCase wire name) lands under `generationConfig` and
+# MERGES per §6 (declared first, de-duplicated). Gemini's `stopSequences` is
+# array-only (no scalar coercion). This fixture pins the camelCase-under-
+# generationConfig placement — the Gemini-specific wrinkle 076 (OpenAI, root)
+# and 079 (Anthropic, root) do not exercise.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 051's header (mapping: gemini, the bound
+# model `gemini-test`, contents/generationConfig request shape, the
+# {candidates, usageMetadata} response), 032's header (config declared fields +
+# config.extras pass-through bag, nested under generationConfig for §8.3), and
+# 013's header (mock 200 + expected_wire_request).
+
+mapping: gemini
+
+cases:
+  - name: extras_stopSequences_merges_under_generationConfig
+    description: |
+      complete(config={max_tokens: 64, stop_sequences: ["STOP"], extras:
+      {stopSequences: ["END"]}}). The declared `stop_sequences` (["STOP"]) is
+      realized as `generationConfig.stopSequences`; the extras `stopSequences`
+      (["END"], an UNDECLARED camelCase key placed under generationConfig)
+      collides and MERGES: declared first, de-duplicated. The wire
+      `generationConfig.stopSequences` MUST be ["STOP", "END"].
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      config:
+        max_tokens: 64
+        stop_sequences: ["STOP"]
+        extras:
+          stopSequences: ["END"]
+    expected_wire_request:
+      model: gemini-test
+      contents: [{role: user, parts: [{text: "hi"}]}]
+      generationConfig:
+        maxOutputTokens: 64
+        stopSequences: ["STOP", "END"]
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - content: {role: model, parts: [{text: "ok"}]}
+                finishReason: STOP
+            usageMetadata: {promptTokenCount: 3, candidatesTokenCount: 1, totalTokenCount: 4}
+    expected:
+      response: {finish_reason: stop}
+      invariants:
+        wire_stopSequences_merged_under_generationConfig: true
+        declared_first_in_merge_order: true
+
+  - name: matching_extras_stopSequences_collapses_dedup
+    description: |
+      complete(config={max_tokens: 64, stop_sequences: ["STOP"], extras:
+      {stopSequences: ["STOP"]}}). The extras matches the declared value;
+      de-duplication collapses it, so `generationConfig.stopSequences` MUST be
+      the single-element ["STOP"].
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      config:
+        max_tokens: 64
+        stop_sequences: ["STOP"]
+        extras:
+          stopSequences: ["STOP"]
+    expected_wire_request:
+      model: gemini-test
+      contents: [{role: user, parts: [{text: "hi"}]}]
+      generationConfig:
+        maxOutputTokens: 64
+        stopSequences: ["STOP"]
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - content: {role: model, parts: [{text: "ok"}]}
+                finishReason: STOP
+            usageMetadata: {promptTokenCount: 3, candidatesTokenCount: 1, totalTokenCount: 4}
+    expected:
+      response: {finish_reason: stop}
+      invariants:
+        matching_stopSequences_collapses_to_single_element: true

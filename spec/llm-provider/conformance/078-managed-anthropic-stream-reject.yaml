@@ -1,0 +1,79 @@
+# llm-provider §6 *Managed-field collision* clause (b) / §8.2 — the §8.2
+# Anthropic mapping MANAGES the body `stream` field even though it does not
+# realize a declared `stream` (streaming unimplemented; §5 rejects a declared
+# stream-set call).
+#
+# §8.2 consumes an ATOMIC response. Anthropic's Messages API accepts a body
+# `stream` flag, so an extras `stream: true` on a NON-stream-set call (declared
+# stream=False, which §5 does not reject) would — if left unmanaged — ride the
+# §6 untouched pass-through to Anthropic's request-body root, make Anthropic
+# emit an event-stream, and break the atomic consumer opaquely mid-call (the
+# exact silent fallback §5 forbids). §8.2 therefore manages `stream` for its
+# own consumer's correctness: an extras `stream` selecting streaming is
+# REJECTED pre-send (the same outcome §5 gives a declared stream-set call); a
+# matching `stream: false` is a no-op.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 037's header (mapping: anthropic, the
+# bound model `claude-test`, the Anthropic {type: message, ...} response +
+# max_tokens-required rule), 032's header (config.extras pass-through bag), and
+# 074's header (the pre-send-reject convention: mock_provider.responses: [] +
+# expected.raises: {category}).
+
+mapping: anthropic
+
+cases:
+  - name: extras_stream_true_on_atomic_mapping_rejected_pre_send
+    description: |
+      complete(config={max_tokens: 64, extras: {stream: true}}) in unary mode
+      (declared stream unset). §5 does not reject (the declared stream param is
+      not set), but the extras `stream: true` names Anthropic's body `stream`
+      field and selects streaming — which would break §8.2's atomic consumer.
+      §8.2 manages `stream`: the mapping MUST raise provider_invalid_request at
+      pre-send validation and MUST NOT issue any request, closing the smuggling
+      path. It MUST NOT forward the extras value untouched onto the wire.
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      config:
+        max_tokens: 64
+        extras:
+          stream: true
+    mock_provider:
+      # Never reached — rejection is pre-send. A sent request fails the test.
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request
+      invariants:
+        atomic_mapping_extras_stream_conflict_rejected_pre_send: true
+        no_request_issued: true
+        extras_stream_not_smuggled_to_wire: true
+
+  - name: extras_stream_false_on_atomic_mapping_no_op
+    description: |
+      complete(config={max_tokens: 64, extras: {stream: false}}) in unary mode.
+      The extras `stream: false` MATCHES the mapping's atomic (non-streaming)
+      mode, so it is a redundant no-op: the mapping absorbs it (does NOT forward
+      it) and the atomic call proceeds. The wire body carries no `stream` key.
+    call:
+      operation: complete
+      messages: [{role: user, content: "hi"}]
+      config:
+        max_tokens: 64
+        extras:
+          stream: false
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 64
+      messages: [{role: user, content: "hi"}]
+    expected_wire_request_absent_keys: [stream]
+    mock_provider:
+      responses:
+        - status: 200
+          body: {type: message, id: msg_078, model: claude-test, role: assistant, content: [{type: text, text: "ok"}], stop_reason: end_turn, usage: {input_tokens: 3, output_tokens: 1}}
+    expected:
+      response: {finish_reason: stop}
+      invariants:
+        matching_extras_stream_false_no_op: true
+        wire_carries_no_stream_key: true

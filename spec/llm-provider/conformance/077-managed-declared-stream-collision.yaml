@@ -1,0 +1,122 @@
+# llm-provider §6 *Managed-field collision*, clause (b) — the ALWAYS-managed
+# declared-field realization: OpenAI `stream` (the realization of the declared
+# complete(stream=…) argument).
+#
+# §6 clause (b) + §8.1.6 (proposal 0108): `stream` is a non-additive scalar that
+# selects the response mode. Because the call ALWAYS fixes a stream mode
+# (complete(stream=…) carries a value), `stream` is ALWAYS managed — it has NO
+# declared-field-absent branch (unlike the CONDITIONALLY-managed stream_options
+# in fixture 073, which is unmanaged and rides untouched on a non-streaming
+# call). A matching extras `stream` is a redundant no-op; a CONFLICTING one — in
+# EITHER direction (stream:false on a streaming call, or stream:true on a unary
+# call) — is rejected pre-send provider_invalid_request, because honoring it
+# would break the mapping's streaming-vs-unary consumer.
+#
+# Case 1: streaming call + conflicting extras stream:false -> reject. Case 2:
+# unary call + conflicting extras stream:true -> reject (proves ALWAYS-managed —
+# managed on the unary side too, where stream_options would ride untouched).
+# Case 3: unary call + matching extras stream:false -> no-op, and the wire
+# carries NO `stream` key (the matching extras is absorbed, not forwarded).
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 005's header (mapping: openai default),
+# 032's header (config.extras pass-through bag), 013's header
+# (expected_wire_request + expected_wire_request_absent_keys), 059's header
+# (complete(stream=true) call form), and 074's header (the pre-send-reject
+# convention: mock_provider.responses: [] + expected.raises: {category}).
+
+cases:
+  - name: streaming_call_conflicting_extras_stream_false_rejected_pre_send
+    description: |
+      complete(stream=True, config={extras: {stream: false}}). The streaming
+      mapping fixes the mode to streaming and would emit wire `stream: true`; the
+      caller's extras `stream` (an UNDECLARED key naming that wire field)
+      supplies `false`, which CONFLICTS: honoring it would tell the server not to
+      stream while the mapping consumes an SSE stream, breaking the call. Per §6
+      clause (b) reject arm, the mapping MUST raise provider_invalid_request at
+      pre-send validation and MUST NOT issue any request. No LlmTokenEvent is
+      emitted (the reject is pre-send).
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "stream this"}
+      config:
+        extras:
+          stream: false
+    mock_provider:
+      # Never reached — rejection is pre-send. A sent request fails the test.
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request
+      no_token_events_emitted: true
+      invariants:
+        streaming_call_conflicting_stream_rejected_pre_send: true
+        no_request_issued: true
+        stream_neither_dropped_nor_forwarded: true
+
+  - name: unary_call_conflicting_extras_stream_true_rejected_pre_send
+    description: |
+      complete(config={extras: {stream: true}}) with the call in unary mode
+      (stream unset / False). The mapping fixes the mode to unary and consumes an
+      atomic Response; the caller's extras `stream: true` CONFLICTS — honoring it
+      would make the server stream while the mapping expects an atomic body. Per
+      §6 clause (b), and because `stream` is ALWAYS managed (there is no absent
+      branch — contrast fixture 073's stream_options, which would ride untouched
+      here), the mapping MUST raise provider_invalid_request pre-send and MUST
+      NOT issue any request.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "atomic this"}
+      config:
+        extras:
+          stream: true
+    mock_provider:
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request
+      invariants:
+        unary_call_conflicting_stream_rejected_pre_send: true
+        no_request_issued: true
+        stream_always_managed_on_unary_side: true
+
+  - name: unary_call_matching_extras_stream_false_is_no_op
+    description: |
+      complete(config={extras: {stream: false}}) in unary mode. The extras
+      `stream: false` MATCHES the call's unary mode, so it is a redundant no-op:
+      the mapping absorbs it (does NOT forward it) and the atomic call proceeds.
+      The wire body carries NO `stream` key — proving the matching extras is
+      neither forwarded (unlike 073's unmanaged stream_options) nor an error.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "atomic this"}
+      config:
+        extras:
+          stream: false
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "atomic this"}
+    expected_wire_request_absent_keys: [stream]
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-077
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+      invariants:
+        matching_extras_stream_no_op: true
+        wire_carries_no_stream_key: true

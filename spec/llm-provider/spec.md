@@ -522,9 +522,21 @@ mapping places undeclared keys at the request-body root). Undeclared fields are 
 the spec; the provider's backend is the source of truth on what extra parameters it recognizes.
 
 **Managed-field collision.** The untouched pass-through above governs an undeclared key the wire-format
-mapping (§8) does **not** touch. A mapping MAY additionally **manage** a wire-body field — set it for the
-mapping's own correctness, because its response consumer reads a value keyed to that field, or because it
-enforces a mapping-level contract. A §8.x mapping that manages a field **MUST** enumerate the keys it manages.
+mapping (§8) does **not** touch. A mapping MAY additionally **manage** a wire-body field for either of two reasons: **(a)** it **sets the field
+for its own correctness** — because its response consumer reads a value keyed to that field, or because it
+enforces a mapping-level contract (a managed-internal key the caller does not otherwise set); or **(b)** it
+**produces the field as the wire realization of a declared OA field** — a `RuntimeConfig` or `complete()`
+parameter the caller sets through the sanctioned declared path, which the mapping emits under the field's **wire**
+name (which may be renamed from the declared name, e.g. `stop_sequences` → `stop`). A field managed under **(b)**
+is managed **only while the mapping is producing it** — while the declared field is set; when the declared field
+is **absent** the mapping emits no such key, the field is **not** managed, and a colliding extras key keeps the
+untouched pass-through above, preserving the escape hatch for a raw wire value the declared field does not model.
+A declared field whose value is **always determined** (a mode switch such as `stream`) has no
+'declared-field-absent' branch — each mapping that realizes it on the wire, **or** whose own consumer a
+colliding extras value would break, manages it on **every** call (see the per-mapping §8.x enumerations; a
+mapping that neither realizes it nor is broken by it — e.g. §8.3 Gemini, which selects streaming by endpoint
+rather than a body field — has nothing to manage). A §8.x mapping that manages a field **MUST** enumerate the
+keys it manages (and, under **(b)**, the declared field each one realizes).
 When an undeclared extras key **names a managed field**, the untouched pass-through does **not** apply; the
 mapping resolves the collision by the managed field's shape:
 
@@ -1003,10 +1015,20 @@ identifier — §3 / §5 per-instance binding), **`messages`** and **`tools`** (
 **conflicts** with the mapping's value is **rejected pre-send** with `provider_invalid_request` (§7) —
 honoring it would silently replace the caller's conversation, tool set, or bound model (a caller who wants a
 different model binds a different provider instance); the mapping **MUST NOT** silently drop it or silently
-let it override. (A value equal to the managed value is a redundant no-op.) The wire key `stop` is **not**
-enumerated here: it is the realization of the **declared** `stop_sequences` field, a declared-field-vs-extras
-question deferred with the residual per-mapping audit (see `docs/open-questions.md`), not the managed-internal
-field rule.
+let it override. (A value equal to the managed value is a redundant no-op.)
+
+**Declared-field realizations (§6 clause (b)).** The mapping also emits the declared `RuntimeConfig` fields under
+their wire names, each **managed while the caller sets it**. The scalar sampling fields (`temperature`, `top_p`,
+`max_tokens`, `seed`, `frequency_penalty`, `presence_penalty`) are **non-additive**: a matching extras value of
+the same wire name is a redundant no-op, a **conflicting** one is **rejected pre-send** with
+`provider_invalid_request` (§7). The wire key **`stop`** (the realization of the declared `stop_sequences`,
+renamed per above) is **list-shaped / additive**: while `stop_sequences` is set, an extras `stop` **merges** with
+it (declared value(s) first, de-duplicated first-occurrence-wins); an extras `stop` supplied in OpenAI's
+scalar-string form is coerced to a one-element list before the merge. A merged list exceeding OpenAI's
+four-sequence cap is **not** clamped client-side — the over-cap request is sent and the provider's rejection
+surfaces `provider_invalid_request` (the §8 fail-loud range posture). While `stop_sequences` is **absent** the
+mapping emits no `stop`, so an extras `stop` rides untouched — the escape hatch. The `stream` flag is covered in
+§8.1.6.
 
 The §5 `tool_choice` parameter maps to OpenAI's `tool_choice` request-body field:
 
@@ -1202,9 +1224,12 @@ assembling the atomic `Response` per §6 *Streaming assembly*.
   usage the mapping reads — is **rejected pre-send** with `provider_invalid_request` (§7); the mapping
   **MUST NOT** silently drop it or silently let it override (a matching value is a no-op). For a non-streaming
   call the mapping sends no `stream_options`, so an extras `stream_options` is unmanaged and rides untouched.
-  The `stream` flag itself is **not** enumerated here — it is the realization of the **declared**
-  `complete(stream=…)` argument, a declared-field-vs-extras question deferred with the residual per-mapping audit
-  (see `docs/open-questions.md`), not the managed-internal field rule.
+  The `stream` flag is the wire realization of the declared `complete(stream=…)` argument and is a **managed
+  non-additive** field (§6 clause (b)). Because the call always fixes a stream mode (`complete(stream=…)` carries
+  a value), it is **always** managed — there is no declared-field-absent branch: a matching extras `stream` is a
+  redundant no-op, and a **conflicting** one (e.g. an extras `stream: false` on a streaming call, which would
+  break the mapping's streaming consumer) is **rejected pre-send** with `provider_invalid_request` (§7). The
+  mapping **MUST NOT** silently drop it or let it override the mode the call fixed.
 - **Wire** — Server-Sent Events: each `data:` line is a chunk whose `choices[].delta` carries a
   `content` delta, `tool_calls` deltas (each with an `index` and partial `id` / `function.name` /
   `function.arguments` fields), and/or a reasoning delta (see below). The `data: [DONE]` sentinel
@@ -1279,19 +1304,36 @@ path.
 **RuntimeConfig field mapping.** The §6 `RuntimeConfig` declared fields map to the Anthropic
 request body:
 
-- `temperature`, `top_p`, `seed`, `stop_sequences` map directly (`stop_sequences` matches
+- `temperature`, `top_p`, `stop_sequences` map directly (`stop_sequences` matches
   Anthropic's wire-key convention exactly — no rename).
 - `max_tokens` maps directly. Anthropic requires this field on every request; if
   `RuntimeConfig.max_tokens` is `None` or absent, implementations MUST reject at pre-send
   validation (`provider_invalid_request`) identifying `max_tokens` as required by this mapping.
   The mapping MUST NOT default to a magic value.
-- `frequency_penalty`, `presence_penalty` — Anthropic does NOT support these. If supplied
+- `seed`, `frequency_penalty`, `presence_penalty` — Anthropic does NOT support these (its Messages
+  API has no `seed` parameter and no penalty parameters). If supplied
   (non-`None`), implementations MUST raise `provider_invalid_request` at pre-send validation
   identifying the unsupported field. Quiet drop is forbidden.
 
 The bound model identifier becomes Anthropic's `model` field. Undeclared `RuntimeConfig` fields
 appear at the request-body root per §6's extras-pass-through contract; the mapping does NOT
 validate, rename, or transform them.
+
+**Declared-field realizations (§6 clause (b)).** The declared fields above are emitted under their Anthropic
+wire names, each **managed while the caller sets it**. `stop_sequences` (no rename) is **list-shaped / additive**:
+while set, an extras `stop_sequences` **merges** with the declared value(s) (declared first, de-duplicated
+first-occurrence-wins); Anthropic's `stop_sequences` is array-only, so there is no scalar-string coercion. The
+scalar fields `temperature`, `top_p`, and `max_tokens` are **non-additive**: a matching extras value of
+the same name is a redundant no-op, a **conflicting** one is **rejected pre-send** `provider_invalid_request`.
+While a declared field is **absent** the mapping emits no such key and an extras key of that name rides untouched
+(`max_tokens`, required by this mapping, has no absent branch — an absent `max_tokens` is already rejected
+above). §8.2 does not implement streaming — a declared `stream`-set call is rejected at §5 and the mapping
+consumes an atomic response — so it never *realizes* a declared `stream`. It nonetheless **manages** the Anthropic
+body `stream` field for its own consumer's correctness: an extras `stream` selecting streaming (a truthy value)
+is **rejected pre-send** with `provider_invalid_request` — the same outcome §5 gives a declared `stream`-set
+call, since forwarding it would make Anthropic emit an event-stream while the mapping parses an atomic body — and
+a matching `stream: false` is a no-op. This closes the path where an extras `stream: true` on a non-`stream`-set
+call would otherwise ride the untouched pass-through onto the wire.
 
 **Wire-byte stability** (per §8 framing). The §8.2 mapping implementation applies the intra-impl
 wire-byte stability rule to its outputs. Specifically: `system` extraction concatenates with a
@@ -1583,6 +1625,35 @@ undeclared keys under `generationConfig` (not the request root),
 matching where Gemini expects generation parameters. The mapping
 does NOT validate, rename, or transform undeclared keys.
 
+**Declared-field realizations (§6 clause (b)).** The seven declared
+fields are emitted under their `generationConfig` wire names, each
+**managed while the caller sets it**; because undeclared extras are
+also placed under `generationConfig` (above), the colliding extras key
+is the **camelCase** wire name there (`stopSequences`, `temperature`,
+`topP`, `maxOutputTokens`, `seed`, `frequencyPenalty`,
+`presencePenalty`). **`stopSequences`** (the realization of
+`stop_sequences`) is **list-shaped / additive**: while set, an extras
+`stopSequences` **merges** with the declared value(s) (declared first,
+de-duplicated first-occurrence-wins); Gemini's `stopSequences` is
+array-only, so there is no scalar-string coercion, and a merged list
+exceeding the model's stop-sequence cap is **not** clamped
+client-side — the over-cap request is sent and Gemini's rejection
+surfaces `provider_invalid_request` (fail-loud). The six scalar
+sampling fields (`temperature`, `topP`, `maxOutputTokens`, `seed`,
+`frequencyPenalty`, `presencePenalty`) are **non-additive**: a matching
+extras value of the same wire name is a redundant no-op, a
+**conflicting** one is **rejected pre-send** `provider_invalid_request`.
+While a declared field is **absent** the mapping emits no such key and
+an extras key of that name rides untouched. The mapping realizes **no**
+wire `stream`: §8.3 does not implement streaming (a declared
+`stream`-set call is rejected at §5), and — unlike Anthropic —
+Gemini selects streaming by a distinct **endpoint**
+(`streamGenerateContent`), not a request-body flag, so `stream`
+is not a Gemini body field. An extras `stream` is therefore a
+stray body key Gemini ignores; it rides the untouched
+pass-through harmlessly (there is no body `stream` for it to
+flip).
+
 **Wire-byte stability** (per §8 framing). The §8.3 mapping implementation applies the intra-impl
 wire-byte stability rule to its outputs. Specifically: Gemini's `system_instruction.parts` is built
 from the spec system message and preserves source-order parts; `function_declarations[].parameters`
@@ -1851,3 +1922,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §5 `complete()`'s `retry` parameter extended to also accept an llm-provider retry-config (a superset of the pipeline-utilities §6.1 four-field record adding two optional fields); new §7.1 *Adaptive extensions (opt-in)* defining `per_attempt_override` — a declarative retry override schedule (attempt 0 uses the base `config`; the *i*-th override applies to retry *i*; a general `RuntimeConfig` partial merged onto base; last entry carries forward) — and `reask` — a caller-supplied corrective-message builder that makes `structured_output_invalid` retryable-for-this-call and, on each such failure, appends the model's raw output as an `assistant` message plus the builder's returned content as a `user` message to a working transcript that accumulates across reask retries (keeping the sequence role-alternating; the builder receives 0082's `output_content` + `error_message`; the implementation authors no prompt of its own, per charter §3.1 principle 7 *No built-in prompts*; reask reuses the `max_attempts` budget); the §7.1 per-attempt span gains an `openarmature.llm.retry_reason` (`transient` | `reask`) attribute on retry attempts; the *Common mistakes* classifier-widening bullet points `structured_output_invalid` at `reask` by [proposal 0095](../../proposals/0095-adaptive-call-level-retry.md)
 - §7 gains **Malformed usage counter** — a `Response.usage` counter that is present on the wire but malformed (a non-integer, a negative, a boolean) is treated as **not reported**, the per-field `null` §6 already permits: that counter is `null` and the others stand (§6's "the first three MUST be `null` together" is conditioned on *no* usage being reported, which a partially-malformed record does not satisfy). It MUST NOT raise `provider_invalid_response` (or any category) because of the counter — a genuine §6-shape parse failure still raises — and MUST NOT be fabricated, coerced, clamped, or repaired; the verbatim value stays on `Response.raw`. A **derived** `total_tokens` (§8.2) whose addend is not reported is itself `null`, never the surviving addend. §6's streaming `raw` assembly MUST preserve the terminal chunk's usage verbatim. This is a **reversal**: composing §6's "non-negative integer or `null`" counter type with §7's "cannot be parsed into the §6 shape" reservation, a strict implementation today raises on `"abc"`; from this version it MUST NOT. Reconciled across the surfaces a null counter renders through (graph-engine §6 `LlmCompletionEvent.usage` mirrors the response; observability §5.5.3 / §11.2 / §5.5.15 / §8.4.3 omit rather than emit / sum / compare / divide over a not-reported counter) by [proposal 0101](../../proposals/0101-malformed-usage-counter-llm-observability.md)
 - §6 *Extras pass-through* gains a **Managed-field collision** clause (inherited by retrieval-provider §10) — a bounded carve-out to untouched pass-through when an undeclared extras key names a wire field the mapping **manages** (sets for its own correctness / response consumer / a mapping-level contract; each §8.x mapping MUST enumerate its managed keys). An additive / list-shaped managed field **merges** the caller's value(s) with the mapping's (deterministic order, mapping-first, de-duplicated); a **non-additive** managed field — a scalar mode-switch **or an object the mapping constructs wholesale**, whose value is mutually exclusive with the caller's — takes a matching extras value as a redundant no-op and **rejects a conflicting one pre-send** `provider_invalid_request`, never silently dropping or overriding. A field the mapping produces only **conditionally** is managed only while it is producing it. Every unmanaged undeclared key keeps untouched pass-through. Generalizes 0099's mapping-local `embedding_types` exception. The OpenAI mapping (§8.1) enumerates its managed keys: the **structural** wire-root fields `model` / `messages` / `tools` / `tool_choice` (set for the mapping's own correctness — an override would silently replace the caller's conversation / tool set / bound model), and two **conditionally-managed non-additive** object fields — §8.1.5 `response_format` (managed while the mapping is producing it, i.e. the native structured-output path; unmanaged on a free-form call or the §8.1.5.1 fallback) and §8.1.6 `stream_options` (managed while streaming) — each a *reject*-arm key. The `stop` / `stream` wire fields (realizations of the declared `stop_sequences` / `complete(stream=…)`) and §8.2 `task` / §8.3 `encoding_format` are the *declared-field-vs-extras* residual, deferred to a follow-on by [proposal 0105](../../proposals/0105-extras-managed-field-collision-rule.md)
+- §6 *Managed-field collision* extended: a wire field is managed not only when the mapping sets it for its own correctness (0105) but also when it is the **wire realization of a declared OA field**, and only **while producing it** (a field whose value is always determined — `stream` — is always managed). This is **general** over every declared field a mapping puts on the wire, resolving the *declared-field-vs-extras* residual 0105 deferred. §8.1 OpenAI enumerates the realizations: the scalar sampling fields (`temperature` / `top_p` / `max_tokens` / `seed` / `frequency_penalty` / `presence_penalty`, non-additive — matching no-op, conflicting reject pre-send) and the **`stop`** wire key (realizing `stop_sequences`, list-shaped — an extras `stop` merges, a scalar-string coerced to a one-element list, an over-cap merged list sent fail-loud); §8.1.6 makes **`stream`** an always-managed non-additive field. §8.2 Anthropic (`stop_sequences` merge, the `temperature` / `top_p` / `max_tokens` scalars — `seed` and the penalties are Anthropic-unsupported and pre-send reject; and, since §8.2 is atomic-only, an extras `stream` selecting streaming is rejected rather than smuggled onto the wire) and §8.3 Gemini (`stopSequences` merge, the six scalar `generationConfig` fields; no body `stream` — Gemini streams by endpoint, so an extras `stream` is a benign stray key) enumerate theirs. When a declared field is absent the wire key is unmanaged and an extras key rides untouched (the escape hatch) by [proposal 0108](../../proposals/0108-declared-field-vs-extras-collision.md)

@@ -391,7 +391,13 @@ response-side clause.
   default undefined). Auditing every §8.x mapping for managed-field-vs-extras
   interactions is most of the work.
 - **Remaining follow-on (post-0105): the *declared-field-vs-extras* collision,
-  and the `encoding_format` scalar.** [candidate-for-new-proposal] — 0105 added
+  and the `encoding_format` scalar.** [resolved-by-0108] — **Resolved:** 0108 settles the
+  declared-field-vs-extras collision (`stop` / `stream` / Jina `task`) under a single
+  general rule — a wire key realizing a declared field is a managed field *while
+  producing it* (llm-provider §6 clause (b), inherited by retrieval §10), unifying it
+  under 0105's merge/reject arms; the declared-field-absent escape hatch is preserved.
+  `encoding_format` was separately resolved by 0106 (base64 output-encoding decode,
+  retrieval §8.3). Original framing: 0105 added
   the general managed-field rule and enumerated the *managed-internal* keys
   across both capabilities (retrieval `embedding_types` merge + the §8.1 / §8.2 /
   §8.4 truncation-flag reject; llm-provider §8.1 structural `model` / `messages` /

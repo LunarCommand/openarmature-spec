@@ -1,0 +1,137 @@
+# llm-provider §6 *Managed-field collision*, clause (b) — the MERGE arm on a
+# declared-field realization whose wire name differs: OpenAI `stop` (the
+# realization of the declared `stop_sequences`).
+#
+# §6 clause (b) (proposal 0108): while `stop_sequences` is set, the OpenAI
+# mapping emits it as the wire key `stop` (the §8.1 rename). `stop` is
+# LIST-SHAPED / additive, so a colliding extras `stop` (the WIRE name) MERGES
+# with the declared value(s) per 0105's merge arm: declared value(s) first,
+# de-duplicated first-occurrence-wins. An extras `stop` supplied in OpenAI's
+# scalar-string form (the wire accepts string-or-array) is coerced to a
+# one-element list before the merge.
+#
+# Three cases: (1) distinct values merge to the union; (2) a matching extras
+# value collapses (de-dup); (3) a scalar-string extras value is coerced then
+# merged. All three send the request (the merged list is under OpenAI's
+# four-sequence cap) and assert the wire `stop`.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 005's header (mapping: openai default),
+# 032's header (config declared fields + config.extras pass-through bag), and
+# 013's header (mock_provider 200 response + expected_wire_request).
+
+cases:
+  - name: extras_stop_merges_with_declared_stop_sequences
+    description: |
+      complete(config={stop_sequences: ["STOP"], extras: {stop: ["END"]}}). The
+      declared `stop_sequences` (["STOP"]) is realized as OpenAI's wire `stop`;
+      the caller's extras `stop` (the WIRE name, an UNDECLARED key) collides and
+      MERGES per §6 clause (b): declared first, then the caller's, de-duplicated.
+      The wire `stop` MUST be ["STOP", "END"] — the union — not either value
+      alone and not the extras value winning.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "hi"}
+      config:
+        stop_sequences: ["STOP"]
+        extras:
+          stop: ["END"]
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "hi"}
+      stop: ["STOP", "END"]
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-076-a
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+      invariants:
+        wire_stop_is_merged_union: true
+        declared_stop_first_in_merge_order: true
+
+  - name: matching_extras_stop_collapses_dedup
+    description: |
+      complete(config={stop_sequences: ["STOP"], extras: {stop: ["STOP"]}}). The
+      extras `stop` matches the declared value; de-duplication (first occurrence
+      wins) collapses it, so the wire `stop` MUST be the single-element ["STOP"]
+      — not ["STOP", "STOP"].
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "hi"}
+      config:
+        stop_sequences: ["STOP"]
+        extras:
+          stop: ["STOP"]
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "hi"}
+      stop: ["STOP"]
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-076-b
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+      invariants:
+        matching_stop_collapses_to_single_element: true
+
+  - name: scalar_string_extras_stop_coerced_then_merged
+    description: |
+      complete(config={stop_sequences: ["STOP"], extras: {stop: "END"}}). OpenAI's
+      `stop` accepts string-or-array; the extras `stop` supplied as a scalar
+      string "END" is coerced to the one-element list ["END"] before the merge,
+      yielding the wire `stop` ["STOP", "END"].
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "hi"}
+      config:
+        stop_sequences: ["STOP"]
+        extras:
+          stop: "END"
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "hi"}
+      stop: ["STOP", "END"]
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-076-c
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+      invariants:
+        scalar_string_extras_stop_coerced_to_list: true
+        wire_stop_is_merged_union: true

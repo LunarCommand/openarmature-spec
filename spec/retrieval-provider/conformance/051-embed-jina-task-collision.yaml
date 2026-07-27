@@ -1,0 +1,125 @@
+# retrieval-provider §8.2 Jina + llm-provider §6 *Managed-field collision*
+# clause (b) — the declared-field realization `task` (from the declared
+# input_type), the load-bearing retrieval case for proposal 0108.
+#
+# §8.2 realizes the declared input_type as Jina's wire `task`
+# (query -> "retrieval.query", document -> "retrieval.passage"). Per §6
+# clause (b) (inherited via §10), while input_type is SET the mapping produces
+# `task`, so `task` is a managed NON-ADDITIVE field: a conflicting extras `task`
+# is rejected pre-send. While input_type is ABSENT the mapping produces no
+# `task`, so an extras `task` is UNMANAGED and rides the bag untouched — the
+# escape hatch that carries a model-specific value (e.g. "text-matching") the
+# closed input_type set does not model. This reconciles 0099's §8.2 note.
+#
+# Case 1: input_type set + conflicting extras task -> reject pre-send. Case 2:
+# input_type absent + extras task -> rides untouched onto the wire.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 020's header (mapping: jina,
+# jina_embedding_provider, calls_embed, the input_type -> task realization,
+# expected_wire_request + expected_wire_headers + expected_wire_request_absent_keys),
+# 034's header (the pre-send-reject convention: NO mock_embedding and NO
+# expected_wire_request when the rejection is client-side, the
+# no_embed_request_issued invariant), 016's header (expected_error:
+# {category, raised_from}), and 039's header (calls_*.config.extras — the §2
+# extras-pass-through bag; a collision with a mapping-managed wire key is
+# governed by the §6 collision rule).
+
+mapping: jina
+
+jina_embedding_provider:
+  base_url: "https://api.jina.invalid"
+  model: jina-embeddings-test
+  api_key: "test-jina-key"
+
+cases:
+  - name: conflicting_extras_task_with_input_type_rejected_pre_send
+    description: |
+      embed(config={input_type: "query", extras: {task: "text-matching"}}). The
+      §8.2 mapping realizes input_type "query" as the wire `task`
+      "retrieval.query"; the caller's extras `task` (the WIRE name, an UNDECLARED
+      key) names that managed realization, and "text-matching" CONFLICTS with
+      "retrieval.query". Per §6 clause (b) — `task` is managed while input_type
+      is set — the mapping MUST raise provider_invalid_request (§7) at the
+      pre-send validation layer and MUST NOT issue any /v1/embeddings request,
+      and MUST NOT silently drop the extras value or forward it untouched.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["how tall is the eiffel tower?"]
+          config:
+            input_type: query
+            extras:
+              task: "text-matching"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        task_managed_while_input_type_set_conflict_rejected_pre_send: true
+        no_embed_request_issued: true
+        extras_task_neither_dropped_nor_forwarded: true
+
+  - name: extras_task_without_input_type_rides_untouched
+    description: |
+      embed(config={extras: {task: "text-matching"}}) with NO input_type. The
+      mapping produces no `task` (input_type absent), so `task` is UNMANAGED and
+      the extras value rides the bag untouched onto the wire — the escape hatch
+      that carries a model-specific task value (e.g. Jina's "text-matching") the
+      closed input_type set does not model. The /v1/embeddings request MUST carry
+      task "text-matching" alongside {model, input, truncate: false}, with the
+      Authorization: Bearer header present.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["how tall is the eiffel tower?"]
+          config:
+            extras:
+              task: "text-matching"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: jina-embeddings-test
+      input: ["how tall is the eiffel tower?"]
+      task: "text-matching"
+      truncate: false
+    expected_wire_request_absent_keys: [dimensions]
+    expected_wire_headers:
+      Authorization: "Bearer test-jina-key"
+    mock_embedding:
+      - status: 200
+        body:
+          model: jina-embeddings-test
+          usage: {total_tokens: 8}
+          data:
+            - {index: 0, embedding: [0.10, 0.20, 0.30, 0.40]}
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: jina-embeddings-test
+      invariants:
+        input_type_absent_no_managed_task: true
+        extras_task_rides_untouched_to_wire: true
+        wire_request_carries_task_text_matching: true
+        authorization_bearer_header_present: true
