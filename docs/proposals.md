@@ -31,7 +31,7 @@ lifecycle and the proposal template.
 | [0087](proposals/0087-conformance-adapter-directive-execution-order.md) | Within-node directive execution order | conformance-adapter | Accepted | Shipped (0.17.0)| —          |
 | [0086](proposals/0086-prompt-default-cache-ttl.md) | Service-wide default cache-TTL | prompt-management | Accepted | Shipped (0.17.0)| —          |
 | [0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) | Nested fan-out checkpoint lineage | pipeline-utilities | Accepted | Partial (0.16.0)| —          |
-| [0084](proposals/0084-nested-fan-out-span-lineage.md) | Nested-fan-out span lineage chain | observability | Accepted | Partial (0.17.0)| —          |
+| [0084](proposals/0084-nested-fan-out-span-lineage.md) | Nested-fan-out span lineage chain | observability | Accepted | Shipped (0.17.0)| —          |
 | [0083](proposals/0083-prompt-token-budget-observability.md) | Per-prompt token-budget observability | observability | Accepted | Shipped (0.17.0)| —          |
 | [0082](proposals/0082-structured-output-failure-diagnostics.md) | Structured-output failure diagnostics | graph-engine | Accepted | Shipped (0.17.0)| —          |
 | [0081](proposals/0081-conformance-adapter-value-matcher-vocabulary.md) | Value-matcher vocabulary | conformance-adapter | Accepted | Textual (0.16.0)| —          |

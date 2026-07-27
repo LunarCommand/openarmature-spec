@@ -1,0 +1,157 @@
+# OTel orphan LLM-span fallback inside a PARALLEL BRANCH (proposal 0084, §5.5
+# *Lineage-resolved parent* — the per-branch dispatch-span arm of the orphan
+# fallback). 0084's shipped orphan fixtures (133 / 134) exercise only the
+# FAN-OUT enclosing wrapper; §5.5's fallback is equally normative for the
+# per-branch dispatch span, but was conformance-untested — an impl could
+# mis-resolve a branch-issued orphan and still pass. This closes that gap
+# (v0.103.1 PATCH — pins already-normative §5.5 behavior, no new spec). It is
+# the parallel-branches analogue of fixture 133.
+#
+# Orphan-call primitive `calls_llm_from_wrapper` (phase: pre|post) is defined
+# in fixture 133's header: the adapter wraps the node in a middleware issuing
+# exactly one real complete() against the mock provider in the named phase, so
+# the calling node's span is NOT open when the provider span is emitted. The
+# call's response is not written to state (models a wrapper-issued side call).
+#
+# Topology: a parallel-branches node `dispatcher` over two branches
+# (`branch_a` / `branch_b`), each a subgraph whose `guard` node issues one
+# orphan LLM call (pre-phase). Each orphan span must parent under its OWN
+# branch's synthesized dispatch span (routed by branch_name), a sibling of the
+# guard node span — never the other branch's dispatch span, the dispatcher
+# NODE span, or the invocation.
+
+cases:
+  - name: orphan_llm_call_parents_under_correct_branch_dispatch_span
+    description: |
+      Two-branch parallel-branches node; each branch's `guard` issues one LLM
+      call from its wrapper's pre-phase (node span not open). Per §5.5's orphan
+      fallback the provider span parents under the nearest enclosing wrapper
+      (§4.3) — here the per-branch DISPATCH span — routed to the correct branch
+      by branch_name: branch_a's orphan under branch_a's dispatch span, NOT
+      branch_b's; never the dispatcher NODE span / invocation; never the
+      `guard` node span (which opens only after the pre-phase wrapper call).
+    subgraphs:
+      branch_a:
+        state:
+          fields:
+            msg: {type: string, default: ""}
+        entry: guard
+        nodes:
+          guard:
+            update: {msg: "a"}
+            calls_llm_from_wrapper:
+              phase: pre
+              messages: [{role: user, content: "guardrail a"}]
+        edges:
+          - {from: guard, to: END}
+      branch_b:
+        state:
+          fields:
+            msg: {type: string, default: ""}
+        entry: guard
+        nodes:
+          guard:
+            update: {msg: "b"}
+            calls_llm_from_wrapper:
+              phase: pre
+              messages: [{role: user, content: "guardrail b"}]
+        edges:
+          - {from: guard, to: END}
+    state:
+      fields:
+        result: {type: string, default: ""}
+    entry: dispatcher
+    nodes:
+      dispatcher:
+        parallel_branches:
+          branches:
+            branch_a: {subgraph: branch_a}
+            branch_b: {subgraph: branch_b}
+          error_policy: fail_fast
+    edges:
+      - {from: dispatcher, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-152-a
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+      - status: 200
+        body:
+          id: cc-152-b
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "dispatcher"                       # parallel-branches NODE span
+              status: OK
+              attributes:
+                openarmature.parallel_branches.branch_count: 2
+                openarmature.parallel_branches.error_policy: "fail_fast"
+              children:
+                - name: "branch_a"                     # synthesized per-branch dispatch span
+                  status: OK
+                  attributes:
+                    openarmature.node.branch_name: "branch_a"
+                    openarmature.parallel_branches.parent_node_name: "dispatcher"
+                  children:
+                    # Orphan provider span: parents under THIS branch's dispatch
+                    # span (nearest enclosing wrapper), a SIBLING of the guard
+                    # node span -- not its child.
+                    - name: "openarmature.llm.complete"
+                      status: OK
+                      attributes:
+                        openarmature.llm.model: "test-model"
+                        openarmature.llm.finish_reason: "stop"
+                      children: []
+                    - name: "guard"                    # branch node span (sibling of orphan)
+                      status: OK
+                      attributes:
+                        openarmature.node.branch_name: "branch_a"
+                      children: []
+                - name: "branch_b"                     # synthesized per-branch dispatch span
+                  status: OK
+                  attributes:
+                    openarmature.node.branch_name: "branch_b"
+                    openarmature.parallel_branches.parent_node_name: "dispatcher"
+                  children:
+                    # Routed by branch_name to THIS branch's dispatch span, NOT
+                    # branch_a's (the two dispatch spans are distinguished by
+                    # branch_name, the parallel-branches analogue of 133's chain).
+                    - name: "openarmature.llm.complete"
+                      status: OK
+                      attributes:
+                        openarmature.llm.model: "test-model"
+                        openarmature.llm.finish_reason: "stop"
+                      children: []
+                    - name: "guard"
+                      status: OK
+                      attributes:
+                        openarmature.node.branch_name: "branch_b"
+                      children: []
+      invariants:
+        # The wrapper-issued call has no open calling-node (`guard`) span; its
+        # provider span falls back to the nearest enclosing wrapper per §5.5 --
+        # the per-branch dispatch span.
+        orphan_llm_span_parents_under_branch_dispatch_span: true
+        # Routed by branch_name: branch_b's orphan parents under branch_b's
+        # dispatch span, not branch_a's.
+        orphan_llm_span_routed_to_correct_branch_by_name: true
+        # Never the parallel-branches NODE span or the invocation span.
+        orphan_llm_span_not_under_dispatcher_node_or_invocation: true
+        # The orphan span is a SIBLING of the calling-node span, not its child.
+        orphan_llm_span_sibling_of_guard_node_span: true
+        # Dispatch spans close in declaration order despite concurrent branches
+        # (mirrors fixture 038's parallel-branches close-order guarantee).
+        dispatch_spans_close_in_declaration_order: ["branch_a", "branch_b"]
+        llm_provider_span_count: 2
