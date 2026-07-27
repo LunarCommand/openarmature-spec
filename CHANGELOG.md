@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.104.0] — 2026-07-27
+
+**Changed**
+
+- **Token-budget failure-path parity + config extra-key handling.** Two refinements to 0083's token-budget observability, surfaced by downstream review. **(1) observability §8.4.3** — the Langfuse observer now emits a single any-bound boolean `generation.metadata.token_budget_exceeded` (a flat sibling of `metadata.token_budget.*`) **regardless of `observation.level`**, so an over-budget *failure* — where the `ERROR` level / statusMessage previously suppressed the advisory over-budget WARNING — stays discoverable, at parity with the OTel `openarmature.llm.token_budget.exceeded` attribute. The `ERROR` status is unchanged; the flag is emitted `true` / `false` when a budget is declared and ≥1 bound is evaluable, and absent when none are (per 0101). **(2) prompt-management §3 / §5** — a backend sourcing `Prompt.token_budget` now **MUST ignore an unrecognized key** in the config (recognized bounds apply; `token_budget` has no extras mapping, so a stray key is dropped, not carried), and a malformed / unrecognized `token_budget` config **MUST NOT** break the call (making explicit the always-intended advisory call-safety). Converges the two backend behaviours 0083 left divergent (partial-budget vs reject-to-fallback); malformed *values* for a recognized bound stay backend discretion. ([proposal 0109](proposals/0109-token-budget-failure-parity-and-extra-keys.md))
+
+**Notes**
+
+- **MINOR, two-capability.** Additive on both counts: §8.4.3 gains one observation-metadata field; prompt-management gains a normative rule for a previously-undefined case plus an explicit call-safety statement. No existing signal changes — the OTel exceedance attribute, the §11 counter, the declared-bounds metadata, and the `ERROR` `statusMessage` are all unchanged. New fixtures — observability **155** (Langfuse failure-path exceeded flag) and **156** (Langfuse under-budget flag present-and-`false`), and prompt-management **037** (unrecognized-key ignored); the shipped observability fixture **130** (WARNING-path budget rendering) is updated to also assert the flag on the success path. Observability fixture count 154 → 156; prompt-management 36 → 37.
+
 ## [0.103.1] — 2026-07-26
 
 **Fixed**

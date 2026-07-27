@@ -1,0 +1,119 @@
+# observability §8.4.3 (proposal 0109): on an over-budget structured_output_invalid
+# FAILURE, the bundled Langfuse observer's failed Generation renders ERROR (the
+# failure wins the level / statusMessage, §8.4.2) AND carries a
+# generation.metadata.token_budget_exceeded = true flag that SURVIVES the
+# ERROR-precedence rule — giving the Langfuse failure path parity with the OTel
+# openarmature.llm.token_budget.exceeded attribute (fixture 131 asserts the OTel
+# side; this asserts the Langfuse side). The declared bounds stay on
+# generation.metadata.token_budget.* as on the WARNING path (fixture 130).
+#
+# Setup mirrors fixture 131 case 1 (budgeted prompt, input_max_tokens 10; truncated
+# JSON + finish_reason length + response_schema -> structured_output_invalid, which
+# carries usage per 0082 so the budget evaluates on the failure) driven through the
+# bundled Langfuse observer (fixtures 123 / 130 dialect).
+#
+# Numbers: input_max_tokens 10, mock prompt_tokens 20 -> exceeded -> flag true.
+#
+# Harness note (per conformance-adapter §3.2): calls_llm.response_schema (022/023);
+# the prompt's token_budget object in prompt_backend (prompt-management §3);
+# renders_prompt makes it active; langfuse_observer selects the Langfuse observer.
+
+cases:
+  - name: over_budget_structured_output_failure_langfuse_exceeded_flag_survives_error
+    description: |
+      A budgeted prompt (input_max_tokens 10) renders and passes a response_schema;
+      the mock returns truncated JSON (finish_reason length) with usage {prompt 20,
+      completion 16, total 36}; complete() raises structured_output_invalid (which
+      carries usage, 0082). Through the bundled Langfuse observer, the failed
+      Generation MUST render level ERROR + statusMessage "structured_output_invalid"
+      (the failure wins), AND carry generation.metadata.token_budget_exceeded = true
+      (the exceedance survives ERROR precedence, proposal 0109) alongside the
+      declared generation.metadata.token_budget.input_max_tokens = 10 — parity with
+      the OTel exceeded attribute (fixture 131).
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        renders_prompt: classify
+        calls_llm:
+          model: gpt-test
+          messages: [{role: user, content: "Generate a person record."}]
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+          config:
+            max_tokens: 16
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          token_budget:
+            input_max_tokens: 10
+    render_variables:
+      topic: "weather"
+    langfuse_observer:
+      disable_provider_payload: false
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-155
+          object: chat.completion
+          model: gpt-test-v2
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":'}, finish_reason: length}
+          usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                # The failure wins the level + statusMessage (§8.4.2)...
+                level: ERROR
+                statusMessage: "structured_output_invalid"
+                output: '{"name":"Alice","age":'
+                usage:
+                  input: 20
+                  output: 16
+                  total: 36
+                metadata:
+                  finish_reason: "length"
+                  response_model: "gpt-test-v2"
+                  response_id: "cc-155"
+                  # ...but the exceedance survives ERROR precedence (proposal 0109):
+                  # a flat sibling boolean alongside the declared bounds.
+                  token_budget:
+                    input_max_tokens: 10
+                  token_budget_exceeded: true
+                  prompt:
+                    name: "classify"
+                    version: "v7"
+                    label: "production"
+                    template_hash: "abc123"
+                    rendered_hash: "<any-string>"
+                children: []
+      invariants:
+        exceeded_flag_survives_error_precedence_on_failed_generation: true
+        declared_bounds_present_on_failed_generation: true
+        error_level_and_category_unchanged: true

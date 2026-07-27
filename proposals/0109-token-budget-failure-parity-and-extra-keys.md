@@ -1,9 +1,10 @@
 # 0109: Token-budget failure-path parity and config extra-key handling
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-26
-- **Ships as:** _assigned at acceptance (MINOR)_
+- **Accepted:** 2026-07-27
+- **Ships as:** v0.104.0
 - **Targets:** spec/observability/spec.md **§8.4.3** (add a `generation.metadata.token_budget_exceeded`
   boolean that survives the `ERROR`-precedence rule, giving the Langfuse failure path parity with the OTel
   §5.5.15 `openarmature.llm.token_budget.exceeded` attribute; emitted on both the WARNING and failure paths);

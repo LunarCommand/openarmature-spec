@@ -7,7 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
-| [0109](proposals/0109-token-budget-failure-parity-and-extra-keys.md) | Token-budget failure-path parity and config extra-key handling | observability | Draft    | —               | —          |
+| [0109](proposals/0109-token-budget-failure-parity-and-extra-keys.md) | Token-budget failure-path parity and config extra-key handling | observability | Accepted | Pending         | —          |
 | [0108](proposals/0108-declared-field-vs-extras-collision.md) | Declared-field-vs-extras wire-key collision | llm-provider | Accepted | Pending         | —          |
 | [0107](proposals/0107-conformance-adapter-directive-vocabulary.md) | Document the conformance-adapter directive vocabulary | conformance-adapter | Accepted | Pending         | —          |
 | [0106](proposals/0106-openai-base64-embedding-decode.md) | §8.3 base64 embedding output-encoding — decode support | retrieval-provider | Accepted | Pending         | —          |
@@ -31,7 +31,7 @@ lifecycle and the proposal template.
 | [0088](proposals/0088-observability-langfuse-parallel-branches-parity.md) | Langfuse parallel-branches mapping parity | observability | Accepted | Pending         | —          |
 | [0087](proposals/0087-conformance-adapter-directive-execution-order.md) | Within-node directive execution order | conformance-adapter | Accepted | Shipped (0.17.0)| —          |
 | [0086](proposals/0086-prompt-default-cache-ttl.md) | Service-wide default cache-TTL | prompt-management | Accepted | Shipped (0.17.0)| —          |
-| [0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) | Nested fan-out checkpoint lineage | pipeline-utilities | Accepted | Partial (0.16.0)| —          |
+| [0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) | Nested fan-out checkpoint lineage | pipeline-utilities | Accepted | Shipped (0.17.0)| —          |
 | [0084](proposals/0084-nested-fan-out-span-lineage.md) | Nested-fan-out span lineage chain | observability | Accepted | Shipped (0.17.0)| —          |
 | [0083](proposals/0083-prompt-token-budget-observability.md) | Per-prompt token-budget observability | observability | Accepted | Shipped (0.17.0)| —          |
 | [0082](proposals/0082-structured-output-failure-diagnostics.md) | Structured-output failure diagnostics | graph-engine | Accepted | Shipped (0.17.0)| —          |
