@@ -1,0 +1,91 @@
+# observability §8.4.3 (proposal 0109): the token_budget_exceeded flag is emitted
+# `true` / `false` whenever a budget is declared and at least one bound is evaluable
+# — so on an UNDER-budget successful call it is present and FALSE (not omitted). The
+# within-budget counterpart to fixtures 130 (WARNING path, true) and 155 (failure
+# path, true); fixture 128 asserts the OTel `false` span attribute, this asserts the
+# Langfuse metadata flag. The Generation renders as a normal success — no WARNING
+# level (nothing exceeded), no ERROR (no failure).
+#
+# Numbers (modeled on fixture 128): input_max_tokens 40, mock prompt_tokens 20 ->
+# under budget -> flag false.
+#
+# Harness note (per conformance-adapter §3.2): the prompt's token_budget object in
+# prompt_backend (prompt-management §3); renders_prompt makes it active;
+# langfuse_observer selects the Langfuse observer (fixtures 130 / 123 dialect).
+
+cases:
+  - name: langfuse_generation_under_budget_exceeded_flag_false
+    description: |
+      One LLM-calling node renders a budgeted prompt (input_max_tokens 40) and
+      calls through the bundled Langfuse observer; the mock returns a successful
+      completion with usage {prompt 20, completion 1, total 21} — prompt_tokens
+      20 < input_max_tokens 40, so nothing is exceeded. The Generation renders as
+      a normal success (NO WARNING level, no statusMessage) and MUST carry
+      generation.metadata.token_budget_exceeded = false (present, not omitted —
+      §8.4.3's true/false MUST) alongside the declared
+      generation.metadata.token_budget.input_max_tokens = 40.
+    state:
+      fields:
+        msg: {type: string, default: ""}
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        renders_prompt: classify
+        calls_llm:
+          model: "gpt-test"
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    prompt_backend:
+      type: filesystem
+      prompts:
+        classify:
+          name: classify
+          version: "v7"
+          label: production
+          template: "classify this: {{topic}}"
+          template_hash: "abc123"
+          token_budget:
+            input_max_tokens: 40
+    render_variables:
+      topic: "weather"
+    langfuse_observer:
+      disable_provider_payload: false
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-156
+          object: chat.completion
+          model: gpt-test-v2
+          choices:
+            - {index: 0, message: {role: assistant, content: "topic-A"}, finish_reason: stop}
+          # prompt_tokens 20 < input_max_tokens 40 -> under budget.
+          usage: {prompt_tokens: 20, completion_tokens: 1, total_tokens: 21}
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                # Normal success — nothing exceeded, so NO WARNING level and no
+                # statusMessage (contrast fixture 130's over-budget WARNING).
+                metadata:
+                  token_budget:
+                    input_max_tokens: 40
+                  # Present-and-false (§8.4.3, proposal 0109): the flag is emitted
+                  # on the within-budget path too, not omitted.
+                  token_budget_exceeded: false
+                  prompt:
+                    name: "classify"
+                    version: "v7"
+                    label: "production"
+                    template_hash: "abc123"
+                    rendered_hash: "<any-string>"
+                children: []
+      invariants:
+        exceeded_flag_present_and_false_under_budget: true
+        no_warning_level_under_budget: true

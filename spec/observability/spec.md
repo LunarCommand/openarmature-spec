@@ -2279,11 +2279,19 @@ condition in the Langfuse UI; this is RECOMMENDED but not MUST (different vendor
 different "soft error" semantics, and the OA error category mechanism in §4.2 covers hard
 failures via the `openarmature.error.category` mapping above).
 
-**Token-budget WARNING (proposal 0083).** Similarly, when an active prompt's `token_budget` is exceeded
-(observability §5.5.15), the implementation SHOULD set `observation.level = "WARNING"` with a
-`statusMessage` naming the exceeded bound (e.g. `"token budget exceeded: input 1500 > 1000"`); the budget
-values map to `generation.metadata.token_budget.*`. A hard `ERROR`-level failure (§4.2 / §8.4.2) takes
-precedence when both apply.
+**Token-budget WARNING (proposal 0083); failure-path exceeded flag (proposal 0109).** Similarly, when an active
+prompt's `token_budget` is exceeded (observability §5.5.15), the implementation SHOULD set
+`observation.level = "WARNING"` with a `statusMessage` naming the exceeded bound (e.g.
+`"token budget exceeded: input 1500 > 1000"`); the budget values map to `generation.metadata.token_budget.*`. A
+hard `ERROR`-level failure (§4.2 / §8.4.2) takes precedence over the WARNING **level / statusMessage** when both
+apply — but the exceedance itself stays discoverable: the observer **MUST** additionally set a single any-bound
+boolean **`generation.metadata.token_budget_exceeded`** (a flat sibling of `generation.metadata.token_budget.*`,
+not a nested field under it) **regardless of `observation.level`**, `true` when the call's usage crossed any
+declared bound — the same §5.5.15 evaluation the OTel `openarmature.llm.token_budget.exceeded` attribute uses. So
+an over-budget **failure**, where the `ERROR` level / statusMessage win, is still discoverable at parity with the
+OTel attribute (the ERROR status is unchanged; the flag is additive metadata). The flag is emitted (`true` or
+`false`) whenever a budget was declared and at least one bound is evaluable, and is **absent** — not `false` —
+when no bound is evaluable (all relevant counters not-reported, per 0101).
 
 **Failed Generation for `structured_output_invalid`.** On a `structured_output_invalid` failure (the
 graph-engine §6 `LlmFailedEvent` response-side surface, per §5.5.7), the **failed** Generation populates

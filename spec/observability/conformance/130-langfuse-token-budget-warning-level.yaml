@@ -5,6 +5,11 @@
 # input-exceeded case (a SUCCESSFUL completion whose prompt_tokens exceed the
 # declared input_max_tokens) through the Langfuse observer.
 #
+# Per proposal 0109, the observer ALSO sets a flat sibling boolean
+# generation.metadata.token_budget_exceeded = true regardless of level (the same
+# flag fixture 155 asserts on the failure path); this fixture pins it on the
+# WARNING/success path.
+#
 # The generation otherwise renders normally (a success): level WARNING, not
 # ERROR — token_budget is advisory observability only (§5.5.15), it never fails
 # the call. The exceeded bound is named in statusMessage per the §8.4.3 example
@@ -87,6 +92,11 @@ cases:
                   # (§8.4.3). Only input was declared.
                   token_budget:
                     input_max_tokens: 10
+                  # Over-budget flag (§8.4.3, proposal 0109): a flat sibling boolean
+                  # set regardless of level — emitted on this WARNING/success path,
+                  # not only the failure path (fixture 155). The call's usage (20)
+                  # crossed the input bound (10), so it is true.
+                  token_budget_exceeded: true
                   # Prompt identity still present (the active prompt).
                   prompt:
                     name: "classify"
