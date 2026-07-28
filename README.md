@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0110](proposals/0110-remove-reask-assistant-prefill-continuation.md) | Draft | llm-provider §7.1, conformance-adapter §5.11 | Remove the unreachable reask assistant-prefill continuation branch (it contradicts the §3 message-ordering MUST, making fixture 067 unsatisfiable); a PATCH erratum. |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
