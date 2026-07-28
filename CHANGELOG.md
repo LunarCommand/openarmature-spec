@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.104.2] — 2026-07-27
+
+**Changed**
+
+- **Normative-language clarity (editorial, non-behavioral).** Two RFC-2119-hygiene refinements surfaced by downstream review of 0095, neither altering any fixture-pinned behavior. **(1) All capability specs** upgrade the normative-keyword boilerplate from RFC 2119 to **BCP 14** (RFC 2119 + RFC 8174), adding the missing RFC 8174 reference and — load-bearingly — the **case-significance** clause: the keywords are normative *only when in all capitals*, so a lowercase "must" in prose carries no obligation. **(2) llm-provider §7.1** promotes four reask behaviors from bare indicative prose to **MUST**, matching what fixtures 062–066 already pin: the working transcript **MUST** accumulate the reask pairs across retries; reask attempts **MUST** consume the same `max_attempts` budget (no separate reask budget); the builder **MUST** be invoked only when a further attempt remains (never on the terminal attempt); and a transient retry interleaved in a reask loop **MUST NOT** append a reask pair.
+
+**Notes**
+
+- **PATCH, non-behavioral (editorial).** No fixture changes, and no conforming implementation can newly fail — the §7.1 MUSTs restate behavior fixtures 062–066 already require, and the BCP 14 boilerplate tightens keyword *interpretation* without adding obligations. Every capability spec's `Latest` advances to 0.104.2 (all were touched by the boilerplate upgrade); no fixture counts change.
+
 ## [0.104.1] — 2026-07-27
 
 **Fixed**

@@ -10,7 +10,7 @@ that ingests the language-agnostic YAML fixtures under `spec/<capability>/confor
 against the host implementation's runtime, asserting on outcomes via the host language's idiomatic test
 framework.
 
-Normative keywords (MUST, MUST NOT, SHOULD, MAY) are used per [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+Normative keywords follow BCP 14 ([RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119), [RFC 8174](https://datatracker.ietf.org/doc/html/rfc8174)): MUST, SHOULD, MAY and the rest are normative **only when in all capitals** — a lowercase use is prose, not a requirement.
 
 ---
 
