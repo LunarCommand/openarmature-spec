@@ -912,18 +912,11 @@ attempt):
   interpolates the implementation-defined `{error_message}`, where exact equality is not portable;
   assert the literal template text and the verbatim `{output_content}` this way). An empty list `[]`
   asserts **no** appended messages (attempt 0, and reask-off cases).
-- **`messages: [<msg>, ...]`** — the attempt's **full** outbound message list (rather than only what
-  was appended). Each `<msg>` asserts `{role: <role>, content: <str>}` (exact) or
-  `{role: <role>, content_contains: [<str>, ...]}`. Use this when a reask retry **modifies** a caller
-  message rather than only appending after it — specifically the assistant-prefill continuation
-  (llm-provider §7.1): when the caller's messages end in an `assistant` message, that message's content
-  in the retry's request is the caller's prefill concatenated with the model's output **verbatim (no
-  separator)**, and the `user` correction follows. (`appended_messages` covers the append-only case;
-  `messages` asserts the whole list, so it catches an implementation that starts a new `assistant`
-  message or inserts a delimiter.)
 
-This generalizes the single-request `expected_wire_request` convention (provider wire-mapping
-fixtures) to the per-attempt retry-loop case.
+Every reachable retry-loop attempt is **append-only** (a reask retry appends an `assistant`/`user`
+pair; a transient retry appends nothing), so `appended_messages` expresses every case. This generalizes
+the single-request `expected_wire_request` convention (provider wire-mapping fixtures) to the per-attempt
+retry-loop case.
 
 **Span attribute assertions.** The per-attempt `openarmature.llm.retry_reason` span attribute
 (llm-provider §7.1) is asserted via the existing `expected.llm_spans[*].attributes` shape on retry
@@ -1425,3 +1418,4 @@ per-directory specialization lives there.
 - §5.12 *Provider structured-output error assertion* — the three `carries` assertion keys that did not track the llm-provider §7 error field names are renamed (`raw_response_content` → `output_content`, `failure_description_present` → `error_message_present`, `failure_description_mentions` → `error_message_mentions`), and the section states the key-naming convention **normatively**, scoped to the `structured_output_invalid` block: a key MUST be named for the §7 error field it asserts plus an optional flavor suffix (bare field name = exact-equality, and a **subset match** when the field is a mapping such as `usage`; `_present` = presence not value, `true` present / `false` absent; `_mentions` = the value contains a given substring), the suffix set is **closed** (a new flavor requires a proposal), and a new key MUST derive its name from the field it asserts — so the vocabulary is derivable from §7 rather than enumerated. `carries` blocks asserting other raised errors (state-migration, prompt-management, sessions) are explicitly outside the rule. The remaining keys (`response_schema_present` / `finish_reason` / `usage`) already followed it. Breaking for an adapter reading the old names; the fixture corpus (022 / 023, 063 / 064) moves in the same version. §5.12's fixture-provenance citation is corrected in the same edit (the 0095 reask fixtures are `063 / 064`, not `062–067` — the others raise nothing) by [proposal 0098](../../proposals/0098-conformance-adapter-carries-key-alignment.md)
 - §5.13 *Raised-error field assertion* (`carries`) added — the capability-neutral general rule the `carries` directive lacked (a key MUST name a field the raised error's own capability spec defines it exposes; bare field = exact-equality, subset match for a mapping-valued field; `_present` / `_mentions` the closed flavor set; a key MUST NOT coin a stem with no backing field; an error field name MUST NOT end in a recognized flavor suffix so a key parses to one (field, flavor) pair). §5.12 retrofitted to reference it as the llm-provider `structured_output_invalid` instance, dropping its "governs the `structured_output_invalid` block only" scoping by [proposal 0102](../../proposals/0102-general-carries-error-field-assertion.md)
 - §5.14 *Provider batch-chunking cap* (`chunk_size`) added — documents the `chunk_size` construction directive an adapter MUST honor as an embedding- or rerank-provider's per-call cap for chunk-and-stitch (retrieval-provider §8 batch chunking for embedding inputs, §8.1 rerank chunk-and-stitch for rerank documents): a real construction cap for a configurable-cap mapping (TEI `max-client-batch-size`, governing TEI `/embed` and `/rerank`), a test-only override of a fixed vendor cap (OpenAI 2048, Cohere 96) so a fixture can drive the chunking path with a small body rather than an impractical over-cap one. Moves the affordance from fixture-header prose into the adapter contract, making a fixed-cap chunking fixture reachable cross-impl by [proposal 0103](../../proposals/0103-retrieval-conformance-coverage.md)
+- §5.11 *Provider call-retry directives* — the full-list `wire_requests[*].messages` sub-form is removed. It existed only to assert the llm-provider §7.1 assistant-prefill continuation (its sole fixture, 067), which 0110 removes as unreachable. With no retry that *modifies* (rather than only appends to) the caller's messages, every reachable attempt is append-only and `appended_messages` expresses every case; `sampling` and `attributes_absent` are unchanged by [proposal 0110](../../proposals/0110-remove-reask-assistant-prefill-continuation.md)

@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.104.1] — 2026-07-27
+
+**Fixed**
+
+- **llm-provider §7.1 + conformance-adapter §5.11 — reask assistant-prefill contradiction removed.** 0095's structured-output reask specified an *assistant-prefill continuation* branch — when the reask working transcript's last message is already an `assistant` message (a caller prefill), the model's output **continues** that message rather than starting a new one — asserted by llm-provider fixture **067** and the conformance-adapter §5.11 full-list `wire_requests[*].messages` sub-form. That branch is **unreachable**: llm-provider §3 requires the last message before the call to be `user` or `tool` (a MUST, validated pre-send), so the reask working transcript never ends in `assistant`, and fixture 067 — whose caller `messages` end in an `assistant` prefill — is **unsatisfiable** against a §3-conforming implementation (one that validates §3 rejects 067's input with `provider_invalid_request` before reask runs). This removes the trio 0095 introduced for that one case: the §7.1 continuation clause (a reask retry now always appends the model's output as a fresh `assistant` message, which never yields the consecutive-`assistant` sequence §8.2 forbids), the §5.11 full-list `messages` sub-form (every reachable retry-loop attempt is append-only, so `appended_messages` expresses every case), and fixture 067. First-class caller prefill remains unsupported, deferred to a dedicated future proposal that would amend §3 and every §8.x wire mapping. ([proposal 0110](proposals/0110-remove-reask-assistant-prefill-continuation.md))
+
+**Notes**
+
+- **PATCH, non-behavioral (erratum).** The removed branch was unreachable for any §3-conforming implementation, so no conforming behavior changes and none can newly fail — the removal deletes an expectation no conforming implementation could satisfy. Reachable reask behavior stays covered by llm-provider fixtures 062–066. Two-capability touch: llm-provider and conformance-adapter `Latest` both advance to 0.104.1. llm-provider fixture count 80 → 79.
+
 ## [0.104.0] — 2026-07-27
 
 **Changed**
