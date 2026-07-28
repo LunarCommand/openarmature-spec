@@ -8,7 +8,7 @@ Canonical behavioral specification for the OpenArmature LLM provider abstraction
 This specification is language-agnostic. Each implementation (Python, TypeScript, …) maps its own idioms
 onto the behavioral contract described here. Conformance is verified by the fixtures under `conformance/`.
 
-Normative keywords (MUST, MUST NOT, SHOULD, MAY) are used per [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+Normative keywords follow BCP 14 ([RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119), [RFC 8174](https://datatracker.ietf.org/doc/html/rfc8174)): MUST, SHOULD, MAY and the rest are normative **only when in all capitals** — a lowercase use is prose, not a requirement.
 
 ---
 
@@ -750,20 +750,20 @@ not on the framework-agnostic §6.1 middleware.
 - **`reask` — structured-output reask (caller-supplied corrective-message builder).** When `reask`
   is supplied, the loop treats `structured_output_invalid` (§7) as retryable **for this call**,
   without the caller supplying a custom `classifier` (the §6.1 default classifier is unchanged; this
-  is a call-level convenience). Reask attempts consume the same `max_attempts` budget — there is no
+  is a call-level convenience). Reask attempts **MUST** consume the same `max_attempts` budget — there is no
   separate reask budget. On a `structured_output_invalid` attempt, before the next attempt the loop
   invokes the caller's `reask` builder with the raised error's structured-output-failure surface (§7
   / 0082 — the verbatim invalid `output_content` and the failure description on `error_message`) and
   appends **two** messages to a working transcript: the model's own raw output for that attempt as an
   `assistant` message, then the content the builder returns as a `user` message. The working
-  transcript starts as a copy of the caller's `messages` and **accumulates** these pairs across reask
+  transcript starts as a copy of the caller's `messages` and **MUST accumulate** these pairs across reask
   retries — so attempt *k*'s request is the caller's messages followed by, for each prior reask
   attempt in order, that attempt's `assistant` output and its `user` correction. Appending the
   `assistant` output keeps the sequence role-alternating (Anthropic forbids consecutive same-role
   messages — §8.2) and gives the model its full self-heal history. The `assistant` message carries the
-  attempt's output as the text the error surfaces on `output_content` (§7 / 0082). The builder is
+  attempt's output as the text the error surfaces on `output_content` (§7 / 0082). The builder **MUST** be
   invoked only when a further attempt remains — not on the terminal attempt once `max_attempts` is
-  exhausted. A **transient** retry interleaved in a reask-enabled loop appends no reask pair but re-sends
+  exhausted. A **transient** retry interleaved in a reask-enabled loop **MUST NOT** append a reask pair; it re-sends
   the working transcript accumulated so far (its span's `retry_reason` is `transient`). `complete()` MUST
   NOT mutate the caller's `messages` (§5) — the working transcript is an internal copy. The implementation MUST NOT
   author or inject corrective prompt text of its own: the `assistant` message is the model's verbatim
