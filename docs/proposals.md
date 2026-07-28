@@ -7,7 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
-| [0110](proposals/0110-remove-reask-assistant-prefill-continuation.md) | Remove the reask assistant-prefill continuation branch | llm-provider | Draft | —               | —          |
+| [0110](proposals/0110-remove-reask-assistant-prefill-continuation.md) | Remove the reask assistant-prefill continuation branch | llm-provider | Accepted | Pending         | —          |
 | [0109](proposals/0109-token-budget-failure-parity-and-extra-keys.md) | Token-budget failure-path parity and config extra-key handling | observability | Accepted | Pending         | —          |
 | [0108](proposals/0108-declared-field-vs-extras-collision.md) | Declared-field-vs-extras wire-key collision | llm-provider | Accepted | Pending         | —          |
 | [0107](proposals/0107-conformance-adapter-directive-vocabulary.md) | Document the conformance-adapter directive vocabulary | conformance-adapter | Accepted | Pending         | —          |

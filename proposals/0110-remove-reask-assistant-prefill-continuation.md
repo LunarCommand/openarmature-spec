@@ -1,9 +1,9 @@
 # 0110: Remove the reask assistant-prefill continuation branch
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-27
-- **Accepted:**
+- **Accepted:** 2026-07-27
 - **Ships as:** v0.104.1
 - **Targets:** spec/llm-provider/spec.md **§7.1** (remove the reask working-transcript's
   *assistant-prefill continuation* clause — the branch that fires "when the working transcript's last
