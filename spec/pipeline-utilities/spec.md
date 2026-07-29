@@ -766,8 +766,8 @@ graph-engine §2 `projection_reducer_round_trip` compile-time warning applies to
 - the **projection-map channel** — a field carried into an instance via `inputs` and back out via
   `extra_outputs` through the same subgraph field; and
 - the **primary collect channel** — the `collect_field` subgraph field seeded from `target_field` via
-  `inputs` (the `inputs` entry `collect_field: target_field`) and collected straight back out into that same
-  `target_field`.
+  `inputs` (the `inputs` entry keying `collect_field` to `target_field`) and collected straight back out into
+  that same `target_field`.
 
 A round-trip into a non-round-trip-idempotent reducer (e.g. `append`) doubles the value — on the collect
 channel, once per instance. A `collect_field` not seeded from `target_field` via `inputs` does not round-trip
