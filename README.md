@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0111](proposals/0111-fan-out-collect-round-trip-warning.md) | Draft | pipeline-utilities §9.3 | Extend the fan-out `projection_reducer_round_trip` warning to the primary `collect_field`/`target_field` channel — a parent field seeded in via `inputs` and collected back out into itself round-trips just as the `extra_outputs` channel does; closes a conformance-visible gap in proposal 0094's §9.3 pointer. |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
