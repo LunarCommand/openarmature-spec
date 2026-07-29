@@ -1,8 +1,9 @@
 # 0111: Fan-out Collect/Target Round-Trip Warning
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-28
+- **Accepted:** 2026-07-29
 - **Targets:** spec/pipeline-utilities/spec.md **§9.3 Per-instance fan-in** (the `projection_reducer_round_trip`
   pointer, ~L761–765): extend it so the warning also covers the fan-out **primary collect channel** — a parent
   field copied into an instance via `inputs` and collected back out via `collect_field` / `target_field`

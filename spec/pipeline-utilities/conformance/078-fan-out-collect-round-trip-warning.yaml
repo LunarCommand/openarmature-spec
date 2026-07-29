@@ -1,0 +1,91 @@
+# §9.3 fan-out reducer round-trip warning on the PRIMARY collect channel
+# (proposal 0111). The graph-engine §2 `projection_reducer_round_trip` warning
+# applies to the fan-out `collect_field` / `target_field` channel, not only the
+# `inputs` / `extra_outputs` map channel (fixture 077): a parent field seeded
+# INTO each instance via `inputs` and collected straight back OUT into that SAME
+# parent field, through a non-round-trip-idempotent reducer, round-trips and
+# re-merges — doubling once per instance.
+#
+# `inputs` is `Mapping[str, str]` (subgraph_field -> parent_field). Two cases:
+#
+#   1. Round-trip warns. Parent `results` (reducer `concat_flatten`) is copied
+#      into subgraph field `acc` via `inputs: {acc: results}`; `collect_field:
+#      acc` collects that SAME subgraph field back into `target_field: results`
+#      — the SAME parent field it was seeded from: a collect-channel round-trip
+#      -> `[projection_reducer_round_trip]`.
+#   2. Clean collect does NOT warn. `collect_field: out` is instance-computed
+#      (NOT seeded from `results` via `inputs`), so collecting it into `results`
+#      (`append`) is not a round-trip -> `[]`, even though `append` is
+#      non-round-trip-idempotent. The trigger is the round-trip CONDITION, not
+#      "collect into a growing reducer"; an over-warning impl fails here.
+#
+# `projection_reducer_round_trip` is a WARNING (compilation SUCCEEDS), asserted
+# via the `expected_compile_warning` directive (conformance-adapter §5.8). MUST
+# for the §2 canonical non-idempotent reducers. Each case is a separate graph,
+# so case 2's empty assertion is isolated and bites: `expected_compile_warning`
+# is an order-insensitive SET of categories, so a companion round-trip on the
+# same node would collapse into the single entry and mask a spurious warning.
+
+subgraphs:
+  unit:
+    state:
+      fields:
+        input: {type: int, default: 0}
+        acc: {type: list<string>, reducer: append, default: []}
+        out: {type: string, default: ""}
+    entry: work
+    nodes:
+      work: {update: {acc: ["new"], out: "done"}}
+    edges:
+      - {from: work, to: END}
+
+cases:
+  # Case 1 — collect-channel round-trip: parent `results` (concat_flatten) is
+  # seeded into subgraph `acc` via `inputs`, then collected back out of that
+  # same `acc` into `results` -> round-trip -> warn. Compilation SUCCEEDS.
+  - name: fan_out_collect_round_trip_into_concat_flatten_warns
+    graph:
+      state:
+        fields:
+          items: {type: list<int>, default: [1, 2]}
+          results: {type: list<string>, reducer: concat_flatten, default: ["seed"]}
+      entry: process
+      nodes:
+        process:
+          fan_out:
+            subgraph: unit
+            items_field: items
+            item_field: input
+            collect_field: acc          # subgraph `acc`, seeded from `results`...
+            target_field: results       # ...collected back into `results` (concat_flatten)
+            inputs: {acc: results}      # subgraph `acc` <- parent `results` (SAME field, in)
+            error_policy: fail_fast
+      edges:
+        - {from: process, to: END}
+    # Exhaustive list form: exactly this one warning, no other.
+    expected_compile_warning: [projection_reducer_round_trip]
+
+  # Case 2 — clean collect (no round-trip): `out` is instance-computed, NOT
+  # seeded from `results` via `inputs`, so collecting it into `results`
+  # (`append`) is not a round-trip -> no warning. Isolated (no `inputs`, no
+  # `extra_outputs`), so the empty set catches an over-warning impl.
+  - name: fan_out_clean_collect_into_append_no_warn
+    graph:
+      state:
+        fields:
+          items: {type: list<int>, default: [1, 2]}
+          results: {type: list<string>, reducer: append, default: []}
+      entry: process
+      nodes:
+        process:
+          fan_out:
+            subgraph: unit
+            items_field: items
+            item_field: input
+            collect_field: out          # instance-computed, NOT seeded from `results`
+            target_field: results       # append reducer, but no round-trip
+            error_policy: fail_fast
+      edges:
+        - {from: process, to: END}
+    # Exhaustive empty set: no warning may fire.
+    expected_compile_warning: []

@@ -759,10 +759,19 @@ themselves list-shaped), and `merge_all` (list-of-mapping → mapping; for cases
 per-instance values are dict-shaped and the parent wants a single merged dict). User-defined
 reducers MAY also be used, provided their `update` argument accepts the engine-produced list.
 The reducer for any field named in `extra_outputs` MUST accept the value type the subgraph
-produces. A field carried into an instance via `inputs` and back out via `extra_outputs` through
-the same subgraph field round-trips through the parent's reducer; the graph-engine §2
-`projection_reducer_round_trip` compile-time warning applies (a round-trip into a
-non-round-trip-idempotent reducer — e.g. `append` — doubles the value).
+produces. A field round-trips through the parent's reducer when the same subgraph field carries a parent
+value in and then back out into that same parent field. Fan-out has two projection-out channels, and the
+graph-engine §2 `projection_reducer_round_trip` compile-time warning applies to a round-trip on **either**:
+
+- the **projection-map channel** — a field carried into an instance via `inputs` and back out via
+  `extra_outputs` through the same subgraph field; and
+- the **primary collect channel** — the `collect_field` subgraph field seeded from `target_field` via
+  `inputs` (the `inputs` entry keying `collect_field` to `target_field`) and collected straight back out into
+  that same `target_field`.
+
+A round-trip into a non-round-trip-idempotent reducer (e.g. `append`) doubles the value — on the collect
+channel, once per instance. A `collect_field` not seeded from `target_field` via `inputs` does not round-trip
+and does not warn on that basis.
 
 The collected list at `target_field` preserves instance-index order (instance 0's value, then
 instance 1's, …), independent of completion order. In `items_field` mode, instance index ==
@@ -1998,3 +2007,4 @@ sources is the same caveat §7 documents for conditional middleware.)
 - §9.3 *Per-instance fan-in* and §11.4 *Per-branch projection (out)* gained a pointer to the graph-engine §2 `projection_reducer_round_trip` compile-time warning: a field carried in via `inputs` and back out via `extra_outputs` (fan-out) or `outputs` (a `subgraph` branch) through the same subgraph field round-trips through the parent's reducer, doubling under a non-round-trip-idempotent reducer. No behavioral change — the warning is defined in graph-engine §2 by [proposal 0094](../../proposals/0094-subgraph-projection-declared-boundary.md)
 - §10.11 *Per-instance fan-out resume* gains an optional `enclosing_fan_out_lineage` field on each `fan_out_progress` entry (the outermost→innermost chain of enclosing fan-out instances, each `{namespace, fan_out_node_name, fan_out_index}`), so a fan-out nested inside an outer fan-out instance resumes correctly — entries keyed by `(namespace, fan_out_node_name, enclosing_fan_out_lineage)`, extending §10.11.1 exactly-once to nested fan-outs — plus a *No mis-skip across enclosing instances* invariant (on resume the engine MUST re-run rather than apply a non-matching or legacy-unlineaged entry's `completed` skips). The count-drift check re-resolves per lineage-qualified entry; §10.2's per-fan-out mapping framing, the §10.11 `namespace`-uniqueness claim, and the §10.7 skip decision are reconciled to the same-node multiplicity. New fixture `076`; the record-format addition is backward-compatible (flat records carry an empty lineage) by [proposal 0085](../../proposals/0085-nested-fan-out-checkpoint-lineage.md)
 - §10.10 migration-error field surfaces named: `checkpoint_state_migration_missing` carries `from_version` / `to_version` / `registered_migrations_count` (a non-negative integer) / `registry_description` (a string), replacing the prior unnamed "description of the registered migration set (in a form appropriate to the host language)"; `checkpoint_state_migration_chain_ambiguous` carries the nullable `(from_version, to_version)` pair as its whole exposed surface, dropping the un-nameable "description of the conflicting paths" prose. Ratifies the field surface the reference implementation already exposes by [proposal 0102](../../proposals/0102-general-carries-error-field-assertion.md)
+- §9.3 *Per-instance fan-in* round-trip pointer extended to the fan-out **primary collect channel**: the graph-engine §2 `projection_reducer_round_trip` warning now also applies when the `collect_field` subgraph field is seeded from `target_field` via `inputs` and collected straight back out into that same `target_field` (not only the `inputs` / `extra_outputs` map channel named at 0094), doubling once per instance under a non-round-trip-idempotent reducer. A `collect_field` not seeded from `target_field` does not warn. New fixture 078 (two cases — collect-channel round-trip warns; isolated clean collect does not). Resolves a conformance-visible split — the warning is MUST for a canonical non-idempotent reducer; parallel-branches §11.4 is unaffected (it projects out only via `outputs`, already covered) by [proposal 0111](../../proposals/0111-fan-out-collect-round-trip-warning.md)
