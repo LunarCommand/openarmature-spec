@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.105.0] — 2026-07-29
+
+**Changed**
+
+- **Fan-out round-trip warning extended to the primary collect channel** ([proposal 0111](proposals/0111-fan-out-collect-round-trip-warning.md)). pipeline-utilities §9.3's `projection_reducer_round_trip` pointer previously named only the `inputs` / `extra_outputs` projection-map channel; it now also covers the fan-out's primary `collect_field` / `target_field` channel. A parent field seeded into each instance via `inputs` and collected straight back out into that same field round-trips through the parent's reducer exactly as an `extra_outputs` field does — doubling **once per instance** under a non-round-trip-idempotent reducer (`append` and kin). A `collect_field` not seeded from `target_field` via `inputs` does not round-trip and does not warn. One new fan-out fixture, **078**, with two cases: a collect-channel round-trip warns, and an isolated clean collect into `append` emits no warning (the no-false-positive case).
+
+**Notes**
+
+- **MINOR, behavioral (additive).** Broadens an existing advisory compile-time warning to a fan-out channel the §9.3 pointer omitted; no new category, no runtime behavior change, no compile error. Resolves a conformance-visible split: the warning is MUST for a canonical non-idempotent reducer, so an implementation reading graph-engine §2's general round-trip definition warned on the collect channel while one reading §9.3's channel enumeration did not. The reducer round-trip rule, idempotency classification, and `expected_compile_warning` directive are inherited unchanged from 0094; parallel-branches §11 is unaffected (it projects out only via `outputs`, already covered by §11.4). pipeline-utilities `Latest` advances to 0.105.0; fixture count 76 → 77.
+
 ## [0.104.2] — 2026-07-27
 
 **Changed**
