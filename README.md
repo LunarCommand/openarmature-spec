@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0113](proposals/0113-malformed-merge-managed-extras.md) | Draft | llm-provider §6 | Pin the merge arm's undefined malformed-input case: a malformed (or partially-malformed) extras value for a merge-managed wire field is treated as absent — the mapping sends only its mandatory value(s), all-or-nothing, no diagnostic — applying §7's malformed-ancillary principle to the request side. Inherited by retrieval §8.4 `embedding_types`. |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
