@@ -1,32 +1,34 @@
 # §9.3 fan-out reducer round-trip warning on the PRIMARY collect channel
-# (proposal 0111). The graph-engine §2 `projection_reducer_round_trip` warning
-# applies to the fan-out `collect_field` / `target_field` channel, not only the
-# `inputs` / `extra_outputs` map channel (fixture 077): a parent field seeded
-# INTO each instance via `inputs` and collected straight back OUT into that SAME
-# parent field, through a non-round-trip-idempotent reducer, round-trips and
-# re-merges — doubling once per instance.
+# (proposals 0111 + 0112). The graph-engine §2 `projection_reducer_round_trip`
+# warning applies to the fan-out `collect_field` / `target_field` channel, not
+# only the `inputs` / `extra_outputs` map channel (fixture 077): a parent field
+# seeded INTO each instance and collected straight back OUT into that SAME parent
+# field, through a non-round-trip-idempotent reducer, round-trips and re-merges —
+# doubling once per instance.
 #
-# `inputs` is `Mapping[str, str]` (subgraph_field -> parent_field). Two cases:
+# The collect field can be seeded from `target_field` by EITHER fan-out
+# projection-in mechanism (§9.1):
+#   - `inputs` whole-value copy — an `inputs` entry keys `collect_field` to
+#     `target_field` (0111); or
+#   - `items_field` / `item_field` per-item spread — `item_field == collect_field`
+#     and `items_field == target_field`, the DEFAULT fan-out mode (0112): each
+#     element of the `target_field` list is spread into the collected field.
 #
-#   1. Round-trip warns. Parent `results` (reducer `concat_flatten`) is copied
-#      into subgraph field `acc` via `inputs: {acc: results}`; `collect_field:
-#      acc` collects that SAME subgraph field back into `target_field: results`
-#      — the SAME parent field it was seeded from: a collect-channel round-trip
-#      -> `[projection_reducer_round_trip]`.
-#   2. Clean collect does NOT warn. `collect_field: out` is instance-computed
-#      (NOT seeded from `results` via `inputs`), so collecting it into `results`
-#      (`append`) is not a round-trip -> `[]`, even though `append` is
-#      non-round-trip-idempotent. The trigger is the round-trip CONDITION, not
-#      "collect into a growing reducer"; an over-warning impl fails here.
+# Four cases, two positive (one per seeding spelling) and two isolated negatives:
+#   1. inputs-seeded round-trip (concat_flatten)      -> warns
+#   2. clean collect (inputs={}, collect a fresh field) -> silent
+#   3. item-seeded round-trip (append, default mode)  -> warns
+#   4. item-seeded but collect a DIFFERENT field      -> silent
 #
 # `projection_reducer_round_trip` is a WARNING (compilation SUCCEEDS), asserted
 # via the `expected_compile_warning` directive (conformance-adapter §5.8). MUST
-# for the §2 canonical non-idempotent reducers. Each case is a separate graph,
-# so case 2's empty assertion is isolated and bites: `expected_compile_warning`
-# is an order-insensitive SET of categories, so a companion round-trip on the
-# same node would collapse into the single entry and mask a spurious warning.
+# for the §2 canonical non-idempotent reducers. Each case is a separate graph, so
+# the negatives' empty assertions are isolated and bite: `expected_compile_warning`
+# is an order-insensitive SET of categories, so a companion round-trip on the same
+# node would collapse into the single entry and mask a spurious warning.
 
 subgraphs:
+  # inputs-seeded cases (1, 2): `acc` holds the whole copied-in `results` list.
   unit:
     state:
       fields:
@@ -39,8 +41,21 @@ subgraphs:
     edges:
       - {from: work, to: END}
 
+  # item-seeded cases (3, 4): `item` receives one element of the fanned list;
+  # `other` is an instance-computed field for the no-round-trip negative.
+  item_unit:
+    state:
+      fields:
+        item: {type: string, default: ""}
+        other: {type: string, default: ""}
+    entry: work
+    nodes:
+      work: {update: {other: "x"}}
+    edges:
+      - {from: work, to: END}
+
 cases:
-  # Case 1 — collect-channel round-trip: parent `results` (concat_flatten) is
+  # Case 1 — inputs-seeded round-trip: parent `results` (concat_flatten) is
   # seeded into subgraph `acc` via `inputs`, then collected back out of that
   # same `acc` into `results` -> round-trip -> warn. Compilation SUCCEEDS.
   - name: fan_out_collect_round_trip_into_concat_flatten_warns
@@ -88,4 +103,52 @@ cases:
       edges:
         - {from: process, to: END}
     # Exhaustive empty set: no warning may fire.
+    expected_compile_warning: []
+
+  # Case 3 — item-seeded round-trip (DEFAULT fan-out mode): parent `results`
+  # (append) is spread element-wise into subgraph `item` via `items_field` /
+  # `item_field`, then collected straight back out of that SAME `item` into
+  # `results`. item_field == collect_field == `item`, items_field ==
+  # target_field == `results` -> round-trip -> warn. No `inputs` entry needed.
+  - name: fan_out_item_seeded_collect_round_trip_into_append_warns
+    graph:
+      state:
+        fields:
+          results: {type: list<string>, reducer: append, default: ["a", "b"]}
+      entry: process
+      nodes:
+        process:
+          fan_out:
+            subgraph: item_unit
+            items_field: results        # spread parent `results` element-wise...
+            item_field: item            # ...into subgraph `item` (one element each)
+            collect_field: item         # collect that SAME field...
+            target_field: results       # ...back into `results` (append) -> round-trip
+            error_policy: fail_fast
+      edges:
+        - {from: process, to: END}
+    expected_compile_warning: [projection_reducer_round_trip]
+
+  # Case 4 — item-seeded but DIFFERENT collect field: `results` is fanned over
+  # (items_field == target_field), but the collected field `other` is NOT the
+  # seeded `item` (item_field != collect_field), so the seeded elements do not
+  # round-trip -> no warning. Pins that fanning over `target_field` alone does
+  # not trigger; only collecting the SEEDED field back does. Isolated -> [].
+  - name: fan_out_item_seeded_collect_different_field_no_warn
+    graph:
+      state:
+        fields:
+          results: {type: list<string>, reducer: append, default: ["a", "b"]}
+      entry: process
+      nodes:
+        process:
+          fan_out:
+            subgraph: item_unit
+            items_field: results        # fan over `results`...
+            item_field: item            # ...seeding `item` (NOT collected)
+            collect_field: other        # collect a different, instance-computed field
+            target_field: results       # append, but the seeded field is not collected
+            error_policy: fail_fast
+      edges:
+        - {from: process, to: END}
     expected_compile_warning: []

@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.106.0] — 2026-07-29
+
+**Changed**
+
+- **Fan-out collect round-trip warning extended to item-field seeding** ([proposal 0112](proposals/0112-fan-out-item-seeded-collect-round-trip.md)). 0111 scoped the collect-channel `projection_reducer_round_trip` warning to `inputs`-based seeding; it now also fires on the `items_field` / `item_field` per-item spread — the **default** fan-out mode — when `item_field` equals `collect_field` and `items_field` equals `target_field`. Each element of the `target_field` list is spread into an instance and collected straight back into that same field, doubling once per instance under a non-round-trip-idempotent reducer, exactly as the `inputs`-seeded case does but in the more common spelling. A `collect_field` seeded from neither mechanism (or from a different parent field) does not warn. Fixture 078 gains an item-seeded round-trip case and an item-seeded no-false-positive case.
+
+**Notes**
+
+- **MINOR, behavioral (additive).** Broadens the 0111 collect-channel warning to the second of fan-out's two projection-in mechanisms (§9.1: `inputs` whole-value copy and `item_field` per-item spread; everything else takes schema defaults, so there is no third seeding path). No new category, no runtime behavior change, no compile error; the round-trip rule, idempotency classification, and `expected_compile_warning` directive are inherited unchanged from 0111 / 0094. graph-engine §2's general round-trip definition already covered item-seeding; parallel-branches §11 is unaffected. pipeline-utilities `Latest` advances to 0.106.0; fixture count unchanged at 77 (078 gains cases, not a new file).
+
 ## [0.105.0] — 2026-07-29
 
 **Changed**
