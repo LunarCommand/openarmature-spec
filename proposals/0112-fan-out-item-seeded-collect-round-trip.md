@@ -1,8 +1,9 @@
 # 0112: Fan-out Item-Seeded Collect Round-Trip
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-29
+- **Accepted:** 2026-07-29
 - **Targets:** spec/pipeline-utilities/spec.md **§9.3 Per-instance fan-in** (the collect-channel round-trip
   clause added by 0111, ~L768–777): extend the round-trip condition so the collect channel warns when the
   `collect_field` is seeded from `target_field` by **either** fan-out projection-in mechanism — the `inputs`
