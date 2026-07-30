@@ -22,8 +22,8 @@
 
 §6's merge arm defines only the **well-formed** case: an extras value that is a valid list of the field's
 members is merged with the mapping's mandatory value(s), ordered and de-duplicated. It says nothing about a
-**malformed** extras value — one that is not a list at all, or a list carrying an element that is not a valid
-member. With the behavior unspecified, an implementation may currently fall back to the mandatory value(s),
+**malformed** extras value — one that is not a list at all, or a list carrying an element that is not of the
+field's expected type/shape. With the behavior unspecified, an implementation may currently fall back to the mandatory value(s),
 salvage the well-formed elements, or reject the call — three conforming readings that produce three different
 wire requests. This proposal pins the reading: a malformed merge-extra is treated as **absent** (the mapping
 sends only the value(s) it would send with no such extra, all-or-nothing, no diagnostic), grounded in §7's
@@ -88,8 +88,8 @@ Extend the *Additive / list-shaped* merge bullet with the malformed-value rule:
   discard. This mirrors §7 *Malformed ancillary figures*, which treats a malformed ancillary figure as
   not-reported rather than raising; a malformed ancillary **extra** is likewise not-supplied. The caller's
   original extras remain visible verbatim on the typed event (e.g. `EmbeddingEvent`) and, where a mapping
-  exposes it, the request surface — so the discard is inspectable without a bespoke diagnostic no §8 section
-  defines.
+  exposes it, the request surface — so the discard is inspectable without a bespoke diagnostic that no §8
+  section defines.
 
 This is a merge-arm addition only. The **reject** arm is unchanged: a malformed value is not **equal** to the
 managed value under §6's decoded-value deep-equality test, so it is a **conflict** and already rejected
