@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0112](proposals/0112-fan-out-item-seeded-collect-round-trip.md) | Draft | pipeline-utilities §9.3 | Extend 0111's fan-out collect round-trip warning to the `items_field`/`item_field` per-item seeding path (the default fan-out mode) — the same doubling 0111 warns for `inputs`-seeding, in the more common spelling; closes a gap in 0111's `inputs`-scoped condition. |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
