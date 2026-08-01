@@ -711,9 +711,9 @@ merges:
   and therefore decidable by a conformance fixture that asserts the request body.
 - The caller reads the extra precisions off the verbatim response on `EmbeddingResponse.raw` (§4).
 - A **malformed** extras `embedding_types` — not a list, or a list carrying an element that is not a
-  precision string — is treated as **absent** per the general §6 malformed-merge rule (llm-provider §6,
-  inherited): the wire carries `embedding_types: ["float"]` only (all-or-nothing — a partially-malformed list
-  is not salvaged; no error, no diagnostic).
+  precision string — falls back per the general §6 malformed-merge rule (llm-provider §6, inherited): the
+  wire **MUST** carry `embedding_types: ["float"]` only (all-or-nothing — a partially-malformed list is not
+  salvaged; no error, no diagnostic).
 
 This is the merge arm of the general llm-provider §6 *Managed-field collision* rule, not a mapping-local
 exception. §8.4 **manages** two wire keys, per §6's enumeration requirement: `embedding_types` (list-shaped —

@@ -544,8 +544,9 @@ mapping resolves the collision by the managed field's shape:
   **merged** in a deterministic order (the mapping's value(s) first), de-duplicated with first occurrence
   winning, so a matching entry collapses to one. A caller's value that is **malformed for the merge** — not
   the field's expected list shape, or a list containing **any** element not of the field's expected element
-  type/shape — is treated as **absent**: the mapping sends only the value(s) it would send with no such extra
-  present (all-or-nothing — the well-formed elements of a partially-malformed list are **not** salvaged), and
+  type/shape — **MUST** be treated as **absent** — the mapping sends only the value(s) it would send with no
+  such extra present (all-or-nothing — the well-formed elements of a partially-malformed list are **not**
+  salvaged), and
   **MUST NOT** raise or emit a diagnostic. Malformation is judged **structurally**; the mapping does **not**
   semantically validate element *values* against a provider vocabulary (none is enumerated), so a well-typed
   but provider-unrecognized member is not malformed — it merges, and the provider rejects it if unsupported.
