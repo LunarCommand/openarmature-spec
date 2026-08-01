@@ -1,0 +1,103 @@
+# llm-provider §6 *Managed-field collision*, merge arm — a MALFORMED extras
+# value for a merge-managed field is treated as ABSENT (proposal 0113). This is
+# the general-rule instance at the §6 home (the retrieval `embedding_types`
+# instance is retrieval fixture 053).
+#
+# `stop` (the OpenAI wire realization of the declared `stop_sequences`, §6 clause
+# (b)) is LIST-SHAPED / merge-managed while `stop_sequences` is set (fixture
+# 076): a well-formed extras `stop` merges with the declared value(s). This
+# fixture pins the malformed edge: an extras `stop` that is malformed — a list
+# with a non-string element, or a non-string / non-list value — is treated as
+# ABSENT, so the wire `stop` carries only the value the mapping would send with
+# no such extra: the declared `stop_sequences` (["STOP"]). ALL-OR-NOTHING (the
+# well-formed element of a partial list is NOT salvaged), no error raised, no
+# diagnostic (§7's malformed-ancillary principle on the request side).
+#
+# Malformation is STRUCTURAL: a scalar STRING extras `stop` is well-formed (it is
+# coerced to a one-element list, fixture 076 case 3) — only a non-string element
+# / non-list value is malformed here.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 005's header (mapping: openai default),
+# 032's header (config declared fields + config.extras bag), 013's header
+# (mock_provider 200 + expected_wire_request), and 076's header (stop merge).
+
+cases:
+  - name: partially_malformed_extras_stop_treated_as_absent
+    description: |
+      complete(config={stop_sequences: ["STOP"], extras: {stop: ["END", 123]}}).
+      The extras `stop` is a list with a non-string element (123), so it is
+      malformed for the merge and treated as ABSENT. The wire `stop` MUST be
+      ["STOP"] — the declared value only — NOT ["STOP", "END"] (the well-formed
+      "END" is NOT salvaged) and NOT a raised error.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "hi"}
+      config:
+        stop_sequences: ["STOP"]
+        extras:
+          stop: ["END", 123]
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "hi"}
+      stop: ["STOP"]
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-081-a
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+      invariants:
+        malformed_extras_stop_treated_as_absent: true
+        wire_stop_is_declared_value_only: true
+        malformed_list_not_salvaged: true
+        no_error_raised_on_malformed_extras: true
+
+  - name: fully_malformed_extras_stop_treated_as_absent
+    description: |
+      complete(config={stop_sequences: ["STOP"], extras: {stop: 5}}). The extras
+      `stop` is neither a string nor a list of strings — malformed, treated as
+      ABSENT. The wire `stop` MUST be ["STOP"] (declared only), no error raised.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "hi"}
+      config:
+        stop_sequences: ["STOP"]
+        extras:
+          stop: 5
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "hi"}
+      stop: ["STOP"]
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: cc-081-b
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
+            usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+    expected:
+      response:
+        message: {role: assistant, content: "ok", tool_calls: null}
+        finish_reason: stop
+      invariants:
+        malformed_extras_stop_treated_as_absent: true
+        wire_stop_is_declared_value_only: true
+        no_error_raised_on_malformed_extras: true

@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.107.0] — 2026-07-31
+
+**Changed**
+
+- **Malformed extras on a merge-managed wire field** ([proposal 0113](proposals/0113-malformed-merge-managed-extras.md)). llm-provider §6's *Managed-field collision* **merge arm** previously defined only the well-formed case (a valid list merged with the mapping's value, ordered and de-duplicated); it now pins the **malformed** case. A caller's extras value that is not the field's expected list shape, or a list containing any element not of the expected element **type/shape**, is treated as **absent** — the mapping sends only the value(s) it would send with no such extra present (all-or-nothing, no partial salvage), and MUST NOT raise or emit a diagnostic. Malformation is judged **structurally** (no semantic value check against a provider vocabulary), so a well-typed but provider-unrecognized member is not malformed. Inherited by retrieval-provider §8.4 `embedding_types` (malformed → wire `["float"]`). Two new fixtures: retrieval **053** (partial + fully malformed `embedding_types`) and llm-provider **081** (malformed extras `stop` → declared value only).
+
+**Notes**
+
+- **MINOR, behavioral (additive).** The merge arm previously left malformed input undefined, so fall-back, salvage, and reject were all conforming and produced different wire requests; this pins fall-back (treat-as-absent), the request-side application of §7's treatment of malformed *ancillary* data as not-reported. No new category, no runtime path change beyond the pinned request shaping; the **reject** arm is unaffected (a malformed value is already unequal to the managed value → a rejected conflict), and a well-formed merge (0099 / 0105) is unchanged. llm-provider `Latest` → 0.107.0 (fixtures 79 → 80); retrieval-provider `Latest` → 0.107.0 (fixtures 52 → 53).
+
 ## [0.106.0] — 2026-07-29
 
 **Changed**
