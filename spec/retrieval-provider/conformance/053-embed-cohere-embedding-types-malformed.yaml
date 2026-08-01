@@ -1,0 +1,181 @@
+# retrieval-provider §8.4 Cohere /v2/embed — a MALFORMED extras embedding_types
+# is treated as ABSENT (proposal 0113, the general llm-provider §6 merge-arm
+# malformed rule, inherited per §10). embedding_types is a MERGE-managed wire
+# field (fixture 039): a well-formed extras value merges with the mapping's
+# mandatory "float". This fixture pins the malformed edge 0099/0105 left open.
+#
+# A malformed extras value — not a list, or a list carrying an element that is
+# not of the expected element type/shape (here, not a precision string) — is
+# treated as if no extra were supplied: the wire carries embedding_types:
+# ["float"] ONLY (the mapping's mandatory value). It is ALL-OR-NOTHING — a
+# partially-malformed list is NOT salvaged (the well-formed "int8" is NOT sent),
+# because salvaging would send a precision set the caller never wrote and the
+# caller reads the effective set off the verbatim response (§4 raw). No error is
+# raised and no diagnostic is emitted (§7's malformed-ancillary principle applied
+# to the request side). Malformation is STRUCTURAL (shape/type): a well-typed but
+# provider-unrecognized precision string is NOT malformed (it merges, and the
+# provider rejects it if unsupported) — that case is out of scope here.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 032's header (mapping: cohere,
+# cohere_embedding_provider, expected_wire_request) and 039's header
+# (calls_embed.config.extras — the §2 extras-pass-through bag).
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: partially_malformed_embedding_types_falls_back_to_float
+    description: |
+      embed(config={extras: {embedding_types: ["int8", {"x": 1}]}}) — a list
+      with a well-formed precision string AND a malformed (object) element. The
+      whole list is malformed, so it is treated as ABSENT: the wire request MUST
+      carry embedding_types: ["float"] — NOT ["float", "int8"] (the well-formed
+      "int8" is NOT salvaged) and NOT a raised error. The mocked response is
+      float-keyed, and vectors assemble from embeddings.float as usual.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            extras:
+              embedding_types: ["int8", {"x": 1}]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha string"]
+      # The malformed extras value is absent -> mandatory "float" only.
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-053a-id
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04]
+          texts: ["alpha string"]
+          meta:
+            billed_units:
+              input_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          response_id: cohere-embed-053a-id
+          usage:
+            input_tokens: 2
+          raw:
+            id: cohere-embed-053a-id
+            embeddings:
+              float:
+                - [0.01, 0.02, 0.03, 0.04]
+            texts: ["alpha string"]
+            meta:
+              billed_units:
+                input_tokens: 2
+      invariants:
+        exactly_one_embed_request_issued: true
+        wire_request_embedding_types_is_float_only: true
+        malformed_extras_embedding_types_treated_as_absent: true
+        malformed_list_not_salvaged: true
+        no_error_raised_on_malformed_extras: true
+        wire_request_truncate_none: true
+        authorization_bearer_header_present: true
+        vectors_assembled_from_embeddings_float_in_input_order: true
+
+  - name: fully_malformed_embedding_types_falls_back_to_float
+    description: |
+      embed(config={extras: {embedding_types: 5}}) — a value that is not a list
+      at all. It is malformed for the merge and treated as ABSENT: the wire
+      request MUST carry embedding_types: ["float"] only, no error raised.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["beta string"]
+          config:
+            extras:
+              embedding_types: 5
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["beta string"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-053b-id
+          embeddings:
+            float:
+              - [0.11, 0.12, 0.13, 0.14]
+          texts: ["beta string"]
+          meta:
+            billed_units:
+              input_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.11, 0.12, 0.13, 0.14]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          response_id: cohere-embed-053b-id
+          usage:
+            input_tokens: 2
+          raw:
+            id: cohere-embed-053b-id
+            embeddings:
+              float:
+                - [0.11, 0.12, 0.13, 0.14]
+            texts: ["beta string"]
+            meta:
+              billed_units:
+                input_tokens: 2
+      invariants:
+        exactly_one_embed_request_issued: true
+        wire_request_embedding_types_is_float_only: true
+        malformed_extras_embedding_types_treated_as_absent: true
+        no_error_raised_on_malformed_extras: true
+        wire_request_truncate_none: true
+        authorization_bearer_header_present: true
+        vectors_assembled_from_embeddings_float_in_input_order: true

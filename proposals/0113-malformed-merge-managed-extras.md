@@ -1,8 +1,9 @@
 # 0113: Malformed Extras on a Merge-Managed Wire Field
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-07-29
+- **Accepted:** 2026-07-31
 - **Targets:** spec/llm-provider/spec.md **§6 Managed-field collision** (the *merge* arm — the
   **Additive / list-shaped** bullet, ~L543–545): add the malformed-value case the merge arm leaves
   undefined. When a caller's undeclared extras value for a merge-managed field is **malformed** — not the
