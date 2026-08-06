@@ -7,7 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
-| [0114](proposals/0114-langfuse-client-provider-isolation.md) | Langfuse client ownership &amp; provider isolation | observability | Draft | —               | —          |
+| [0114](proposals/0114-langfuse-client-provider-isolation.md) | Langfuse client ownership & provider isolation | observability | Draft | —               | —          |
 | [0113](proposals/0113-malformed-merge-managed-extras.md) | Malformed extras on a merge-managed wire field | llm-provider | Accepted | Partial (0.17.0)| —          |
 | [0112](proposals/0112-fan-out-item-seeded-collect-round-trip.md) | Fan-out item-seeded collect round-trip | pipeline-utilities | Accepted | Shipped (0.17.0)| —          |
 | [0111](proposals/0111-fan-out-collect-round-trip-warning.md) | Fan-out collect/target round-trip warning | pipeline-utilities | Accepted | Shipped (0.17.0)| —          |

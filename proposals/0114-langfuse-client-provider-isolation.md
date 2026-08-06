@@ -49,7 +49,7 @@ other way.
 
 **The leak, its verified mechanism, and when it carries payloads.** A Langfuse v4 client attaches its span
 processor to the **global** `TracerProvider` by default; isolation is available only through the client's
-own `tracer_provider` argument (verified against Langfuse's v4 documentation). So when the client is on a
+own isolated `TracerProvider` (verified against Langfuse's v4 documentation). So when the client is on a
 provider shared with the application (the global provider being the common case), OA's Langfuse
 observations are also exported to that provider's other exporters. Whether those observations carry the
 **sensitive payload** depends on configuration: `disable_provider_payload` defaults to `True` on *both*
@@ -68,7 +68,7 @@ the most sensitive payload these systems carry in a store not scoped for it.
 **Why the ownership model must be pinned first.** Whether OA *can* prevent this depends on whether OA
 controls the client's construction — and §8.9 currently makes that implementation-defined ("the API shape
 is implementation-defined"). That is not a harmless API-shape freedom: "the caller owns the client" versus
-"OA owns the client" is a different **capability contract** (who can set `tracer_provider`, who owns the
+"OA owns the client" is a different **capability contract** (who can bind the client to an isolated `TracerProvider`, who owns the
 client lifecycle, what the user must do to be safe). Left open, Python and TypeScript could adopt different
 models and present users materially different behavior — the exact cross-impl divergence the spec exists to
 prevent. Pinning it now is cheap (TypeScript is not yet built); reconciling after it ships on a different
@@ -85,7 +85,7 @@ Add to §8.9, alongside the existing "unified Langfuse configuration" guidance:
 > and **MUST** support both:
 >
 > - **(a) Caller-constructed client.** The caller builds and configures the Langfuse client (its
->   credentials, and any client-level configuration the SDK exposes — including its `tracer_provider`) and
+>   credentials, and any client-level configuration the SDK exposes — including the `TracerProvider` it binds to) and
 >   supplies it to the implementation. The implementation does not own the client's construction.
 > - **(b) Credentials.** The caller supplies Langfuse credentials (host, public/secret key, or
 >   equivalent) and the implementation constructs and owns the client.
@@ -130,7 +130,7 @@ Add to §6, immediately after the *TracerProvider isolation (MUST)* subsection:
 >   as covering the supplied client — the §6 guarantee is bounded to OA's own emitted spans. It **SHOULD**
 >   state, in its user-facing guidance, that a caller-supplied client bound to a shared/global provider
 >   exports OA's observations to every exporter on that provider and that the caller isolates it via the
->   client's `tracer_provider`. It **MAY** additionally emit a `WARNING`-level diagnostic *if* it can
+>   client's own isolated `TracerProvider`. It **MAY** additionally emit a `WARNING`-level diagnostic *if* it can
 >   determine that the supplied client is bound to the global (or another shared) provider — MAY, not
 >   SHOULD, because reading a supplied client's bound provider may rest on non-portable SDK internals with
 >   no cross-language guarantee. A client the caller has already isolated **MUST NOT** be warned about.
@@ -140,7 +140,7 @@ Add to §6, immediately after the *TracerProvider isolation (MUST)* subsection:
 >
 > **The isolation trade-off.** Isolation is SHOULD-by-default in mode (b), not an unconditional MUST,
 > because a separate `TracerProvider` still shares OTel *context*: a parent span on one provider can leave
-> children on another orphaned (Langfuse documents this for its `tracer_provider` argument). Whether to
+> children on another orphaned (Langfuse documents this for a client bound to a separate `TracerProvider`). Whether to
 > accept that trade-off is a caller decision (mode a) or a defaulted-but-overridable one (mode b, outside
 > the payload-suppression case above); this section requires only that OA never silently present a
 > shared-provider client as isolated, and that OA not defeat an OTel-side payload suppression (its §8.9 default or set)
