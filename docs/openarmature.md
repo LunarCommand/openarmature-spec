@@ -445,7 +445,7 @@ the `PromptBackend` interface.
 **Scope.** Maps OA execution onto OpenTelemetry spans, logs, and metrics plus a Langfuse backend mapping: ambient
 correlation IDs, a span hierarchy mirroring graph structure, GenAI semantic-convention attributes, per-operation
 spans (LLM, embedding, rerank, tool), caller-supplied invocation metadata, and metrics histograms. Provider isolation
-avoids Langfuse v3 + OTEL span duplication.
+avoids Langfuse v4 + OTEL span duplication.
 
 **Core abstractions.** Typed observers over the graph-engine event union; the OTel mapping (`TracerProvider`,
 `LoggerProvider`, metrics instruments) and the Langfuse mapping (`Trace`, `Generation`, `Span`, `Event`, `Embedding`,
@@ -454,7 +454,7 @@ avoids Langfuse v3 + OTEL span duplication.
 **Key decisions.**
 
 - Correlation IDs via `ContextVar`, set once per invocation and propagated through all async calls automatically
-- `TracerProvider` is isolated (not global) to prevent Langfuse v3 from duplicating spans through the global OTEL
+- `TracerProvider` is isolated (not global) to prevent Langfuse v4 from duplicating spans through the global OTEL
   pipeline
 - Instrumentation happens inside framework calls; user code never touches `set()`/`reset()` on context tokens
 - GenAI semantic-convention attributes are adopted normatively, with a defined policy for upstream-unstable names
