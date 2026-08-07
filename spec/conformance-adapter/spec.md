@@ -560,6 +560,25 @@ fixture.
   LLM-span opt-out; `caller_global_otel_active: true` installs a second exporter on the OTel global
   TracerProvider to exercise the §6 isolation rule.
 
+- **`langfuse_client` construction + Langfuse-leak assertions** (observability provider isolation, §6 /
+  §8.9). `langfuse_client: {mode: credentials | supplied, provider?: global | isolated}` configures how
+  the Langfuse observer's client is constructed for the case: `mode: credentials` drives the
+  implementation's own construct-from-credentials path (§8.9 mode (b)); `mode: supplied` hands it a
+  harness-constructed client (mode (a)). `provider` applies only to `mode: supplied` (default `global`).
+  The observers' payload settings use the existing per-observer convention — `langfuse_observer:
+  {disable_provider_payload: <bool>}` for the Langfuse side, and the OTel observer's §5.5.4 default
+  (`True`) for the OTel side; the mode-(b) MUST-isolate carve-out fires when the OTel side suppresses
+  payload (its default) while the Langfuse observer emits it (`disable_provider_payload: false`). The
+  client is the provider-faithful fake of §6.4 (its spans carry the `langfuse.observation.*` attribute
+  namespace, §6.4), so with `caller_global_otel_active: true` a leak is observable. A *Langfuse observation
+  span* is one carrying that attribute namespace. `expected.no_langfuse_observations_on_global: true`
+  asserts **none** reached the global exporter (the Langfuse analog of `no_openarmature_spans_on_global`);
+  `expected.no_langfuse_observations_on_private: true` asserts none reached openarmature's **own private
+  OTel** provider's exporter either — together they gate the mode-(b) MUST-isolate carve-out against
+  **both** provider spellings §6 forbids (not the global provider, and not openarmature's own OTel
+  provider); and `expected.langfuse_observations_on_global: true` asserts at least one **did** reach the
+  global exporter (the mode-(a) non-mutation effect).
+
 OTel and Langfuse emission are NOT observer behaviors. Observability fixtures that exercise OTel
 span emission OR Langfuse trace/observation emission rely on **harness primitives** the adapter
 provides at the capability-directory level — an in-memory OTel `SpanExporter` instantiated for
@@ -1140,6 +1159,17 @@ Observability fixtures that exercise Langfuse mapping rely on an in-memory Langf
 that records emitted traces and observations for structured assertion. Same per-directory harness
 contract pattern as the OTel collector.
 
+Fixtures exercising **provider isolation** (proposal 0115, the `langfuse_client` directive) use a
+**provider-faithful** variant of this fake: it records observation content as above **and** emits those
+observations as OTel spans through its bound `TracerProvider` (as a Langfuse v4 client does), so an OTel
+exporter on that provider observes any that reach it. Its emitted spans carry the `langfuse.observation.*`
+attribute namespace (as a Langfuse v4 client does) — the identity §5.5's `no_langfuse_observations_on_global`
+/ `no_langfuse_observations_on_private` / `langfuse_observations_on_global` assertions filter on. One object
+serves both — the content / non-vacuity assertions read the recorded side, those leak assertions read the
+provider side. It carries no network dependency and stays deterministic; for `mode: credentials` the adapter injects
+it into the implementation's construct-from-credentials path, and for `mode: supplied` the harness
+constructs it on the configured provider and passes it in.
+
 ### 6.5 Suspend / resume wiring
 
 The `suspend_with_descriptor` directive on a node MUST compile (at adapter parse time) to a real
@@ -1419,3 +1449,4 @@ per-directory specialization lives there.
 - §5.13 *Raised-error field assertion* (`carries`) added — the capability-neutral general rule the `carries` directive lacked (a key MUST name a field the raised error's own capability spec defines it exposes; bare field = exact-equality, subset match for a mapping-valued field; `_present` / `_mentions` the closed flavor set; a key MUST NOT coin a stem with no backing field; an error field name MUST NOT end in a recognized flavor suffix so a key parses to one (field, flavor) pair). §5.12 retrofitted to reference it as the llm-provider `structured_output_invalid` instance, dropping its "governs the `structured_output_invalid` block only" scoping by [proposal 0102](../../proposals/0102-general-carries-error-field-assertion.md)
 - §5.14 *Provider batch-chunking cap* (`chunk_size`) added — documents the `chunk_size` construction directive an adapter MUST honor as an embedding- or rerank-provider's per-call cap for chunk-and-stitch (retrieval-provider §8 batch chunking for embedding inputs, §8.1 rerank chunk-and-stitch for rerank documents): a real construction cap for a configurable-cap mapping (TEI `max-client-batch-size`, governing TEI `/embed` and `/rerank`), a test-only override of a fixed vendor cap (OpenAI 2048, Cohere 96) so a fixture can drive the chunking path with a small body rather than an impractical over-cap one. Moves the affordance from fixture-header prose into the adapter contract, making a fixed-cap chunking fixture reachable cross-impl by [proposal 0103](../../proposals/0103-retrieval-conformance-coverage.md)
 - §5.11 *Provider call-retry directives* — the full-list `wire_requests[*].messages` sub-form is removed. It existed only to assert the llm-provider §7.1 assistant-prefill continuation (its sole fixture, 067), which 0110 removes as unreachable. With no retry that *modifies* (rather than only appends to) the caller's messages, every reachable attempt is append-only and `appended_messages` expresses every case; `sampling` and `attributes_absent` are unchanged by [proposal 0110](../../proposals/0110-remove-reask-assistant-prefill-continuation.md)
+- §5.5 *Observer / observability directives* gained the `langfuse_client` construction directive (`mode: credentials | supplied`, `provider`; payload flags reuse the existing per-observer `langfuse_observer` convention) and the `no_langfuse_observations_on_global` / `no_langfuse_observations_on_private` / `langfuse_observations_on_global` expected-outcome assertions; §6.4 *Langfuse mock* gained a **provider-faithful** variant that records observation content and also emits it as OTel spans through its bound `TracerProvider` — the machinery gating observability §6's Langfuse provider-isolation MUSTs (proposal 0114), mirroring the OTel `caller_global_otel_active` / `no_openarmature_spans_on_global` isolation pattern; observability fixture 157 exercises the mode-(b) MUST-isolate carve-out and the mode-(a) MUST-NOT-mutate by [proposal 0115](../../proposals/0115-langfuse-provider-isolation-conformance.md)

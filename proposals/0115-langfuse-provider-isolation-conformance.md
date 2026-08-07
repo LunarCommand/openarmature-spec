@@ -1,9 +1,9 @@
 # 0115: Conformance Test Primitives for Langfuse Provider Isolation
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-06
-- **Accepted:**
+- **Accepted:** 2026-08-07
 - **Targets:**
   - spec/conformance-adapter/spec.md **§5.5 Observer / observability directives** — add a
     `langfuse_client` construction directive and the `no_langfuse_observations_on_global` /
@@ -59,7 +59,7 @@ observations there and fails. The leak that *should* happen is the non-mutation 
 Add a case-level observability harness key (a per-directory §3.2 extension, sibling to `mock_llm` /
 `disable_llm_spans` / `caller_global_otel_active`):
 
-> - **`langfuse_client: {mode, provider?, disable_provider_payload?}`** — configures how the Langfuse
+> - **`langfuse_client: {mode, provider?}`** — configures how the Langfuse
 >   observer's client is constructed for the case, so provider-isolation obligations (observability §6 /
 >   §8.9) can be exercised:
 >   - **`mode: credentials | supplied`** — `credentials` drives the implementation's own construction
@@ -68,20 +68,28 @@ Add a case-level observability harness key (a per-directory §3.2 extension, sib
 >   - **`provider: global | isolated`** — applies only to `mode: supplied`: the provider the harness binds
 >     the supplied client to (default `global`). Under `mode: credentials` `provider` does not apply — the
 >     implementation chooses the provider per §6, and the fixture drives that choice through the flags below.
->   - **`disable_provider_payload: {otel?: <bool>, langfuse?: <bool>}`** — the payload settings of the
->     composed OTel and Langfuse observers (each defaults `True` per §8.9). The mode-(b) carve-out fires
->     when `otel` is `True` and `langfuse` is `False`.
+>
+>   The observers' payload settings use the existing per-observer convention, **not** a key on
+>   `langfuse_client`: `langfuse_observer: {disable_provider_payload: <bool>}` sets the Langfuse side, and
+>   the OTel observer's `disable_provider_payload` takes its §5.5.4 default (`True`). The mode-(b)
+>   MUST-isolate carve-out fires when the OTel side suppresses payload (its default) while the Langfuse
+>   observer emits it (`disable_provider_payload: false`).
 >
 >   The Langfuse client the harness constructs (or supplies) is the **provider-faithful** fake of §6.4:
 >   its observations emit as OTel spans through its bound `TracerProvider`, so a leak to a shared provider
 >   is caught by that provider's exporter. Requires `caller_global_otel_active: true` for the leak
 >   assertions below.
 
-Add the assertion pair (under `expected`, alongside the existing `no_openarmature_spans_on_global`):
+Add the assertions (under `expected`, alongside the existing `no_openarmature_spans_on_global`). A *Langfuse
+observation span* is one carrying the `langfuse.observation.*` attribute namespace (§6.4):
 
-> - **`no_langfuse_observations_on_global: true`** — asserts that **no** Langfuse observation span
->   (a span carrying the `langfuse.observation.*` namespace) reached the exporter installed on the global
->   `TracerProvider` by `caller_global_otel_active`. The Langfuse analog of `no_openarmature_spans_on_global`.
+> - **`no_langfuse_observations_on_global: true`** — asserts **no** Langfuse observation span reached the
+>   exporter installed on the global `TracerProvider` by `caller_global_otel_active`. The Langfuse analog of
+>   `no_openarmature_spans_on_global`.
+> - **`no_langfuse_observations_on_private: true`** — asserts none reached openarmature's own private OTel
+>   provider's exporter either. Together with the global assertion this gates the mode-(b) MUST-isolate
+>   carve-out against **both** provider spellings §6 forbids (not the global provider, and not
+>   openarmature's own OTel provider).
 > - **`langfuse_observations_on_global: true`** — the inverse: asserts at least one Langfuse observation
 >   span **did** reach the global exporter (the mode-(a) non-mutation effect).
 
@@ -91,8 +99,9 @@ Extend §6.4: for provider-isolation fixtures the observability harness provides
 Langfuse client fake that does two things in one object — it **records** the Generation / observation
 content it is asked to emit (as the existing content wrapper does, so content and non-vacuity stay
 assertable) **and** emits those observations as OTel spans **through its bound `TracerProvider`** (as a
-Langfuse v4 client does), so an OTel exporter on that provider observes any that reach it. The leak
-assertions read the provider side; the content / non-vacuity assertions read the recorded side. The fake
+Langfuse v4 client does), so an OTel exporter on that provider observes any that reach it. Its emitted
+spans carry the `langfuse.observation.*` attribute namespace — the identity the leak assertions filter on.
+The leak assertions read the provider side; the content / non-vacuity assertions read the recorded side. The fake
 carries no network dependency and stays deterministic. For `mode: credentials`, the adapter injects it into
 the implementation's construct-from-credentials path; for `mode: supplied`, the harness constructs it on
 the configured provider and passes it in.
@@ -102,26 +111,29 @@ the configured provider and passes it in.
 Both cases run a graph with one LLM-calling node (`calls_llm` + `mock_llm`) so a Langfuse **Generation**
 observation is actually produced to leak or not-leak, with the composed OTel + Langfuse observers attached.
 
-> - **`mode_b_carveout_isolates`** — `langfuse_client: {mode: credentials, disable_provider_payload:
->   {otel: true, langfuse: false}}`, `caller_global_otel_active: true`. The §6 mode-(b) MUST-isolate
+> - **`mode_b_carveout_isolates`** — `langfuse_client: {mode: credentials}`, `langfuse_observer:
+>   {disable_provider_payload: false}` (Langfuse emits; the OTel side stays at its §5.5.4 default `True`),
+>   `caller_global_otel_active: true`. The §6 mode-(b) MUST-isolate
 >   carve-out fires. Asserts the Generation observation **was** recorded (non-vacuity — the fake's recorded
->   side) **and** `no_langfuse_observations_on_global: true` (the implementation isolated the
->   client, so nothing leaked). An implementation that put the client on the global provider fails.
-> - **`mode_a_supplied_not_mutated`** — `langfuse_client: {mode: supplied, provider: global,
->   disable_provider_payload: {otel: true, langfuse: false}}`, `caller_global_otel_active: true`. The §6
+>   side) **and** `no_langfuse_observations_on_global: true` **and** `no_langfuse_observations_on_private:
+>   true` (the implementation built the client on a dedicated isolated provider, so nothing leaked to the
+>   global provider or to openarmature's own OTel provider). An implementation that put the client on
+>   either shared provider fails.
+> - **`mode_a_supplied_not_mutated`** — `langfuse_client: {mode: supplied, provider: global}`,
+>   `langfuse_observer: {disable_provider_payload: false}`, `caller_global_otel_active: true`. The §6
 >   mode-(a) MUST-NOT-mutate applies. Asserts `langfuse_observations_on_global: true` — the implementation
 >   left the supplied client on the caller's global provider, so its observations reached the global
 >   exporter. An implementation that rebound the supplied client to an isolated provider produces none and
 >   fails.
 
 Update the observability per-directory harness-contract comment (fixture 001 header) to document
-`langfuse_client` and the two new assertions.
+`langfuse_client` and the new assertions.
 
 ## Conformance test impact
 
 **One new observability fixture** (`157-langfuse-provider-isolation`, two cases) — the point of the
-proposal; it gates 0114's two MUSTs. New conformance-adapter directives (`langfuse_client`, the assertion
-pair) documented in §5.5 and the provider-faithful fake in §6.4. observability fixture count 156 → 157.
+proposal; it gates 0114's two MUSTs. New conformance-adapter directives (`langfuse_client` + the leak
+assertions) documented in §5.5 and the provider-faithful fake in §6.4. observability fixture count 156 → 157.
 No existing fixtures change. At acceptance this bumps **two** capabilities' `Latest` in the README
 capability table — conformance-adapter (the directives) and observability (the fixture). The
 provider-faithful fake is a **new per-language adapter primitive** (today's Langfuse mock records content
