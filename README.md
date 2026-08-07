@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0115](proposals/0115-langfuse-provider-isolation-conformance.md) | Draft | conformance-adapter §5.5/§6.4 + observability | Conformance directives + fixture gating proposal 0114's provider-isolation MUSTs: a provider-faithful Langfuse fake, a `langfuse_client` construction directive, and `{no_,}langfuse_observations_on_global` assertions (mirroring the OTel `no_openarmature_spans_on_global` isolation test). |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
