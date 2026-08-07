@@ -37,7 +37,7 @@ behaviorally — no client-provider introspection required.
 truth for behavior; 0114 accepted two behavioral MUSTs (the mode-(b) MUST-isolate carve-out and the
 mode-(a) MUST-NOT-mutate) with nothing to catch a violating implementation. 0114's Conformance section and
 Open question #1 flagged this and deferred the fixtures to a follow-on — this is that follow-on
-(tracked in `docs/open-questions.md`, conformance-adapter §).
+(tracked in `docs/open-questions.md` under the conformance-adapter section).
 
 **The pattern already exists for OA's own OTel spans.** Fixture 005's *external auto-instrumentation*
 case installs a second in-memory exporter on the OTel global `TracerProvider` (`caller_global_otel_active:
