@@ -1817,7 +1817,7 @@ parent. Implementations using the middleware-driven path get OTel context propag
 openarmature-emitted spans. They MUST NOT register this provider as the OTel global
 (`trace.set_tracer_provider()` in Python; equivalent global-registration calls in other
 languages). Rationale: many other libraries (vendor-neutral OTel auto-instrumentation packages
-such as `opentelemetry-instrumentation-openai`, OpenInference, LiteLLM-with-OTel, Langfuse v3, etc.)
+such as `opentelemetry-instrumentation-openai`, OpenInference, LiteLLM-with-OTel, Langfuse v4, etc.)
 emit OTel spans through the global provider when one is set. If openarmature also registered
 itself globally, those libraries would emit duplicate spans alongside openarmature's, producing
 two spans per LLM call (or per HTTP call, etc.) with different attribute namespaces. The user
@@ -1832,6 +1832,50 @@ filters or correlates them by attribute namespace.
 This pattern is non-obvious but production-validated — naive implementations register globally
 and discover the duplication only after deploying. Mandating it in the spec saves every
 implementation from rediscovering the issue.
+
+**Isolation for openarmature's Langfuse observations.** The private-provider isolation above governs
+the spans openarmature emits **directly** through its own OTel observer. openarmature's **Langfuse
+observations** are emitted instead through the Langfuse client's `TracerProvider` (§8), which a Langfuse v4
+client binds to the **global** provider by default. When that provider is shared with the application or
+other instrumentation, openarmature's Langfuse observations are exported to every span processor on it, not
+only to Langfuse — and when the Langfuse observer emits payloads (`disable_provider_payload=False`, §8.9),
+those exports carry full prompt and completion text into whatever backend the shared provider feeds. The
+obligations **track which party controls the provider** (the ownership mode of §8.9):
+
+- **Mode (b) — the implementation constructs the client.** The implementation owns the provider, so the
+  protection is enforceable from its own state, with no introspection of a foreign object. It **SHOULD**
+  construct the client on an **isolated** `TracerProvider` by default — a dedicated provider carrying only
+  the Langfuse span processor, not the global provider and not the provider openarmature uses for its own
+  OTel observer — so openarmature's observations reach only Langfuse. It **MAY** offer an opt-out to a
+  shared provider for callers who prefer a single provider (accepting the trade-off below); SHOULD-not-MUST,
+  because isolation is not free. **However**, the opt-out does **not** apply — the implementation **MUST**
+  construct the client on an isolated provider — when a composed OTel observer has `disable_provider_payload`
+  resolving to `True` (its §8.9 default, whether defaulted or set) while the Langfuse observer emits payloads
+  (`disable_provider_payload=False`): placing the client on a shared provider there would silently defeat the
+  OTel-side payload suppression, and the implementation controls the provider, so it MUST NOT. Both
+  conditions are the implementation's own configuration; because `True` is the OTel default, this carve-out
+  fires in the common case where a caller merely enables Langfuse payloads.
+- **Mode (a) — the caller supplies the client.** The implementation does **not** control the provider and
+  **MUST NOT** mutate the supplied client. It **MUST NOT** represent openarmature's private-provider
+  isolation as covering the supplied client — the isolation guarantee of this subsection is bounded to
+  openarmature's own emitted spans. It **SHOULD** state, in its user-facing guidance, that a caller-supplied
+  client bound to a shared/global provider exports openarmature's observations to every exporter on that
+  provider and that the caller isolates it via the client's own isolated `TracerProvider`. It **MAY**
+  additionally emit a `WARNING`-level diagnostic *if* it can determine that the supplied client is bound to
+  the global (or another shared) provider — MAY, not SHOULD, because reading a supplied client's bound
+  provider may rest on non-portable SDK internals with no cross-language guarantee. A client the caller has
+  already isolated **MUST NOT** be warned about.
+
+**No hard failure.** A shared-provider client is a valid, if leaky, configuration; the implementation
+**MUST NOT** refuse the call or raise on any of the above.
+
+**The isolation trade-off.** Isolation is SHOULD-by-default in mode (b), not an unconditional MUST, because
+a separate `TracerProvider` still shares OTel *context*: a parent span on one provider can leave children on
+another orphaned (Langfuse documents this for a client bound to a separate `TracerProvider`). Whether to
+accept that trade-off is a caller decision (mode a) or a defaulted-but-overridable one (mode b, outside the
+payload-suppression case above); this section requires only that openarmature never silently present a
+shared-provider client as isolated, and that openarmature not defeat an OTel-side payload suppression (its
+§8.9 default or set) where it owns the client.
 
 **Reflecting mid-invocation metadata augmentation on open spans.** §3.4 requires (MUST) that open
 spans in the augmenting async context pick up entries added mid-invocation by
@@ -2657,6 +2701,26 @@ PromptBackend, and any future Langfuse-aware capability the implementation adds.
 is implementation-defined; the behavioral contract is that the user configures Langfuse
 credentials once and all Langfuse-consuming surfaces use them.
 
+**Client ownership.** An implementation exposes the Langfuse client through this observer in two forms, and
+**MUST** support both:
+
+- **(a) Caller-constructed client.** The caller builds and configures the Langfuse client (its credentials,
+  and any client-level configuration the SDK exposes — including the `TracerProvider` it binds to) and
+  supplies it to the implementation. The implementation does not own the client's construction.
+- **(b) Credentials.** The caller supplies Langfuse credentials (host, public/secret key, or equivalent)
+  and the implementation constructs and owns the client.
+
+The API shape of each form is idiomatic per language, but **both capability modes MUST be offered** so that
+implementations do not diverge on which is available. Mode (a) preserves caller control (a custom processor
+pipeline, a client shared across the application, composition with an existing Langfuse setup); mode (b)
+lets the implementation apply a safe provider default where it owns construction (§6). The existing contract
+— a single Langfuse configuration shared across all Langfuse-consuming surfaces — applies to both modes; the
+mechanism by which the shared configuration reaches those surfaces is implementation-defined, as today.
+
+A Langfuse client's tracer-provider isolation is governed by §6 (per the ownership mode):
+composing the Langfuse observer with an OTel observer on a shared global provider duplicates Langfuse
+observations onto the OTel exporters.
+
 ### 8.10 Out of scope
 
 Not covered by this section; deferred to follow-on proposals:
@@ -3004,3 +3068,4 @@ spec:
 - §8.4.5 / §8.4.7 output mappings (`embedding.output` / `retriever.output`) and the OTel §5.5.13 `openarmature.rerank.results` attribute re-sourced from the new graph-engine §6 `EmbeddingEvent.output_vectors` / `RerankEvent.output_results` (the observer's input is the typed event, not the response object) — making the existing fixtures `083` / `108` satisfiable; §8.4.5 / §8.4.7 gained *Failure observations* paragraphs (`ERROR`-level `Embedding` / `Retriever` observation on `EmbeddingFailedEvent` / `RerankFailedEvent`, mirroring §8.4.6 tool); §5.5.9 / §5.5.14 privacy-posture notes list the new fields; the §8.4.5 / §8.4.7 input rows re-sourced from the event. The `disable_llm_spans` scoping (§5.5.8 / §5.5.13) is unchanged by [proposal 0089](../../proposals/0089-embedding-rerank-typed-event-output.md)
 - §5.5.8 (OTel embedding span) `gen_ai.usage.input_tokens` and §8.4.5 (Langfuse embedding observation) `embedding.usageDetails.input` made **conditionally emitted** — present only when the provider reports a usage record, omitted for no-usage providers (e.g. TEI `/embed`) — tracking retrieval-provider §4's now-nullable `EmbeddingResponse.usage`; §5.5.13's rerank `input_tokens` guard rephrased record-aware and its stale "the embedding span, where `input_tokens` is always present" parenthetical corrected (both spans now emit conditionally); §8.4.7 (Langfuse rerank) `retriever.usageDetails.input` likewise record-aware. No change to §11 metrics or graph-engine §6 (already null-usage-aware). New fixtures 139–143 (OTel + Langfuse embedding and rerank no-usage spans/observations; embedding no-usage metric exercising §11's zero-token-observation branch) by [proposal 0093](../../proposals/0093-nullable-provider-usage-records.md)
 - LLM usage surfaces reconciled for a **not-reported counter** (llm-provider §7 *Malformed usage counter*): §5.5.3 `gen_ai.usage.input_tokens` moves from a per-*record* omit-guard to per-*field* (omit when the counter is null — record absent or the counter malformed/unreported), aligning it with the existing per-field `output_tokens` and `openarmature.llm.usage.*` guards; §11.2's token-usage histogram makes the LLM branch **per-counter** (a null counter records no observation for that token type, as the rerank branch already does); the §11.2 token-budget instruments and the §5.5.15 span signal **do not evaluate** a bound whose counter is not reported (no `utilization` observation, no `exceeded` increment — a comparison / ratio against a null is undefined, not `false` / `0`; the `total` bound follows §8.2's derived-total rule); and the §8.4.3 Langfuse `Generation` `usage` omits a counter that is not reported, as the `Embedding` / `Retriever` `usageDetails` already do. No attribute or observation is ever emitted from a null counter by [proposal 0101](../../proposals/0101-malformed-usage-counter-llm-observability.md)
+- §8.9 *Composition with OTel* gained a **Client ownership** contract requiring implementations to support both a caller-constructed Langfuse client and constructing the client from caller-supplied credentials (closing a cross-implementation divergence the section previously left open); §6 *Driving span lifecycle* extended the TracerProvider-isolation subsection to openarmature's **Langfuse observations** with obligations that track which party controls the provider — where the implementation constructs the client it SHOULD isolate the client's provider by default and MUST isolate where a shared provider would defeat an OTel-side `disable_provider_payload` suppression; where the caller supplies the client the implementation MUST NOT mutate or misrepresent it, SHOULD document the remedy, and MAY warn best-effort (reading a supplied client's provider is not portably guaranteed); the §6 rationale list's `Langfuse v3` example updated to `Langfuse v4`. No new fixtures — the contract concerns observer construction and provider wiring, outside the graph-run fixture vocabulary by [proposal 0114](../../proposals/0114-langfuse-client-provider-isolation.md)

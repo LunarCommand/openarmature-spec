@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.108.0] — 2026-08-06
+
+**Changed**
+
+- **Langfuse client ownership and provider isolation** ([proposal 0114](proposals/0114-langfuse-client-provider-isolation.md)). observability §8.9 now pins the **Langfuse-client ownership model** it previously left implementation-defined: implementations **MUST** support both a caller-constructed client and constructing the client from caller-supplied credentials, closing a latent cross-implementation divergence. §6's *TracerProvider isolation* subsection is extended to openarmature's **Langfuse observations** with obligations that **track control** — where the implementation constructs the client it **SHOULD** isolate the client's tracer provider by default and **MUST** isolate where a shared provider would defeat an OTel-side `disable_provider_payload` suppression; where the caller supplies the client the implementation **MUST NOT** mutate or misrepresent it, **SHOULD** document the remedy, and **MAY** warn best-effort (reading a supplied client's provider is not portably guaranteed). Isolation is never an unconditional default (it trades against trace-tree coherence) and a shared-provider client is never refused. The §6 rationale's `Langfuse v3` example is updated to `Langfuse v4`.
+
+**Notes**
+
+- **MINOR, additive.** A new capability requirement (two-mode ownership) plus new SHOULD/MUST isolation obligations that rest only on the implementation's own construction and configuration. No new conformance fixtures — the contract concerns observer construction and provider wiring, outside the current graph-run fixture vocabulary; a follow-on conformance-adapter proposal will add the observer-construction + provider-leak test primitives and the 0114 fixtures (tracked in `docs/open-questions.md`). No existing fixtures change. observability `Latest` → 0.108.0 (fixtures unchanged at 156). Surfaced downstream and refined through adversarial review.
+
 ## [0.107.0] — 2026-07-31
 
 **Changed**

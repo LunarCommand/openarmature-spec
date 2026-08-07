@@ -1,9 +1,9 @@
 # 0114: Langfuse Client Ownership and Provider Isolation
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-05
-- **Accepted:**
+- **Accepted:** 2026-08-06
 - **Targets:**
   - spec/observability/spec.md **§8.9 Composition with OTel** — pin the Langfuse-client **ownership
     model** the section currently leaves implementation-defined: implementations **MUST** support both

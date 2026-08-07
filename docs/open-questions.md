@@ -857,6 +857,25 @@ short-horizon roadmap below.
   absent structural rule); §5.8 documents the `caught_exception` assertion; the
   audit found the mock-input `cause:` directive was already §5.1.
 
+### 0114 — provider-topology test primitives for Langfuse client isolation
+
+- **No fixture vocabulary for constructing the observers with `disable_provider_payload`
+  settings, or for asserting a Langfuse client's tracer-provider binding.** [open] —
+  surfaced accepting 0114 (v0.108.0), whose observability §6 / §8.9 isolation
+  obligations are behaviorally observable (whether openarmature's Langfuse observations
+  reach a shared/global provider's exporter) but not expressible in the current
+  graph-run fixture vocabulary. The suite runs graphs and asserts spans / observations
+  / wire / state against a mock Langfuse client; it has no primitive to (a) construct
+  the composed OTel + Langfuse observers with specific `disable_provider_payload`
+  settings in mode (b) (credentials-in), (b) stand up a global `TracerProvider` with a
+  capturing exporter, or (c) assert the implementation built the Langfuse client on an
+  isolated provider (equivalently, that its payloads did not reach the global
+  exporter). So 0114's mode-(b) MUST-isolate carve-out, its SHOULD-isolate default, and
+  the mode-(a) MUST-NOT-mutate are prose-normative only. A follow-on conformance-adapter
+  proposal should add the observer-construction-with-config + provider-leak-assertion
+  directive(s) to §5, then land the 0114 fixtures against them. Needs a proposal since
+  it adds normative conformance-adapter §5 text. (0114 Open question #1.)
+
 ---
 
 ## How to use this page
