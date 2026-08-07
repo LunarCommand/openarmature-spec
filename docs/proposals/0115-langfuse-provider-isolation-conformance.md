@@ -1,0 +1,1 @@
+../../proposals/0115-langfuse-provider-isolation-conformance.md
