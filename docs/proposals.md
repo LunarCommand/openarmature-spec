@@ -7,26 +7,27 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
-| [0113](proposals/0113-malformed-merge-managed-extras.md) | Malformed extras on a merge-managed wire field | llm-provider | Accepted | Pending         | —          |
-| [0112](proposals/0112-fan-out-item-seeded-collect-round-trip.md) | Fan-out item-seeded collect round-trip | pipeline-utilities | Accepted | Pending         | —          |
-| [0111](proposals/0111-fan-out-collect-round-trip-warning.md) | Fan-out collect/target round-trip warning | pipeline-utilities | Accepted | Pending         | —          |
-| [0110](proposals/0110-remove-reask-assistant-prefill-continuation.md) | Remove the reask assistant-prefill continuation branch | llm-provider | Accepted | Pending         | —          |
-| [0109](proposals/0109-token-budget-failure-parity-and-extra-keys.md) | Token-budget failure-path parity and config extra-key handling | observability | Accepted | Pending         | —          |
-| [0108](proposals/0108-declared-field-vs-extras-collision.md) | Declared-field-vs-extras wire-key collision | llm-provider | Accepted | Pending         | —          |
-| [0107](proposals/0107-conformance-adapter-directive-vocabulary.md) | Document the conformance-adapter directive vocabulary | conformance-adapter | Accepted | Pending         | —          |
-| [0106](proposals/0106-openai-base64-embedding-decode.md) | §8.3 base64 embedding output-encoding — decode support | retrieval-provider | Accepted | Pending         | —          |
-| [0105](proposals/0105-extras-managed-field-collision-rule.md) | Extras-key vs mapping-managed wire-field collision rule | llm-provider | Accepted | Pending         | —          |
-| [0104](proposals/0104-retrieval-id-error-clarifications.md) | Retrieval id/error clarifications — empty-string `response_id`, Jina bare-400 | retrieval-provider | Accepted | Pending         | —          |
-| [0103](proposals/0103-retrieval-conformance-coverage.md) | Retrieval conformance coverage — §8.3 over-cap, `raw`, count-vs-token boundary | retrieval-provider | Accepted | Pending         | —          |
-| [0102](proposals/0102-general-carries-error-field-assertion.md) | Generalize the `carries` error-field assertion; ratify migration & render error fields | conformance-adapter | Accepted | Pending         | —          |
-| [0101](proposals/0101-malformed-usage-counter-llm-observability.md) | A malformed usage counter is *not reported* — llm-provider + observability | llm-provider | Accepted | Pending         | —          |
-| [0100](proposals/0100-malformed-ancillary-figures-not-reported.md) | A malformed ancillary figure is *not reported*, never a malformed response (retrieval-provider) | retrieval-provider | Accepted | Pending         | —          |
-| [0099](proposals/0099-cohere-embed-input-type-widening.md) | Cohere `/v2/embed` — widen `input_type`, pin the extras-vs-managed-field claims | retrieval-provider | Accepted | Pending         | —          |
-| [0098](proposals/0098-conformance-adapter-carries-key-alignment.md) | Align structured-output `carries` assertion keys with §7 error field names | conformance-adapter | Accepted | Pending         | —          |
-| [0097](proposals/0097-retrieval-provider-jina-document-echo-shape.md) | Rerank `document` object-shape echo — general §6 rule + Jina TextDoc / ImageDoc | retrieval-provider | Accepted | Pending         | —          |
-| [0096](proposals/0096-retrieval-raw-json-shape.md) | Retrieval `raw` verbatim JSON of any top-level shape | retrieval-provider | Accepted | Pending         | —          |
-| [0095](proposals/0095-adaptive-call-level-retry.md) | Adaptive call-level retry (per-attempt override + reask) | llm-provider | Accepted | Pending         | —          |
-| [0094](proposals/0094-subgraph-projection-declared-boundary.md) | Subgraph projection declared same-name boundary | graph-engine | Accepted | Pending         | —          |
+| [0114](proposals/0114-langfuse-client-provider-isolation.md) | Langfuse client ownership & provider isolation | observability | Draft | —               | —          |
+| [0113](proposals/0113-malformed-merge-managed-extras.md) | Malformed extras on a merge-managed wire field | llm-provider | Accepted | Partial (0.17.0)| —          |
+| [0112](proposals/0112-fan-out-item-seeded-collect-round-trip.md) | Fan-out item-seeded collect round-trip | pipeline-utilities | Accepted | Shipped (0.17.0)| —          |
+| [0111](proposals/0111-fan-out-collect-round-trip-warning.md) | Fan-out collect/target round-trip warning | pipeline-utilities | Accepted | Shipped (0.17.0)| —          |
+| [0110](proposals/0110-remove-reask-assistant-prefill-continuation.md) | Remove the reask assistant-prefill continuation branch | llm-provider | Accepted | Shipped (0.17.0)| —          |
+| [0109](proposals/0109-token-budget-failure-parity-and-extra-keys.md) | Token-budget failure-path parity and config extra-key handling | observability | Accepted | Shipped (0.17.0)| —          |
+| [0108](proposals/0108-declared-field-vs-extras-collision.md) | Declared-field-vs-extras wire-key collision | llm-provider | Accepted | Shipped (0.17.0)| —          |
+| [0107](proposals/0107-conformance-adapter-directive-vocabulary.md) | Document the conformance-adapter directive vocabulary | conformance-adapter | Accepted | Textual (0.17.0)| —          |
+| [0106](proposals/0106-openai-base64-embedding-decode.md) | §8.3 base64 embedding output-encoding — decode support | retrieval-provider | Accepted | Shipped (0.17.0)| —          |
+| [0105](proposals/0105-extras-managed-field-collision-rule.md) | Extras-key vs mapping-managed wire-field collision rule | llm-provider | Accepted | Shipped (0.17.0)| —          |
+| [0104](proposals/0104-retrieval-id-error-clarifications.md) | Retrieval id/error clarifications — empty-string `response_id`, Jina bare-400 | retrieval-provider | Accepted | Shipped (0.17.0)| —          |
+| [0103](proposals/0103-retrieval-conformance-coverage.md) | Retrieval conformance coverage — §8.3 over-cap, `raw`, count-vs-token boundary | retrieval-provider | Accepted | Shipped (0.17.0)| —          |
+| [0102](proposals/0102-general-carries-error-field-assertion.md) | Generalize the `carries` error-field assertion; ratify migration & render error fields | conformance-adapter | Accepted | Textual (0.17.0)| —          |
+| [0101](proposals/0101-malformed-usage-counter-llm-observability.md) | A malformed usage counter is *not reported* — llm-provider + observability | llm-provider | Accepted | Shipped (0.17.0)| —          |
+| [0100](proposals/0100-malformed-ancillary-figures-not-reported.md) | A malformed ancillary figure is *not reported*, never a malformed response (retrieval-provider) | retrieval-provider | Accepted | Shipped (0.16.0)| —          |
+| [0099](proposals/0099-cohere-embed-input-type-widening.md) | Cohere `/v2/embed` — widen `input_type`, pin the extras-vs-managed-field claims | retrieval-provider | Accepted | Shipped (0.17.0)| —          |
+| [0098](proposals/0098-conformance-adapter-carries-key-alignment.md) | Align structured-output `carries` assertion keys with §7 error field names | conformance-adapter | Accepted | Textual (0.17.0)| —          |
+| [0097](proposals/0097-retrieval-provider-jina-document-echo-shape.md) | Rerank `document` object-shape echo — general §6 rule + Jina TextDoc / ImageDoc | retrieval-provider | Accepted | Shipped (0.16.0)| —          |
+| [0096](proposals/0096-retrieval-raw-json-shape.md) | Retrieval `raw` verbatim JSON of any top-level shape | retrieval-provider | Accepted | Shipped (0.16.0)| —          |
+| [0095](proposals/0095-adaptive-call-level-retry.md) | Adaptive call-level retry (per-attempt override + reask) | llm-provider | Accepted | Shipped (0.17.0)| —          |
+| [0094](proposals/0094-subgraph-projection-declared-boundary.md) | Subgraph projection declared same-name boundary | graph-engine | Accepted | Shipped (0.17.0)| —          |
 | [0093](proposals/0093-nullable-provider-usage-records.md) | Nullable provider usage records | retrieval-provider | Accepted | Shipped (0.16.0)| —          |
 | [0092](proposals/0092-retrieval-provider-embedding-batch-chunking.md) | Embedding-mapping batch chunking | retrieval-provider | Accepted | Shipped (0.16.0)| —          |
 | [0091](proposals/0091-retrieval-provider-cohere-embeddings-wire.md) | Cohere embeddings wire mapping | retrieval-provider | Accepted | Shipped (0.16.0)| —          |

@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0114](proposals/0114-langfuse-client-provider-isolation.md) | Draft | observability §8.9 + §6 | Pin the Langfuse-client ownership model (impls MUST support both caller-constructed and credentials-constructed clients), then let provider-isolation obligations track control: OA-constructs (mode b) → SHOULD isolate by default, MUST isolate where a shared provider would defeat an OTel-side `disable_provider_payload=True`; caller-supplies (mode a) → MUST NOT mislead, SHOULD document the remedy, MAY warn best-effort. |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
