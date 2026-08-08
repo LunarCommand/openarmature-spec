@@ -570,9 +570,9 @@ fixture.
   (`True`) for the OTel side. openarmature's mode-(b) payload-leak invariant (§6) applies whenever the
   Langfuse observer emits payloads (`disable_provider_payload: false`) that would reach a shared provider —
   an OTel observer suppressing payload is one such configuration, but the invariant does not depend on one
-  being composed. The
-  client is the provider-faithful fake of §6.4 (its spans carry the `langfuse.observation.*` attribute
-  namespace, §6.4), so with `caller_global_otel_active: true` a leak is observable. A *Langfuse observation
+  being composed. The client is the provider-faithful fake of §6.4 (its spans carry the
+  `langfuse.observation.*` attribute namespace, §6.4), so with `caller_global_otel_active: true` a leak is
+  observable. A *Langfuse observation
   span* is one carrying that attribute namespace. `expected.no_langfuse_observations_on_global: true`
   asserts **none** reached the global exporter (the Langfuse analog of `no_openarmature_spans_on_global`);
   `expected.no_langfuse_observations_on_private: true` asserts none reached openarmature's **own private
