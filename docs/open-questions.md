@@ -876,7 +876,7 @@ short-horizon roadmap below.
   directive(s) to §5, then land the 0114 fixtures against them. Needs a proposal since
   it adds normative conformance-adapter §5 text. (0114 Open question #1.) **Resolved by 0115**
   (v0.109.0): conformance-adapter §5.5 gained the `langfuse_client` construction directive
-  (`mode` / `provider`) + the `{no_,}langfuse_observations_on_global` assertions, §6.4 gained the
+  (`mode` / `provider`) + the `no_langfuse_observations_on_{global,private}` / `langfuse_observations_on_global` assertions, §6.4 gained the
   provider-faithful Langfuse fake, and observability fixture 157 gates the mode-(b) MUST-isolate
   carve-out and the mode-(a) MUST-NOT-mutate (by effect). The payload flags reuse the existing
   per-observer `langfuse_observer` convention. The mode-(b) SHOULD-default and mode-(a) SHOULD/MAY

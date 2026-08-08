@@ -7,7 +7,7 @@
 - **Targets:**
   - spec/conformance-adapter/spec.md **§5.5 Observer / observability directives** — add a
     `langfuse_client` construction directive and the `no_langfuse_observations_on_global` /
-    `langfuse_observations_on_global` assertions.
+    `no_langfuse_observations_on_private` / `langfuse_observations_on_global` assertions.
   - spec/conformance-adapter/spec.md **§6.4 Langfuse mock** — extend the harness primitive to a
     **provider-faithful** Langfuse client that emits its observations through its bound `TracerProvider`
     (so provider-topology leakage is observable), in addition to the existing content-recording wrapper.
@@ -28,7 +28,7 @@ fixtures**, because the observability harness's Langfuse mock is content-only an
 topology, so leakage to a shared provider was not expressible. This proposal closes that gap the same way
 the OTel side already does it (fixture 005's global-provider capture): a **provider-faithful** Langfuse
 fake whose observations flow through its bound `TracerProvider`, a `langfuse_client` construction
-directive, and a `{no_,}langfuse_observations_on_global` assertion pair. It gates both 0114 MUSTs
+directive, and the `no_langfuse_observations_on_{global,private}` + `langfuse_observations_on_global` assertions. It gates both 0114 MUSTs
 behaviorally — no client-provider introspection required.
 
 ## Motivation

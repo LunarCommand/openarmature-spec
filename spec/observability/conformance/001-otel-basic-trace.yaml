@@ -32,7 +32,7 @@
 #       attributes (subset assertions), status, optional links, and children.
 #     * `expected.log_records` — for fixture 010, list of expected log
 #       records with attribute assertions.
-#     * `expected.no_global_provider_spans` — for fixture 005, asserts
+#     * `expected.no_openarmature_spans_on_global` — for fixture 005, asserts
 #       openarmature didn't emit through the global provider.
 #     * `expected.no_langfuse_observations_on_global` — for fixture 157, asserts
 #       no Langfuse observation leaked to the global provider.
