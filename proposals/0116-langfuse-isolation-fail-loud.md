@@ -59,8 +59,11 @@ This proposal replaces the unachievable "always isolate" with an achievable **pa
 reach a provider shared with the application or other instrumentation — unless the caller has explicitly
 accepted a shared provider.* The invariant is satisfied by **isolating** (SHOULD, the default); where
 openarmature **detects** the observations would reach a shared provider, it **raises** a categorized error
-(fail-closed); and where it **cannot determine** the binding (a future SDK exposes no way), it **suppresses**
-its own Langfuse-side payload so nothing sensitive can leak (fail-safe). A single **explicit caller opt-out**
+(fail-closed); and where it **cannot determine** the binding (establishing it rests on non-portable SDK
+internals, so this is a per-SDK-surface property, not a universal capability), it **suppresses** its own
+Langfuse-side payload so nothing sensitive can leak (fail-safe) — making the portable guarantee "no
+payload-bearing observation reaches a shared provider," delivered by raise where detectable and suppress
+where not. A single **explicit caller opt-out**
 — "I accept a shared provider for the Langfuse client," unifying 0114's shared-provider preference with this
 proposal's proceed-on-leak — turns the raise or suppress into warn-and-proceed, because the caller has
 accepted the export. This keys the obligation on the actual leak condition rather than on whether an OTel
@@ -115,18 +118,23 @@ the caller owns the *policy*: the safe default (isolate; raise or suppress on a 
 openarmature's, and the escape hatch is the caller's single, affirmative choice. Because warn-and-proceed
 runs only after that opt-in, it does not reintroduce a missable-warning default.
 
-**Why the undetectable case fails safe — but never overrides the opt-out.** Detecting whether observations
-would reach a shared provider requires reading the constructed client's bound provider. For the supported
-Langfuse v4 line the binding is establishable, so detection is required and the raise is enforceable. A
-hypothetical future SDK that exposes no way to establish the binding would make the raise unenforceable — but
-openarmature still owns the Langfuse observer in mode (b), so for a caller who has **not** opted in it
-**suppresses** its own Langfuse-side payload, guaranteeing no payload reaches a shared provider even without
-isolation and without refusing the call. It does **not** suppress for a caller who **has** opted in: that
-caller explicitly asked for the export, so suppressing would both discard the data they wanted and silently
-override their choice — there, openarmature warns and proceeds. Fail-open (warn and leak for a do-nothing
-caller) is rejected: it would collapse the undetectable case back to warn-only. With these arms a
-**do-nothing caller is protected in every case** — isolated by default, raised on a detected leak, or
-suppressed when the binding is unknowable — while an opted-in caller always gets exactly what they accepted.
+**Why detection is best-effort, and the case it cannot cover fails safe.** Detecting whether observations
+would reach a shared provider requires reading the constructed client's bound provider — which rests on
+non-portable SDK internals with no cross-language guarantee. 0114 §6 and 0115 Alternative #2 establish
+exactly this, which is why 0114's mode-(a) warn is a MAY; this proposal must not contradict it by mandating
+the same introspection as a portable MUST. So detection is **best-effort**: where an implementation's SDK
+surface lets it establish the binding (as the Langfuse v4 Python line does, through an internal) it MUST
+raise on a detected leak; where it cannot, openarmature still owns the Langfuse observer in mode (b), so for
+a caller who has **not** opted in it **suppresses** its own Langfuse-side payload, guaranteeing no payload
+reaches a shared provider even without isolation and without refusing the call. The **portable guarantee is
+"no payload-bearing observation reaches a shared provider"** — delivered by raise where detectable and
+suppress where not; implementations differ only on which surface, never on whether a leak is prevented.
+Suppression does **not** apply to a caller who **has** opted in: that caller explicitly asked for the export,
+so suppressing would both discard the data they wanted and silently override their choice — there,
+openarmature warns and proceeds. Fail-open (warn and leak for a do-nothing caller) is rejected: it would
+collapse the no-detection case back to warn-only. With these arms a **do-nothing caller is protected in
+every case** — isolated by default, raised on a detected leak, or suppressed where the binding is
+unestablishable — while an opted-in caller always gets exactly what they accepted.
 
 ## Detailed design
 
@@ -164,27 +172,35 @@ a shared provider … SHOULD-not-MUST" sentence, and the OTel-suppression MUST-i
 > account of the provider; if its observations would (or might) reach a shared provider it **MUST** emit a
 > `WARNING`-level diagnostic and proceed.
 >
-> **Otherwise (not opted in):** openarmature **MUST determine** whether the constructed client's observations
-> would reach a **shared / non-isolated provider** — defined as *any provider other than one openarmature
-> itself established as isolated for this credential* (in particular the global provider). This is a
-> leak-condition test decidable from openarmature's own record of the providers it established; it is **not**
-> an identity test against the provider supplied on this call (a client the singleton bound to another
-> isolated provider openarmature established for the same credential satisfies the invariant and **MUST NOT**
-> trigger a failure), and it does **not** require enumerating a foreign provider's exporters.
+> **Otherwise (not opted in):** openarmature **SHOULD** determine whether the constructed client's
+> observations would reach a **shared / non-isolated provider** — *any provider other than one openarmature
+> itself established as isolated for this credential* (in particular the global provider). Establishing the
+> binding rests on **non-portable SDK internals with no cross-language guarantee** (the same fact that makes
+> 0114 §6's mode-(a) warn a MAY, and 0115 Alternative #2's rationale), so *whether* an implementation can
+> determine it is a property of the SDK surface available to it, not a portable obligation. Where the check is
+> performed it is a leak-condition test decidable from openarmature's own record of the providers it
+> established; it is **not** an identity test against the provider supplied on this call (a client the
+> singleton bound to another isolated provider openarmature established for the same credential satisfies the
+> invariant and **MUST NOT** trigger a failure), and it does **not** require enumerating a foreign provider's
+> exporters.
 >
-> - **Determined the observations would reach a shared provider** → openarmature **MUST raise** a categorized
->   error of category `langfuse_provider_isolation_unavailable` (below), **before** emitting any
+> - **It establishes that the observations would reach a shared provider** → openarmature **MUST raise** a
+>   categorized error of category `langfuse_provider_isolation_unavailable` (below), **before** emitting any
 >   payload-bearing observation to that provider, rather than proceed and silently leak.
-> - **Cannot determine the binding** (a future SDK exposes no way to establish it) → openarmature **MUST NOT**
->   raise; it **MUST** suppress its own Langfuse-side payload so no payload can reach a shared provider, and
->   **MUST** emit a `WARNING`-level diagnostic.
-> - **Determined the observations would *not* reach a shared provider** (the client is on an openarmature-
->   established isolated provider) → proceed normally.
+> - **It cannot establish the binding** (the SDK surface available to it exposes no way) → openarmature
+>   **MUST NOT** raise; it **MUST** suppress its own Langfuse-side payload so no payload-bearing observation
+>   can reach a shared provider, and **MUST** emit a `WARNING`-level diagnostic.
+> - **It establishes that the observations would *not* reach a shared provider** (the client is on an
+>   openarmature-established isolated provider) → proceed normally.
 >
-> Detection **MUST** be implemented; the *cannot-determine* arm applies only where the SDK version genuinely
-> exposes no way to establish the binding — a property of the SDK, uniform across implementations, not an
-> implementation's choice to skip detection. For the supported Langfuse v4 line the binding is establishable,
-> so that arm is dormant and conforming implementations behave identically.
+> The **portable guarantee** is that no payload-bearing observation reaches a shared provider: openarmature
+> **raises** where it can detect the leak and **suppresses** its own payload where it cannot. Implementations
+> MAY therefore differ on the *surface* — a raised error versus a suppressed payload — according to what their
+> SDK exposes, consistent with 0114/0115 treating bound-provider introspection as non-portable; both outcomes
+> satisfy the invariant and neither leaks. In practice an implementation whose SDK exposes the binding (as the
+> Langfuse v4 Python line does, through an internal) raises; one whose SDK exposes nothing suppresses. An
+> implementation **MUST NOT** silently proceed-and-leak by declining a detection its SDK surface supports; the
+> fallback is suppress, never leak.
 >
 > The point at which the error surfaces (client construction or first use) is implementation-defined, but it
 > **MUST** precede any payload-bearing emission to the shared provider.
@@ -239,11 +255,18 @@ it owns the client." Drop "only" and enumerate the new obligation:
 - `langfuse_client.accept_shared_provider` — bool, optional, default `false`. Sets the caller opt-out (the
   single shared-provider acknowledgment) on the implementation's Langfuse observer construction. Default
   `false` exercises the fail-closed path.
+- `adapter_capabilities.langfuse_bound_provider_detection` — bool, declared **by the adapter** (not per-case):
+  whether the implementation's Langfuse SDK surface lets it establish the client's bound provider. Because
+  that introspection is non-portable (0114/0115), it is a per-adapter property, not a universal MUST — so
+  fixture 158 gates its arms on it: a **detection-capable** adapter MUST satisfy the *raise* cases; a
+  **non-capable** adapter MUST satisfy the *suppress* case instead; both MUST satisfy the opt-out case. This
+  is what stops an adapter from passing raise-behavior — verified only against the §6.4 fake's accessor — that
+  its real SDK cannot portably perform.
 - `expected_construction_error: {category: <token>}` — a new setup-scope raised-error assertion, the analogue
   of `expected_compile_error` for observer/client construction: asserts that standing up and running the case
-  raises the categorized error (at construction or first use). Fixture 158 uses `{category:
-  langfuse_provider_isolation_unavailable}`. The token is registered in the raised-error category vocabulary
-  (§5.8 / §5.13) so `carries`/category assertions can reference it.
+  raises the categorized error (at construction or first use). The capability-gated raise cases of fixture 158
+  use `{category: langfuse_provider_isolation_unavailable}`. The token is registered in the raised-error
+  category vocabulary (§5.8 / §5.13) so `carries`/category assertions can reference it.
 - `expected.log_records` gains a **`level`** key (e.g. `level: WARNING`) alongside `body` / `attributes`.
   OTel severity is a first-class `LogRecord` field, not an attribute, so without this key a mandated
   `WARNING` cannot be asserted (an implementation emitting at `INFO` would pass). Fixture 158's opt-out case
@@ -261,8 +284,13 @@ The provider-faithful Langfuse fake (0115 §6.4) **MUST** (a) honor the SDK's pe
 first construction for a credential binds and records the supplied `TracerProvider`; a later construction for
 the same credential returns the first client and ignores a newly supplied provider, and a plain priming
 construction (no provider supplied) binds the **global** provider, matching the real v4 default — and (b)
-**expose its bound provider**, so detection is deterministic in-harness (the *cannot-determine* arm is
-exercised only by a real binding-hiding SDK, which the harness does not simulate).
+**expose its bound provider**, so that a **detection-capable** adapter (one declaring
+`langfuse_bound_provider_detection`) can run the raise cases deterministically in-harness. A **non-capable**
+adapter does not read that accessor; it exercises the suppress arm against the same primed state (the
+observation still flows to the global provider through the fake, but the implementation suppresses its
+payload, so the assertion sees a payload-free observation on the global provider). The fake exposing the
+accessor does not itself make detection portable — the adapter's declared capability, not the fake, selects
+which arm the fixture requires.
 
 ### Fixtures
 
@@ -272,36 +300,51 @@ exercised only by a real binding-hiding SDK, which the harness does not simulate
   isolate-when-first default. No change to its assertions.
 - **158-langfuse-payload-leak-fail-closed** (new), `langfuse_client.mode: credentials`,
   `preexisting_same_key_client: true`, `langfuse_observer.disable_provider_payload: false`,
-  `caller_global_otel_active: true`:
-  - `singleton_preexists_raises` — a composed OTel observer suppressing payload (the old carve-out shape),
-    `accept_shared_provider: false` → asserts `expected_construction_error: {category:
-    langfuse_provider_isolation_unavailable}` **and** that no *payload-bearing* Langfuse observation (the
-    Generation) reached the global provider (a metadata-only enclosing span reaching it before a first-use
-    raise does not violate the payload invariant).
-  - `singleton_preexists_raises_no_otel_observer` — the same, but **no OTel observer composed** → still
-    raises. Gates the widened trigger: the raise keys on the payload leak, not on an OTel-side setting.
-  - `singleton_preexists_optout_proceeds` — `accept_shared_provider: true` → does not raise; a `WARNING`
-    log-record is asserted (`expected.log_records` with `level: WARNING`), and the Generation reaches the
-    global provider (`langfuse_observations_on_global: true`) — the acknowledged leak by effect.
-- **001** harness-contract comment — document `preexisting_same_key_client`, `accept_shared_provider`,
-  `expected_construction_error`, and the `expected.log_records` `level` key.
+  `caller_global_otel_active: true`. Cases are gated on the adapter's declared
+  `langfuse_bound_provider_detection` so each adapter is asserted against the arm its SDK surface can perform:
+  - `singleton_preexists_raises` *(detection-capable adapters)* — a composed OTel observer suppressing
+    payload (the old carve-out shape), `accept_shared_provider: false` → asserts `expected_construction_error:
+    {category: langfuse_provider_isolation_unavailable}` **and** that no *payload-bearing* Langfuse observation
+    (the Generation) reached the global provider (a metadata-only enclosing span reaching it before a
+    first-use raise does not violate the payload invariant).
+  - `singleton_preexists_raises_no_otel_observer` *(detection-capable adapters)* — the same, but **no OTel
+    observer composed** → still raises. Gates the widened trigger: the raise keys on the payload leak, not on
+    an OTel-side setting.
+  - `singleton_preexists_suppresses` *(non-detection-capable adapters)* — `accept_shared_provider: false` →
+    does **not** raise; the observation reaches the global provider but **carries no payload** (the
+    implementation suppressed its Langfuse-side payload — the provider-faithful fake records content, so a
+    payload-free observation is distinguishable from a payload-bearing one), and a `WARNING` log-record is
+    asserted. Gates the portable suppress floor.
+  - `singleton_preexists_optout_proceeds` *(all adapters)* — `accept_shared_provider: true` → does not raise
+    and does not suppress; a `WARNING` log-record is asserted (`expected.log_records` with `level: WARNING`),
+    and the Generation reaches the global provider *with* payload (`langfuse_observations_on_global: true`) —
+    the acknowledged leak by effect.
+- **001** harness-contract comment — document `preexisting_same_key_client`, `accept_shared_provider`, the
+  `langfuse_bound_provider_detection` adapter capability, `expected_construction_error`, and the
+  `expected.log_records` `level` key.
 
 ## Conformance test impact
 
-Additive MINOR. Two new `langfuse_client` sub-directives, a setup-scope `expected_construction_error`
-assertion (with a registered category token), and a `level` key on `expected.log_records` in
-conformance-adapter §5.5; the §6.4 provider-faithful fake gains singleton semantics and a bound-provider
-accessor; one new observability fixture (158, three cases); fixture 157 gains a clarifying precondition
-annotation and description reword with no change to its assertions; the §5.5 carve-out-trigger prose is
-reworded (a reconciliation, no new assertion). No existing assertions change.
+Additive MINOR. Two new `langfuse_client` sub-directives, an adapter `langfuse_bound_provider_detection`
+capability declaration, a setup-scope `expected_construction_error` assertion (with a registered category
+token), and a `level` key on `expected.log_records` in conformance-adapter §5.5; the §6.4 provider-faithful
+fake gains singleton semantics and a bound-provider accessor; one new observability fixture (158, four
+cases); fixture 157 gains a clarifying precondition annotation and description reword with no change to its
+assertions; the §5.5 carve-out-trigger prose is reworded (a reconciliation, no new assertion). No existing
+assertions change.
 
-The **cannot-determine → suppress** arm remains unfixtured: exercising it requires simulating an SDK whose
-client exposes no binding surface, which the harness does not model (the §6.4 fake exposes its provider by
-design). This is honest-but-unfixtured, consistent with 0114's mode-(a) MAY-warn; noted in Open questions.
+Both floors are gated. Because detection is non-portable (0114/0115), the raise arm is gated on adapters that
+declare `langfuse_bound_provider_detection`, and the **suppress** arm is gated on adapters that do not — so a
+non-detection-capable adapter (standing in for an SDK surface that exposes no binding) is asserted against the
+suppress floor rather than left unfixtured. What remains unmodeled is a *real* SDK that hides the binding at
+runtime (as opposed to an adapter declaring it does not read it); the capability declaration is the harness's
+portable proxy for that condition, consistent with 0114/0115 treating bound-provider introspection as
+non-portable.
 
 This resolves **0114 Open question #1** in part: it adds the construction-state primitive (a pre-existing
-same-credential client), the category-bearing construction-time raise assertion, and the log-record severity
-assertion, letting the mode-(b) payload-leak obligation be conformance-gated.
+same-credential client), the category-bearing construction-time raise assertion, the suppress-floor
+assertion, and the log-record severity assertion, letting the mode-(b) payload-leak obligation be
+conformance-gated on both floors.
 
 ## Alternatives considered
 
@@ -336,9 +379,12 @@ assertion, letting the mode-(b) payload-leak obligation be conformance-gated.
 
 ## Open questions
 
-1. **Fixturing the cannot-determine → suppress arm.** Requires a harness primitive that simulates an SDK
-   whose client exposes no binding surface. Not modeled today; the arm is honest-but-unfixtured, as with
-   0114's mode-(a) warn.
+1. **Modeling a real runtime binding-hiding SDK.** The suppress arm is now conformance-gated via an adapter
+   that declares no `langfuse_bound_provider_detection` (fixture 158 `singleton_preexists_suppresses`), which
+   is the harness's portable proxy for an SDK surface that exposes no binding. What is still not modeled is a
+   *real* SDK that hides the binding at runtime while the fake exposes it; the capability declaration stands
+   in for that condition rather than simulating it. Acceptable, and consistent with 0114/0115 treating
+   bound-provider introspection as non-portable.
 2. **Generalization beyond Langfuse.** The per-credential-singleton hazard is Langfuse-SDK-specific, but the
    payload-leak invariant (isolate / raise / suppress, with one shared-provider opt-out) would apply to any
    future caller-facing backend client whose isolation can be silently defeated by shared process state.
