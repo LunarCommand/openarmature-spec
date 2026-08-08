@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0116](proposals/0116-langfuse-isolation-fail-loud.md) | Draft | observability, conformance-adapter | A payload-leak invariant for mode (b): when the Langfuse observer emits payloads, openarmature MUST keep them off a shared provider — isolate by default, raise a categorized error when it detects they would leak (with an explicit caller opt-out to proceed-with-warning), and suppress its own payload where the binding is undetectable. Closes the gap left by the Langfuse SDK's per-credential client singleton silently discarding openarmature's isolated provider. |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 

@@ -1,0 +1,1 @@
+../../proposals/0116-langfuse-isolation-fail-loud.md
