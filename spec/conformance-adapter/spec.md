@@ -567,17 +567,27 @@ fixture.
   harness-constructed client (mode (a)). `provider` applies only to `mode: supplied` (default `global`).
   The observers' payload settings use the existing per-observer convention — `langfuse_observer:
   {disable_provider_payload: <bool>}` for the Langfuse side, and the OTel observer's §5.5.4 default
-  (`True`) for the OTel side; the mode-(b) MUST-isolate carve-out fires when the OTel side suppresses
-  payload (its default) while the Langfuse observer emits it (`disable_provider_payload: false`). The
-  client is the provider-faithful fake of §6.4 (its spans carry the `langfuse.observation.*` attribute
-  namespace, §6.4), so with `caller_global_otel_active: true` a leak is observable. A *Langfuse observation
+  (`True`) for the OTel side. openarmature's mode-(b) payload-leak invariant (§6) applies whenever the
+  Langfuse observer emits payloads (`disable_provider_payload: false`) that would reach a shared provider —
+  an OTel observer suppressing payload is one such configuration, but the invariant does not depend on one
+  being composed. The client is the provider-faithful fake of §6.4 (its spans carry the
+  `langfuse.observation.*` attribute namespace, §6.4), so with `caller_global_otel_active: true` a leak is
+  observable. A *Langfuse observation
   span* is one carrying that attribute namespace. `expected.no_langfuse_observations_on_global: true`
   asserts **none** reached the global exporter (the Langfuse analog of `no_openarmature_spans_on_global`);
   `expected.no_langfuse_observations_on_private: true` asserts none reached openarmature's **own private
-  OTel** provider's exporter either — together they gate the mode-(b) MUST-isolate carve-out against
+  OTel** provider's exporter either — together they gate mode-(b) isolation against
   **both** provider spellings §6 forbids (not the global provider, and not openarmature's own OTel
   provider); and `expected.langfuse_observations_on_global: true` asserts at least one **did** reach the
-  global exporter (the mode-(a) non-mutation effect).
+  global exporter (the mode-(a) non-mutation effect, and the mode-(b) opt-out / acknowledged-leak effect).
+
+- **`langfuse_client` isolation-outcome directives + assertions** (observability §6, [proposal 0116](../../proposals/0116-langfuse-isolation-fail-loud.md)). Extend the `langfuse_client` directive and add the assertions that gate the mode-(b) payload-leak invariant's arms:
+  - `langfuse_client: {preexisting_same_key_client: <bool>}` (default `false`) — when `true`, the harness constructs a Langfuse client for the **same credential** *before* the implementation constructs its own, priming the SDK's per-credential singleton so the implementation is not first; the primed client binds the global provider (the provider-faithful default, §6.4), reproducing the discarded-isolation path deterministically. Meaningful only with `mode: credentials`.
+  - `langfuse_client: {accept_shared_provider: <bool>}` (default `false`) — sets the single shared-provider caller opt-out on the implementation's Langfuse observer construction. Default `false` exercises the fail-closed path.
+  - `adapter_capabilities: {langfuse_bound_provider_detection: <bool>}` — declared **by the adapter**, not per-case: whether the implementation's Langfuse SDK surface lets it establish the client's bound provider. Because that introspection is non-portable (§6; observability §6 makes the mode-(a) warn a MAY for the same reason), it is a per-adapter property, not a universal capability, so fixture 158 gates its arms on it — a **detection-capable** adapter MUST satisfy the *raise* cases, a **non-capable** adapter the *suppress* case; both satisfy the opt-out case. This prevents an adapter from passing raise-behavior (verified only against the §6.4 fake's accessor) that its real SDK cannot portably perform. An **undeclared** `langfuse_bound_provider_detection` defaults to `false` (a minimal adapter is treated as non-capable). A case selects its audience with `requires_capability: {langfuse_bound_provider_detection: <bool>}` — asserted only against adapters whose declaration (defaulted as above) matches; a case with no `requires_capability` applies to all. A case gated out by `requires_capability` is a **recognized skip**, not a silently-omitted case (§8.1 / §8.2 / §9): the raise floor and the suppress floor are each covered by whichever adapter class its gate selects.
+  - `expected_construction_error: {category: <token>}` — a **top-level case-level** raised-error assertion (the observer/client-construction analogue of `expected_compile_error`, and catalogued alongside it in §5.8), placed as a sibling of `nodes` / `edges` / `expected`, **not** nested under `expected:`: asserts that standing up and running the case raises the categorized error at construction or first use. Fixture 158's raise cases use `{category: langfuse_provider_isolation_unavailable}`, the observability-native category observability §6 defines; like other raised-error categories it is referenced by `{category}` per §5.8's per-capability rule (a category is not a `carries` field key, so §5.13 does not govern it).
+  - `expected.no_payload_bearing_langfuse_observations_on_global` / `expected.payload_bearing_langfuse_observations_on_global` — payload-scoped variants of the 0115 leak assertions (the §6.4 fake distinguishes a payload-bearing observation from a payload-free one). The raise cases assert **no payload-bearing** observation reached the global exporter (a metadata-only span reaching it before a first-use raise does not violate the payload invariant); the suppress case asserts an observation reached it but **payload-free**; the opt-out case asserts a **payload-bearing** one did (the acknowledged leak).
+  - `expected.log_records` entries gain a `level` key (e.g. `level: WARNING`) alongside `body` / `attributes`. OTel severity is a first-class `LogRecord` field, not an attribute, so without it a mandated `WARNING` cannot be asserted (an implementation emitting at `INFO` would pass). An entry matches by the **subset** of fields it specifies: an entry with only `level` asserts that a log record of that severity **exists** (body / attributes unconstrained), non-exhaustively (other records may be present). Fixture 158's opt-out and suppress cases assert `level: WARNING` this way.
 
 OTel and Langfuse emission are NOT observer behaviors. Observability fixtures that exercise OTel
 span emission OR Langfuse trace/observation emission rely on **harness primitives** the adapter
@@ -729,6 +739,13 @@ These directives appear under per-invocation or per-case `expected:` blocks and 
   The adapter compiles the graph definition and asserts a compile-time error of that category is raised
   before any node body runs. (Established by the graph-engine compile-error fixtures; documented here for
   completeness.)
+- **`expected_construction_error: {category: <category>}`** — the observer/client-**construction** analogue
+  of `expected_compile_error`: a top-level case-level assertion (sibling of `nodes` / `edges` / `expected`)
+  that standing up the case's observers/client and running it raises a categorized error of the named
+  category at construction or first use. Defined by proposal 0116 for observability §6's mode-(b) payload-leak
+  invariant; fixture 158's raise cases use `{category: langfuse_provider_isolation_unavailable}` (an
+  observability-native category, observability §6). The per-case audience gate `requires_capability`
+  (§5.5) selects which adapter class a case applies to.
 - **`expected_compile_warning: <category> | [<category>, ...]`** — asserts that **compilation succeeds**
   while emitting compile-time **warnings** — non-fatal diagnostics, distinct from the `expected_compile_error`
   compile-*failure* assertion. The adapter captures the warnings raised during compilation. Two forms:
@@ -1170,6 +1187,20 @@ provider side. It carries no network dependency and stays deterministic; for `mo
 it into the implementation's construct-from-credentials path, and for `mode: supplied` the harness
 constructs it on the configured provider and passes it in.
 
+Proposal 0116 extends this fake for the payload-leak invariant's arms. It **MUST** honor the SDK's
+**per-credential singleton**: the first construction for a credential binds and records the supplied
+`TracerProvider`; a later construction for the same credential returns the first client and ignores a newly
+supplied provider (a plain priming construction with no provider supplied binds the global provider). The
+`preexisting_same_key_client` directive drives this by constructing a same-credential client before the
+implementation does, so the implementation's construction is handed the primed client on the global
+provider — the discarded-isolation path. The fake **MUST** also **expose its bound provider**, so an adapter
+that declares `langfuse_bound_provider_detection` can establish the binding deterministically in-harness (an
+adapter that does not declare it exercises the suppress arm instead — the fake exposing the accessor does not
+itself make detection portable; the adapter's declared capability selects the arm). Finally, the fake **MUST**
+distinguish a **payload-bearing** observation (one carrying prompt/completion content) from a **payload-free**
+one, so the raise cases can assert no *payload-bearing* observation reached the global provider and the
+suppress case can assert the observation reached it *without* payload.
+
 ### 6.5 Suspend / resume wiring
 
 The `suspend_with_descriptor` directive on a node MUST compile (at adapter parse time) to a real
@@ -1450,3 +1481,4 @@ per-directory specialization lives there.
 - §5.14 *Provider batch-chunking cap* (`chunk_size`) added — documents the `chunk_size` construction directive an adapter MUST honor as an embedding- or rerank-provider's per-call cap for chunk-and-stitch (retrieval-provider §8 batch chunking for embedding inputs, §8.1 rerank chunk-and-stitch for rerank documents): a real construction cap for a configurable-cap mapping (TEI `max-client-batch-size`, governing TEI `/embed` and `/rerank`), a test-only override of a fixed vendor cap (OpenAI 2048, Cohere 96) so a fixture can drive the chunking path with a small body rather than an impractical over-cap one. Moves the affordance from fixture-header prose into the adapter contract, making a fixed-cap chunking fixture reachable cross-impl by [proposal 0103](../../proposals/0103-retrieval-conformance-coverage.md)
 - §5.11 *Provider call-retry directives* — the full-list `wire_requests[*].messages` sub-form is removed. It existed only to assert the llm-provider §7.1 assistant-prefill continuation (its sole fixture, 067), which 0110 removes as unreachable. With no retry that *modifies* (rather than only appends to) the caller's messages, every reachable attempt is append-only and `appended_messages` expresses every case; `sampling` and `attributes_absent` are unchanged by [proposal 0110](../../proposals/0110-remove-reask-assistant-prefill-continuation.md)
 - §5.5 *Observer / observability directives* gained the `langfuse_client` construction directive (`mode: credentials | supplied`, `provider`; payload flags reuse the existing per-observer `langfuse_observer` convention) and the `no_langfuse_observations_on_global` / `no_langfuse_observations_on_private` / `langfuse_observations_on_global` expected-outcome assertions; §6.4 *Langfuse mock* gained a **provider-faithful** variant that records observation content and also emits it as OTel spans through its bound `TracerProvider` — the machinery gating observability §6's Langfuse provider-isolation MUSTs (proposal 0114), mirroring the OTel `caller_global_otel_active` / `no_openarmature_spans_on_global` isolation pattern; observability fixture 157 exercises the mode-(b) MUST-isolate carve-out and the mode-(a) MUST-NOT-mutate by [proposal 0115](../../proposals/0115-langfuse-provider-isolation-conformance.md)
+- §5.5 *Observer / observability directives* extended the `langfuse_client` directive with `preexisting_same_key_client` (primes the SDK's per-credential singleton so openarmature is not the first constructor) and `accept_shared_provider` (the single shared-provider caller opt-out), added the `adapter_capabilities.langfuse_bound_provider_detection` declaration that gates fixture 158's raise vs. suppress arms, a setup-scope `expected_construction_error: {category}` assertion (the observer/client-construction analogue of `expected_compile_error`), and a `level` key on `expected.log_records` so a mandated `WARNING` severity is assertable; §6.4 *Langfuse mock* extended the provider-faithful fake with per-credential-singleton semantics, a bound-provider accessor, and a payload-bearing vs. payload-free distinction — the machinery gating observability §6's payload-leak invariant (new observability fixture 158) by [proposal 0116](../../proposals/0116-langfuse-isolation-fail-loud.md)

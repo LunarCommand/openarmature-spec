@@ -1,6 +1,6 @@
 # External-dependency compatibility
 
-**Last refreshed:** 2026-06-22
+**Last refreshed:** 2026-08-08
 
 OpenArmature normatively references several external specifications and APIs.
 This page is the **operational tracking artifact** for those references:
@@ -41,7 +41,7 @@ publishes it.
 | [Jina AI Search Foundation API](https://jina.ai/) | hosted; `/v1/rerank` + `/v1/embeddings` | Stable (continuously updated) | 2026-07-12 | Wire shape per retrieval-provider §8.2. Verified against the Jina OpenAPI: `/v1/rerank` `{model, query, documents, top_n, return_documents (default `true`), truncation}` → `{results: [{index, relevance_score, document?}], usage: {total_tokens}}`; `/v1/embeddings` `{model, input, task, dimensions, truncate}` → `{data, usage}`. **`task` is MODEL-DEPENDENT** (re-verified against the Jina OpenAPI 2026-07-12): `jina-embeddings-v3` ∈ `retrieval.query` / `retrieval.passage` / `text-matching` / `classification` / `separation` (**no** `clustering`); `jina-embeddings-v4` ∈ `text-matching` / `retrieval.query` / `retrieval.passage` / `code.query` / `code.passage` (**neither** `classification` nor `clustering`); `jina-embeddings-v5` ∈ `retrieval.query` / `retrieval.passage` / `text-matching` / `clustering` / `classification`. This per-model divergence is why §8.2 keeps a closed `input_type` set (a provider is bound to a model identifier, with no capability registry to consult) while §8.4 Cohere widens — see proposal 0099. `return_documents` defaults `true` (vs OA's `False` — the mapping sends it explicitly); `input_type` realized via `task`. Jina enforces **no** per-call input-count cap (server-side token batching) — the §8 *Batch chunking* rule's no-cap branch applies (verified 2026-06-30). |
 | [OpenAI Embeddings API](https://platform.openai.com/docs/api-reference/embeddings) | URL-path `v1`; `/v1/embeddings` shape | Stable (continuously updated) | 2026-06-30 | Wire shape per retrieval-provider §8.3 (OpenAI-compatible). Verified against the OpenAI OpenAPI: `/v1/embeddings` `{model, input, dimensions, encoding_format (`float`/`base64`), user}` → `{object: "list", data: [{object: "embedding", index, embedding}], model, usage: {prompt_tokens, total_tokens}}`; **no** query/document `input_type` (symmetric — `input_type` not realized on the wire). `base_url`-configurable, covering the OpenAI-compatible ecosystem (vLLM, LocalAI, Together, …). Per-call cap **2048 inputs** → the §8 *Batch chunking* rule (count-based); the separate per-request summed-token ceiling is provider-enforced fail-loud (`provider_invalid_request`, §8.3), **not** a chunking trigger (verified 2026-06-30). `encoding_format: "base64"` returns each `data[].embedding` as a base64-encoded little-endian IEEE-754 float32 array; §8.3 decodes it to the float vector (proposal 0106, verified 2026-07-24). |
 | [Cohere v2 API (rerank + embed)](https://docs.cohere.com/reference/rerank) | hosted; `/v2/rerank` + `/v2/embed` shapes | Stable (continuously updated) | 2026-07-12 | Wire shape per retrieval-provider §8.4. Verified against the Cohere v2 API reference. **`/v2/rerank`:** `{model, query, documents (strings only), top_n, max_tokens_per_doc (default 4096)}` → `{id, results: [{index, relevance_score}], meta: {billed_units: {search_units}}}`. **No** `return_documents` and **no** echoed `document` (`return_documents` a silent no-op, `ScoredDocument.document` null); `search_units` → `RerankUsage.search_units`; no fail-loud truncation. **`/v2/embed`:** `{model, input_type (**required**; enum `search_query` / `search_document` / `classification` / `clustering` / `image` — re-verified 2026-07-12; only `image` carries a model-version restriction), texts (max 96), embedding_types (default ["float"]), truncate (NONE/START/END), output_dimension (embed-v4+)}` → `{id, embeddings: {float: [[...]]} keyed by type, texts, meta: {billed_units: {input_tokens}}}`. `input_type` mandatory (OA absent → `search_document`). Per proposal 0099 the §8.4 mapping recognizes OA `query` / `document` / `classification` / `clustering` (the last two identity-mapped); `image` is **not** recognized (an input modality, not a purpose for embedded text). `embedding_types` is mapping-managed: an extras-supplied value is merged with the mandatory `"float"`, never replacing it. `truncate: NONE` fail-loud; 96-input per-call cap → client-side chunk-and-stitch; no top-level `model`. Both endpoints: errors `401`/`404`/`400`/`429`/`5xx` (Cohere does not use `422`). |
-| [Langfuse Python SDK](https://github.com/langfuse/langfuse-python) | v4.7.1 | Stable v4.x | 2026-05-31 | Used by observability §8 Langfuse mapping. v5 announcement watched; `set_current_trace_io` marked deprecated in v4 per observability §8.4.1 caveat. |
+| [Langfuse Python SDK](https://github.com/langfuse/langfuse-python) | v4.7.1 | Stable v4.x | 2026-05-31 | Used by observability §8 Langfuse mapping. v5 announcement watched; `set_current_trace_io` marked deprecated in v4 per observability §8.4.1 caveat. The v4 SDK maintains a **process-wide client keyed by public key** (`LangfuseResourceManager`): a later construction for a key already present returns the cached client and **discards** a newly supplied `TracerProvider` — the behavior observability §6's Langfuse payload-leak invariant addresses (proposal 0116; verified against the v4 SDK source 2026-08-08). |
 | [JSON Schema](https://json-schema.org/specification) | draft-2020-12 | Released (latest draft) | 2026-05-31 | Used in llm-provider §4 `Tool.parameters` and §5 `response_schema`. |
 | [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119) — keyword conventions | RFC 2119 (Best Current Practice) | Published | 2026-05-31 | MUST / SHOULD / MAY usage across normative spec text. |
 | [RFC 2397](https://datatracker.ietf.org/doc/html/rfc2397) — data URI scheme | RFC 2397 | Published | 2026-05-31 | Used by llm-provider §3.1.3 inline-image source shape. |
@@ -145,6 +145,17 @@ A vendor-side deprecation of `set_current_trace_io` / `Span.set_trace_io`
 in observability §8.4.1 (caveat paragraph). When Langfuse v5 ships, OA
 re-verifies the §8 mapping; if the migration requires normative spec
 changes, a follow-up proposal lands.
+
+The v4 SDK's client resource manager is a **process-wide singleton keyed by
+public key**: the first construction for a key binds and caches the client
+(including whatever `TracerProvider` it is given); a later construction for the
+same key returns the cached client and ignores a newly supplied provider. This
+is load-bearing for observability §6's mode-(b) Langfuse payload-leak invariant
+(proposal 0116) — it is why openarmature's own isolated `TracerProvider` can be
+silently discarded when the application constructed a same-key client first, and
+why §6's detection is best-effort (reading the client's bound provider rests on
+non-portable SDK internals). Verified against the v4 SDK source 2026-08-08; a v5
+transition re-verifies it alongside the §8 mapping.
 
 ## Maintenance
 

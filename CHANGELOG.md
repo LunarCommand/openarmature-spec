@@ -4,6 +4,20 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.110.0] — 2026-08-08
+
+**Changed**
+
+- **Fail-closed when Langfuse payloads would reach a shared provider** ([proposal 0116](proposals/0116-langfuse-isolation-fail-loud.md)). Closes a gap in the 0114/0115 Langfuse provider-isolation contract: the Langfuse v4 SDK keeps a process-wide client keyed by credential, so openarmature's mode-(b) "construct the client on an isolated `TracerProvider`" silently no-ops when openarmature is not the first constructor for that credential — the SDK returns the cached client on its original (usually global) provider and discards openarmature's isolated one, leaking payload-bearing observations. observability §6 replaces the OTel-suppression-specific MUST-isolate carve-out with a **payload-leak invariant**: when the implementation constructs the client and the Langfuse observer emits payloads, it **MUST** keep them off a provider shared with the application — isolating (**SHOULD**, the default), **raising** the new `langfuse_provider_isolation_unavailable` error where it establishes the observations would reach a shared provider, or **suppressing** its own Langfuse-side payload where it cannot establish the binding (best-effort detection, since reading the client's bound provider rests on non-portable SDK internals with no cross-language guarantee) — with a single explicit caller opt-out to accept a shared provider. The *No hard failure* rule is carved for the one detected-leak / not-opted-in case, and the *isolation trade-off* paragraph reworded.
+
+**Added**
+
+- Conformance primitives for the payload-leak invariant (conformance-adapter §5.5 / §6.4): `langfuse_client` sub-directives `preexisting_same_key_client` and `accept_shared_provider`; an adapter `langfuse_bound_provider_detection` capability with a per-case `requires_capability` gate; a setup-scope `expected_construction_error: {category}` assertion; payload-scoped leak assertions (`{no_,}payload_bearing_langfuse_observations_on_global`); and a `level` key on `expected.log_records`. The provider-faithful Langfuse fake gains per-credential-singleton semantics, a bound-provider accessor, and a payload-bearing/payload-free distinction. New observability fixture **158** (four cases) gates the raise (capability-gated), suppress-floor, and opt-out arms.
+
+**Notes**
+
+- **MINOR.** Amends 0114/0115's isolation obligations (reframing the mode-(b) MUST-isolate carve-out as the best-effort payload-leak invariant) and adds conformance machinery plus one new fixture; no existing fixtures change their assertions (fixture 157 gains a clarifying precondition annotation only). observability `Latest` → 0.110.0 (fixtures 157 → 158); conformance-adapter `Latest` → 0.110.0. Surfaced downstream and refined through adversarial + PR review.
+
 ## [0.109.0] — 2026-08-07
 
 **Added**

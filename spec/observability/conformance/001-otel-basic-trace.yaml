@@ -27,7 +27,28 @@
 #       harness builds it (on `provider`, default global) and hands it in. Uses
 #       the provider-faithful Langfuse fake (conformance-adapter §6.4); payload
 #       flags via the existing `langfuse_observer` block + the OTel §5.5.4 default.
+#       Proposal 0116 adds sub-keys `preexisting_same_key_client` (bool — prime a
+#       same-credential client before the impl constructs, defeating isolation via
+#       the SDK singleton) and `accept_shared_provider` (bool — the single caller
+#       opt-out).
+#     * `adapter_capabilities` — {langfuse_bound_provider_detection: bool}, declared
+#       by the adapter (proposal 0116): whether its SDK surface lets it establish the
+#       Langfuse client's bound provider. Non-portable, so per-adapter.
+#     * `requires_capability` — {langfuse_bound_provider_detection: bool}, per case
+#       (proposal 0116): the case is asserted only against adapters whose declaration
+#       matches (raise cases require detection; the suppress case requires its
+#       absence; a case without it applies to all).
 #   - Expected output:
+#     * `expected_construction_error` — {category}, a TOP-LEVEL case key (sibling of
+#       `expected:`, like `expected_compile_error`; proposal 0116, fixture 158):
+#       asserts observer/client construction (or first use) raised the categorized
+#       error. NOT nested under `expected:`.
+#     * `expected.no_payload_bearing_langfuse_observations_on_global` /
+#       `expected.payload_bearing_langfuse_observations_on_global` — for fixture 158,
+#       payload-scoped variants of the leak assertions (the §6.4 fake distinguishes a
+#       payload-bearing observation from a payload-free one).
+#     * `expected.log_records[].level` — asserts the log record's OTel severity (e.g.
+#       WARNING); proposal 0116, fixture 158.
 #     * `expected.span_tree` — hierarchical span structure with name,
 #       attributes (subset assertions), status, optional links, and children.
 #     * `expected.log_records` — for fixture 010, list of expected log
