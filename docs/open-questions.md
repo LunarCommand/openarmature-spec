@@ -860,7 +860,7 @@ short-horizon roadmap below.
 ### 0114 — provider-topology test primitives for Langfuse client isolation
 
 - **No fixture vocabulary for constructing the observers with `disable_provider_payload`
-  settings, or for asserting a Langfuse client's tracer-provider binding.** [open] —
+  settings, or for asserting a Langfuse client's tracer-provider binding.** [resolved-by-0115] —
   surfaced accepting 0114 (v0.108.0), whose observability §6 / §8.9 isolation
   obligations are behaviorally observable (whether openarmature's Langfuse observations
   reach a shared/global provider's exporter) but not expressible in the current
@@ -874,7 +874,13 @@ short-horizon roadmap below.
   the mode-(a) MUST-NOT-mutate are prose-normative only. A follow-on conformance-adapter
   proposal should add the observer-construction-with-config + provider-leak-assertion
   directive(s) to §5, then land the 0114 fixtures against them. Needs a proposal since
-  it adds normative conformance-adapter §5 text. (0114 Open question #1.)
+  it adds normative conformance-adapter §5 text. (0114 Open question #1.) **Resolved by 0115**
+  (v0.109.0): conformance-adapter §5.5 gained the `langfuse_client` construction directive
+  (`mode` / `provider`) + the `no_langfuse_observations_on_{global,private}` / `langfuse_observations_on_global` assertions, §6.4 gained the
+  provider-faithful Langfuse fake, and observability fixture 157 gates the mode-(b) MUST-isolate
+  carve-out and the mode-(a) MUST-NOT-mutate (by effect). The payload flags reuse the existing
+  per-observer `langfuse_observer` convention. The mode-(b) SHOULD-default and mode-(a) SHOULD/MAY
+  remain unfixtured by design (SHOULD indeterminacy).
 
 ---
 

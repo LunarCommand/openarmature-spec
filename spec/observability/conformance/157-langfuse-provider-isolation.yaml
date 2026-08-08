@@ -1,0 +1,126 @@
+# Langfuse provider isolation (observability §6 / §8.9, proposal 0114; gated by
+# proposal 0115). Two cases exercising the two provider-isolation MUSTs via the
+# global-provider leak-capture pattern of fixture 005
+# (caller_global_otel_active + no_openarmature_spans_on_global), extended to
+# Langfuse observations — a Langfuse v4 client emits its observations as OTel
+# spans through its bound TracerProvider, so an exporter on the global provider
+# catches any that leak.
+#
+# Harness contract additions (conformance-adapter §5.5 / §6.4):
+#   - langfuse_client: {mode, provider} — how the Langfuse observer's client is
+#     constructed. mode: credentials = the implementation constructs it from
+#     credentials (§8.9 mode b, owns the provider); mode: supplied = the harness
+#     constructs it and hands it in (mode a, caller owns the provider). provider
+#     (supplied only) = the provider the harness binds the supplied client to
+#     (default global).
+#   - The Langfuse client is the PROVIDER-FAITHFUL fake (§6.4): it records
+#     observation content AND emits it as OTel spans through its bound
+#     TracerProvider, so a leak to the global provider is caught by the exporter
+#     caller_global_otel_active installs.
+#   - langfuse_observer: {disable_provider_payload} — Langfuse-side payload flag
+#     (existing convention). The OTel side takes its §5.5.4 default (True).
+#   - expected.no_langfuse_observations_on_global — no langfuse.observation.*
+#     span reached the global exporter.
+#   - expected.langfuse_observations_on_global — at least one did.
+
+cases:
+  - name: mode_b_carveout_isolates
+    description: |
+      Mode (b): the implementation constructs the Langfuse client from
+      credentials, so it owns the provider. The OTel observer suppresses
+      provider payload (disable_provider_payload True, the §5.5.4 default)
+      while the Langfuse observer emits it (disable_provider_payload False) —
+      the §6 mode-(b) MUST-isolate carve-out. The implementation MUST build the
+      client on an isolated TracerProvider, so its Generation observation does
+      NOT reach the caller's global provider. Non-vacuity: the Generation IS
+      recorded; the load-bearing check: NONE reached the global exporter.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-157a
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    langfuse_client:
+      mode: credentials
+    langfuse_observer:
+      disable_provider_payload: false
+    caller_global_otel_active: true
+    expected:
+      # Non-vacuity: the Generation observation IS emitted (recorded side).
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                output: "hello"
+                children: []
+      # Load-bearing MUST-isolate check: no Langfuse observation reached the
+      # caller's global provider NOR openarmature's own OTel provider — the two
+      # shared-provider spellings §6 forbids — so the client was built on a
+      # dedicated isolated provider.
+      no_langfuse_observations_on_global: true
+      no_langfuse_observations_on_private: true
+
+  - name: mode_a_supplied_not_mutated
+    description: |
+      Mode (a): the caller supplies a Langfuse client already bound to the
+      global provider, so the caller owns the provider. The implementation
+      MUST NOT mutate it (MUST NOT rebind it to an isolated provider). So the
+      supplied client's Generation observation continues to reach the caller's
+      global provider — the observable proof the implementation left it alone.
+      An implementation that "helpfully" rebinds the client to isolate it would
+      produce NO Langfuse observation on the global exporter and fail.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-157b
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hey"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    langfuse_client:
+      mode: supplied
+      provider: global
+    langfuse_observer:
+      disable_provider_payload: false
+    caller_global_otel_active: true
+    expected:
+      # MUST-NOT-mutate, tested by effect: the supplied client stayed on the
+      # caller's global provider, so its Generation observation reached the
+      # global exporter.
+      langfuse_observations_on_global: true

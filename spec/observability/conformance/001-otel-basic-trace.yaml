@@ -21,13 +21,26 @@
 #     * `caller_global_otel_active` — bool. When true, the harness installs a
 #       SECOND exporter on the OTel global TracerProvider to verify that
 #       openarmature spans do NOT leak into it (fixture 005 isolation case).
+#     * `langfuse_client` — {mode: credentials | supplied, provider?}. Constructs
+#       the Langfuse observer's client for provider-isolation cases (proposal
+#       0115): credentials = the impl builds it from credentials; supplied = the
+#       harness builds it (on `provider`, default global) and hands it in. Uses
+#       the provider-faithful Langfuse fake (conformance-adapter §6.4); payload
+#       flags via the existing `langfuse_observer` block + the OTel §5.5.4 default.
 #   - Expected output:
 #     * `expected.span_tree` — hierarchical span structure with name,
 #       attributes (subset assertions), status, optional links, and children.
 #     * `expected.log_records` — for fixture 010, list of expected log
 #       records with attribute assertions.
-#     * `expected.no_global_provider_spans` — for fixture 005, asserts
+#     * `expected.no_openarmature_spans_on_global` — for fixture 005, asserts
 #       openarmature didn't emit through the global provider.
+#     * `expected.no_langfuse_observations_on_global` — for fixture 157, asserts
+#       no Langfuse observation leaked to the global provider.
+#     * `expected.no_langfuse_observations_on_private` — for fixture 157, asserts
+#       no Langfuse observation leaked to openarmature's own private OTel
+#       provider (the other forbidden shared-provider spelling).
+#     * `expected.langfuse_observations_on_global` — for fixture 157, asserts a
+#       Langfuse observation DID reach the global provider (mode-a non-mutation).
 #
 # Attribute placeholder strings:
 #   - `<uuid>` matches any canonical UUIDv4 (36 chars, hyphenated).

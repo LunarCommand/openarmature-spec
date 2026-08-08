@@ -4,6 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.109.0] — 2026-08-07
+
+**Added**
+
+- **Conformance test primitives for Langfuse provider isolation** ([proposal 0115](proposals/0115-langfuse-provider-isolation-conformance.md)). Gives observability §6's Langfuse provider-isolation MUSTs (proposal 0114) their conformance gate — which 0114 shipped without, because the Langfuse mock is content-only and could not model provider-topology leakage. conformance-adapter §5.5 gains a `langfuse_client` construction directive (`mode: credentials | supplied`, `provider`) and the `no_langfuse_observations_on_global` / `no_langfuse_observations_on_private` / `langfuse_observations_on_global` assertions; §6.4 gains a **provider-faithful** Langfuse fake that records observation content *and* emits it as OTel spans through its bound `TracerProvider`, so a leak to a shared provider is catchable. New observability fixture **157** (two cases) gates the mode-(b) MUST-isolate carve-out (no leak) and the mode-(a) MUST-NOT-mutate (leak present, tested by effect). Mirrors the OTel isolation pattern of fixture 005 (`caller_global_otel_active` / `no_openarmature_spans_on_global`). Resolves proposal 0114's Open question #1.
+
+**Notes**
+
+- **MINOR, additive.** New conformance-adapter directives plus one new observability fixture; no existing fixtures change. conformance-adapter `Latest` → 0.109.0; observability `Latest` → 0.109.0 (fixtures 156 → 157). The payload flags reuse the existing per-observer `langfuse_observer` convention rather than a new combined key.
+
 ## [0.108.0] — 2026-08-06
 
 **Changed**
