@@ -1842,19 +1842,68 @@ only to Langfuse — and when the Langfuse observer emits payloads (`disable_pro
 those exports carry full prompt and completion text into whatever backend the shared provider feeds. The
 obligations **track which party controls the provider** (the ownership mode of §8.9):
 
-- **Mode (b) — the implementation constructs the client.** The implementation owns the provider, so the
-  protection is enforceable from its own state, with no introspection of a foreign object. It **SHOULD**
-  construct the client on an **isolated** `TracerProvider` by default — a dedicated provider carrying only
-  the Langfuse span processor, not the global provider and not the provider openarmature uses for its own
-  OTel observer — so openarmature's observations reach only Langfuse. It **MAY** offer an opt-out to a
-  shared provider for callers who prefer a single provider (accepting the trade-off below); SHOULD-not-MUST,
-  because isolation is not free. **However**, the opt-out does **not** apply — the implementation **MUST**
-  construct the client on an isolated provider — when a composed OTel observer has `disable_provider_payload`
-  resolving to `True` (its §8.9 default, whether defaulted or set) while the Langfuse observer emits payloads
-  (`disable_provider_payload=False`): placing the client on a shared provider there would silently defeat the
-  OTel-side payload suppression, and the implementation controls the provider, so it MUST NOT. Both
-  conditions are the implementation's own configuration; because `True` is the OTel default, this carve-out
-  fires in the common case where a caller merely enables Langfuse payloads.
+- **Mode (b) — the implementation constructs the client (the payload-leak invariant).** When openarmature
+  constructs the client and the Langfuse observer emits payloads (`disable_provider_payload=False`),
+  openarmature's Langfuse observations carry full prompt and completion text. openarmature **MUST** ensure
+  those payloads do not reach a provider shared with the application or other instrumentation, **unless the
+  caller has explicitly accepted a shared provider** (below). The default mechanism is isolation: openarmature
+  **SHOULD** construct the client on an **isolated** `TracerProvider` — a dedicated provider carrying only the
+  Langfuse span processor, not the global provider and not the provider openarmature uses for its own OTel
+  observer.
+
+  Because the Langfuse v4 SDK maintains a process-wide client keyed by credential, constructing on a fresh
+  isolated provider takes effect only when openarmature is the **first** party to construct a client for that
+  credential; a later same-credential construction returns the cached client on its original provider and
+  discards the supplied provider. Where §8.9 has the same Langfuse configuration shared across an
+  implementation's Langfuse-consuming surfaces, openarmature **SHOULD** reuse one isolated provider per
+  credential, so a second surface resolves to that same isolated provider rather than a fresh one.
+
+  _The shared-provider opt-out (one switch)._ The caller **MAY** explicitly configure openarmature to accept
+  a shared provider for the Langfuse client — a single affirmative acknowledgment that openarmature may let
+  its payload-bearing Langfuse observations reach a shared provider (whether because the caller prefers a
+  single provider for trace-tree coherence, or because it accepts the leak when isolation cannot take).
+  openarmature **MUST** default to the protective behavior and **MUST NOT** treat a shared provider as
+  accepted implicitly.
+
+  _When the caller has accepted a shared provider (opted in):_ openarmature is **not** required to isolate the
+  client's provider (it **MAY** honor the caller's preference for a single shared provider); it **MUST NOT**
+  raise and **MUST NOT** suppress its payload on account of the provider; if its observations would (or might)
+  reach a shared provider it **MUST** emit a `WARNING`-level log record (§7) and proceed.
+
+  _Otherwise (not opted in):_ openarmature **SHOULD** determine whether the constructed client's observations
+  would reach a **shared / non-isolated provider** — any provider other than one openarmature itself
+  established as isolated for this credential (in particular the global provider). Establishing the binding
+  rests on **non-portable SDK internals with no cross-language guarantee** (the same fact that makes mode
+  (a)'s warn, below, a MAY), so *whether* an implementation can determine it is a property of the SDK surface
+  available to it, not a portable obligation. Where the check is performed it is decidable from openarmature's
+  own record of the providers it established; it is **not** an identity test against the provider supplied on
+  this call (a client the singleton bound to another isolated provider openarmature established for the same
+  credential satisfies the invariant and **MUST NOT** trigger a failure), and it does **not** require
+  enumerating a foreign provider's exporters.
+
+    - **It establishes that the observations would reach a shared provider** → openarmature **MUST raise** a
+      categorized error of category `langfuse_provider_isolation_unavailable` (below), **before** emitting any
+      payload-bearing observation to that provider, rather than proceed and silently leak.
+    - **It cannot establish the binding** (the SDK surface available to it exposes no way) → openarmature
+      **MUST NOT** raise; it **MUST** suppress its own Langfuse-side payload so no payload-bearing observation
+      can reach a shared provider, and **MUST** emit a `WARNING`-level log record (§7).
+    - **It establishes that the observations would *not* reach a shared provider** (the client is on an
+      openarmature-established isolated provider) → proceed normally.
+
+  The **portable guarantee** is that no payload-bearing observation reaches a shared provider: openarmature
+  **raises** where it can detect the leak and **suppresses** its own payload where it cannot. Implementations
+  MAY differ on the *surface* — a raised error versus a suppressed payload — according to what their SDK
+  exposes; both satisfy the invariant and neither leaks. An implementation **MUST NOT** silently
+  proceed-and-leak by declining a detection its SDK surface supports; the fallback is suppress, never leak.
+  The point at which the error surfaces (client construction or first use) is implementation-defined, but it
+  **MUST** precede any payload-bearing emission to the shared provider. The categorized error has category
+  `langfuse_provider_isolation_unavailable`; implementations **MUST** make it distinguishable by this category
+  so callers can catch it specifically.
+
+  _When the Langfuse observer does not emit payloads_ (`disable_provider_payload=True`), openarmature's
+  observations carry only metadata and span structure; a shared provider then duplicates only that (the same
+  duplication the private-provider rule above prevents for openarmature's own OTel spans). openarmature
+  **SHOULD** isolate and **MAY** warn, but **MUST NOT** raise.
 - **Mode (a) — the caller supplies the client.** The implementation does **not** control the provider and
   **MUST NOT** mutate the supplied client. It **MUST NOT** represent openarmature's private-provider
   isolation as covering the supplied client — the isolation guarantee of this subsection is bounded to
@@ -1866,16 +1915,23 @@ obligations **track which party controls the provider** (the ownership mode of �
   provider may rest on non-portable SDK internals with no cross-language guarantee. A client the caller has
   already isolated **MUST NOT** be warned about.
 
-**No hard failure.** A shared-provider client is a valid, if leaky, configuration; the implementation
-**MUST NOT** refuse the call or raise on any of the above.
+**No hard failure, except to prevent an unacknowledged payload leak.** A shared-provider client is a valid,
+if leaky, configuration; the implementation **MUST NOT** refuse the call or raise on the isolation decision —
+**except** the one case above: the Langfuse observer emits payloads, the caller has not accepted a shared
+provider, and openarmature establishes that its observations would reach one. There, and only there, it
+**MUST** raise `langfuse_provider_isolation_unavailable`. In every other case — mode (a), the no-payload case,
+an opted-in caller, or a binding openarmature cannot establish (which suppresses instead) — it **MUST NOT**
+raise.
 
 **The isolation trade-off.** Isolation is SHOULD-by-default in mode (b), not an unconditional MUST, because
 a separate `TracerProvider` still shares OTel *context*: a parent span on one provider can leave children on
 another orphaned (Langfuse documents this for a client bound to a separate `TracerProvider`). Whether to
-accept that trade-off is a caller decision (mode a) or a defaulted-but-overridable one (mode b, outside the
-payload-suppression case above); this section requires only that openarmature never silently present a
-shared-provider client as isolated, and that openarmature not defeat an OTel-side payload suppression (its
-§8.9 default or set) where it owns the client.
+accept that trade-off is a caller decision (mode a) or a single explicit opt-in (mode b). This section
+requires that openarmature never silently present a shared-provider client as isolated; that, where it owns
+the client and the Langfuse observer emits payloads, it not let those payloads reach a shared provider unless
+the caller has explicitly accepted one — raising where it establishes they would, suppressing its own payload
+where it cannot establish the binding; and that the portable guarantee across implementations is "no
+payload-bearing observation reaches a shared provider," met by raise where detectable and suppress where not.
 
 **Reflecting mid-invocation metadata augmentation on open spans.** §3.4 requires (MUST) that open
 spans in the augmenting async context pick up entries added mid-invocation by
@@ -3069,3 +3125,4 @@ spec:
 - §5.5.8 (OTel embedding span) `gen_ai.usage.input_tokens` and §8.4.5 (Langfuse embedding observation) `embedding.usageDetails.input` made **conditionally emitted** — present only when the provider reports a usage record, omitted for no-usage providers (e.g. TEI `/embed`) — tracking retrieval-provider §4's now-nullable `EmbeddingResponse.usage`; §5.5.13's rerank `input_tokens` guard rephrased record-aware and its stale "the embedding span, where `input_tokens` is always present" parenthetical corrected (both spans now emit conditionally); §8.4.7 (Langfuse rerank) `retriever.usageDetails.input` likewise record-aware. No change to §11 metrics or graph-engine §6 (already null-usage-aware). New fixtures 139–143 (OTel + Langfuse embedding and rerank no-usage spans/observations; embedding no-usage metric exercising §11's zero-token-observation branch) by [proposal 0093](../../proposals/0093-nullable-provider-usage-records.md)
 - LLM usage surfaces reconciled for a **not-reported counter** (llm-provider §7 *Malformed usage counter*): §5.5.3 `gen_ai.usage.input_tokens` moves from a per-*record* omit-guard to per-*field* (omit when the counter is null — record absent or the counter malformed/unreported), aligning it with the existing per-field `output_tokens` and `openarmature.llm.usage.*` guards; §11.2's token-usage histogram makes the LLM branch **per-counter** (a null counter records no observation for that token type, as the rerank branch already does); the §11.2 token-budget instruments and the §5.5.15 span signal **do not evaluate** a bound whose counter is not reported (no `utilization` observation, no `exceeded` increment — a comparison / ratio against a null is undefined, not `false` / `0`; the `total` bound follows §8.2's derived-total rule); and the §8.4.3 Langfuse `Generation` `usage` omits a counter that is not reported, as the `Embedding` / `Retriever` `usageDetails` already do. No attribute or observation is ever emitted from a null counter by [proposal 0101](../../proposals/0101-malformed-usage-counter-llm-observability.md)
 - §8.9 *Composition with OTel* gained a **Client ownership** contract requiring implementations to support both a caller-constructed Langfuse client and constructing the client from caller-supplied credentials (closing a cross-implementation divergence the section previously left open); §6 *Driving span lifecycle* extended the TracerProvider-isolation subsection to openarmature's **Langfuse observations** with obligations that track which party controls the provider — where the implementation constructs the client it SHOULD isolate the client's provider by default and MUST isolate where a shared provider would defeat an OTel-side `disable_provider_payload` suppression; where the caller supplies the client the implementation MUST NOT mutate or misrepresent it, SHOULD document the remedy, and MAY warn best-effort (reading a supplied client's provider is not portably guaranteed); the §6 rationale list's `Langfuse v3` example updated to `Langfuse v4`. No new fixtures — the contract concerns observer construction and provider wiring, outside the graph-run fixture vocabulary by [proposal 0114](../../proposals/0114-langfuse-client-provider-isolation.md)
+- §6 *Driving span lifecycle* replaced the mode-(b) Langfuse-isolation obligation with a **payload-leak invariant**: when the implementation constructs the client and the Langfuse observer emits payloads, openarmature **MUST** keep them off a provider shared with the application — isolate (SHOULD, the default), **raise** `langfuse_provider_isolation_unavailable` where it establishes the observations would reach a shared provider, or **suppress** its own Langfuse-side payload where it cannot establish the binding (best-effort detection, since reading the client's bound provider rests on non-portable SDK internals with no cross-language guarantee — the same fact that makes the mode-(a) warn a MAY), with a single explicit caller opt-out to accept a shared provider. The detection keys on the leak condition (a provider not among those openarmature established as isolated), not on identity with the provider supplied on a given call. Defines the `langfuse_provider_isolation_unavailable` error category, carves the *No hard failure* rule for the one detected-leak / not-opted-in case, and rewords the *isolation trade-off* paragraph. New fixture **158** gates the raise (on adapters declaring bound-provider detection) and the suppress floor (on adapters without it) and the opt-out path. Closes the Langfuse-SDK per-credential-singleton gap that could silently defeat 0114's mode-(b) isolation by [proposal 0116](../../proposals/0116-langfuse-isolation-fail-loud.md)

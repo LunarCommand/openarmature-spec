@@ -1,8 +1,9 @@
 # 0116: Fail-Closed When Langfuse Payloads Would Reach a Shared Provider
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-07
+- **Accepted:** 2026-08-08
 - **Targets:**
   - spec/observability/spec.md **§6 Driving span lifecycle** — replace the **entire mode-(b) bullet body** of
     the *Isolation for openarmature's Langfuse observations* subsection (its SHOULD-isolate default, its

@@ -1,0 +1,222 @@
+# Langfuse payload-leak invariant — fail-closed / suppress / opt-out (observability
+# §6, proposal 0116). When openarmature constructs the Langfuse client (mode b) and
+# the Langfuse observer emits payloads, those payloads MUST NOT reach a provider
+# shared with the application unless the caller has explicitly accepted a shared
+# provider. Here a same-credential Langfuse client is primed BEFORE openarmature
+# constructs, so the SDK's per-credential singleton hands openarmature the cached
+# client on the global provider and its own isolated provider is discarded — the
+# leak condition. openarmature's response depends on whether it can establish the
+# binding (best-effort, non-portable) and on the caller opt-out.
+#
+# Harness contract additions (conformance-adapter §5.5 / §6.4, proposal 0116):
+#   - langfuse_client: {preexisting_same_key_client: true} — the harness constructs a
+#     same-credential client first (bound to the global provider, per the
+#     provider-faithful default), priming the singleton so openarmature is not first.
+#   - langfuse_client: {accept_shared_provider: <bool>} — the single shared-provider
+#     caller opt-out on openarmature's Langfuse observer construction.
+#   - requires_capability: {langfuse_bound_provider_detection: <bool>} — the case is
+#     asserted only against adapters whose declared adapter_capabilities match. Raise
+#     cases require detection; the suppress case requires its absence; the opt-out
+#     case applies to all.
+#   - expected_construction_error: {category} — asserts the case raises the categorized
+#     error at observer/client construction or first use.
+#   - expected.no_payload_bearing_langfuse_observations_on_global /
+#     expected.payload_bearing_langfuse_observations_on_global — payload-scoped leak
+#     assertions (the §6.4 fake distinguishes a payload-bearing observation from a
+#     payload-free one).
+#   - expected.log_records[].level — asserts the diagnostic's OTel severity.
+#
+# All cases: mode credentials, Langfuse observer emits payload
+# (disable_provider_payload false), a same-credential client pre-exists on the global
+# provider, and caller_global_otel_active installs a global exporter to catch leaks.
+
+cases:
+  - name: singleton_preexists_raises
+    description: |
+      Detection-capable adapter, no opt-out. A same-credential Langfuse client
+      already exists on the global provider, so openarmature's fresh isolated
+      provider is discarded (the singleton returns the cached client). The OTel
+      observer suppresses payload (its §5.5.4 default True) while the Langfuse
+      observer emits it. openarmature establishes that its payload-bearing
+      observations would reach the global (shared) provider and MUST raise
+      langfuse_provider_isolation_unavailable before emitting any payload-bearing
+      observation there — rather than proceed and silently leak.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-158a
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    requires_capability:
+      langfuse_bound_provider_detection: true
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    langfuse_observer:
+      disable_provider_payload: false
+    caller_global_otel_active: true
+    # Fail-closed: the categorized error is raised at construction / first use.
+    # Top-level (sibling of `expected:`), like expected_compile_error.
+    expected_construction_error:
+      category: langfuse_provider_isolation_unavailable
+    expected:
+      # Load-bearing: no payload-bearing Langfuse observation reached the shared
+      # provider before the raise (a metadata-only span may, and does not violate
+      # the payload invariant).
+      no_payload_bearing_langfuse_observations_on_global: true
+
+  - name: singleton_preexists_raises_otel_not_suppressing
+    description: |
+      Same as above (detection-capable, no opt-out, same-credential client
+      pre-exists) but the OTel observer does NOT suppress payload
+      (disable_provider_payload false on the OTel side too). Under the former
+      OTel-suppression-specific carve-out this would NOT fire — there is no OTel
+      suppression to defeat. Under the payload-leak invariant it still MUST raise:
+      the trigger is the Langfuse payload reaching a shared provider, independent
+      of any composed OTel observer's setting.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-158b
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hey"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    requires_capability:
+      langfuse_bound_provider_detection: true
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    disable_provider_payload: false  # OTel side ALSO emits payload — no suppression to "defeat"
+    langfuse_observer:
+      disable_provider_payload: false
+    caller_global_otel_active: true
+    expected_construction_error:
+      category: langfuse_provider_isolation_unavailable
+    expected:
+      no_payload_bearing_langfuse_observations_on_global: true
+
+  - name: singleton_preexists_suppresses
+    description: |
+      Non-detection-capable adapter (its SDK surface exposes no way to establish
+      the client's bound provider), no opt-out. openarmature cannot confirm the
+      leak, so it MUST NOT raise; instead it suppresses its own Langfuse-side
+      payload (fail-safe) so no payload-bearing observation can reach the shared
+      provider, and MUST emit a WARNING. The observation still flows to the global
+      provider through the (primed) client, but payload-free — the observable
+      proof of suppression. This is the portable floor.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-158c
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "howdy"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    requires_capability:
+      langfuse_bound_provider_detection: false
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    langfuse_observer:
+      disable_provider_payload: false
+    caller_global_otel_active: true
+    expected:
+      # Fail-safe: no raise, but no payload reaches the shared provider.
+      langfuse_observations_on_global: true            # the observation reaches global...
+      no_payload_bearing_langfuse_observations_on_global: true  # ...but payload-free (suppressed)
+      log_records:
+        - level: WARNING
+
+  - name: singleton_preexists_optout_proceeds
+    description: |
+      Any adapter, caller opted in (accept_shared_provider true). The caller has
+      explicitly accepted a shared provider, so openarmature MUST NOT raise and
+      MUST NOT suppress — it emits a WARNING and proceeds. The Generation
+      observation reaches the global provider WITH payload: the acknowledged leak
+      the caller signed off on.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-158d
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hi there"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: true
+    langfuse_observer:
+      disable_provider_payload: false
+    caller_global_otel_active: true
+    expected:
+      # Acknowledged leak by effect: a payload-bearing observation reaches global.
+      payload_bearing_langfuse_observations_on_global: true
+      log_records:
+        - level: WARNING

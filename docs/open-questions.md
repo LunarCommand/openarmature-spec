@@ -880,7 +880,13 @@ short-horizon roadmap below.
   provider-faithful Langfuse fake, and observability fixture 157 gates the mode-(b) MUST-isolate
   carve-out and the mode-(a) MUST-NOT-mutate (by effect). The payload flags reuse the existing
   per-observer `langfuse_observer` convention. The mode-(b) SHOULD-default and mode-(a) SHOULD/MAY
-  remain unfixtured by design (SHOULD indeterminacy).
+  remain unfixtured by design (SHOULD indeterminacy). **Extended by 0116** (v0.110.0): the reframed §6
+  payload-leak invariant added the `preexisting_same_key_client` / `accept_shared_provider` directives, the
+  `langfuse_bound_provider_detection` adapter capability with a per-case `requires_capability` gate, a
+  setup-scope `expected_construction_error` assertion, payload-scoped leak assertions, and a
+  `log_records[].level` key; fixture 158 now gates the raise (capability-gated), suppress-floor, and opt-out
+  arms, so the mode-(b) obligation is conformance-gated on both floors. Still unmodeled: a *real* runtime
+  binding-hiding SDK — the non-capable-adapter declaration is the harness's portable proxy for it.
 
 ---
 

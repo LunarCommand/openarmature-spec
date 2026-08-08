@@ -30,10 +30,11 @@ cases:
       credentials, so it owns the provider. The OTel observer suppresses
       provider payload (disable_provider_payload True, the §5.5.4 default)
       while the Langfuse observer emits it (disable_provider_payload False) —
-      the §6 mode-(b) MUST-isolate carve-out. The implementation MUST build the
-      client on an isolated TracerProvider, so its Generation observation does
-      NOT reach the caller's global provider. Non-vacuity: the Generation IS
-      recorded; the load-bearing check: NONE reached the global exporter.
+      the §6 payload-leak invariant's isolate-by-default path. openarmature
+      constructs first (no pre-existing same-credential client), so its isolated
+      TracerProvider takes effect and its Generation observation does NOT reach
+      the caller's global provider. Non-vacuity: the Generation IS recorded; the
+      load-bearing check: NONE reached the global exporter.
     state:
       fields:
         msg:
@@ -57,8 +58,16 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
           usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    # Detection-capable only: the payload-present outcome below requires the impl to
+    # CONFIRM its client is on an isolated provider (§6). A non-detection-capable
+    # adapter cannot establish the binding, so §6 has it suppress its own payload even
+    # here (over-suppression is the fail-safe cost) — its suppress-floor behavior is
+    # gated by fixture 158 singleton_preexists_suppresses instead.
+    requires_capability:
+      langfuse_bound_provider_detection: true
     langfuse_client:
       mode: credentials
+      preexisting_same_key_client: false  # openarmature constructs first, so isolation takes effect
     langfuse_observer:
       disable_provider_payload: false
     caller_global_otel_active: true
@@ -74,7 +83,7 @@ cases:
                 name: "openarmature.llm.complete"
                 output: "hello"
                 children: []
-      # Load-bearing MUST-isolate check: no Langfuse observation reached the
+      # Load-bearing no-leak check: no Langfuse observation reached the
       # caller's global provider NOR openarmature's own OTel provider — the two
       # shared-provider spellings §6 forbids — so the client was built on a
       # dedicated isolated provider.
