@@ -4,6 +4,20 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.111.0] — 2026-08-08
+
+**Changed**
+
+- **Broaden the Langfuse payload-leak invariant to all harvested-payload channels** ([proposal 0117](proposals/0117-payload-leak-invariant-channels.md)). 0116's mode-(b) payload-leak invariant (observability §6) guarded only the provider-payload channel. A systematic sweep of openarmature's Langfuse observation surface found two more channels through which openarmature emits payload it *harvested* from the runtime: the Trace-level **state payload** (Trace `input` / `output` carrying application state — `disable_state_payload` plus the `trace_*_from_state` hooks, §8.4.1), and the **error message** on failed **Tool / Embedding / Retriever** observations (`error_type` / `error_message` in `observation.metadata`, §8.4.5–§8.4.7, gated by no privacy knob). §6 now covers all three channels: the raise / suppress / opt-out arms cover the construction-determinable provider and state channels, while the error-message channel is handled by a **per-emission omission** (omitted, category only, to a provider openarmature has not established is isolated — a failed Tool observation has no error category, so nothing message-derived is surfaced). A scoping clause **exempts** the caller-attached identity/correlation dimensions (`correlation_id`, `session_id`, the promoted `userId`, trace name, arbitrary caller metadata) — opaque cross-backend join keys the caller owns (§2). The §6 subsection lead-in, *No hard failure* block, and *isolation trade-off* paragraph are reconciled to the broadened framing, and the now-false "only metadata and span structure" clause fixed.
+
+**Added**
+
+- observability §8.4 reconciliation: §8.4.1 cross-references the Trace state channel to §6; a new §8.4.2 `error_type` / `error_message` → `observation.metadata` row (in-cell-scoped to the failed Tool / Embedding / Retriever observations); the §8.4 header and §8.4.5 / §8.4.6 / §8.4.7 failure sentences are qualified "subject to §6's error-message rule." conformance-adapter §5.5 / §6.4 broaden the **payload-bearing** classification (and the provider-faithful fake's distinction) to the state payload and a failed observation's `error_type` / `error_message`. Observability fixture **158** gains five cases: `state_channel_preexists_raises`, `hook_preexists_raises`, `error_message_omitted_on_shared`, `state_channel_preexists_suppresses`, `hook_preexists_suppresses`.
+
+**Notes**
+
+- **MINOR.** Broadens 0116/0043's obligations and adds fixture cases; no new conformance directives (the state-channel and mock-failure controls exist since proposals 0043 / 0107) and no existing fixtures change their assertions. observability & conformance-adapter `Latest` → 0.111.0 (fixtures unchanged at 158, five new cases). `Related: 0116, 0043` (not Supersedes — 0116's ownership model, isolation machinery, opt-out, and error category all still govern). Surfaced downstream (python's adversarial review of the 0116 impl) and refined through a systematic channel-enumeration sweep + adversarial + PR review.
+
 ## [0.110.0] — 2026-08-08
 
 **Changed**

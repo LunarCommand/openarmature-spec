@@ -1,8 +1,9 @@
 # 0117: Broaden the Langfuse Payload-Leak Invariant to All Harvested-Payload Channels
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-08
+- **Accepted:** 2026-08-08
 - **Targets:**
   - spec/observability/spec.md **§6 Driving span lifecycle** — broaden proposal 0116's mode-(b) payload-leak
     invariant so it covers **every channel through which openarmature emits payload it *harvested* from the

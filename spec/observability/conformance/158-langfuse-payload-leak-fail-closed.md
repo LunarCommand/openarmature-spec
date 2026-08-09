@@ -1,16 +1,18 @@
 # 158 — Langfuse Payload-Leak Invariant (fail-closed / suppress / opt-out)
 
-Gates observability §6's mode-(b) **payload-leak invariant** (proposal 0116): when openarmature constructs
-the Langfuse client and the Langfuse observer emits payloads, those payloads MUST NOT reach a provider shared
-with the application unless the caller has explicitly accepted a shared provider. Each case primes a
+Gates observability §6's mode-(b) **payload-leak invariant** (proposals 0116, 0117): when openarmature
+constructs the Langfuse client and would emit payload it harvested from the runtime — provider payload, the
+Trace-level state payload, or a failed observation's error message — that payload MUST NOT reach a provider
+shared with the application unless the caller has explicitly accepted a shared provider. Each case primes a
 same-credential Langfuse client on the global provider *before* openarmature constructs, so the Langfuse v4
 SDK's per-credential singleton hands openarmature the cached client and discards its isolated provider — the
 leak condition. openarmature's response depends on whether it can establish the binding (best-effort, since
 that introspection rests on non-portable SDK internals) and on the caller opt-out.
 
-The Langfuse client is the provider-faithful fake of conformance-adapter §6.4, extended for 0116 with
+The Langfuse client is the provider-faithful fake of conformance-adapter §6.4, extended for 0116/0117 with
 per-credential-singleton semantics, a bound-provider accessor, and a payload-bearing vs. payload-free
-distinction.
+distinction (payload-bearing = provider payload, Trace-level state payload, **or** a failed observation's
+`error_type` / `error_message`; payload-free = the §8.4.1 minimal stub or a category-only failed observation).
 
 **Spec sections exercised:**
 
@@ -25,9 +27,14 @@ distinction.
   provider (the acknowledged leak).
 - The widened trigger — the raise keys on the Langfuse payload reaching a shared provider, **independent** of
   any composed OTel observer's suppression setting.
+- §6 **harvested-payload channels** (proposal 0117) — the invariant covers the provider payload, the
+  Trace-level **state payload** (`disable_state_payload` or a `trace_*_from_state` hook), **and** a failed
+  Tool / Embedding / Retriever observation's **error message** (a per-emission omission — category only). The
+  caller-attached dimensions (`correlation_id` / `session_id` / `userId` / trace name / metadata) are exempt.
 
-**Cases** (all: `mode: credentials`, `preexisting_same_key_client: true`, Langfuse observer emits payload,
-`caller_global_otel_active: true`):
+**Cases** (all: `mode: credentials`, `preexisting_same_key_client: true`, `caller_global_otel_active: true`;
+the 0116 group emits the provider payload, the 0117 group the state / error-message channels with the
+provider payload off):
 
 - `singleton_preexists_raises` *(detection-capable adapters)* — OTel observer suppressing (its default), no
   opt-out; asserts `expected_construction_error: {category: langfuse_provider_isolation_unavailable}` **and**
@@ -48,7 +55,38 @@ distinction.
   suppress; a **payload-bearing** observation reaches the global provider
   (`payload_bearing_langfuse_observations_on_global`) with a `WARNING` log record — the acknowledged leak.
 
+*Proposal 0117 cases — the state and error-message channels (provider payload off):*
+
+- `state_channel_preexists_raises` *(detection-capable)* — provider off, state on
+  (`disable_state_payload: false`), no opt-out → raises (`expected_construction_error` +
+  `no_payload_bearing_langfuse_observations_on_global`). The trigger fires on the state channel alone.
+- `hook_preexists_raises` *(detection-capable)* — both knobs default but a `trace_input_from_state` hook
+  supplied, no opt-out → raises. A supplied hook triggers under the full default posture (§8.4.1 lever 1).
+- `error_message_omitted_on_shared` *(all adapters)* — locked down (no provider/state payload), a
+  `mock_rerank` failure, no opt-out → does **not** raise; the failed Retriever observation reaches the global
+  provider (`langfuse_observations_on_global`) but with `error_type` / `error_message` omitted
+  (`no_payload_bearing_langfuse_observations_on_global`) — the category / statusMessage, not payload, is
+  retained. The non-vacuity pair distinguishes message-omission from whole-observation suppression. The
+  rerank failure itself propagates as `expected_error: provider_unavailable` (this is *not* the isolation
+  raise — the app is locked down).
+- `state_channel_preexists_suppresses` *(non-detection-capable)* — state on, no opt-out → does not raise; the
+  Trace reaches the global provider as the §8.4.1 minimal stub (`no_payload_bearing_langfuse_observations_on
+  _global`) with a `WARNING`. Portable suppress floor for the state channel.
+- `hook_preexists_suppresses` *(non-detection-capable)* — a `trace_output_from_state` hook supplied
+  (exercising the output-hook spelling; `hook_preexists_raises` uses the input hook, so both §8.4.1 hooks are
+  covered), no opt-out → does not raise; the Trace reaches the global provider as the stub — the hook is
+  **not** applied — with a `WARNING`. Gates the suppress arm's hook-drop half (the raising hook case never
+  reaches rendering).
+
 The *cannot-determine* arm is modeled by a non-detection-capable adapter (`singleton_preexists_suppresses`)
 rather than by simulating a real binding-hiding SDK at runtime; the capability declaration is the harness's
 portable proxy for that condition, consistent with 0114/0115 treating bound-provider introspection as
 non-portable.
+
+**Unfixtured corollary.** §6's Tool anti-smuggling clause — a failed **Tool** observation (which has no error
+category, §5.5.12) MUST NOT surface the exception message through `observation.statusMessage` as a substitute
+for the omitted `error_message` — is not independently gated here: the §6.4 fake's payload-bearing predicate
+inspects provider I/O, state I/O, and `error_type` / `error_message`, not `statusMessage`, so a
+statusMessage-smuggled message would classify payload-free. Detecting it would require a new fake capability;
+the clause ships as an honest-but-unfixtured corollary of the error-message rule (the rerank case
+`error_message_omitted_on_shared` gates that rule for the has-category path).
