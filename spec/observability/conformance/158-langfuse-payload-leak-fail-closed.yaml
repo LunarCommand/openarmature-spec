@@ -437,7 +437,7 @@ cases:
 
   - name: hook_preexists_suppresses
     description: |
-      Non-detection-capable adapter, no opt-out, a trace_OUTPUT_from_state hook
+      Non-detection-capable adapter, no opt-out, a trace_output_from_state hook
       supplied (knobs default) — exercising the output-hook spelling
       (hook_preexists_raises uses the input hook, so both §8.4.1 hooks are
       covered). openarmature cannot establish the binding, so it suppresses —

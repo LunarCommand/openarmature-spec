@@ -1839,7 +1839,7 @@ observations** are emitted instead through the Langfuse client's `TracerProvider
 client binds to the **global** provider by default. When that provider is shared with the application or
 other instrumentation, openarmature's Langfuse observations are exported to every span processor on it, not
 only to Langfuse. Those exports carry openarmature's **harvested payload** — full prompt and completion text
-(`disable_provider_payload=False`, §8.9), the Trace-level application-state payload (§8.4.1), and a failed
+(`disable_provider_payload=False`, §5.5.4), the Trace-level application-state payload (§8.4.1), and a failed
 observation's exception message (§8.4.5–§8.4.7) — into whatever backend the shared provider feeds. The
 obligations **track which party controls the provider** (the ownership mode of §8.9):
 

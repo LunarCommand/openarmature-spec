@@ -70,8 +70,9 @@ provider payload off):
   rerank failure itself propagates as `expected_error: provider_unavailable` (this is *not* the isolation
   raise — the app is locked down).
 - `state_channel_preexists_suppresses` *(non-detection-capable)* — state on, no opt-out → does not raise; the
-  Trace reaches the global provider as the §8.4.1 minimal stub (`no_payload_bearing_langfuse_observations_on
-  _global`) with a `WARNING`. Portable suppress floor for the state channel.
+  Trace reaches the global provider as the §8.4.1 minimal stub
+  (`no_payload_bearing_langfuse_observations_on_global`) with a `WARNING`. Portable suppress floor for the
+  state channel.
 - `hook_preexists_suppresses` *(non-detection-capable)* — a `trace_output_from_state` hook supplied
   (exercising the output-hook spelling; `hook_preexists_raises` uses the input hook, so both §8.4.1 hooks are
   covered), no opt-out → does not raise; the Trace reaches the global provider as the stub — the hook is
