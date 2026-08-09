@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0118](proposals/0118-llm-error-message-channel.md) | Draft | observability §6 / §8.4 / §8.4.2 / §8.4.3, fixtures 158–159 | Add the failed LLM Generation to the payload-leak invariant's error-message channel (the last mapped provider observation), and state the exhaustive-mapping rule that closes the surface — harvested content the §8.4.x tables don't map is over-emission, not a gated channel (resolving a fifth site, the failure-isolation marker) |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
