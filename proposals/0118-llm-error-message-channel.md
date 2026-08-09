@@ -278,7 +278,7 @@ directive.
 
 ## Alternatives considered
 
-1. **Keep the Generation excluded; drop the implementation's `metadata["error_message"]` emission.** Rejected:
+1. **Keep the Generation excluded; drop the implementation's ungated `error_message` emission into `observation.metadata`.** Rejected:
    it leaves the Langfuse Generation showing only a category on failure while the sibling Tool / Embedding /
    Retriever failures show a gated message — an inconsistency with no principled basis. The error message is
    harvested payload by 0117's principle; the right move is to gate it (emit where isolated, omit where it
@@ -296,7 +296,7 @@ directive.
    provider. The four provider observations (Generation / Embedding / Tool / Retriever) are the
    harvested-provider-payload surfaces; a mechanism span is the graph-engine's own category surface.
 4. **Gate the failure-isolation marker's `error_message` as a fifth *gated* channel** (parity with the four
-   provider observations — python's initial lean). Rejected in favor of the exhaustive-mapping rule: the
+   provider observations). Rejected in favor of the exhaustive-mapping rule: the
    marker is a graph-mechanism span, the sibling of the node `Span` (category-only), not a provider
    observation. Treating it like one would (a) make an *isolated* node failure show *more* detail in Langfuse
    than an ordinary node failure (which is category-only), and (b) keep the leak-prone per-emission burden
