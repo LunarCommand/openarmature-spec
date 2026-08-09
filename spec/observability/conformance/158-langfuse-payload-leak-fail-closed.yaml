@@ -26,9 +26,15 @@
 #     payload-free one).
 #   - expected.log_records[].level — asserts the diagnostic's OTel severity.
 #
-# All cases: mode credentials, Langfuse observer emits payload
-# (disable_provider_payload false), a same-credential client pre-exists on the global
+# The 0116 cases (first group) have the Langfuse observer emit the PROVIDER payload
+# (disable_provider_payload false). The proposal-0117 cases (second group) add the
+# STATE channel (langfuse_observer.disable_state_payload false, or a
+# trace_input_from_state hook — proposal 0043 / fixture 037) and the ERROR-MESSAGE
+# channel (a mock_rerank failure — proposal 0107 / fixture 151), with the provider
+# payload OFF, to gate those harvested channels independently; no new directive.
+# All cases: mode credentials, a same-credential client pre-exists on the global
 # provider, and caller_global_otel_active installs a global exporter to catch leaks.
+# A case with no requires_capability applies to all adapters.
 
 cases:
   - name: singleton_preexists_raises
@@ -218,5 +224,326 @@ cases:
     expected:
       # Acknowledged leak by effect: a payload-bearing observation reaches global.
       payload_bearing_langfuse_observations_on_global: true
+      log_records:
+        - level: WARNING
+
+  # ---- proposal 0117: the state and error-message harvested channels ----
+
+  - name: state_channel_preexists_raises
+    description: |
+      Detection-capable adapter, no opt-out. The provider payload is OFF
+      (disable_provider_payload true) but the STATE payload is ON
+      (disable_state_payload false) — the Trace input/output carries raw
+      application state. openarmature establishes the state payload would reach
+      the shared (primed) provider and MUST raise. Proves the trigger fires on
+      the state channel ALONE, independent of the provider payload.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-158e
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    requires_capability:
+      langfuse_bound_provider_detection: true
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    langfuse_observer:
+      disable_provider_payload: true    # provider channel OFF
+      disable_state_payload: false      # state channel ON — the only live channel
+    caller_global_otel_active: true
+    expected_construction_error:
+      category: langfuse_provider_isolation_unavailable
+    expected:
+      no_payload_bearing_langfuse_observations_on_global: true
+
+  - name: hook_preexists_raises
+    description: |
+      Detection-capable adapter, no opt-out. BOTH payload knobs at their default
+      (disable_provider_payload true, disable_state_payload true) — but a
+      trace_input_from_state hook is supplied. Per §8.4.1 a supplied hook emits
+      regardless of the knob, so the state channel is potentially live and
+      openarmature MUST raise. Proves a supplied hook triggers under the full
+      default privacy posture.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-158f
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hey"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    requires_capability:
+      langfuse_bound_provider_detection: true
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    langfuse_observer:
+      disable_provider_payload: true
+      disable_state_payload: true       # knobs default/off ...
+      trace_input_from_state: returns_job_input_summary   # ... but a hook is supplied
+    caller_global_otel_active: true
+    expected_construction_error:
+      category: langfuse_provider_isolation_unavailable
+    expected:
+      no_payload_bearing_langfuse_observations_on_global: true
+
+  - name: error_message_omitted_on_shared
+    description: |
+      ALL adapters (ungated — the omission outcome is identical for detected-shared
+      and cannot-establish). Both payload knobs default/off (no provider or state
+      payload), so no construction-time channel is live and openarmature does NOT
+      raise (locked down). A rerank call then FAILS: the Retriever observation
+      would carry error_type / error_message. Per §6's error-message rule
+      openarmature omits them to the shared (primed) provider — the observation
+      still reaches the global provider (proving it is not wholly dropped) but
+      payload-free (error message omitted); the error category / statusMessage,
+      which is not payload, is retained. Gates the per-emission omission and the
+      "no raise on a locked-down app that merely fails" behavior.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "paris"
+          documents: ["doc one", "doc two"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    mock_rerank:
+      - status: 503
+        raises:
+          error_type: "ServiceUnavailableError"
+          message: "the rerank endpoint returned 503"
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    langfuse_observer:
+      disable_provider_payload: true
+    caller_global_otel_active: true
+    # The rerank failure propagates as the invocation error (as in fixture 151);
+    # this is NOT the isolation raise (locked down → no expected_construction_error).
+    expected_error:
+      category: provider_unavailable
+      raised_from: rerank_node
+    expected:
+      # Non-vacuity trio (proposal 0117): the failed Retriever observation is present
+      # and ERROR-level with its error CATEGORY retained — distinguishing per-message
+      # omission from category-drop and from whole-observation drop.
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "rerank_node"
+            children:
+              - type: retriever
+                name: "openarmature.rerank.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"   # category retained (not payload)
+                input: null
+                output: null
+                children: []
+      # The failed Retriever DID reach the global provider (not wholly dropped) ...
+      langfuse_observations_on_global: true
+      # ... but payload-free — error_type / error_message omitted per §6's rule.
+      no_payload_bearing_langfuse_observations_on_global: true
+
+  - name: tool_failure_omitted_on_shared
+    description: |
+      ALL adapters. Locked down (no provider/state payload), a tool call FAILS.
+      A ToolCallFailedEvent carries error_type / error_message but NO error
+      category (§5.5.12). Per §6's error-message rule and its Tool anti-smuggling
+      clause, openarmature omits error_type / error_message to the shared (primed)
+      provider AND MUST NOT surface the message through statusMessage as a
+      substitute — a Tool failure has no category, so statusMessage carries
+      nothing. The Tool observation reaches the global provider at ERROR but
+      payload-free (identity metadata retained), with statusMessage null: an impl
+      copying the exception into statusMessage fails the statusMessage: null
+      assertion, and one leaving error_message in metadata fails
+      no_payload_bearing. Does NOT raise the isolation error (locked down); the
+      tool failure itself propagates as node_exception.
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_def456"
+          arguments: {city: "Paris"}
+          mock_tool: {raises: {error_type: "TimeoutError", message: "tool timed out"}}
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    langfuse_observer:
+      disable_provider_payload: true
+    caller_global_otel_active: true
+    # The tool failure propagates as the invocation error (as in fixture 093/098);
+    # this is NOT the isolation raise (locked down).
+    expected_error:
+      category: node_exception
+      raised_from: run_tool
+    expected:
+      # Anti-smuggling: the Tool observation is present at ERROR with its identity
+      # metadata, but statusMessage carries NO message-derived text (a Tool
+      # failure has no category, and the exception message MUST NOT be smuggled
+      # here) and error_type / error_message are omitted from metadata.
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "run_tool"
+            children:
+              - type: tool
+                name: "openarmature.tool.call"
+                level: ERROR
+                statusMessage: null
+                metadata:
+                  openarmature_tool_name: "get_weather"
+                  openarmature_tool_call_id: "call_def456"
+                children: []
+      langfuse_observations_on_global: true
+      no_payload_bearing_langfuse_observations_on_global: true
+
+  - name: state_channel_preexists_suppresses
+    description: |
+      Non-detection-capable adapter, no opt-out. The state channel is ON
+      (disable_state_payload false). openarmature cannot establish the binding, so
+      it MUST NOT raise; it suppresses ALL harvested channels — forcing the §8.4.1
+      minimal stub for the Trace — and warns. The Trace reaches the global provider
+      but payload-free (the stub). Portable suppress floor for the state channel.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-158g
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "howdy"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    requires_capability:
+      langfuse_bound_provider_detection: false
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    langfuse_observer:
+      disable_provider_payload: true
+      disable_state_payload: false      # state channel ON — suppressed to the stub
+    caller_global_otel_active: true
+    expected:
+      langfuse_observations_on_global: true
+      no_payload_bearing_langfuse_observations_on_global: true
+      log_records:
+        - level: WARNING
+
+  - name: hook_preexists_suppresses
+    description: |
+      Non-detection-capable adapter, no opt-out, a trace_output_from_state hook
+      supplied (knobs default) — exercising the output-hook spelling
+      (hook_preexists_raises uses the input hook, so both §8.4.1 hooks are
+      covered). openarmature cannot establish the binding, so it suppresses —
+      forcing the §8.4.1 minimal stub, which means the hook is NOT applied. The
+      Trace reaches the global provider as the stub (payload-free), with a
+      WARNING. Gates the suppress arm's hook-drop half: the hook_preexists_raises
+      case raises before rendering, so it never exercises suppression of a
+      supplied hook.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-158h
+          object: chat.completion
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hi there"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    requires_capability:
+      langfuse_bound_provider_detection: false
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    langfuse_observer:
+      disable_provider_payload: true
+      disable_state_payload: true
+      trace_output_from_state: returns_job_output_summary   # output-hook supplied — suppressed to the stub
+    caller_global_otel_active: true
+    expected:
+      langfuse_observations_on_global: true
+      no_payload_bearing_langfuse_observations_on_global: true
       log_records:
         - level: WARNING

@@ -1838,18 +1838,37 @@ the spans openarmature emits **directly** through its own OTel observer. openarm
 observations** are emitted instead through the Langfuse client's `TracerProvider` (§8), which a Langfuse v4
 client binds to the **global** provider by default. When that provider is shared with the application or
 other instrumentation, openarmature's Langfuse observations are exported to every span processor on it, not
-only to Langfuse — and when the Langfuse observer emits payloads (`disable_provider_payload=False`, §8.9),
-those exports carry full prompt and completion text into whatever backend the shared provider feeds. The
+only to Langfuse. Those exports carry openarmature's **harvested payload** — full prompt and completion text
+(`disable_provider_payload=False`, §5.5.4), the Trace-level application-state payload (§8.4.1), and a failed
+observation's exception message (§8.4.5–§8.4.7) — into whatever backend the shared provider feeds. The
 obligations **track which party controls the provider** (the ownership mode of §8.9):
 
 - **Mode (b) — the implementation constructs the client (the payload-leak invariant).** When openarmature
-  constructs the client and the Langfuse observer emits payloads (`disable_provider_payload=False`),
-  openarmature's Langfuse observations carry full prompt and completion text. openarmature **MUST** ensure
-  those payloads do not reach a provider shared with the application or other instrumentation, **unless the
-  caller has explicitly accepted a shared provider** (below). The default mechanism is isolation: openarmature
-  **SHOULD** construct the client on an **isolated** `TracerProvider` — a dedicated provider carrying only the
-  Langfuse span processor, not the global provider and not the provider openarmature uses for its own OTel
-  observer.
+  constructs the client and would emit a **payload it harvested from the runtime**, openarmature **MUST**
+  ensure that payload does not reach a provider shared with the application or other instrumentation, **unless
+  the caller has explicitly accepted a shared provider** (below). openarmature's harvested-payload channels
+  are:
+
+    - the **provider payload** — Generation / Embedding / Tool / Retriever `input` / `output` (prompts,
+      completions, embedding inputs, tool arguments / results, rerank query / documents), live when
+      `disable_provider_payload=False` (§5.5.4);
+    - the **state payload** — Trace-level `input` / `output` carrying application state (§8.4.1), live when
+      `disable_state_payload=False`, **or** when a `trace_input_from_state` / `trace_output_from_state` hook is
+      supplied (a supplied hook may emit regardless of the knob per §8.4.1's decision tree, so a supplied hook
+      is treated as potentially payload-bearing); and
+    - the **error message** — `error_message` (and `error_type`) on a failed Embedding / Tool / Retriever
+      observation (§8.4.5 / §8.4.6 / §8.4.7), governed by the per-emission error-message rule below.
+
+  **Out of scope — caller-attached dimensions.** The caller-supplied identity/correlation dimensions and tags
+  openarmature carries — `correlation_id`, `session_id`, the promoted `userId`, the trace name, and arbitrary
+  caller-supplied invocation metadata (§3.4, §8.4.1 / §8.4.2) — are **not** harvested payload and are **not**
+  subject to this invariant. The caller deliberately attaches them as observability dimensions, they are
+  opaque join keys **cross-backend by design** (§2), and the caller owns their content; openarmature **MUST
+  NOT** suppress or refuse on account of them.
+
+  The default mechanism is isolation: openarmature **SHOULD** construct the client on an **isolated**
+  `TracerProvider` — a dedicated provider carrying only the Langfuse span processor, not the global provider
+  and not the provider openarmature uses for its own OTel observer.
 
   Because the Langfuse v4 SDK maintains a process-wide client keyed by credential, constructing on a fresh
   isolated provider takes effect only when openarmature is the **first** party to construct a client for that
@@ -1875,35 +1894,60 @@ obligations **track which party controls the provider** (the ownership mode of �
   established as isolated for this credential (in particular the global provider). Establishing the binding
   rests on **non-portable SDK internals with no cross-language guarantee** (the same fact that makes mode
   (a)'s warn, below, a MAY), so *whether* an implementation can determine it is a property of the SDK surface
-  available to it, not a portable obligation. Where the check is performed it is decidable from openarmature's
-  own record of the providers it established; it is **not** an identity test against the provider supplied on
-  this call (a client the singleton bound to another isolated provider openarmature established for the same
-  credential satisfies the invariant and **MUST NOT** trigger a failure), and it does **not** require
-  enumerating a foreign provider's exporters.
+  available to it. The check is decidable from openarmature's own record of the providers it established; it
+  is **not** an identity test against the provider supplied on this call (a client the singleton bound to
+  another isolated provider openarmature established for the same credential satisfies the invariant and
+  **MUST NOT** trigger a failure), and it does **not** require enumerating a foreign provider's exporters.
+  With respect to the construction-determinable channels (provider and state):
 
-    - **It establishes that the observations would reach a shared provider** → openarmature **MUST raise** a
-      categorized error of category `langfuse_provider_isolation_unavailable` (below), **before** emitting any
-      payload-bearing observation to that provider, rather than proceed and silently leak.
-    - **It cannot establish the binding** (the SDK surface available to it exposes no way) → openarmature
-      **MUST NOT** raise; it **MUST** suppress its own Langfuse-side payload so no payload-bearing observation
-      can reach a shared provider, and **MUST** emit a `WARNING`-level log record (§7).
-    - **It establishes that the observations would *not* reach a shared provider** (the client is on an
-      openarmature-established isolated provider) → proceed normally.
+    - **A payload channel is live and openarmature establishes the observations would reach a shared
+      provider** → it **MUST raise** a categorized error of category `langfuse_provider_isolation_unavailable`
+      (below), **before** emitting any payload-bearing observation to that provider, rather than proceed and
+      silently leak.
+    - **A payload channel is live and openarmature cannot establish the binding** (the SDK surface exposes no
+      way) → it **MUST NOT** raise; it **MUST** suppress **all** its harvested-payload channels (below) so no
+      payload-bearing observation can reach a shared provider, and **MUST** emit a `WARNING`-level log record
+      (§7).
+    - **openarmature establishes the observations reach an openarmature-established isolated provider, or no
+      construction-determinable payload channel is live** → it proceeds (the *no-payload clause* below governs
+      the latter case). The error-message channel is governed separately, per-emission, in every case.
+
+  _Error-message channel (per-emission)._ A failure is not knowable at client construction, so the
+  error-message channel does not drive the construction-time raise (refusing a locked-down application because
+  a tool *might* later fail would be disproportionate). Instead, openarmature **MUST NOT** emit a failed
+  observation's `error_message` or `error_type` to a provider it has not established is isolated (a
+  non-detection-capable implementation cannot establish it, so it omits — fail-safe), unless the caller has
+  accepted a shared provider. It retains only the observation's error **category** where one exists (the
+  `observation.statusMessage` enum, §8.4.2). A failed **Tool** observation has **no** error category (§8.4.6 /
+  §5.5.12); there the observation reaches such a provider carrying neither the message nor a message-derived
+  status text — the exception message **MUST NOT** be surfaced through `observation.statusMessage` as a
+  substitute for the omitted `error_message`. This applies regardless of the payload knobs and does **not**
+  itself cause a raise.
+
+  _Suppressing all harvested channels._ Where openarmature suppresses (the cannot-establish arm above) it
+  **MUST** suppress **every** harvested-payload channel so no payload-bearing observation reaches a shared
+  provider: the provider payload (as if `disable_provider_payload=True`), the Trace-level state payload
+  (forcing the §8.4.1 minimal stub — raw state not serialized **and** a supplied `trace_*_from_state` hook not
+  applied), and a failed observation's `error_message` / `error_type` (omitted, category only per the rule
+  above).
 
   The **portable guarantee** is that no payload-bearing observation reaches a shared provider: openarmature
-  **raises** where it can detect the leak and **suppresses** its own payload where it cannot. Implementations
-  MAY differ on the *surface* — a raised error versus a suppressed payload — according to what their SDK
-  exposes; both satisfy the invariant and neither leaks. An implementation **MUST NOT** silently
+  **raises** where a live payload channel would leak and it can detect the binding, **suppresses** where it
+  cannot establish the binding, and **omits** a failed observation's error message per-emission.
+  Implementations MAY differ on the *surface* — a raised error versus a suppressed payload — according to what
+  their SDK exposes; both satisfy the invariant and neither leaks. An implementation **MUST NOT** silently
   proceed-and-leak by declining a detection its SDK surface supports; the fallback is suppress, never leak.
   The point at which the error surfaces (client construction or first use) is implementation-defined, but it
-  **MUST** precede any payload-bearing emission to the shared provider. The categorized error has category
-  `langfuse_provider_isolation_unavailable`; implementations **MUST** make it distinguishable by this category
-  so callers can catch it specifically.
+  **MUST** precede any payload-bearing emission to the shared provider. Implementations **MUST** make the
+  categorized error distinguishable by its `langfuse_provider_isolation_unavailable` category so callers can
+  catch it specifically.
 
-  _When the Langfuse observer does not emit payloads_ (`disable_provider_payload=True`), openarmature's
-  observations carry only metadata and span structure; a shared provider then duplicates only that (the same
-  duplication the private-provider rule above prevents for openarmature's own OTel spans). openarmature
-  **SHOULD** isolate and **MAY** warn, but **MUST NOT** raise.
+  _When no payload channel is live_ — `disable_provider_payload=True` **and** `disable_state_payload=True`
+  **and** no `trace_*_from_state` hook is supplied — a **successful** run's observations carry only metadata
+  and span structure; a shared provider then duplicates only that (the same duplication the private-provider
+  rule above prevents for openarmature's own OTel spans). openarmature **SHOULD** isolate and **MAY** warn,
+  but **MUST NOT** raise. (A *failed* provider observation's `error_message` is still governed by the
+  error-message rule above.)
 - **Mode (a) — the caller supplies the client.** The implementation does **not** control the provider and
   **MUST NOT** mutate the supplied client. It **MUST NOT** represent openarmature's private-provider
   isolation as covering the supplied client — the isolation guarantee of this subsection is bounded to
@@ -1917,21 +1961,23 @@ obligations **track which party controls the provider** (the ownership mode of �
 
 **No hard failure, except to prevent an unacknowledged payload leak.** A shared-provider client is a valid,
 if leaky, configuration; the implementation **MUST NOT** refuse the call or raise on the isolation decision —
-**except** the one case above: the Langfuse observer emits payloads, the caller has not accepted a shared
-provider, and openarmature establishes that its observations would reach one. There, and only there, it
-**MUST** raise `langfuse_provider_isolation_unavailable`. In every other case — mode (a), the no-payload case,
-an opted-in caller, or a binding openarmature cannot establish (which suppresses instead) — it **MUST NOT**
-raise.
+**except** the one case above: a construction-determinable harvested-payload channel (provider or state) is
+live, the caller has not accepted a shared provider, and openarmature establishes its observations would
+reach a shared provider. There, and only there, it **MUST** raise `langfuse_provider_isolation_unavailable`.
+In every other case — mode (a), a run with no live payload channel, an opted-in caller, or a binding
+openarmature cannot establish (which suppresses instead) — it **MUST NOT** raise. The error-message channel
+never causes a raise; it is omitted per-emission (above).
 
 **The isolation trade-off.** Isolation is SHOULD-by-default in mode (b), not an unconditional MUST, because
 a separate `TracerProvider` still shares OTel *context*: a parent span on one provider can leave children on
 another orphaned (Langfuse documents this for a client bound to a separate `TracerProvider`). Whether to
 accept that trade-off is a caller decision (mode a) or a single explicit opt-in (mode b). This section
 requires that openarmature never silently present a shared-provider client as isolated; that, where it owns
-the client and the Langfuse observer emits payloads, it not let those payloads reach a shared provider unless
-the caller has explicitly accepted one — raising where it establishes they would, suppressing its own payload
-where it cannot establish the binding; and that the portable guarantee across implementations is "no
-payload-bearing observation reaches a shared provider," met by raise where detectable and suppress where not.
+the client, none of its **harvested-payload channels** (provider payload, state payload, or a failed
+observation's error message) reaches a shared provider unless the caller has explicitly accepted one —
+raising where a live payload channel would leak, suppressing where it cannot establish the binding, and
+omitting a failed observation's error message per-emission; and that the portable guarantee across
+implementations is "no payload-bearing observation reaches a shared provider."
 
 **Reflecting mid-invocation metadata augmentation on open spans.** §3.4 requires (MUST) that open
 spans in the augmenting async context pick up entries added mid-invocation by
@@ -2104,7 +2150,10 @@ on a root span.
 
 The §5 OA attribute keys translate to Langfuse fields per the tables below. Implementations MUST
 set the corresponding Langfuse fields when the source OA attribute is set on the source span
-(per §5).
+(per §5) — with one carve-out from §6's payload-leak invariant: a failed Tool / Embedding /
+Retriever observation's `error_type` / `error_message` (§8.4.5–§8.4.7) is **subject to §6's
+error-message rule** — omitted (category only) to a provider openarmature has not established is
+isolated, unless the caller has accepted a shared provider.
 
 **Shared top-level namespace with caller metadata.** The Langfuse mapping writes OA-emitted
 observability fields as top-level keys of `trace.metadata` / `observation.metadata` /
@@ -2322,6 +2371,15 @@ record — verified-against SDK version, per-row re-verification cadence — liv
 caveat above and the compatibility-page row are kept in sync when re-verification updates
 either.
 
+**Isolation on a shared provider (§6).** When openarmature constructs the Langfuse client (§8.9
+mode b) and the client is on a provider shared with the application, the Trace-level state payload
+above is subject to §6's payload-leak invariant, exactly as the Generation-level provider payload
+is: openarmature isolates by default, **raises** where it establishes the state payload would reach
+a shared provider (the state channel is a construction-determinable payload channel), and
+**suppresses** — forcing the minimal stub (raw state not serialized, a supplied
+`trace_input_from_state` / `trace_output_from_state` hook not applied) — where it cannot establish
+the binding, unless the caller has accepted a shared provider.
+
 #### 8.4.2 Observation-level mapping (sourced from node / subgraph / fan-out span attributes)
 
 | OA source | Langfuse Observation field |
@@ -2344,6 +2402,7 @@ either.
 | `openarmature.correlation_id` | `observation.metadata.correlation_id` (cross-cutting per §8.5) |
 | Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at the observation's emission time (per §3.4) | `observation.metadata.<key>` on EVERY Observation (top level, same propagation rationale as `correlation_id`; lets users filter across observations from detached subgraphs / fan-outs in one Langfuse UI query). For the fan-out per-instance use case, each instance's observations carry that instance's augmented metadata (per §3.4 per-async-context scoping), so adopters can filter Langfuse by the per-instance identifier (e.g., `productId`) to find that specific instance's subtree. |
 | `openarmature.error.category` | `observation.level = "ERROR"`, `observation.statusMessage = <category>` |
+| `error_type` / `error_message` — failed **Embedding / Tool / Retriever** observations **only** (§8.4.5 / §8.4.6 / §8.4.7; from `EmbeddingFailedEvent` §5.5.9 / `ToolCallFailedEvent` §5.5.12 / `RerankFailedEvent` §5.5.14) | `observation.metadata.error_type` / `observation.metadata.error_message`, **subject to §6's error-message rule** (omitted, category only, to a not-established-isolated provider unless the caller accepted a shared provider). In-cell-scoped to those three observation types: node `Span` and `Generation` observations carry only `error.category` here (a Generation's error *output*, where present, is the payload-gated `generation.output`, §8.4.3), so §8.4.3's inheritance of this table does not pull `error_message` onto Generations. |
 
 #### 8.4.3 Generation-specific mapping (sourced from LLM provider span attributes)
 
@@ -2525,8 +2584,9 @@ roll into the same `trace.totalCost` aggregation as LLM completion costs.
 
 **Failure observations.** An `EmbeddingFailedEvent` (graph-engine §6) renders an `Embedding`
 observation at `ERROR` level — the §7 `error_category` as the observation's status message and
-`error_type` / `error_message` in `metadata`, via the generic §4.2 / §8.4.2 error mapping (mirroring
-§8.4.6's tool failure). The failure observation carries no `output` (no response was received).
+`error_type` / `error_message` in `metadata` (the §8.4.2 error row), **subject to §6's error-message rule**
+(omitted, category only, to a provider openarmature has not established is isolated unless the caller accepted
+a shared provider). The failure observation carries no `output` (no response was received).
 
 #### 8.4.6 Tool-execution mapping (sourced from tool span attributes)
 
@@ -2545,7 +2605,7 @@ Field mappings:
 | `tool.output` | The tool `result`. Privacy-gated per `disable_provider_payload`. When the flag is `True` (default), NOT populated. |
 | `tool.metadata.openarmature_tool_name` | The tool name (`tool_name`). |
 | `tool.metadata.openarmature_tool_call_id` | The `tool_call_id` (the §5.5.10 model-request linkage) when present. |
-| `tool.level` / status | `DEFAULT` on `ToolCallEvent`; `ERROR` on `ToolCallFailedEvent`, with `error_type` / `error_message` in metadata + the status message. |
+| `tool.level` / status | `DEFAULT` on `ToolCallEvent`; `ERROR` on `ToolCallFailedEvent`, with `error_type` / `error_message` in metadata **subject to §6's error-message rule** (omitted to a not-established-isolated provider unless the caller accepted a shared provider). A `Tool` failure has **no** error category (§5.5.12), so under §6 omission the observation carries neither the message nor a message-derived status text. |
 
 **Privacy posture.** `input` (arguments) and `output` (result) are payload-bearing, gated by
 `disable_provider_payload` (default `True` per §5.5.4) identically to the other provider observations.
@@ -2598,8 +2658,9 @@ aggregation as LLM completion and embedding costs.
 
 **Failure observations.** A `RerankFailedEvent` (graph-engine §6) renders a `Retriever` observation
 at `ERROR` level — the §7 `error_category` as the observation's status message and `error_type` /
-`error_message` in `metadata`, via the generic §4.2 / §8.4.2 error mapping (mirroring §8.4.6's tool
-failure). The failure observation carries no `output`.
+`error_message` in `metadata` (the §8.4.2 error row), **subject to §6's error-message rule** (omitted,
+category only, to a provider openarmature has not established is isolated unless the caller accepted a shared
+provider). The failure observation carries no `output`.
 
 #### 8.4.8 Parallel-branches dispatch-span mapping
 
@@ -3126,3 +3187,4 @@ spec:
 - LLM usage surfaces reconciled for a **not-reported counter** (llm-provider §7 *Malformed usage counter*): §5.5.3 `gen_ai.usage.input_tokens` moves from a per-*record* omit-guard to per-*field* (omit when the counter is null — record absent or the counter malformed/unreported), aligning it with the existing per-field `output_tokens` and `openarmature.llm.usage.*` guards; §11.2's token-usage histogram makes the LLM branch **per-counter** (a null counter records no observation for that token type, as the rerank branch already does); the §11.2 token-budget instruments and the §5.5.15 span signal **do not evaluate** a bound whose counter is not reported (no `utilization` observation, no `exceeded` increment — a comparison / ratio against a null is undefined, not `false` / `0`; the `total` bound follows §8.2's derived-total rule); and the §8.4.3 Langfuse `Generation` `usage` omits a counter that is not reported, as the `Embedding` / `Retriever` `usageDetails` already do. No attribute or observation is ever emitted from a null counter by [proposal 0101](../../proposals/0101-malformed-usage-counter-llm-observability.md)
 - §8.9 *Composition with OTel* gained a **Client ownership** contract requiring implementations to support both a caller-constructed Langfuse client and constructing the client from caller-supplied credentials (closing a cross-implementation divergence the section previously left open); §6 *Driving span lifecycle* extended the TracerProvider-isolation subsection to openarmature's **Langfuse observations** with obligations that track which party controls the provider — where the implementation constructs the client it SHOULD isolate the client's provider by default and MUST isolate where a shared provider would defeat an OTel-side `disable_provider_payload` suppression; where the caller supplies the client the implementation MUST NOT mutate or misrepresent it, SHOULD document the remedy, and MAY warn best-effort (reading a supplied client's provider is not portably guaranteed); the §6 rationale list's `Langfuse v3` example updated to `Langfuse v4`. No new fixtures — the contract concerns observer construction and provider wiring, outside the graph-run fixture vocabulary by [proposal 0114](../../proposals/0114-langfuse-client-provider-isolation.md)
 - §6 *Driving span lifecycle* replaced the mode-(b) Langfuse-isolation obligation with a **payload-leak invariant**: when the implementation constructs the client and the Langfuse observer emits payloads, openarmature **MUST** keep them off a provider shared with the application — isolate (SHOULD, the default), **raise** `langfuse_provider_isolation_unavailable` where it establishes the observations would reach a shared provider, or **suppress** its own Langfuse-side payload where it cannot establish the binding (best-effort detection, since reading the client's bound provider rests on non-portable SDK internals with no cross-language guarantee — the same fact that makes the mode-(a) warn a MAY), with a single explicit caller opt-out to accept a shared provider. The detection keys on the leak condition (a provider not among those openarmature established as isolated), not on identity with the provider supplied on a given call. Defines the `langfuse_provider_isolation_unavailable` error category, carves the *No hard failure* rule for the one detected-leak / not-opted-in case, and rewords the *isolation trade-off* paragraph. New fixture **158** gates the raise (on adapters declaring bound-provider detection) and the suppress floor (on adapters without it) and the opt-out path. Closes the Langfuse-SDK per-credential-singleton gap that could silently defeat 0114's mode-(b) isolation by [proposal 0116](../../proposals/0116-langfuse-isolation-fail-loud.md)
+- §6 *Driving span lifecycle* broadened the mode-(b) payload-leak invariant (proposal 0116) from the provider-payload channel to **every channel openarmature emits harvested payload through** — adding the Trace-level **state payload** (`disable_state_payload` + the `trace_*_from_state` hooks, §8.4.1) and a failed Tool/Embedding/Retriever observation's **error message** (§8.4.5–§8.4.7, ungated by any privacy knob) — with an explicit **exemption** for the caller-attached identity/correlation dimensions (`correlation_id`, `session_id`, the promoted `userId`, trace name, caller metadata) as opaque cross-backend join keys the caller owns. The construction-time raise/suppress arms cover the provider + state channels (gated on a live payload channel); the error-message channel is handled per-emission (omit to a not-established-isolated provider, category only — a failed Tool observation has no error category, so nothing message-derived is surfaced). Reconciled the §6 section-level paragraphs (subsection lead-in, *No hard failure*, *isolation trade-off*), the §8.4 header and §8.4.1 / §8.4.2 / §8.4.5–§8.4.7 mappings (adding the §8.4.2 `error_type` / `error_message` row, in-cell-scoped to the three failed provider observations), and fixed the now-false "only metadata and span structure" clause. Fixture **158** gains six cases (state-raises, hook-raises, error-message-omitted, tool-failure-omitted, state-suppress, hook-suppress) by [proposal 0117](../../proposals/0117-payload-leak-invariant-channels.md)
