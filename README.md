@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0117](proposals/0117-payload-leak-invariant-channels.md) | Draft | observability, conformance-adapter | Broadens 0116's mode-(b) payload-leak invariant to cover **every channel openarmature emits harvested payload through** — the Trace-level application-state payload (`disable_state_payload` + `trace_*_from_state` hooks, proposal 0043) and the `error_message` on failed Tool/Embedding/Retriever observations (ungated), as well as the provider payload — and exempts the caller-owned identity/correlation dimensions (`correlation_id`/`session_id`/`userId`/metadata) as cross-backend join keys by design. Closes the state-payload and error-message leak surfaces on an un-isolatable client. |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
