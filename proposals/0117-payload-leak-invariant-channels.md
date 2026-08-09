@@ -30,7 +30,7 @@
     channel lives.
   - spec/conformance-adapter/spec.md **§5.5 / §6.4** — the `{no_,}payload_bearing_langfuse_observations_on
     _global` assertions and the §6.4 fake's payload-bearing/payload-free distinction cover the state payload
-    and a failed observation's `error_message` (payload-bearing), and count the §8.4.1 minimal stub and a
+    and a failed observation carrying `error_type` or `error_message` (payload-bearing), and count the §8.4.1 minimal stub and a
     category-only failed observation as payload-free. State-channel and failure directives already exist
     (proposals 0043 / 0107, fixtures 037 / 150-151).
   - spec/observability/conformance/158-langfuse-payload-leak-fail-closed.{yaml,md} — add cases for the state
@@ -250,13 +250,13 @@ fixture):
 ### Conformance-adapter §5.5 / §6.4
 
 - **§5.5** — `{no_,}payload_bearing_langfuse_observations_on_global` count as payload-bearing: a Trace
-  carrying raw state or a hook value, and a failed observation carrying `error_message`. Payload-free: the
+  carrying raw state or a hook value, and a failed observation carrying `error_type` or `error_message`. Payload-free: the
   §8.4.1 minimal stub, and a failed observation carrying only the category enum. State-channel controls use
   the existing `langfuse_observer.disable_state_payload` / `trace_*_from_state` directives (0043 / fixture
   037); a failure is induced with the existing mock-failure directives (0107, `mock_embedding` / `mock_rerank`
   `raises`, fixtures 150-151). No new directive.
 - **§6.4** — the provider-faithful fake's payload distinction extends to the Trace state payload and to a
-  failed observation's `error_message` (payload-bearing) vs. the stub / category-only observation
+  failed observation carrying `error_type` or `error_message` (payload-bearing) vs. the stub / category-only observation
   (payload-free).
 
 ### Fixtures — extend 158
@@ -268,7 +268,7 @@ Add to `158-langfuse-payload-leak-fail-closed` (all `mode: credentials`, `preexi
   state on (`disable_state_payload: false`), no opt-out → raises. Trigger fires on the state channel alone.
 - `hook_preexists_raises` *(detection-capable)* — both knobs default, a `trace_input_from_state` hook
   supplied, no opt-out → raises. A supplied hook triggers under the full default posture.
-- `error_message_omitted_on_shared` *(detection-capable)* — both payload knobs default (no provider/state
+- `error_message_omitted_on_shared` *(all adapters — ungated; the omission outcome is identical for detected-shared and can't-establish)* — both payload knobs default (no provider/state
   payload), a mock **rerank** failure, no opt-out → does **not** raise (locked down). The failed Retriever
   observation **does** reach the global provider (`langfuse_observations_on_global: true`) but **without**
   `error_message` (`no_payload_bearing_langfuse_observations_on_global: true`), and its error
@@ -279,10 +279,15 @@ Add to `158-langfuse-payload-leak-fail-closed` (all `mode: credentials`, `preexi
 - `state_channel_preexists_suppresses` *(non-detection-capable)* — state on, no opt-out → does not raise; the
   Trace reaches the global provider as the payload-free stub (`no_payload_bearing_langfuse_observations_on
   _global`), with a `WARNING` log record. Suppress forces all channels off.
+- `hook_preexists_suppresses` *(non-detection-capable)* — a `trace_input_from_state` hook supplied (knobs
+  default), no opt-out → does not raise; the Trace reaches the global provider as the §8.4.1 minimal stub —
+  the hook is **not** applied (`no_payload_bearing_langfuse_observations_on_global`) — with a `WARNING` log
+  record. Gates the suppress arm's hook-drop half (the `hook_preexists_raises` case raises before rendering,
+  so it never exercises suppression).
 
 ## Conformance test impact
 
-Additive MINOR. No new directives (the state-channel and failure-mock controls exist since 0043 / 0107); four
+Additive MINOR. No new directives (the state-channel and failure-mock controls exist since 0043 / 0107); five
 new cases on fixture 158; the §6.4 fake's payload distinction is clarified to cover the state and
 error-message channels; no existing assertions change; the §8.4.2 edit adds a documentation row for an
 already-shipped behavior (the three provider sections already state it). The caller-dimension exemption
