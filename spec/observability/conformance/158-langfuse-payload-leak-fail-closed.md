@@ -69,6 +69,12 @@ provider payload off):
   retained. The non-vacuity pair distinguishes message-omission from whole-observation suppression. The
   rerank failure itself propagates as `expected_error: provider_unavailable` (this is *not* the isolation
   raise — the app is locked down).
+- `tool_failure_omitted_on_shared` *(all adapters)* — locked down, a `mock_tool` failure (a Tool failure has
+  **no** error category, §5.5.12). The Tool observation reaches the global provider at ERROR but payload-free
+  with `statusMessage: null` — gating §6's Tool anti-smuggling clause: an impl copying the exception into
+  `statusMessage` fails the `statusMessage: null` assertion, and one leaving `error_message` in metadata
+  fails `no_payload_bearing_langfuse_observations_on_global`. The tool failure propagates as `expected_error:
+  node_exception` (not the isolation raise).
 - `state_channel_preexists_suppresses` *(non-detection-capable)* — state on, no opt-out → does not raise; the
   Trace reaches the global provider as the §8.4.1 minimal stub
   (`no_payload_bearing_langfuse_observations_on_global`) with a `WARNING`. Portable suppress floor for the
@@ -84,10 +90,8 @@ rather than by simulating a real binding-hiding SDK at runtime; the capability d
 portable proxy for that condition, consistent with 0114/0115 treating bound-provider introspection as
 non-portable.
 
-**Unfixtured corollary.** §6's Tool anti-smuggling clause — a failed **Tool** observation (which has no error
+**Tool anti-smuggling.** §6's Tool anti-smuggling clause — a failed **Tool** observation (which has no error
 category, §5.5.12) MUST NOT surface the exception message through `observation.statusMessage` as a substitute
-for the omitted `error_message` — is not independently gated here: the §6.4 fake's payload-bearing predicate
-inspects provider I/O, state I/O, and `error_type` / `error_message`, not `statusMessage`, so a
-statusMessage-smuggled message would classify payload-free. Detecting it would require a new fake capability;
-the clause ships as an honest-but-unfixtured corollary of the error-message rule (the rerank case
-`error_message_omitted_on_shared` gates that rule for the has-category path).
+for the omitted `error_message` — is gated by `tool_failure_omitted_on_shared`, which asserts the Tool
+observation's `statusMessage: null` directly (an implementation that smuggles the message there fails),
+without needing the §6.4 payload-bearing predicate to inspect `statusMessage`.

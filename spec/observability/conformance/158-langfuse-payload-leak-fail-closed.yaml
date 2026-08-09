@@ -389,6 +389,68 @@ cases:
       # ... but payload-free — error_type / error_message omitted per §6's rule.
       no_payload_bearing_langfuse_observations_on_global: true
 
+  - name: tool_failure_omitted_on_shared
+    description: |
+      ALL adapters. Locked down (no provider/state payload), a tool call FAILS.
+      A ToolCallFailedEvent carries error_type / error_message but NO error
+      category (§5.5.12). Per §6's error-message rule and its Tool anti-smuggling
+      clause, openarmature omits error_type / error_message to the shared (primed)
+      provider AND MUST NOT surface the message through statusMessage as a
+      substitute — a Tool failure has no category, so statusMessage carries
+      nothing. The Tool observation reaches the global provider at ERROR but
+      payload-free (identity metadata retained), with statusMessage null: an impl
+      copying the exception into statusMessage fails the statusMessage: null
+      assertion, and one leaving error_message in metadata fails
+      no_payload_bearing. Does NOT raise the isolation error (locked down); the
+      tool failure itself propagates as node_exception.
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_def456"
+          arguments: {city: "Paris"}
+          mock_tool: {raises: {error_type: "TimeoutError", message: "tool timed out"}}
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    langfuse_observer:
+      disable_provider_payload: true
+    caller_global_otel_active: true
+    # The tool failure propagates as the invocation error (as in fixture 093/098);
+    # this is NOT the isolation raise (locked down).
+    expected_error:
+      category: node_exception
+      raised_from: run_tool
+    expected:
+      # Anti-smuggling: the Tool observation is present at ERROR with its identity
+      # metadata, but statusMessage carries NO message-derived text (a Tool
+      # failure has no category, and the exception message MUST NOT be smuggled
+      # here) and error_type / error_message are omitted from metadata.
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "run_tool"
+            children:
+              - type: tool
+                name: "openarmature.tool.call"
+                level: ERROR
+                statusMessage: null
+                metadata:
+                  openarmature_tool_name: "get_weather"
+                  openarmature_tool_call_id: "call_def456"
+                children: []
+      langfuse_observations_on_global: true
+      no_payload_bearing_langfuse_observations_on_global: true
+
   - name: state_channel_preexists_suppresses
     description: |
       Non-detection-capable adapter, no opt-out. The state channel is ON

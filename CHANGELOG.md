@@ -12,7 +12,7 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 **Added**
 
-- observability §8.4 reconciliation: §8.4.1 cross-references the Trace state channel to §6; a new §8.4.2 `error_type` / `error_message` → `observation.metadata` row (in-cell-scoped to the failed Tool / Embedding / Retriever observations); the §8.4 header and §8.4.5 / §8.4.6 / §8.4.7 failure sentences are qualified "subject to §6's error-message rule." conformance-adapter §5.5 / §6.4 broaden the **payload-bearing** classification (and the provider-faithful fake's distinction) to the state payload and a failed observation's `error_type` / `error_message`. Observability fixture **158** gains five cases: `state_channel_preexists_raises`, `hook_preexists_raises`, `error_message_omitted_on_shared`, `state_channel_preexists_suppresses`, `hook_preexists_suppresses`.
+- observability §8.4 reconciliation: §8.4.1 cross-references the Trace state channel to §6; a new §8.4.2 `error_type` / `error_message` → `observation.metadata` row (in-cell-scoped to the failed Tool / Embedding / Retriever observations); the §8.4 header and §8.4.5 / §8.4.6 / §8.4.7 failure sentences are qualified "subject to §6's error-message rule." conformance-adapter §5.5 / §6.4 broaden the **payload-bearing** classification (and the provider-faithful fake's distinction) to the state payload and a failed observation's `error_type` / `error_message`. Observability fixture **158** gains six cases: `state_channel_preexists_raises`, `hook_preexists_raises`, `error_message_omitted_on_shared`, `tool_failure_omitted_on_shared`, `state_channel_preexists_suppresses`, `hook_preexists_suppresses`.
 
 **Notes**
 
