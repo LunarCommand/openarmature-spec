@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0118](proposals/0118-llm-error-message-channel.md) | LLM Generation error-message channel + exhaustive-mapping rule | observability | Draft | —               | —          |
 | [0117](proposals/0117-payload-leak-invariant-channels.md) | Broaden the Langfuse payload-leak invariant to all harvested-payload channels | observability | Accepted | Pending         | —          |
 | [0116](proposals/0116-langfuse-isolation-fail-loud.md) | Fail-closed when Langfuse payloads would reach a shared provider | observability | Accepted | Pending         | —          |
 | [0115](proposals/0115-langfuse-provider-isolation-conformance.md) | Conformance test primitives for Langfuse provider isolation | conformance-adapter | Accepted | Pending         | —          |
