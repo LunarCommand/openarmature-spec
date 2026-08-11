@@ -11,7 +11,12 @@ cases:
       observation under the calling node's Span — type tool (not generation),
       DEFAULT level, with input / output populated and tool_name / tool_call_id in
       metadata.
-    disable_provider_payload: false
+    disable_provider_payload: false     # OTel observer side
+    langfuse_observer:
+      # The Langfuse observer keeps its OWN copy of this flag (conformance-adapter
+      # §5.5, observability §8.7). The top-level key above configures only the OTel
+      # side, so the Langfuse assertions below need it set here explicitly.
+      disable_provider_payload: false
     state:
       fields:
         out: {type: record, default: null}
@@ -57,7 +62,8 @@ cases:
       relying on the default here would forbid the very emission this case
       asserts. error_type is a classification token and is not gated. The flag's
       own gating of the message is covered by fixture 159.
-    disable_provider_payload: false
+    langfuse_observer:
+      disable_provider_payload: false
     state:
       fields:
         out: {type: record, default: null}
