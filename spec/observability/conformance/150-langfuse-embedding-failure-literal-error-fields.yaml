@@ -46,7 +46,11 @@ cases:
           error_type: "ServiceUnavailableError"
           message: "the embedding endpoint returned 503"
     langfuse_observer:
-      disable_provider_payload: true
+      # disable_provider_payload MUST be false here: error_message is harvested
+      # exception text gated by that flag (§5.5.4, proposal 0118), and this
+      # fixture's whole purpose is asserting error_type AND error_message
+      # literally. The flag's own gating of the message is covered by fixture 159.
+      disable_provider_payload: false
     expected_error:
       category: provider_unavailable
       raised_from: embed_node
@@ -61,7 +65,10 @@ cases:
                 name: "openarmature.embedding.complete"
                 level: ERROR
                 statusMessage: "provider_unavailable"
-                input: null
+                # Request-side input populates because the payload flag is off
+                # (as in fixture 137's flag-off case); output stays null because
+                # no response was received.
+                input: ["query one", "query two"]
                 output: null
                 metadata:
                   openarmature_input_count: 2

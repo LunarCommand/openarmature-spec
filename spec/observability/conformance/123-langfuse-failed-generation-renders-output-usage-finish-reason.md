@@ -45,3 +45,11 @@ fixture-120 truncation case through the Langfuse observer.
   additive, not a replacement).
 - Case 2: `usage` or `finish_reason` is redacted along with `output` (only `output` is
   payload-gated), or `output` survives the payload-disabled flag.
+
+**The leak proposal 0118 closes.** Case 2's payload-disabled assertions now include
+`metadata_absent: [error_message]` alongside the redacted `output`. A `structured_output_invalid` exception
+message commonly quotes the model output that failed validation, so redacting `generation.output` while
+emitting that message would defeat `disable_provider_payload` for exactly the failure this fixture models.
+Under the default posture both are withheld (observability §5.5.4), while `error_type`, `usage`,
+`finish_reason`, the ERROR level, and the `statusMessage` are unaffected because none of them is harvested
+payload.

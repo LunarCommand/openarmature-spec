@@ -1,0 +1,157 @@
+# observability §8.4.3 / §5.5.4 — a failed LLM Generation's error_message is
+# gated by disable_provider_payload; its error_type is NOT (proposal 0118).
+#
+# Proposal 0117 gated the Tool / Embedding / Retriever error message behind
+# observability §6's payload-leak invariant only (a per-emission rule keyed
+# on provider isolation), leaving it emitted regardless of the payload flag,
+# and excluded the LLM Generation entirely. Proposal 0118 adds the failed
+# Generation AND moves the whole harvested error message under
+# disable_provider_payload, so one rule covers it: payload off means the
+# observation carries its classifications only, never the exception text.
+#
+# Scope of the gate: error_message ONLY. error_type is a classification token
+# (a vendor code or an exception class name) rather than harvested text, so it
+# is emitted under every posture and remains the caller's failure
+# discriminator. That matters most for a failed Tool observation, which has no
+# error category at all.
+#
+# The two cases here are the load-bearing pair for that flag:
+#   - flag ON (the default posture) -> error_message ABSENT, with error_type
+#     and the error category (statusMessage) retained.
+#   - flag OFF -> error_message PRESENT alongside error_type.
+# Neither case involves a shared provider, so they isolate the FLAG's effect
+# from §6's isolation arms (fixture 158 covers those).
+#
+# The flag-off case also makes `output: null` load-bearing: with the flag ON
+# output is null regardless of whether a response arrived, so only the
+# flag-off case shows the absence is intrinsic to the 503 (no response
+# received). Same two-case structure as the embedding sibling, fixture 137.
+#
+# error_type / error_message values are impl-sourced (a vendor code or an
+# upstream exception class name), so the flag-off case asserts them by FORMAT
+# (`<any-string>`), per the 073 / 137 / 138 idiom.
+
+cases:
+  - name: llm_failure_error_message_omitted_under_default_posture
+    description: |
+      One LLM call that fails at the wire (mock_llm status: 503 ->
+      provider_unavailable §7 category), with disable_provider_payload at its
+      default True. The failed Generation MUST emit at ERROR level with
+      statusMessage = "provider_unavailable" (the error category is not
+      payload and is always retained), MUST carry error_type (a classification
+      token, not gated), and MUST NOT carry error_message: the payload flag
+      gates the harvested exception text (§5.5.4, proposal 0118). input /
+      output are null. The metadata_absent assertion is what gates the
+      omission; an impl that emits the exception string under the default
+      posture fails here, and one that also drops error_type fails the
+      metadata assertion beside it.
+      §6 forbids substituting the message into statusMessage, so the asserted
+      statusMessage is the category enum, not the exception text.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "summarize"}]
+          model: gpt-test
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 503
+        body:
+          error:
+            type: service_unavailable
+            message: "the LLM endpoint returned 503"
+    langfuse_observer:
+      disable_provider_payload: true      # the default posture
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"   # category retained (not payload)
+                input: null
+                output: null
+                metadata:
+                  error_type: "<any-string>"      # classification token, NOT gated
+                metadata_absent: [error_message]  # harvested text, gated by the flag
+                children: []
+      invariants:
+        error_message_gated_by_provider_payload_flag: true
+        error_category_retained_when_message_omitted: true
+
+  - name: llm_failure_error_message_emitted_with_payload_flag_off
+    description: |
+      The same LLM failure with disable_provider_payload=False. Now the
+      harvested exception text IS permitted, so the failed Generation carries
+      error_type / error_message in metadata (asserted by format, since the
+      values are impl-sourced). The request-side `input` populates, but
+      `output` is STILL null — no response was received, so the absence is
+      intrinsic rather than a payload-gating artifact, which is what makes
+      the first case's null output meaningful. ERROR level and statusMessage
+      are unchanged by the flag. This is the positive-emission half of the
+      pair: without it, an impl that never emits the fields at all would
+      satisfy the first case vacuously.
+    state:
+      fields:
+        answer:
+          type: string
+          default: ""
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "summarize"}]
+          model: gpt-test
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 503
+        body:
+          error:
+            type: service_unavailable
+            message: "the LLM endpoint returned 503"
+    langfuse_observer:
+      disable_provider_payload: false
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"
+                # Generation input uses the message-list form fixture 023 established.
+                input_parses_as_messages:
+                  - {role: user, content: "summarize"}
+                output: null
+                metadata:
+                  error_type: "<any-string>"
+                  error_message: "<any-string>"
+                children: []
+      invariants:
+        error_type_and_message_in_metadata: true
+        no_output_even_with_payload_flag_off: true
+        error_level_and_status_message_unchanged_by_payload_flag: true

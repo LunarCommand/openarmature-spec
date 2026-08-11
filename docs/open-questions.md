@@ -887,6 +887,31 @@ short-horizon roadmap below.
   `log_records[].level` key; fixture 158 now gates the raise (capability-gated), suppress-floor, and opt-out
   arms, so the mode-(b) obligation is conformance-gated on both floors. Still unmodeled: a *real* runtime
   binding-hiding SDK — the non-capable-adapter declaration is the harness's portable proxy for it.
+  **Extended by 0117 / 0118** (v0.111.0, v0.112.0): 0117 broadened the invariant to the Trace state payload
+  and a failed observation's error message, adding fixture-158 cases for both; 0118 then brought the harvested
+  error message under `disable_provider_payload` and **retired 0117's per-emission error-message rule** as
+  unreachable, repointing the two error-message cases to the flag-off suppress arm and adding fixture 159 plus
+  the conformance-adapter `metadata_absent` directive (an absence assertion the subset-matching `metadata:`
+  form cannot express). 0117's Open question #2 — whether the §8.4.x mapping tables exhaustively define
+  openarmature's Langfuse rendering — is **resolved by 0118** (v0.112.0), which made it normative: harvested
+  content no table maps is non-conforming over-emission that MUST NOT be written to any Langfuse observation.
+  That rule is gated by the mapping tables themselves rather than by a fixture, since it forbids an emission
+  the tables never defined, so no positive baseline can exist. Two new OQs from 0118 (both open): whether a
+  future proposal should offer a narrower control permitting the exception message while still suppressing
+  request and response payload, for callers who triage failures in Langfuse alone; and the standing register
+  for any newly harvested Langfuse field, which the harvested-versus-attached test decides.
+
+### 0118 — payload-gating the harvested error message
+
+- **A narrower control for callers who triage failures in Langfuse alone.** `disable_provider_payload` now
+  withholds a failed observation's `error_message` along with the request and response payload. A caller who
+  wants the exception text but not the transcript has no way to say so, and reads failure detail from their
+  OTel backend instead. Whether to offer a narrower control is left open rather than pre-empted.
+  `[candidate-for-new-proposal]`
+- **The standing register for newly harvested Langfuse fields.** §8.4's exhaustive-mapping rule means a
+  harvested field is either mapped (and gated) or forbidden. Any future capability wanting to surface a new
+  harvested field adds a §8.4.x mapping through its own proposal, decided by the harvested-versus-attached
+  test. This is the register for that decision. `[still-relevant]`
 
 ---
 

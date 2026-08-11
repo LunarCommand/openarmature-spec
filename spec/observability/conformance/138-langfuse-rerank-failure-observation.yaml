@@ -2,7 +2,8 @@
 # ERROR-level `Retriever` observation (NOT a Generation, NOT a success). Via the
 # generic §4.2 / §8.4.2 error mapping, the failure observation carries
 # observation.level = ERROR and observation.statusMessage = the §7 error_category,
-# with error_type / error_message in metadata — mirroring §8.4.6's tool failure
+# with error_type in metadata, and error_message only when the payload flag
+# permits it (proposal 0118) — mirroring §8.4.6's tool failure
 # (fixture 098) and the embedding-failure sibling (fixture 137). The failure
 # observation carries NO `output` (no response was received), regardless of the
 # payload flag. The request-side identity metadata known at dispatch
@@ -17,8 +18,9 @@
 #
 # Failure trigger: mock_rerank returns HTTP 503, which the implementation
 # classifies as provider_unavailable (per fixture 100's directive vocabulary).
-# The mock body supplies a vendor `type` + `message`, so error_type / error_message
-# surface non-empty in metadata (asserted by format, not literal, per the
+# The mock body supplies a vendor `type` + `message`, so error_type (and
+# error_message where the flag permits it) surface non-empty in metadata
+# (asserted by format, not literal, per the
 # fixture-073 vendor-error-type idiom — error_type's value is impl-derived).
 
 cases:
@@ -27,8 +29,8 @@ cases:
       One rerank call that fails (mock returns 503 -> provider_unavailable).
       Default Langfuse observer config (disable_provider_payload=True). The
       Retriever observation MUST emit at ERROR level with statusMessage =
-      "provider_unavailable" (the §7 error_category), error_type /
-      error_message in metadata, and the request-side openarmature_query_length
+      "provider_unavailable" (the §7 error_category), error_type in metadata (error_message is gated off by the payload flag
+      here, proposal 0118), and the request-side openarmature_query_length
       / openarmature_document_count / openarmature_top_k; input is suppressed
       (payload gated) and there is NO output (no response received). The
       observation type is "retriever" (NOT "generation").
@@ -77,12 +79,16 @@ cases:
                   openarmature_document_count: 2
                   openarmature_top_k: 2
                   error_type: "<any-string>"
-                  error_message: "<any-string>"
+                # error_message is harvested exception text gated by
+                # disable_provider_payload (§5.5.4, proposal 0118), which is true
+                # here; error_type is a classification token and is NOT gated.
+                metadata_absent: [error_message]
                 children: []
       invariants:
         rerank_failure_renders_error_level: true
         error_category_is_status_message: true
-        error_type_and_message_in_metadata: true
+        error_type_in_metadata: true
+        error_message_gated_by_provider_payload_flag: true
         failure_observation_carries_no_output: true
         renders_as_retriever_observation_not_generation: true
 

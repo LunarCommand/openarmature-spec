@@ -11,7 +11,12 @@ cases:
       observation under the calling node's Span — type tool (not generation),
       DEFAULT level, with input / output populated and tool_name / tool_call_id in
       metadata.
-    disable_provider_payload: false
+    disable_provider_payload: false     # OTel observer side
+    langfuse_observer:
+      # The Langfuse observer keeps its OWN copy of this flag (conformance-adapter
+      # §5.5, observability §8.7). The top-level key above configures only the OTel
+      # side, so the Langfuse assertions below need it set here explicitly.
+      disable_provider_payload: false
     state:
       fields:
         out: {type: record, default: null}
@@ -51,7 +56,14 @@ cases:
   - name: failed_tool_execution_renders_error_level
     description: |
       A failed tool execution renders the Tool observation at ERROR level, with
-      error_type / error_message in metadata (and the status message).
+      error_type / error_message in metadata. The payload flag is set explicitly
+      to false: error_message is harvested exception text gated by
+      disable_provider_payload (§5.5.4, proposal 0118), whose default is true, so
+      relying on the default here would forbid the very emission this case
+      asserts. error_type is a classification token and is not gated. The flag's
+      own gating of the message is covered by fixture 159.
+    langfuse_observer:
+      disable_provider_payload: false
     state:
       fields:
         out: {type: record, default: null}
@@ -88,3 +100,59 @@ cases:
       invariants:
         failed_tool_renders_error_level: true
         error_type_and_message_in_metadata: true
+
+  - name: failed_tool_default_posture_withholds_message_without_smuggling
+    description: |
+      A failed tool execution under the DEFAULT posture (disable_provider_payload
+      unset, so true). error_message is harvested exception text gated by that
+      flag (§5.5.4, proposal 0118) and MUST be withheld; error_type is a
+      classification token and MUST still be present, because a Tool failure has
+      no error category (§5.5.12) and error_type is therefore the caller's only
+      failure discriminator. The observation MUST NOT smuggle the withheld
+      message into statusMessage as a substitute (§6's Tool anti-smuggling
+      clause), so statusMessage is null. Gates that clause for EVERY adapter on a
+      normal provider: fixture 158's shared-provider tool case is restricted to
+      non-detection-capable adapters (a detection-capable one raises before
+      emitting), so without this case the clause has no coverage on
+      detection-capable adapters.
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_def456"
+          arguments: {city: "Paris"}
+          mock_tool: {raises: {error_type: "TimeoutError", message: "tool timed out"}}
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    expected_error:
+      category: node_exception
+      raised_from: run_tool
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "run_tool"
+            children:
+              - type: tool
+                name: "openarmature.tool.call"
+                level: ERROR
+                # Anti-smuggling: no category exists for a Tool failure, and the
+                # withheld message MUST NOT be substituted here.
+                statusMessage: null
+                metadata:
+                  openarmature_tool_name: "get_weather"
+                  openarmature_tool_call_id: "call_def456"
+                  error_type: "TimeoutError"
+                metadata_absent: [error_message]
+                children: []
+      invariants:
+        failed_tool_renders_error_level: true
+        error_type_retained_under_default_posture: true
+        error_message_gated_by_provider_payload_flag: true
+        tool_failure_message_not_smuggled_into_status_message: true

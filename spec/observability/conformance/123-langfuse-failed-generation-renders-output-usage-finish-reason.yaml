@@ -158,7 +158,18 @@ cases:
                   total: 36
                 metadata:
                   finish_reason: "length"
+                # error_type is NOT asserted here: this failure is a 200 response whose
+                # content failed validation, so there is no vendor error object, and
+                # error_type's contract permits null when no impl-side type exists
+                # (fixture 073). Asserting <any-string> would over-constrain it.
+                # THE LEAK PROPOSAL 0118 CLOSES. A structured_output_invalid
+                # exception message commonly quotes the model output that failed
+                # validation, so redacting generation.output while emitting the
+                # message would defeat the flag. Under the default posture BOTH
+                # must be withheld (§5.5.4).
+                metadata_absent: [error_message]
                 children: []
       invariants:
         output_redacted_under_payload_disabled: true
         usage_finish_reason_and_error_level_unchanged_under_payload_disabled: true
+        error_message_withheld_with_output_under_payload_disabled: true
