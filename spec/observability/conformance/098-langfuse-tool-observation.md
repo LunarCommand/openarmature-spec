@@ -25,6 +25,9 @@ dedicated `Tool` observation type, not a `Generation`.
    `error_message` is harvested exception text gated by that flag (observability §5.5.4, proposal
    0118), so the failure case sets it explicitly rather than relying on the default. `error_type` is
    not gated.
+3. `failed_tool_default_posture_withholds_message_without_smuggling` — the same failure under the
+   **default** posture (no flag set): `error_type` present, `error_message` withheld, and
+   `statusMessage: null`. Detailed under *Default-posture failure and anti-smuggling* below.
 
 ## Anti-cases
 

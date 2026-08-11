@@ -399,6 +399,8 @@ cases:
                 statusMessage: "provider_unavailable"   # category retained (not payload)
                 input: null
                 output: null
+                metadata:
+                  error_type: "ServiceUnavailableError"   # retained: classification, not harvested text
                 metadata_absent: [error_message]
                 children: []
       # The failed Retriever DID reach the global provider (not wholly dropped) ...
@@ -415,8 +417,9 @@ cases:
       live; openarmature cannot establish the binding, so it SUPPRESSES rather than
       raising. A tool call then FAILS. A ToolCallFailedEvent carries error_type /
       error_message but NO error category (§5.5.12), so this case gates §6's Tool
-      anti-smuggling clause under suppression: openarmature omits error_type /
-      error_message AND MUST NOT surface the message through statusMessage as a
+      anti-smuggling clause under suppression: openarmature omits error_message,
+      RETAINS error_type (a classification token, not harvested text, §5.5.4),
+      AND MUST NOT surface the message through statusMessage as a
       substitute. The Tool observation reaches the global provider at ERROR but
       payload-free (identity metadata retained), with statusMessage null: an impl
       copying the exception into statusMessage fails the statusMessage: null
@@ -455,7 +458,8 @@ cases:
       # Anti-smuggling: the Tool observation is present at ERROR with its identity
       # metadata, but statusMessage carries NO message-derived text (a Tool
       # failure has no category, and the exception message MUST NOT be smuggled
-      # here) and error_type / error_message are omitted from metadata.
+      # here). error_message is omitted from metadata; error_type is RETAINED and
+      # asserted below, since suppress-all withholds harvested text only.
       langfuse_trace:
         id: "<uuid-hex>"
         observations:
@@ -466,15 +470,87 @@ cases:
                 name: "openarmature.tool.call"
                 level: ERROR
                 statusMessage: null
+                # Suppress-all forces the provider payload off even though the flag
+                # permits it, so the tool arguments MUST NOT appear here.
+                input: null
+                output: null
                 metadata:
                   openarmature_tool_name: "get_weather"
                   openarmature_tool_call_id: "call_def456"
+                  error_type: "TimeoutError"    # retained: classification, not harvested text
                 metadata_absent: [error_message]
                 children: []
       langfuse_observations_on_global: true
       no_payload_bearing_langfuse_observations_on_global: true
       log_records:
         - level: WARNING
+
+  - name: locked_down_failure_on_detected_shared_provider_does_not_raise
+    description: |
+      Detection-capable adapter, no opt-out, FULLY locked-down posture
+      (disable_provider_payload true, disable_state_payload true, no hook). A rerank
+      call then fails. openarmature CAN establish that the primed client is on the
+      shared global provider, but no payload channel is live, so §6's No-hard-failure
+      rule applies and it MUST NOT raise. Restores the coverage proposal 0118's
+      repoint removed: before the repoint, the two error-message cases ran locked down
+      and were the corpus's only place a DETECTED shared provider met a
+      no-live-channel run. Repointing them to the flag-off suppress arm (and gating
+      them to non-detection-capable adapters) left nothing asserting that an
+      implementation must NOT raise here, so an over-eager impl that raises on any
+      detected shared provider would have passed. Observations still reach the global
+      provider, but payload-free: with the flag on, a failed observation carries its
+      error_type and category and no harvested text.
+    state:
+      fields:
+        rerank_response:
+          type: record
+          default: null
+    entry: rerank_node
+    nodes:
+      rerank_node:
+        calls_rerank:
+          query: "paris"
+          documents: ["doc one", "doc two"]
+          top_k: 2
+          stores_response_in: rerank_response
+    edges:
+      - {from: rerank_node, to: END}
+    initial_state: {}
+    requires_capability:
+      langfuse_bound_provider_detection: true
+    langfuse_client:
+      mode: credentials
+      preexisting_same_key_client: true
+      accept_shared_provider: false
+    langfuse_observer:
+      disable_provider_payload: true      # locked down: no channel live ...
+      disable_state_payload: true         # ... on either axis, and no hook supplied
+    caller_global_otel_active: true
+    # The rerank failure propagates as the invocation error. Critically there is NO
+    # expected_construction_error: detecting a shared provider is not itself a raise
+    # trigger when nothing harvested would reach it.
+    expected_error:
+      category: provider_unavailable
+      raised_from: rerank_node
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "rerank_node"
+            children:
+              - type: retriever
+                name: "openarmature.rerank.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"
+                input: null
+                output: null
+                metadata:
+                  error_type: "ServiceUnavailableError"
+                metadata_absent: [error_message]
+                children: []
+      langfuse_observations_on_global: true
+      no_payload_bearing_langfuse_observations_on_global: true
 
   - name: state_channel_preexists_suppresses
     description: |

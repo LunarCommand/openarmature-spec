@@ -158,7 +158,10 @@ cases:
                   total: 36
                 metadata:
                   finish_reason: "length"
-                  error_type: "<any-string>"   # classification token, NOT gated
+                # error_type is NOT asserted here: this failure is a 200 response whose
+                # content failed validation, so there is no vendor error object, and
+                # error_type's contract permits null when no impl-side type exists
+                # (fixture 073). Asserting <any-string> would over-constrain it.
                 # THE LEAK PROPOSAL 0118 CLOSES. A structured_output_invalid
                 # exception message commonly quotes the model output that failed
                 # validation, so redacting generation.output while emitting the

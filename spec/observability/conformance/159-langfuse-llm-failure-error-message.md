@@ -43,3 +43,9 @@ flag-off case, an implementation that never emits the fields at all would satisf
   The request-side `input` populates while `output` stays null, because no response was received, which is
   what makes the first case's null `output` meaningful rather than a payload-gating artifact. Level and
   `statusMessage` are unchanged by the flag. Same two-case structure as the embedding sibling, fixture 137.
+
+**Harness note.** The flag-off case asserts the Generation's request-side input with
+`input_parses_as_messages`, the form fixture 023 established for a Generation's message list, rather than a
+bare `input:` key. `error_type` is asserted by format (`<any-string>`) because the mock supplies a vendor
+`type`; it is an optional field whose contract permits `null` where no implementation-side type exists
+(fixture 073), so a fixture should only assert it present where the mock gives the implementation a source.

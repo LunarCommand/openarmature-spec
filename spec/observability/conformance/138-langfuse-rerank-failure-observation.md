@@ -38,7 +38,7 @@ success — via the generic §4.2 / §8.4.2 error mapping, mirroring §8.4.6's t
 - The failure is triggered by `mock_rerank` returning HTTP 503, classified as
   `provider_unavailable` (the directive vocabulary of fixture 100). The `expected_error` block
   asserts the exception still propagates out of `rerank()`.
-- `error_type` is asserted by format (`<any-string>`), not literal: the mock
+- `error_type` is asserted by format (`<any-string>`) rather than literally: the mock
   body supplies a vendor `type` + `message` so both surface non-empty, but their exact values are
   impl-derived (the fixture-073 vendor-error-type idiom). `error_category` (the deterministic §7
   category, here `provider_unavailable`) is the literal-asserted field, via `statusMessage`.

@@ -69,6 +69,8 @@ plugins:
           - glossary.md
         Proposals:
           - proposals/*.md
+        Privacy controls:
+          - privacy-controls.md
         Open questions:
           - open-questions.md
         Changelog:

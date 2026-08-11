@@ -143,7 +143,9 @@ cases:
                 name: "openarmature.llm.complete"
                 level: ERROR
                 statusMessage: "provider_unavailable"
-                input: [{role: user, content: "summarize"}]
+                # Generation input uses the message-list form fixture 023 established.
+                input_parses_as_messages:
+                  - {role: user, content: "summarize"}
                 output: null
                 metadata:
                   error_type: "<any-string>"

@@ -108,9 +108,12 @@ non-portable.
 
 **Tool anti-smuggling.** §6's Tool anti-smuggling clause — a failed **Tool** observation (which has no error
 category, §5.5.12) MUST NOT surface the exception message through `observation.statusMessage` as a substitute
-for the omitted `error_message` — is gated by `tool_failure_omitted_on_shared`, which asserts the Tool
-observation's `statusMessage: null` directly (an implementation that smuggles the message there fails),
-without needing the §6.4 payload-bearing predicate to inspect `statusMessage`.
+for the withheld `error_message` — is asserted directly, via `statusMessage: null`, so an implementation that
+smuggles the message there fails without the §6.4 payload-bearing predicate needing to inspect
+`statusMessage`. Two cases carry it: `tool_failure_omitted_on_shared` on the **suppress arm** (restricted to
+non-detection-capable adapters, since a detection-capable one raises before emitting), and fixture **098**'s
+default-posture case on a normal provider, which is the coverage for **every** adapter. Both also assert
+`error_type` present, since suppression and the payload flag withhold harvested text only.
 
 **Why the two error-message cases run with the payload flag off (proposal 0118).** They previously ran with it
 **on**. Proposal 0118 brought a failed observation's `error_message` under `disable_provider_payload`, so in a

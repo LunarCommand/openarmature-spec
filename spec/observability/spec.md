@@ -1093,18 +1093,23 @@ below are normative for cross-implementation consistency):
     call's harvested exception **text**: the `error_message` field the Langfuse mapping writes to
     `observation.metadata` on a failed Generation / Embedding / Tool / Retriever observation (§8.4.2,
     §8.4.3, §8.4.5, §8.4.6, §8.4.7). When `True`, `error_message` is NOT emitted. Rationale: the
-    message is `str(exception)`, harvested runtime text that can embed the very payload the flag
-    exists to suppress. A `structured_output_invalid` failure's message commonly quotes the model
-    output that failed validation, and a provider 4xx can quote the request.
+    message is the raised exception's rendered text, harvested runtime content that can embed the very payload the flag
+    exists to suppress: it is the failure's human-readable description as the source failure event
+    carries it. A `structured_output_invalid` failure's message commonly quotes the model output that
+    failed validation, and a provider 4xx can quote the request.
 
     **`error_type` is NOT gated.** It is a classification token, a vendor error code or an upstream
-    exception class name (§5.5.12, and the permissive contract fixture 073 asserts), not harvested
-    runtime text, so suppressing it buys no privacy while removing the caller's only failure
-    discriminator on an observation that has no error category. A failed observation therefore
-    carries `error_type` plus its error **category** where one exists (the `observation.statusMessage`
-    enum, §8.4.2) under every posture, and `error_message` only when the flag permits it. This matters
-    most for a failed **Tool** observation, which has no error category at all (§8.4.6 / §5.5.12): it
-    would otherwise reach the default posture carrying `level = "ERROR"` and nothing else.
+    exception class name, not harvested runtime text, so suppressing it buys no privacy while removing
+    a failure discriminator the caller may have no other source for. A failed observation therefore
+    carries `error_type` **wherever the source failure event supplies one**, plus its error **category**
+    where one exists (the `observation.statusMessage` enum, §8.4.2), under every posture; `error_message`
+    emits only when the flag permits it. `error_type` is an **optional** field whose contract permits
+    `null` when no implementation-side type is available (§5.5.12, the permissive contract fixture 073
+    asserts), so this governs what the flag may withhold rather than mandating that a type always exist.
+    It matters most for a failed **Tool** observation, which has no error category at all (§8.4.6 /
+    §5.5.12): gating the type would leave such an observation reaching the default posture with
+    `level = "ERROR"` and, even where the provider supplied a type, nothing to tell one failure from
+    another.
 
     The gate is Langfuse-side only, because the OTel surface carries no `error_message` span
     attribute: on that side the exception reaches the backend through `record_exception` on
@@ -2007,7 +2012,7 @@ In every other case — mode (a), a run with no live payload channel, an opted-i
 openarmature cannot establish (which suppresses instead) — it **MUST NOT** raise. Note that the locked-down
 posture (`disable_provider_payload=True`) is a no-live-channel case on the failure path too, since that flag
 also suppresses a failed observation's error message (§5.5.4), so a run that merely fails never triggers a
-raise on that account.
+raise on that account. A live **state** channel still does, independently of the provider flag.
 
 **The isolation trade-off.** Isolation is SHOULD-by-default in mode (b), not an unconditional MUST, because
 a separate `TracerProvider` still shares OTel *context*: a parent span on one provider can leave children on
@@ -2207,13 +2212,19 @@ NOT** be written to any Langfuse observation. Such detail reaches consumers thro
 openarmature's OTel span via `record_exception` where the error propagates (§6, on the private provider
 isolated by construction), and otherwise the typed observer event itself — the failure-isolation event's
 `caught_exception` record and its `on_caught` callback (pipeline-utilities §6.3), which a caller consumes
-directly. The rule governs **harvested** content only: caller-**attached** dimensions (the failure-isolation
-`event_name`, and the §6-exempt `correlation_id` / `session_id` / `userId` / caller
-metadata) stay governed by the harvest-vs-attach exemption (§3.4, §6), not by this rule. The §6 payload-leak
+directly. The rule governs **harvested** content only: the §6-exempt caller-**attached** dimensions
+(`correlation_id` / `session_id` / `userId` / caller metadata) stay governed by the harvest-vs-attach
+exemption (§3.4, §6), not by this rule. No §8.4.x table defines a Langfuse rendering for the
+failure-isolation event at all, so its caller-supplied `event_name` is not so much exempted here as
+unspecified: an implementation rendering that event to Langfuse is emitting something these tables never
+defined. The §6 payload-leak
 invariant's set of harvested channels is therefore closed **by these mapping tables**, not by a per-capability
 enumeration: a newly harvested field is in the invariant's scope only once a table maps it, and harvested
 content the tables do not map is forbidden outright rather than gated — so a new emission site cannot silently
-become an ungated leak channel.
+become an ungated leak channel. The rule is gated by these tables rather than by a fixture: the
+conformance-adapter's `metadata_absent` directive can assert the absence of a **named** key, but this rule
+forbids emitting fields the tables never enumerate, so there is no closed key set for a fixture to assert
+against.
 
 **Shared top-level namespace with caller metadata.** The Langfuse mapping writes OA-emitted
 observability fields as top-level keys of `trace.metadata` / `observation.metadata` /
@@ -2462,7 +2473,7 @@ the binding, unless the caller has accepted a shared provider.
 | `openarmature.correlation_id` | `observation.metadata.correlation_id` (cross-cutting per §8.5) |
 | Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at the observation's emission time (per §3.4) | `observation.metadata.<key>` on EVERY Observation (top level, same propagation rationale as `correlation_id`; lets users filter across observations from detached subgraphs / fan-outs in one Langfuse UI query). For the fan-out per-instance use case, each instance's observations carry that instance's augmented metadata (per §3.4 per-async-context scoping), so adopters can filter Langfuse by the per-instance identifier (e.g., `productId`) to find that specific instance's subtree. |
 | `openarmature.error.category` | `observation.level = "ERROR"`, `observation.statusMessage = <category>` |
-| `error_type` / `error_message` — failed **Generation / Embedding / Tool / Retriever** observations (§8.4.3 / §8.4.5 / §8.4.6 / §8.4.7; from `LlmFailedEvent` §5.5.7 / `EmbeddingFailedEvent` §5.5.9 / `ToolCallFailedEvent` §5.5.12 / `RerankFailedEvent` §5.5.14) | `observation.metadata.error_type` / `observation.metadata.error_message`. `error_type` is a classification token and is **not** gated. `error_message` is harvested exception text, **gated by `disable_provider_payload`** (§5.5.4, default `True`, so it is absent under the default posture) and, when the flag permits it, subject to §6's payload-leak invariant like the rest of the provider payload. Where the message is omitted the observation still carries `error_type` and its error **category**, and the message **MUST NOT** be surfaced through `statusMessage` instead (§6). In-cell-scoped to those four provider observation types. A node `Span` carries only `error.category` here (its category is the §4.2 graph-engine mapping — a node Span harvests no provider exception). Framework-emitted observer events these tables do not render — notably the failure-isolation event (pipeline-utilities §6.3), which is a distinct event kind carrying neither `NodeEvent.error` nor a §4 category — have **no** mapping here at all: a harvested exception message from such an event (its `caught_exception` detail) is mapped by no §8.4.x table and is **over-emission** (§8.4 *Exhaustive mapping*), so it **MUST NOT** be written to any Langfuse observation; the caller consumes that detail from the event itself (§6.3 `caught_exception` / `on_caught`). On a failed **Generation** the `error_message` is the exception string, **distinct** from any payload-gated `generation.output` (§8.4.3): `structured_output_invalid` carries both, while `provider_invalid_request` / timeout / `provider_unavailable` carries no output, so the error message is its only harvested error content. A Generation retains its error **category** like Embedding / Retriever (§5.5.7); only a Tool failure has none (§8.4.6). |
+| `error_type` / `error_message` — failed **Generation / Embedding / Tool / Retriever** observations (§8.4.3 / §8.4.5 / §8.4.6 / §8.4.7; from `LlmFailedEvent` §5.5.7 / `EmbeddingFailedEvent` §5.5.9 / `ToolCallFailedEvent` §5.5.12 / `RerankFailedEvent` §5.5.14) | `observation.metadata.error_type` / `observation.metadata.error_message`. `error_type` is a classification token and is **not** gated. `error_message` is harvested exception text, **gated by `disable_provider_payload`** (§5.5.4, default `True`, so it is absent under the default posture) and, when the flag permits it, subject to §6's payload-leak invariant like the rest of the provider payload. Where the message is omitted the observation still carries `error_type` and its error **category**, and the message **MUST NOT** be surfaced through `statusMessage` instead (§6). In-cell-scoped to those four provider observation types. A node `Span` carries only `error.category` here (its category is the §4.2 graph-engine mapping — a node Span harvests no provider exception). Framework-emitted observer events these tables do not render — notably the failure-isolation event (pipeline-utilities §6.3), which is a distinct event kind that does not reuse `NodeEvent.error` — have **no** mapping here at all: a harvested exception message from such an event (its `caught_exception` detail) is mapped by no §8.4.x table and is **over-emission** (§8.4 *Exhaustive mapping*), so it **MUST NOT** be written to any Langfuse observation; the caller consumes that detail from the event itself (§6.3 `caught_exception` / `on_caught`). On a failed **Generation** the `error_message` is the exception string, **distinct** from any payload-gated `generation.output` (§8.4.3): `structured_output_invalid` carries both, while `provider_invalid_request` / timeout / `provider_unavailable` carries no output, so the error message is its only harvested error content. A Generation retains its error **category** like Embedding / Retriever (§5.5.7); only a Tool failure has none (§8.4.6). |
 
 #### 8.4.3 Generation-specific mapping (sourced from LLM provider span attributes)
 
@@ -2524,7 +2535,8 @@ Generation has `output` / `usage` absent as before.
 
 **Failed Generation error message (payload-gated).** Independently of the response-side output above, a failed
 Generation of any category, sourced from the graph-engine §6 `LlmFailedEvent` (§5.5.7), carries `error_type` in
-`observation.metadata` under every posture, and `error_message` **only when `disable_provider_payload` is
+`observation.metadata` under every posture wherever the failure event supplies one (it is optional and may be
+`null`, §5.5.12), and `error_message` **only when `disable_provider_payload` is
 `False`** (§5.5.4). The flag defaults to `True`, so under the default posture a failed Generation carries its
 `error_type` and its error **category** without the exception text. Where the flag permits the message, it is
 additionally subject to §6's payload-leak invariant like the rest of the provider payload.
@@ -2638,7 +2650,10 @@ Field mappings:
 payload-bearing data on the same footing — both gated by `disable_provider_payload` (default
 `True` per §5.5.4). When the flag is `True`, the `Embedding` observation populates `model` +
 `usageDetails` + identity metadata only; both `input` and `output` are NOT populated. When
-`False`, both fields populate fully.
+`False`, both fields populate fully. On a **failed** Embedding observation the same flag additionally
+withholds `metadata.error_message` (proposal 0118); `metadata.error_type`, where the failure event
+supplies one, and the error category / `statusMessage` emit regardless, being classifications rather
+than harvested text (§5.5.4).
 
 Vectors are classified as payload-bearing because embedding-inversion research (e.g., the
 vec2text line of work, Morris et al., 2023) demonstrates that vectors MAY leak source-text
@@ -2686,7 +2701,11 @@ Field mappings:
 **Privacy posture.** `input` (arguments) and `output` (result) are payload-bearing, gated by
 `disable_provider_payload` (default `True` per §5.5.4) identically to the other provider observations.
 When the flag is `True`, the `Tool` observation populates the tool name + identity metadata (+ status)
-only; `input` / `output` are NOT populated.
+only; `input` / `output` are NOT populated. On a **failed** Tool observation the same flag additionally
+withholds `metadata.error_message` (proposal 0118), while `metadata.error_type` emits wherever the
+failure event supplies one; a Tool failure carries no error category (§5.5.12), so the omitted message
+**MUST NOT** be substituted into `statusMessage` (§6), and `error_type` is what distinguishes one
+failure from another. Fixture 098's default-posture case gates this.
 
 **Nesting and rollup.** Tool observations nest under the calling node's `Span` observation —
 resolved lineage-aware per §5.5 *Lineage-resolved parent* (the calling node's observation identified
@@ -2724,7 +2743,10 @@ Field mappings:
 **Privacy posture for rerank observations.** Query, input documents, and result document echoes are
 all payload-bearing data, gated by `disable_provider_payload` (default `True` per §5.5.4). When the
 flag is `True`, the `Retriever` observation populates `model` + `usageDetails` + identity metadata
-only; `input` and `output` are NOT populated. When `False`, both fields populate fully.
+only; `input` and `output` are NOT populated. When `False`, both fields populate fully. On a **failed**
+Retriever observation the same flag additionally withholds `metadata.error_message` (proposal 0118);
+`metadata.error_type`, where the failure event supplies one, and the error category / `statusMessage`
+emit regardless (§5.5.4).
 
 **Trace-level cost rollup.** Langfuse's trace-level cost aggregation handles `Generation` +
 `Embedding` + `Retriever` observations uniformly via the per-observation `usageDetails` field. The OA

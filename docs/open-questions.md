@@ -901,6 +901,18 @@ short-horizon roadmap below.
   request and response payload, for callers who triage failures in Langfuse alone; and the standing register
   for any newly harvested Langfuse field, which the harvested-versus-attached test decides.
 
+### 0118 — payload-gating the harvested error message
+
+- **A narrower control for callers who triage failures in Langfuse alone.** `disable_provider_payload` now
+  withholds a failed observation's `error_message` along with the request and response payload. A caller who
+  wants the exception text but not the transcript has no way to say so, and reads failure detail from their
+  OTel backend instead. Whether to offer a narrower control is left open rather than pre-empted.
+  `[candidate-for-new-proposal]`
+- **The standing register for newly harvested Langfuse fields.** §8.4's exhaustive-mapping rule means a
+  harvested field is either mapped (and gated) or forbidden. Any future capability wanting to surface a new
+  harvested field adds a §8.4.x mapping through its own proposal, decided by the harvested-versus-attached
+  test. This is the register for that decision. `[still-relevant]`
+
 ---
 
 ## How to use this page

@@ -36,10 +36,12 @@ the invariant can lower it further.
 ## The controls
 
 [§5.5.4](capabilities/observability.md#554-opt-out-flags) defines three flags on the OpenTelemetry observer.
-Two of them, `disable_provider_payload` and `disable_genai_semconv`, exist **twice**: the Langfuse observer
-carries its own copy, set independently, because the two backends make their own emission decisions from the
-same source event. So `disable_provider_payload` on the OpenTelemetry observer governs span attributes, while
-the Langfuse observer's copy governs Langfuse fields, including the failed-call error message. The state knob
+Two of them, `disable_llm_spans` and `disable_provider_payload`, exist **twice**: the Langfuse observer carries
+its own copy, set independently, because the two backends make their own emission decisions from the same
+source event. So `disable_provider_payload` on the OpenTelemetry observer governs span attributes, while the
+Langfuse observer's copy governs Langfuse fields, including the failed-call error message.
+`disable_genai_semconv` is the exception: §8.9 makes it meaningful only to the OpenTelemetry observer, since
+the GenAI semantic conventions have no Langfuse-side equivalent. The state knob
 and its two hooks are Langfuse-only
 ([§8.4.1](capabilities/observability.md#841-trace-level-mapping-sourced-from-invocation-span-attributes)), and
 the shared-provider acknowledgment belongs to the invariant
@@ -53,15 +55,17 @@ the flag on both observers.
 | `trace_input_from_state` / `trace_output_from_state` | not supplied | Caller hooks turning state into a domain-shaped summary. A supplied hook returning non-null emits **regardless** of `disable_state_payload`. |
 | `disable_genai_semconv` | `False` (attributes on) | Suppresses the GenAI semantic-convention attributes, leaving `openarmature.*` attributes only. For when an external library is the canonical GenAI emitter. |
 | `disable_llm_spans` | `False` (spans on) | Stops OpenArmature emitting an LLM span at all, for when external auto-instrumentation is canonical. The other two flags then have no LLM span left to act on, though they still govern embedding, tool, and rerank emission, and the Langfuse observer's own copies are unaffected. |
-| `accept_shared_provider` | off | **Not a privacy knob.** An acknowledgment that OpenArmature's Langfuse data may reach a provider shared with the application: it turns the invariant's hard failure into a warning. |
+| the shared-provider acknowledgment (`accept_shared_provider` in conformance fixtures) | off | **Not a privacy knob.** An acknowledgment that OpenArmature's Langfuse data may reach a provider shared with the application: it turns the invariant's hard failure into a warning. |
 
 The two payload knobs are deliberately separate rather than one combined flag, because they carry
 different threat models. The provider payload is the model-interaction transcript, while the state
 payload is the shape of the application's own data. An implementation may offer a convenience flag
 setting both, but a caller must be able to enable one without the other.
 
-`accept_shared_provider` is the one control that is not about privacy at all. It grants permission on
-the *where* axis, and the framework must default to the protective behaviour and never infer this
+The shared-provider acknowledgment is the one control that is not about privacy at all. The spec mandates that
+such an opt-in exist and defaults to off, but leaves its exact spelling to each implementation; the
+conformance fixtures address it as `accept_shared_provider`, so check your implementation for its own name. It
+grants permission on the *where* axis, and the framework must default to the protective behaviour and never infer this
 setting from context.
 
 ## How the Trace state field resolves
@@ -88,7 +92,7 @@ Not everything OpenArmature writes is developer-controllable, and the reasons di
 | Provider payload | yes | `disable_provider_payload`. Also drives the invariant's construction-time raise or suppress. |
 | Trace state payload | yes | `disable_state_payload`, or a supplied hook. Suppression forces the minimal stub. |
 | A failed call's `error_message` | yes | The Langfuse observer's `disable_provider_payload` covers the harvested exception text, so the default posture withholds it. Full exception detail still reaches your OpenTelemetry backend through `record_exception`. |
-| A failed call's `error_type` | no, by design | A classification token (a vendor code or exception class name), not harvested text. It stays under every posture, and it is the only failure discriminator on a Tool observation, which has no error category. |
+| A failed call's `error_type` | no, by design | A classification token (a vendor code or exception class name), not harvested text, so no flag withholds it. It is an optional field: where the provider supplies no type it may legitimately be absent. Where it is present it is the only failure discriminator on a Tool observation, which has no error category. |
 | The error **category** (`level` / `statusMessage`) | not applicable | Not payload. Retained even where the message beside it is omitted. |
 | Caller-attached dimensions: `correlation_id`, `session_id`, the promoted `userId`, trace name, caller metadata | not applicable | Exempt by design. The caller attached these deliberately as observability dimensions and owns their content; they are cross-backend join keys, so the framework must not suppress or refuse on account of them. |
 | Runtime identity: `spec_version`, implementation name and version, entry node | not applicable | Always emits. Privacy knobs gate runtime *data*, not runtime *identity*. |

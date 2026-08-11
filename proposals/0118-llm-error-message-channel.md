@@ -9,9 +9,11 @@
     provider call's harvested exception **text**: the `error_message` field the Langfuse mapping writes to
     `observation.metadata` on a failed Generation / Embedding / Tool / Retriever observation. At the flag's
     default (`True`) the message is not emitted. **`error_type` is deliberately NOT gated:** it is a
-    classification token, a vendor code or an exception class name (§5.5.12, and the permissive contract fixture
-    073 asserts), so suppressing it buys no privacy while removing the caller's only failure discriminator on an
-    observation that has no error category. That case is real: a failed **Tool** observation has no category
+    classification token, a vendor code or an exception class name, so suppressing it buys no privacy while
+    removing a failure discriminator the caller may have no other source for. It is an **optional** field whose
+    contract permits `null` when no implementation-side type is available (§5.5.12, the permissive contract
+    fixture 073 asserts), so the rule governs what the flag may withhold rather than mandating a type always
+    exist. That case is real: a failed **Tool** observation has no category
     (§8.4.6 / §5.5.12), so gating the type would leave it carrying `level = "ERROR"` and nothing else. The gate
     is Langfuse-side only, because the OTel surface defines no `error_message` span attribute: there the
     exception reaches the backend through `record_exception` on openarmature's own span (§6), which this flag
@@ -300,7 +302,8 @@ bundled observer's handlers as the corresponding check.
    Langfuse adds a §8.4.x mapping through its own proposal, decided by the harvested-versus-attached test (0117
    Open question #1). That is a feature addition rather than a leak patch.
 2. **Debuggability under the locked-down posture.** A caller running `disable_provider_payload=True` now sees
-   error categories only in Langfuse and reads exception detail from their OTel backend. That is the intended
+   a failure's `error_type` and error category in Langfuse, without the exception text, and reads the full
+   detail from their OTel backend. That is the intended
    trade and the flag's stated purpose, but it is a visible change for anyone who relied on Langfuse alone for
    failure triage while running the default posture. Whether a future proposal should offer a narrower control,
    for example permitting the exception message while still suppressing request and response payload, is left
