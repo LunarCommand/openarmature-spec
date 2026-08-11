@@ -8,7 +8,8 @@ NOT a success — via the generic §4.2 / §8.4.2 error mapping, mirroring §8.4
 **Spec sections exercised:**
 
 - observability §8.4.5 — *Failure observations*: `ERROR` level, the §7 `error_category` as
-  `observation.statusMessage`, `error_type` / `error_message` in metadata, and no `output` (no
+  `observation.statusMessage`, `error_type` in metadata (and `error_message` when the payload flag
+  permits it), and no `output` (no
   response was received).
 - observability §8.4.2 — the generic `openarmature.error.category` →
   `observation.level = "ERROR"` + `observation.statusMessage = <category>` mapping the failure
@@ -21,7 +22,9 @@ NOT a success — via the generic §4.2 / §8.4.2 error mapping, mirroring §8.4
 
 1. `embedding_failure_renders_error_level_observation_payload_suppressed` — default config
    (`disable_provider_payload=True`). The `Embedding` observation emits at `ERROR` with
-   `statusMessage = "provider_unavailable"`, `error_type` / `error_message` in metadata, and
+   `statusMessage = "provider_unavailable"` and `error_type` in metadata, while `error_message` is
+   **absent** (asserted via `metadata_absent`): it is harvested exception text gated by that flag
+   (§5.5.4, proposal 0118), whereas `error_type` is a classification token and is not gated. Plus
    `openarmature_input_count`; `input` is suppressed (null) and `output` is null (no response).
 2. `embedding_failure_no_output_even_with_payload_flag_off` —
    `disable_provider_payload=False`. The request-side `input` (the strings list) populates as in
@@ -34,7 +37,7 @@ NOT a success — via the generic §4.2 / §8.4.2 error mapping, mirroring §8.4
 - The failure is triggered by `mock_embedding` returning HTTP 503, classified as
   `provider_unavailable` (the directive vocabulary of fixture 075). The `expected_error` block
   asserts the exception still propagates out of `embed()`.
-- `error_type` / `error_message` are asserted by format (`<any-string>`), not literal: the mock
+- `error_type` is asserted by format (`<any-string>`), not literal: the mock
   body supplies a vendor `type` + `message` so both surface non-empty, but their exact values are
   impl-derived (the fixture-073 vendor-error-type idiom). `error_category` (the deterministic §7
   category, here `provider_unavailable`) is the literal-asserted field, via `statusMessage`.
@@ -42,7 +45,8 @@ NOT a success — via the generic §4.2 / §8.4.2 error mapping, mirroring §8.4
 **What passes:**
 
 - Observation type is `embedding` (not `generation`); `ERROR` level; `statusMessage` is the §7
-  category; `error_type` / `error_message` in metadata; no `output` under either payload posture.
+  category; `error_type` in metadata under either payload posture, with `error_message` only when the
+  flag permits it; no `output` under either posture.
 
 **What fails:**
 

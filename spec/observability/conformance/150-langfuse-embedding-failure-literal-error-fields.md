@@ -33,3 +33,10 @@ via `raises`, so the observation's `error_type` / `error_message` can be asserte
 
 - Asserting `error_type` / `error_message` only by format when the harness supplied literal values; sourcing the
   `error_category` from `raises` rather than the `status`; or emitting an `output` on a failure observation.
+
+**Payload flag (proposal 0118).** This fixture sets `disable_provider_payload: false`. The observation's
+`error_message` is harvested exception text gated by that flag (observability §5.5.4), and asserting it
+**literally** is this fixture's whole purpose, so the flag must permit it. `error_type` is a
+classification token and is not gated. Consequently the request-side `input` also populates, as in the
+flag-off case of the sibling format-assertion fixture. The flag's own gating of the message is covered by
+fixture 159.

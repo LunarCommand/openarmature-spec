@@ -27,11 +27,20 @@
 #   - expected.log_records[].level — asserts the diagnostic's OTel severity.
 #
 # The 0116 cases (first group) have the Langfuse observer emit the PROVIDER payload
-# (disable_provider_payload false). The proposal-0117 cases (second group) add the
-# STATE channel (langfuse_observer.disable_state_payload false, or a
-# trace_input_from_state hook — proposal 0043 / fixture 037) and the ERROR-MESSAGE
-# channel (a mock_rerank failure — proposal 0107 / fixture 151), with the provider
-# payload OFF, to gate those harvested channels independently; no new directive.
+# (disable_provider_payload false). The proposal-0117 STATE-channel cases add
+# langfuse_observer.disable_state_payload false, or a trace_input_from_state hook
+# (proposal 0043 / fixture 037), with the provider payload OFF so the state channel
+# is gated independently.
+#
+# The two ERROR-MESSAGE cases run with the provider payload ON. Proposal 0118 brought
+# a failed observation's error_message under disable_provider_payload, so a flag-ON
+# configuration would have the FLAG withhold the message and assert nothing about §6;
+# with the flag off, the SUPPRESS arm is what withholds it, which is the remaining §6
+# behavior for this channel. Both are therefore restricted to non-detection-capable
+# adapters (a detection-capable adapter raises at construction instead). The flag's own
+# effect is gated by fixture 159, and the Tool anti-smuggling clause additionally by
+# fixture 098's default-posture case. error_type stays present throughout: it is a
+# classification token and is not gated.
 # All cases: mode credentials, a same-credential client pre-exists on the global
 # provider, and caller_global_otel_active installs a global exporter to catch leaks.
 # A case with no requires_capability applies to all adapters.
@@ -324,16 +333,20 @@ cases:
 
   - name: error_message_omitted_on_shared
     description: |
-      ALL adapters (ungated — the omission outcome is identical for detected-shared
-      and cannot-establish). Both payload knobs default/off (no provider or state
-      payload), so no construction-time channel is live and openarmature does NOT
-      raise (locked down). A rerank call then FAILS: the Retriever observation
-      would carry error_type / error_message. Per §6's error-message rule
-      openarmature omits them to the shared (primed) provider — the observation
-      still reaches the global provider (proving it is not wholly dropped) but
-      payload-free (error message omitted); the error category / statusMessage,
-      which is not payload, is retained. Gates the per-emission omission and the
-      "no raise on a locked-down app that merely fails" behavior.
+      Non-detection-capable adapter (proposal 0118 repoint). The provider payload
+      is ON (disable_provider_payload false), so the harvested error message is
+      permitted by the flag and the payload channel is live; openarmature cannot
+      establish the binding, so it takes the SUPPRESS arm rather than raising. A
+      rerank call then FAILS. Suppress-all MUST cover the error message too: the
+      failed Retriever observation reaches the global provider (proving it is not
+      wholly dropped) but payload-free, with error_type / error_message omitted
+      and the error category / statusMessage — which is not payload — retained,
+      plus the mandated WARNING. Gates "suppress-all covers the harvested error
+      message," which is the remaining §6 behavior for this channel now that the
+      flag governs it under the default posture (fixture 159 gates the flag
+      itself). Before 0118 this case ran with the payload flag ON, which under
+      0118's gating would suppress the message by flag alone and assert nothing
+      about §6.
     state:
       fields:
         rerank_response:
@@ -355,22 +368,24 @@ cases:
         raises:
           error_type: "ServiceUnavailableError"
           message: "the rerank endpoint returned 503"
+    requires_capability:
+      langfuse_bound_provider_detection: false
     langfuse_client:
       mode: credentials
       preexisting_same_key_client: true
       accept_shared_provider: false
     langfuse_observer:
-      disable_provider_payload: true
+      disable_provider_payload: false   # flag permits the message; suppress-all must still omit it
     caller_global_otel_active: true
     # The rerank failure propagates as the invocation error (as in fixture 151);
-    # this is NOT the isolation raise (locked down → no expected_construction_error).
+    # this is NOT the isolation raise (the suppress arm does not raise).
     expected_error:
       category: provider_unavailable
       raised_from: rerank_node
     expected:
-      # Non-vacuity trio (proposal 0117): the failed Retriever observation is present
-      # and ERROR-level with its error CATEGORY retained — distinguishing per-message
-      # omission from category-drop and from whole-observation drop.
+      # Non-vacuity trio: the failed Retriever observation is present and ERROR-level
+      # with its error CATEGORY retained, distinguishing message omission from
+      # category-drop and from whole-observation drop.
       langfuse_trace:
         id: "<uuid-hex>"
         observations:
@@ -383,26 +398,30 @@ cases:
                 statusMessage: "provider_unavailable"   # category retained (not payload)
                 input: null
                 output: null
+                metadata_absent: [error_message]
                 children: []
       # The failed Retriever DID reach the global provider (not wholly dropped) ...
       langfuse_observations_on_global: true
-      # ... but payload-free — error_type / error_message omitted per §6's rule.
+      # ... but payload-free: suppress-all omitted the error message.
       no_payload_bearing_langfuse_observations_on_global: true
+      log_records:
+        - level: WARNING
 
   - name: tool_failure_omitted_on_shared
     description: |
-      ALL adapters. Locked down (no provider/state payload), a tool call FAILS.
-      A ToolCallFailedEvent carries error_type / error_message but NO error
-      category (§5.5.12). Per §6's error-message rule and its Tool anti-smuggling
-      clause, openarmature omits error_type / error_message to the shared (primed)
-      provider AND MUST NOT surface the message through statusMessage as a
-      substitute — a Tool failure has no category, so statusMessage carries
-      nothing. The Tool observation reaches the global provider at ERROR but
+      Non-detection-capable adapter (proposal 0118 repoint). The provider payload is
+      ON, so the harvested error message is permitted by the flag and the channel is
+      live; openarmature cannot establish the binding, so it SUPPRESSES rather than
+      raising. A tool call then FAILS. A ToolCallFailedEvent carries error_type /
+      error_message but NO error category (§5.5.12), so this case gates §6's Tool
+      anti-smuggling clause under suppression: openarmature omits error_type /
+      error_message AND MUST NOT surface the message through statusMessage as a
+      substitute. The Tool observation reaches the global provider at ERROR but
       payload-free (identity metadata retained), with statusMessage null: an impl
       copying the exception into statusMessage fails the statusMessage: null
-      assertion, and one leaving error_message in metadata fails
-      no_payload_bearing. Does NOT raise the isolation error (locked down); the
-      tool failure itself propagates as node_exception.
+      assertion, and one leaving error_message in metadata fails both
+      metadata_absent and no_payload_bearing. Does NOT raise (the suppress arm);
+      the tool failure itself propagates as node_exception.
     state:
       fields:
         out: {type: record, default: null}
@@ -417,15 +436,17 @@ cases:
     edges:
       - {from: run_tool, to: END}
     initial_state: {}
+    requires_capability:
+      langfuse_bound_provider_detection: false
     langfuse_client:
       mode: credentials
       preexisting_same_key_client: true
       accept_shared_provider: false
     langfuse_observer:
-      disable_provider_payload: true
+      disable_provider_payload: false   # flag permits the message; suppress-all must still omit it
     caller_global_otel_active: true
     # The tool failure propagates as the invocation error (as in fixture 093/098);
-    # this is NOT the isolation raise (locked down).
+    # this is NOT the isolation raise (the suppress arm does not raise).
     expected_error:
       category: node_exception
       raised_from: run_tool
@@ -447,9 +468,12 @@ cases:
                 metadata:
                   openarmature_tool_name: "get_weather"
                   openarmature_tool_call_id: "call_def456"
+                metadata_absent: [error_message]
                 children: []
       langfuse_observations_on_global: true
       no_payload_bearing_langfuse_observations_on_global: true
+      log_records:
+        - level: WARNING
 
   - name: state_channel_preexists_suppresses
     description: |

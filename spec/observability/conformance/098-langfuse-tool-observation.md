@@ -9,7 +9,8 @@ dedicated `Tool` observation type, not a `Generation`.
   calling node's `Span`.
 - `tool.input` / `tool.output` payload-gated per `disable_provider_payload`;
   `tool_name` / `tool_call_id` in metadata.
-- Level — `DEFAULT` on `ToolCallEvent`; `ERROR` (with `error_type` / `error_message`
+- Level — `DEFAULT` on `ToolCallEvent`; `ERROR` (with `error_type`, and `error_message` when the
+  payload flag permits it
   in metadata) on `ToolCallFailedEvent`.
 
 ## Cases
@@ -17,9 +18,22 @@ dedicated `Tool` observation type, not a `Generation`.
 1. `tool_execution_renders_dedicated_tool_observation` — success (payload on) →
    `Tool` observation, `DEFAULT`, input / output populated, identity in metadata.
 2. `failed_tool_execution_renders_error_level` — failure → `Tool` observation at
-   `ERROR` with `error_type` / `error_message`.
+   `ERROR` with `error_type` / `error_message`. Both cases set
+   `disable_provider_payload: false`: `error_message` is harvested exception text gated by that flag
+   (observability §5.5.4, proposal 0118), whose default is `true`, so the failure case sets it
+   explicitly rather than relying on the default. `error_type` is not gated.
 
 ## Anti-cases
 
 - Rendering the tool call as a `Generation` with `metadata.operation = "tool"`.
 - Populating `input` / `output` under the default payload-off posture.
+
+**Default-posture failure and anti-smuggling (proposal 0118).** A third case,
+`failed_tool_default_posture_withholds_message_without_smuggling`, runs the failure under the default
+posture (`disable_provider_payload` unset, so `true`). It asserts `error_type` present, `error_message`
+withheld via `metadata_absent`, and `statusMessage: null`. The last of those gates observability §6's Tool
+anti-smuggling clause for **every** adapter: fixture 158's shared-provider tool case is restricted to
+non-detection-capable adapters, since a detection-capable one raises before emitting anything, so this case
+carries the clause's only coverage on detection-capable adapters. It also shows why `error_type` is not
+gated: a Tool failure has no error category, so without the type a failed Tool observation under the default
+posture would carry no failure discriminator at all.
