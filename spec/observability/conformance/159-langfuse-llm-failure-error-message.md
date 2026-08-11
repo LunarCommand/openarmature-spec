@@ -21,8 +21,8 @@ flag-off case, an implementation that never emits the fields at all would satisf
 
 **Spec sections exercised:**
 
-- §5.5.4 *Opt-out flags* — `disable_provider_payload` gates a failed call's `error_type` / `error_message` on
-  the Langfuse side, alongside the provider payload proper.
+- §5.5.4 *Opt-out flags* — `disable_provider_payload` gates a failed call's `error_message` on the Langfuse
+  side, alongside the provider payload proper. `error_type` is not gated.
 - §8.4.3 *Failed Generation error message* — the failed Generation carries the fields only when the flag
   permits them; the error category is retained either way.
 - §8.4.2 — `level = "ERROR"` plus `statusMessage` = the §7 `error_category`, which is not payload and is

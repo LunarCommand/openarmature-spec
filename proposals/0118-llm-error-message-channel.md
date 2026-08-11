@@ -211,7 +211,7 @@ from §6's arms:
 
 - `llm_failure_error_message_omitted_under_default_posture` — `mock_llm` 503 to `provider_unavailable`, flag at
   its default `true`. The failed Generation emits at ERROR with `statusMessage: "provider_unavailable"`,
-  `input` / `output` null, and `metadata_absent: [error_type, error_message]`. An implementation emitting the
+  `input` / `output` null, `error_type` asserted present, and `metadata_absent: [error_message]`. An implementation emitting the
   exception string under the default posture fails here.
 - `llm_failure_error_message_emitted_with_payload_flag_off` — the same failure with the flag `false`. The
   fields are present (asserted by format, since the values are implementation-sourced), the request-side

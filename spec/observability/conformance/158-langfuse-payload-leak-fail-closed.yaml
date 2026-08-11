@@ -339,8 +339,9 @@ cases:
       establish the binding, so it takes the SUPPRESS arm rather than raising. A
       rerank call then FAILS. Suppress-all MUST cover the error message too: the
       failed Retriever observation reaches the global provider (proving it is not
-      wholly dropped) but payload-free, with error_type / error_message omitted
-      and the error category / statusMessage — which is not payload — retained,
+      wholly dropped) but payload-free, with error_message omitted and the
+      error_type plus the error category / statusMessage — none of which is
+      harvested text — retained,
       plus the mandated WARNING. Gates "suppress-all covers the harvested error
       message," which is the remaining §6 behavior for this channel now that the
       flag governs it under the default posture (fixture 159 gates the flag

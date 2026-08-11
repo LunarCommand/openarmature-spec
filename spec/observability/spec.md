@@ -1962,8 +1962,9 @@ obligations **track which party controls the provider** (the ownership mode of �
 
   _Suppressing all harvested channels._ Where openarmature suppresses (the cannot-establish arm above) it
   **MUST** suppress **every** harvested-payload channel so no payload-bearing observation reaches a shared
-  provider: the provider payload **and** a failed observation's `error_message` / `error_type` (both as if
-  `disable_provider_payload=True`, leaving the error category only), and the Trace-level state payload
+  provider: the provider payload **and** a failed observation's `error_message` (both as if
+  `disable_provider_payload=True`, leaving that observation's `error_type` and error category, which are
+  classifications rather than harvested text), and the Trace-level state payload
   (forcing the §8.4.1 minimal stub — raw state not serialized **and** a supplied `trace_*_from_state` hook not
   applied).
 
@@ -1983,8 +1984,8 @@ obligations **track which party controls the provider** (the ownership mode of �
   and span structure; a shared provider then duplicates only that (the same duplication the private-provider
   rule above prevents for openarmature's own OTel spans). openarmature **SHOULD** isolate and **MAY** warn,
   but **MUST NOT** raise. A *failed* observation adds nothing harvested in this configuration either, because
-  `disable_provider_payload=True` also suppresses its `error_message` / `error_type` (§5.5.4), leaving the error
-  category only. So the locked-down posture carries no harvested content on either the success or the failure
+  `disable_provider_payload=True` also suppresses its `error_message` (§5.5.4), leaving its `error_type` and
+  error category. So the locked-down posture carries no harvested content on either the success or the failure
   path.
 - **Mode (a) — the caller supplies the client.** The implementation does **not** control the provider and
   **MUST NOT** mutate the supplied client. It **MUST NOT** represent openarmature's private-provider
