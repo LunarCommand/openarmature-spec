@@ -14,6 +14,7 @@ Registering a new implementation is a single entry in MANIFEST_URLS.
 from __future__ import annotations
 
 import tomllib
+import urllib.error
 import urllib.request
 
 # Stable raw URLs, read at docs-regeneration time. Each implementation
@@ -21,6 +22,10 @@ import urllib.request
 MANIFEST_URLS = {
     "python": "https://raw.githubusercontent.com/LunarCommand/openarmature-python/main/conformance.toml",
 }
+
+# Bounded so a stalled connection fails in seconds rather than blocking until
+# the CI job timeout. These are small files on a CDN; 30s is already generous.
+FETCH_TIMEOUT_SECONDS = 30
 
 
 def fetch_manifest(implementation: str, offline_path: str | None = None) -> dict:
@@ -34,8 +39,14 @@ def fetch_manifest(implementation: str, offline_path: str | None = None) -> dict
         with open(offline_path, "rb") as f:
             return tomllib.load(f)
     url = MANIFEST_URLS[implementation]
-    with urllib.request.urlopen(url) as resp:
-        return tomllib.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_SECONDS) as resp:
+            return tomllib.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, tomllib.TOMLDecodeError) as exc:
+        raise RuntimeError(
+            f"could not read the {implementation} conformance manifest "
+            f"from {url}: {exc}"
+        ) from exc
 
 
 def implementation_label(implementation: str, manifest: dict) -> str:

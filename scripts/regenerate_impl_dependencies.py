@@ -24,6 +24,7 @@ Schema (TOML, in each implementation's `conformance.toml`):
   verified_on = "2026-08-13"   # required: ISO date that pin was last moved
   internals   = ["a.b.C", ...] # optional: private surface depended on
   note        = "..."          # optional: free text, rendered under the table
+                               #   as a single paragraph (whitespace collapsed)
 
 Degradation is deliberate and asymmetric. An implementation must never be
 blocked on a spec-side change, and a spec-side build must never break because
@@ -72,28 +73,79 @@ EMPTY_STATE = (
 )
 
 
+def _inline(text: str) -> str:
+    """Normalize a manifest-sourced string for inline markdown rendering.
+
+    Manifest values are external input landing in a table row and a list item,
+    where a newline breaks the row and a pipe splits the cell. Collapse
+    whitespace (a TOML multi-line string is a formatting choice, not a semantic
+    one) and escape the cell delimiter.
+
+    Caveat on the escape: Python-Markdown unescapes `\\|` in plain cell text but
+    leaves the backslash visible inside a code span, so a pipe in one of the
+    backticked fields renders as `\\|`. That is accepted rather than solved.
+    A pipe cannot occur in a version range or a dotted symbol path, and no
+    representation of a pipe inside a code span in a table exists anyway; a
+    visible backslash in an impossible case beats a corrupted table.
+    """
+    return " ".join(text.split()).replace("|", "\\|")
+
+
 def collect_rows(manifests: list[tuple[str, dict]]) -> list[dict]:
     """Flatten every implementation's dependency entries into render rows."""
     rows: list[dict] = []
     for label, manifest in manifests:
         deps = manifest.get("external_dependencies", {})
+        if not isinstance(deps, dict):
+            raise RuntimeError(
+                f"{label}: [external_dependencies] must be a table, got "
+                f"{type(deps).__name__}"
+            )
         for slug in sorted(deps):
             entry = deps[slug]
+            if not isinstance(entry, dict):
+                raise RuntimeError(
+                    f"{label}: [external_dependencies.{slug}] must be a table, got "
+                    f"{type(entry).__name__}"
+                )
             missing = [k for k in REQUIRED_KEYS if not entry.get(k)]
             if missing:
                 raise RuntimeError(
                     f"{label}: [external_dependencies.{slug}] is missing required "
                     f"key(s): {', '.join(missing)}"
                 )
+            # Type-check the shape as well as its presence. A bare string
+            # `internals` is the case that matters: it would not raise, it would
+            # iterate into characters and render a count and a list that are
+            # both wrong, which is worse on a public page than a red build.
+            mistyped = [k for k in REQUIRED_KEYS if not isinstance(entry[k], str)]
+            if mistyped:
+                raise RuntimeError(
+                    f"{label}: [external_dependencies.{slug}] key(s) "
+                    f"{', '.join(mistyped)} must be strings"
+                )
+            internals = entry.get("internals") or []
+            if not isinstance(internals, list) or not all(
+                isinstance(path, str) for path in internals
+            ):
+                raise RuntimeError(
+                    f"{label}: [external_dependencies.{slug}] internals must be an "
+                    "array of strings"
+                )
+            note = entry.get("note", "")
+            if not isinstance(note, str):
+                raise RuntimeError(
+                    f"{label}: [external_dependencies.{slug}] note must be a string"
+                )
             rows.append(
                 {
-                    "implementation": label,
-                    "dependency": DEPENDENCY_NAMES.get(slug, slug),
-                    "requires": entry["requires"],
-                    "verified": entry["verified"],
-                    "verified_on": entry["verified_on"],
-                    "internals": list(entry.get("internals") or []),
-                    "note": entry.get("note", ""),
+                    "implementation": _inline(label),
+                    "dependency": _inline(DEPENDENCY_NAMES.get(slug, slug)),
+                    "requires": _inline(entry["requires"]),
+                    "verified": _inline(entry["verified"]),
+                    "verified_on": _inline(entry["verified_on"]),
+                    "internals": [_inline(path) for path in internals],
+                    "note": _inline(note),
                 }
             )
     rows.sort(key=lambda r: (r["implementation"], r["dependency"]))
