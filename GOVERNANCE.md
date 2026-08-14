@@ -206,6 +206,13 @@ freely editable per the carve-out below (small re-verification updates do not re
 changes that flow from a re-verification (e.g., adopting a newly-Stable upstream attribute) DO require a proposal
 per the standard discipline.
 
+Those records are **spec** facts: what the normative text is written against, which is one answer per dependency
+regardless of implementation. The same page also carries a generated *implementation support* block recording what
+each implementation requires, has verified, and depends on privately. Those are **implementation** facts, they
+differ legitimately between implementations, and they are sourced from each implementation's own published
+conformance manifest rather than maintained here, so the compatibility matrix never asserts a number that is true
+of only one implementation.
+
 **De-facto interoperability standard (narrow carve-out).** Where an upstream attribute set is the de-facto
 cross-ecosystem interoperability standard for its domain — recognized by the broad installed base of tools that
 consume the signal — OA MAY adopt the recognized **core** names directly even while the upstream marks them

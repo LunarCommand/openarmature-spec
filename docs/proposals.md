@@ -7,11 +7,11 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
-| [0118](proposals/0118-llm-error-message-channel.md) | Bring the harvested error message under the payload flag | observability | Accepted | Pending         | —          |
-| [0117](proposals/0117-payload-leak-invariant-channels.md) | Broaden the Langfuse payload-leak invariant to all harvested-payload channels | observability | Accepted | Pending         | —          |
-| [0116](proposals/0116-langfuse-isolation-fail-loud.md) | Fail-closed when Langfuse payloads would reach a shared provider | observability | Accepted | Pending         | —          |
-| [0115](proposals/0115-langfuse-provider-isolation-conformance.md) | Conformance test primitives for Langfuse provider isolation | conformance-adapter | Accepted | Pending         | —          |
-| [0114](proposals/0114-langfuse-client-provider-isolation.md) | Langfuse client ownership & provider isolation | observability | Accepted | Pending         | —          |
+| [0118](proposals/0118-llm-error-message-channel.md) | Bring the harvested error message under the payload flag | observability | Accepted | Shipped (0.17.0)| —          |
+| [0117](proposals/0117-payload-leak-invariant-channels.md) | Broaden the Langfuse payload-leak invariant to all harvested-payload channels | observability | Accepted | Shipped (0.17.0)| —          |
+| [0116](proposals/0116-langfuse-isolation-fail-loud.md) | Fail-closed when Langfuse payloads would reach a shared provider | observability | Accepted | Shipped (0.17.0)| —          |
+| [0115](proposals/0115-langfuse-provider-isolation-conformance.md) | Conformance test primitives for Langfuse provider isolation | conformance-adapter | Accepted | Partial (0.17.0)| —          |
+| [0114](proposals/0114-langfuse-client-provider-isolation.md) | Langfuse client ownership & provider isolation | observability | Accepted | Shipped (0.17.0)| —          |
 | [0113](proposals/0113-malformed-merge-managed-extras.md) | Malformed extras on a merge-managed wire field | llm-provider | Accepted | Shipped (0.17.0)| —          |
 | [0112](proposals/0112-fan-out-item-seeded-collect-round-trip.md) | Fan-out item-seeded collect round-trip | pipeline-utilities | Accepted | Shipped (0.17.0)| —          |
 | [0111](proposals/0111-fan-out-collect-round-trip-warning.md) | Fan-out collect/target round-trip warning | pipeline-utilities | Accepted | Shipped (0.17.0)| —          |

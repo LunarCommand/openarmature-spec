@@ -6,6 +6,16 @@ OpenArmature normatively references several external specifications and APIs.
 This page is the **operational tracking artifact** for those references:
 pinned versions, last-verified dates, and per-dependency adoption notes.
 
+Everything above *Implementation support* records what the **specification
+text** is written against, which is one answer per dependency and the same
+answer whichever implementation you use.
+[Implementation support](#implementation-support) records the separate
+per-implementation view: which version range an implementation publishes to
+its consumers, which version it has actually verified, and how much
+unsupported private surface it reaches into. Those legitimately differ from
+the spec-side row and from each other, so they are tracked apart rather than
+reconciled into a single number.
+
 The **normative policy** governing how OA adopts upstream changes lives in
 [Governance — External-dependency adoption](governance.md). In brief:
 
@@ -39,9 +49,9 @@ publishes it.
 | [OpenAI streaming + reasoning-delta extension](https://platform.openai.com/docs/api-reference/chat/streaming) | Chat Completions SSE; `stream_options.include_usage`; vLLM / DeepSeek reasoning-delta ext | Stable (OpenAI SSE); reasoning-delta is a non-standard server extension | 2026-06-20 | Wire shape per llm-provider §8.1.6. OpenAI streams content / tool-call deltas as SSE `data:` chunks, `finish_reason` on the last content chunk, a final empty-`choices` chunk carrying `usage` (with `stream_options.include_usage`), then `[DONE]`. Reasoning streaming is a non-standard OpenAI-compatible **extension** with divergent field names — `choices[].delta.reasoning_content` (DeepSeek / older vLLM) and `choices[].delta.reasoning` (current vLLM); base OpenAI does not stream raw reasoning. |
 | [HuggingFace Text Embeddings Inference (TEI)](https://github.com/huggingface/text-embeddings-inference) | self-hosted; `/embed` + `/rerank`; `max-client-batch-size` default 32 | OSS (OpenAPI, continuously updated) | 2026-06-22 | Wire shape per retrieval-provider §8.1. Verified against the TEI OpenAPI: `/rerank` `{query, texts, truncate (default false), return_text (default false), raw_scores, truncation_direction}` → `[{index, score, text?}]` (no guaranteed sort order); `/embed` `{inputs, normalize, dimensions, truncate, prompt_name}`; `prompt_name` realizes the `input_type` knob server-side; mandatory client-side chunk-and-stitch at `max-client-batch-size` (default 32). |
 | [Jina AI Search Foundation API](https://jina.ai/) | hosted; `/v1/rerank` + `/v1/embeddings` | Stable (continuously updated) | 2026-07-12 | Wire shape per retrieval-provider §8.2. Verified against the Jina OpenAPI: `/v1/rerank` `{model, query, documents, top_n, return_documents (default `true`), truncation}` → `{results: [{index, relevance_score, document?}], usage: {total_tokens}}`; `/v1/embeddings` `{model, input, task, dimensions, truncate}` → `{data, usage}`. **`task` is MODEL-DEPENDENT** (re-verified against the Jina OpenAPI 2026-07-12): `jina-embeddings-v3` ∈ `retrieval.query` / `retrieval.passage` / `text-matching` / `classification` / `separation` (**no** `clustering`); `jina-embeddings-v4` ∈ `text-matching` / `retrieval.query` / `retrieval.passage` / `code.query` / `code.passage` (**neither** `classification` nor `clustering`); `jina-embeddings-v5` ∈ `retrieval.query` / `retrieval.passage` / `text-matching` / `clustering` / `classification`. This per-model divergence is why §8.2 keeps a closed `input_type` set (a provider is bound to a model identifier, with no capability registry to consult) while §8.4 Cohere widens — see proposal 0099. `return_documents` defaults `true` (vs OA's `False` — the mapping sends it explicitly); `input_type` realized via `task`. Jina enforces **no** per-call input-count cap (server-side token batching) — the §8 *Batch chunking* rule's no-cap branch applies (verified 2026-06-30). |
-| [OpenAI Embeddings API](https://platform.openai.com/docs/api-reference/embeddings) | URL-path `v1`; `/v1/embeddings` shape | Stable (continuously updated) | 2026-06-30 | Wire shape per retrieval-provider §8.3 (OpenAI-compatible). Verified against the OpenAI OpenAPI: `/v1/embeddings` `{model, input, dimensions, encoding_format (`float`/`base64`), user}` → `{object: "list", data: [{object: "embedding", index, embedding}], model, usage: {prompt_tokens, total_tokens}}`; **no** query/document `input_type` (symmetric — `input_type` not realized on the wire). `base_url`-configurable, covering the OpenAI-compatible ecosystem (vLLM, LocalAI, Together, …). Per-call cap **2048 inputs** → the §8 *Batch chunking* rule (count-based); the separate per-request summed-token ceiling is provider-enforced fail-loud (`provider_invalid_request`, §8.3), **not** a chunking trigger (verified 2026-06-30). `encoding_format: "base64"` returns each `data[].embedding` as a base64-encoded little-endian IEEE-754 float32 array; §8.3 decodes it to the float vector (proposal 0106, verified 2026-07-24). |
+| [OpenAI Embeddings API](https://platform.openai.com/docs/api-reference/embeddings) | URL-path `v1`; `/v1/embeddings` shape | Stable (continuously updated) | 2026-07-24 | Wire shape per retrieval-provider §8.3 (OpenAI-compatible). Verified against the OpenAI OpenAPI: `/v1/embeddings` `{model, input, dimensions, encoding_format (`float`/`base64`), user}` → `{object: "list", data: [{object: "embedding", index, embedding}], model, usage: {prompt_tokens, total_tokens}}`; **no** query/document `input_type` (symmetric — `input_type` not realized on the wire). `base_url`-configurable, covering the OpenAI-compatible ecosystem (vLLM, LocalAI, Together, …). Per-call cap **2048 inputs** → the §8 *Batch chunking* rule (count-based); the separate per-request summed-token ceiling is provider-enforced fail-loud (`provider_invalid_request`, §8.3), **not** a chunking trigger (verified 2026-06-30). `encoding_format: "base64"` returns each `data[].embedding` as a base64-encoded little-endian IEEE-754 float32 array; §8.3 decodes it to the float vector (proposal 0106, verified 2026-07-24). |
 | [Cohere v2 API (rerank + embed)](https://docs.cohere.com/reference/rerank) | hosted; `/v2/rerank` + `/v2/embed` shapes | Stable (continuously updated) | 2026-07-12 | Wire shape per retrieval-provider §8.4. Verified against the Cohere v2 API reference. **`/v2/rerank`:** `{model, query, documents (strings only), top_n, max_tokens_per_doc (default 4096)}` → `{id, results: [{index, relevance_score}], meta: {billed_units: {search_units}}}`. **No** `return_documents` and **no** echoed `document` (`return_documents` a silent no-op, `ScoredDocument.document` null); `search_units` → `RerankUsage.search_units`; no fail-loud truncation. **`/v2/embed`:** `{model, input_type (**required**; enum `search_query` / `search_document` / `classification` / `clustering` / `image` — re-verified 2026-07-12; only `image` carries a model-version restriction), texts (max 96), embedding_types (default ["float"]), truncate (NONE/START/END), output_dimension (embed-v4+)}` → `{id, embeddings: {float: [[...]]} keyed by type, texts, meta: {billed_units: {input_tokens}}}`. `input_type` mandatory (OA absent → `search_document`). Per proposal 0099 the §8.4 mapping recognizes OA `query` / `document` / `classification` / `clustering` (the last two identity-mapped); `image` is **not** recognized (an input modality, not a purpose for embedded text). `embedding_types` is mapping-managed: an extras-supplied value is merged with the mandatory `"float"`, never replacing it. `truncate: NONE` fail-loud; 96-input per-call cap → client-side chunk-and-stitch; no top-level `model`. Both endpoints: errors `401`/`404`/`400`/`429`/`5xx` (Cohere does not use `422`). |
-| [Langfuse Python SDK](https://github.com/langfuse/langfuse-python) | v4.7.1 | Stable v4.x | 2026-05-31 | Used by observability §8 Langfuse mapping. v5 announcement watched; `set_current_trace_io` marked deprecated in v4 per observability §8.4.1 caveat. The v4 SDK maintains a **process-wide client keyed by public key** (`LangfuseResourceManager`): a later construction for a key already present returns the cached client and **discards** a newly supplied `TracerProvider` — the behavior observability §6's Langfuse payload-leak invariant addresses (proposal 0116; verified against the v4 SDK source 2026-08-08). |
+| [Langfuse SDK](https://github.com/langfuse/langfuse-python) | v4.x line (verified v4.7.1) | Stable v4.x | 2026-08-08 | Used by observability §8 Langfuse mapping. v5 announcement watched; `set_current_trace_io` marked deprecated in v4 per observability §8.4.1 caveat. The v4 SDK maintains a **process-wide client keyed by public key** (`LangfuseResourceManager`): a later construction for a key already present returns the cached client and **discards** a newly supplied `TracerProvider` — the behavior observability §6's Langfuse payload-leak invariant addresses (proposal 0116; verified against the v4 **Python** SDK source 2026-08-08, the SDK this row links to). |
 | [JSON Schema](https://json-schema.org/specification) | draft-2020-12 | Released (latest draft) | 2026-05-31 | Used in llm-provider §4 `Tool.parameters` and §5 `response_schema`. |
 | [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119) — keyword conventions | RFC 2119 (Best Current Practice) | Published | 2026-05-31 | MUST / SHOULD / MAY usage across normative spec text. |
 | [RFC 2397](https://datatracker.ietf.org/doc/html/rfc2397) — data URI scheme | RFC 2397 | Published | 2026-05-31 | Used by llm-provider §3.1.3 inline-image source shape. |
@@ -157,6 +167,73 @@ why §6's detection is best-effort (reading the client's bound provider rests on
 non-portable SDK internals). Verified against the v4 SDK source 2026-08-08; a v5
 transition re-verifies it alongside the §8 mapping.
 
+Reading the bound provider is the one private-surface dependence the **normative
+text** rests on, which is why it is the only one named here. An implementation
+generally reaches further into the SDK to realize the §8 mapping, and what each
+one depends on is published under
+[Implementation support](#implementation-support).
+
+## Implementation support
+
+The matrix above is a spec fact. This section is an implementation fact, and the
+two are kept apart deliberately: "the Langfuse mapping is written against the v4
+SDK line and verified at 4.7.1" is true of the specification, while "this
+implementation resolves anywhere in `>=4.6,<5` but has verified 4.7.1" is true
+only of that implementation. A second implementation carrying entirely different
+numbers would be equally conforming.
+
+Each row is published by the implementation itself, in the same conformance
+manifest that drives the Python column on the [Proposals](proposals.md) index.
+Nothing here is hand-maintained, and no number here is copied from the matrix
+above.
+
+**Reading the columns.** *Requires* is the version range the implementation
+publishes to its own consumers, so it is the range a dependency resolver is free
+to pick from. *Verified* is the single version the implementation has actually
+exercised, and *Verified on* is when that pin was last deliberately moved or
+re-verified. A *Requires* range reaching well past *Verified* is ordinary and is
+not by itself a defect; it is simply the gap worth knowing about before assuming
+an untested upper bound behaves.
+
+*Verified on* is deliberately not refreshed by a passing test run, so an old
+date means the pin has genuinely not moved rather than that nobody updated the
+page. Read a date sitting well behind a still-widening *Requires* range as the
+signal it is: the untested part of that range has been growing.
+
+**Internals** counts the private, unsupported surface of the dependency that the
+implementation reaches into. Private surface carries no compatibility guarantee
+and can be renamed or removed in a patch release, so an implementation depending
+on it is expected to guard that surface in its own test suite rather than
+discover a rename in production. The count is published because the exposure is
+worth seeing, not because it is a fault: some upstream capabilities have no
+public equivalent.
+
+<!-- BEGIN GENERATED: implementation-dependencies -->
+<!-- Regenerated by scripts/regenerate_impl_dependencies.py from each implementation's published conformance manifest. Edits between the markers are overwritten. -->
+
+| Implementation | Dependency | Requires | Verified | Verified on | Internals |
+|---|---|---|---|---|---|
+| openarmature-python | Langfuse SDK | `>=4.6,<5` | `4.7.1` | 2026-08-13 | 10 |
+
+Implementation notes:
+
+- **openarmature-python / Langfuse SDK:** The declared range currently resolves as far as 4.14.x, well past `verified`. Every listed internal still exists there and the suite passes against it, but 4.7.1 is the version this implementation deliberately tests against. Losing one of these internals does not raise to the caller: the graph observer isolates observer errors, so an observation simply stops being emitted and a leak assertion reads clean, which is why they are guarded rather than trusted.
+
+??? note "openarmature-python: Langfuse SDK private surface (10 paths)"
+
+    - `langfuse._client.client.Langfuse._resources`
+    - `langfuse._client.client.Langfuse._tracing_enabled`
+    - `langfuse._client.client.Langfuse._otel_tracer`
+    - `langfuse._client.client.Langfuse._create_remote_parent_span`
+    - `langfuse._client.resource_manager.LangfuseResourceManager.tracer_provider`
+    - `langfuse._client.resource_manager.LangfuseResourceManager._instances`
+    - `langfuse._client.span.LangfuseGeneration`
+    - `langfuse._client.span.LangfuseTool`
+    - `langfuse._client.span.LangfuseEmbedding`
+    - `langfuse._client.span.LangfuseRetriever`
+
+<!-- END GENERATED: implementation-dependencies -->
+
 ## Maintenance
 
 ### When to update this page
@@ -186,6 +263,17 @@ Per-dependency drift rates vary; suggested starting cadences:
 
 These are starting points, not rules. Adjust as the dependency's actual
 drift rate becomes apparent.
+
+### Refreshing the implementation-support block
+
+The [Implementation support](#implementation-support) block is generated, not
+maintained here. To change what it says, change the publishing implementation's
+conformance manifest; to refresh what this page renders from it, run
+`scripts/regenerate_impl_dependencies.py`. Because the block reads each
+implementation's live default branch, an implementation can make this page
+stale with no commit in this repository, so CI checks it on every pull request
+touching markdown and on a weekly schedule. The remedy is a regeneration, never
+a hand edit.
 
 ### How to add a new dependency
 

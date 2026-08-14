@@ -14,7 +14,7 @@ Run modes:
                        (useful for testing and air-gapped builds)
 
 Python manifest source:
-  https://raw.githubusercontent.com/LunarCommand/openarmature-python/main/conformance.toml
+  the published URL registered in `scripts/_impl_manifest.py`
 
 Schema (TOML, per the python repo's `conformance.toml` header):
   [proposals."NNNN"]
@@ -41,17 +41,13 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-import tomllib
-import urllib.request
 from pathlib import Path
+
+import _impl_manifest
 
 ROOT = Path(__file__).resolve().parent.parent
 PROPOSALS_DOC = ROOT / "docs" / "proposals.md"
 PROPOSALS_DIR = ROOT / "proposals"
-
-PYTHON_MANIFEST_URL = (
-    "https://raw.githubusercontent.com/LunarCommand/openarmature-python/main/conformance.toml"
-)
 
 # Each impl column reserves enough width for the widest expected cell content
 # ("Shipped (0.10.0)" = 16 chars; round to 17 with a trailing space).
@@ -63,11 +59,7 @@ STATUS_RE = re.compile(r"-\s*\*\*Status:\*\*\s*(?P<status>\w+)")
 
 
 def fetch_python_manifest(offline_path: str | None) -> dict:
-    if offline_path:
-        with open(offline_path, "rb") as f:
-            return tomllib.load(f)
-    with urllib.request.urlopen(PYTHON_MANIFEST_URL) as resp:
-        return tomllib.loads(resp.read().decode("utf-8"))
+    return _impl_manifest.fetch_manifest("python", offline_path)
 
 
 def proposal_status(num: str) -> str:
