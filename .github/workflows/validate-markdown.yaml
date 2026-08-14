@@ -5,6 +5,7 @@ on:
     paths:
       - "**/*.md"
       - "scripts/validate_markdown_links.py"
+      - "scripts/validate_compatibility_dates.py"
       - "scripts/regenerate_proposals_impl_tracking.py"
       - "scripts/regenerate_impl_dependencies.py"
       - "scripts/_impl_manifest.py"
@@ -14,6 +15,7 @@ on:
     paths:
       - "**/*.md"
       - "scripts/validate_markdown_links.py"
+      - "scripts/validate_compatibility_dates.py"
       - "scripts/regenerate_proposals_impl_tracking.py"
       - "scripts/regenerate_impl_dependencies.py"
       - "scripts/_impl_manifest.py"
@@ -36,7 +38,15 @@ jobs:
         with:
           python-version: "3.12"
       - run: python scripts/validate_markdown_links.py
+      # The two generated-artifact checks run first, and the date check last.
+      # A step failure stops the job, and drift in a generated artifact is
+      # resolved by re-running a script, whereas a date contradiction needs a
+      # human edit. Reporting the mechanical failures first keeps an author
+      # from fixing dates, pushing, and only then learning the columns had
+      # drifted underneath them.
       - name: Check proposals impl-tracking columns are current
         run: python scripts/regenerate_proposals_impl_tracking.py --check
       - name: Check compatibility implementation-support block is current
         run: python scripts/regenerate_impl_dependencies.py --check
+      - name: Check compatibility page dates do not contradict each other
+        run: python scripts/validate_compatibility_dates.py
