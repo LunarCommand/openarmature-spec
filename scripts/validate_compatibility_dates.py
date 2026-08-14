@@ -56,8 +56,14 @@ CELL_SPLIT_RE = re.compile(r"(?<!\\)\|")
 # repetition stops at a sentence boundary (". ") so an unrelated later sentence
 # in the same cell cannot be attributed to the verification, while still
 # crossing version numbers like "v4.7.1", which contain periods but no space.
+#
+# It must NOT also exclude "|". This runs on an already-split single cell, so
+# there is no cell boundary left to guard, and excluding the character makes a
+# note carrying a legitimate escaped pipe between the wording and the date fail
+# to match, which is a silent miss rather than the loud failure this script is
+# for. Do not reinstate the exclusion.
 VERIFIED_DATE_RE = re.compile(
-    r"verifi\w*(?:(?!\.\s)[^|]){0,60}?(20\d\d-\d\d-\d\d)", re.IGNORECASE
+    r"verifi\w*(?:(?!\.\s).){0,60}?(20\d\d-\d\d-\d\d)", re.IGNORECASE
 )
 
 
@@ -78,7 +84,14 @@ def matrix_rows(text: str) -> list[tuple[int, list[str]]]:
             break
         if not TABLE_LINE_RE.match(line) or SEPARATOR_ROW_RE.match(line):
             continue
-        cells = [c.strip() for c in CELL_SPLIT_RE.split(line.strip().strip("|"))]
+        # Unescape after splitting, so a cell holds the text the page renders
+        # rather than its source form. Leaving "\|" in place would put a stray
+        # backslash into error messages and force every downstream pattern to
+        # know about the escape.
+        cells = [
+            c.strip().replace("\\|", "|")
+            for c in CELL_SPLIT_RE.split(line.strip().strip("|"))
+        ]
         if not seen_header:
             # The first non-separator table line is the column header.
             seen_header = True
