@@ -249,6 +249,18 @@ Implementation notes:
   warrants pre-emptive tracking. Drift discovered between verifications
   is logged with an additional note rather than silently absorbed.
 
+**Move the column, not just the note.** A proposal that re-verifies an
+upstream fact and records the date in a row's Notes cell must advance that
+row's **Last verified** column to match, and the page-level **Last
+refreshed** date with it. Writing the date into the prose and leaving the
+column behind makes the row contradict itself and understate the work done.
+`scripts/validate_compatibility_dates.py` enforces both, and CI runs it. It
+recognizes a date in a Notes cell only when **verification wording introduces
+it** ("verified 2026-08-08", "re-verified against the OpenAPI 2026-08-08"), so
+that a date belonging to a version identifier or a model name is not mistaken
+for a verification. Phrase a re-verification that way, or the check has nothing
+to match and the contradiction ships.
+
 ### Verification cadence guidance
 
 Per-dependency drift rates vary; suggested starting cadences:
