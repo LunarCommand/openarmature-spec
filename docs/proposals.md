@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Cap the harvested error message and close the reserved-key gap | observability | Draft | —               | —          |
 | [0118](proposals/0118-llm-error-message-channel.md) | Bring the harvested error message under the payload flag | observability | Accepted | Shipped (0.17.0)| —          |
 | [0117](proposals/0117-payload-leak-invariant-channels.md) | Broaden the Langfuse payload-leak invariant to all harvested-payload channels | observability | Accepted | Shipped (0.17.0)| —          |
 | [0116](proposals/0116-langfuse-isolation-fail-loud.md) | Fail-closed when Langfuse payloads would reach a shared provider | observability | Accepted | Shipped (0.17.0)| —          |
