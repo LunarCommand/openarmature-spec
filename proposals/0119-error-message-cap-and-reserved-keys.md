@@ -385,9 +385,11 @@ is what missed the nine underscore keys in the first place.
    fixture green for the wrong reason.
 
    §3.2 permits per-directory harness notes, so some of these are legitimately per-directory rather than
-   defects. Sorting which is which is the work, and it is proposal-sized rather than open-question-sized.
-   It should be an audit of its own rather than being absorbed piecemeal by whichever proposal happens to
-   touch each directive, which is what this one and its two siblings are otherwise doing.
+   defects. Sorting which is which turned out to be proposal-sized rather than open-question-sized, and it is
+   now **proposal 0120**, which measures the gap at 52 directives defined nowhere at all (35 of them
+   expected-outcome assertions, the class that passes silently when unimplemented) and adds the missing rule
+   that every directive must have a definition. This proposal still documents `content_repeat` and
+   `attribute_truncation` itself, since it is the one that mirrors them and 0120 does not depend on it.
 2. **Whether the cap should be configurable separately from the attribute cap.** This reuses the single
    per-observer cap on the grounds that one bound is easier to reason about than two. If a caller wants
    generous payload attributes and a tight bound on error text, that is a second knob, introduced by the
