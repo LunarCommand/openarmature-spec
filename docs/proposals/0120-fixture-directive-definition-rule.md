@@ -1,0 +1,1 @@
+../../proposals/0120-fixture-directive-definition-rule.md

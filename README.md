@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| _(none currently — all proposals Accepted)_ | | | |
+| [0120](proposals/0120-fixture-directive-definition-rule.md) | Draft | conformance-adapter §3.2, §3.3, §5.8, §9 | Require every fixture directive to be defined in the capability spec or a per-directory note, define the expected-outcome assertions that are defined nowhere, and make an unrecognized directive fail rather than silently pass |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
