@@ -369,13 +369,25 @@ is what missed the nine underscore keys in the first place.
 
 ## Open questions
 
-1. **`mock_tool` has no normative definition.** Fixtures 092 to 098, 150 and 158 depend on it, and this
+1. **The directive vocabulary has a systemic documentation gap, and this proposal only patches its edge.**
+   `mock_tool` has no normative definition: fixtures 092 to 098, 150 and 158 depend on it, and this
    capability spec mentions it once as a cross-reference. `message_repeat` is deliberately scoped away from
-   it here rather than extending a directive with no grammar. It is one of several conformance-adapter
-   directives found undefined while drafting this proposal (`content_repeat` and `attribute_truncation`, both
-   documented here; `mock_tool` and the case-level `disable_provider_payload`, both left). That set looks
-   like a systemic gap in the directive vocabulary rather than four coincidences, and it may deserve an audit
-   proposal of its own rather than being absorbed piecemeal by whichever proposal happens to touch each one.
+   it here rather than extending a directive with no grammar.
+
+   That is not an isolated case. Four undefined directives surfaced while drafting this proposal
+   (`content_repeat` and `attribute_truncation`, both documented here; `mock_tool` and the case-level
+   `disable_provider_payload`, both left). A subsequent sweep of every directive-shaped key used three or
+   more times across the fixture corpus, checked against this capability spec, found **at least fifteen**
+   more with no definition in it, among them `capture_as`, `expected_failure_isolation_event`,
+   `no_spans_emitted`, `no_langfuse_observations_emitted`, `run_tool`, `noop`, `recoverable_state`,
+   `seeded_record` / `from_seeded_record`, `render_variables`, `prompt_backend` and `span_tree`. Several are
+   expected-outcome assertions, which is the category where an adapter silently not implementing one turns a
+   fixture green for the wrong reason.
+
+   §3.2 permits per-directory harness notes, so some of these are legitimately per-directory rather than
+   defects. Sorting which is which is the work, and it is proposal-sized rather than open-question-sized.
+   It should be an audit of its own rather than being absorbed piecemeal by whichever proposal happens to
+   touch each directive, which is what this one and its two siblings are otherwise doing.
 2. **Whether the cap should be configurable separately from the attribute cap.** This reuses the single
    per-observer cap on the grounds that one bound is easier to reason about than two. If a caller wants
    generous payload attributes and a tight bound on error text, that is a second knob, introduced by the
