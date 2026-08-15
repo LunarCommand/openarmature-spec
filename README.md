@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Draft | observability §3.4, §5.5.4, §5.5.5, §8.7 | Bound a failed observation's harvested error message by the payload byte cap, and reserve the four OA-emitted metadata keys the maintenance rule already covers |
+| [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Draft | observability §3.4, §5.5.4, §5.5.5, §8.7 | Bound every payload-classified value that has no span-attribute source, including a failed observation's harvested error message, and close both reserved-key gaps in the caller-metadata namespace |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
 
