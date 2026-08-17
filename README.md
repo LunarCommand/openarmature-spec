@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| [0120](proposals/0120-fixture-directive-definition-rule.md) | Draft | conformance-adapter §3.2, §3.3, §5.8, §9 | Require every fixture directive to be defined in the capability spec or a per-directory note, define the expected-outcome assertions that are defined nowhere, and make an unrecognized directive fail rather than silently pass |
+| [0120](proposals/0120-fixture-directive-definition-rule.md) | Draft | conformance-adapter §3.2, §3.3, §5, §5.8, §5.9, §8.2, §9, §11 | Reconcile six sections that state where a fixture directive may be defined and currently disagree, give "definition" a test, extend the unknown-directive trigger to assertion positions, and define the 39 assertions defined nowhere |
 | [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Draft | observability §3.4, §5.5.4, §5.5.5, §8.7 | Bound every payload-classified value that has no span-attribute source, including a failed observation's harvested error message, and close both reserved-key gaps in the caller-metadata namespace |
 
 See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
