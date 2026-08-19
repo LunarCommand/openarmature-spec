@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0120](proposals/0120-fixture-directive-definition-rule.md) | Reconcile where a fixture directive may be defined | conformance-adapter | Draft | —               | —          |
 | [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Cap the harvested error message and close the reserved-key gaps | observability | Draft | —               | —          |
 | [0118](proposals/0118-llm-error-message-channel.md) | Bring the harvested error message under the payload flag | observability | Accepted | Shipped (0.17.0)| —          |
 | [0117](proposals/0117-payload-leak-invariant-channels.md) | Broaden the Langfuse payload-leak invariant to all harvested-payload channels | observability | Accepted | Shipped (0.17.0)| —          |
