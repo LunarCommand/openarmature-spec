@@ -67,7 +67,8 @@ diverge on shipped work today.
 
 Add to §5's preamble, and cross-reference it from §3.2, §3.3, §5.9, §8.2 and §11:
 
-> **Definition homes.** A directive's definition MUST live in one of exactly two places:
+> **Definition homes.** A directive introduced or redefined after this proposal is accepted MUST have its
+> definition in one of exactly two places:
 >
 > 1. **§5 of this capability spec**, for a directive used by more than one capability's fixtures, or whose
 >    contract is general even if only one capability currently exercises it.
@@ -85,6 +86,14 @@ Add to §5's preamble, and cross-reference it from §3.2, §3.3, §5.9, §8.2 an
 
 The two-home shape is what the spec already practises; this states it once instead of three times with three
 different second homes.
+
+**Directives already in use without a definition.** A body of directives currently in use has a definition in
+neither home. This proposal neither creates nor resolves that condition. Such a directive sits outside §8.2's
+vocabulary today, because that vocabulary is anchored to §5, and the re-anchoring below does not move it,
+because it is in neither home. Identifying which keys are genuinely directives requires settling the
+open-versus-closed vocabulary question this proposal puts out of scope, so closing them is the follow-on's
+work. The rule above is stated prospectively so that it governs where a definition belongs without
+retroactively invalidating directives it cannot yet identify.
 
 ### Consequential edits
 
@@ -131,10 +140,12 @@ undefined directive or a legitimate author-chosen name until the follow-on settl
 **None.** No fixture changes, no new or changed directive, no new assertion. The change is to prose that tells
 an adapter author where to look for a definition.
 
-No fixture becomes unrunnable. Today a directive defined only in a per-directory note puts an adapter in an
-impossible position; after this it is unambiguously part of the recognized vocabulary and an adapter
-implements it. An adapter that currently raises on such a directive, following §8.2's §5-anchored reading,
-would stop raising, which is a correction rather than a regression.
+No fixture's runnability changes, and two populations need distinguishing. A directive defined only in a
+per-directory note is in an impossible position today, required to raise by §8.2 and to be implemented by
+§5.9; after this it is unambiguously in the recognized vocabulary and an adapter implements it, so an adapter
+that currently raises would stop, which is a correction rather than a regression. A directive defined nowhere
+is outside §8.2's vocabulary before and after, so its status is unchanged and this proposal makes no claim to
+have fixed it.
 
 ## Alternatives considered
 
