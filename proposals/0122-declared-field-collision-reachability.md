@@ -1,129 +1,187 @@
-# 0122: Pin the Reachability of the Declared-Field Collision Rule
+# 0122: Settle the Shape of the Extras Surface
 
 - **Status:** Draft
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-19
 - **Accepted:**
 - **Targets:**
-  - spec/llm-provider/spec.md **§6 Managed-field collision**: state the reachability condition on clause (b).
-    A collision between an undeclared extras key and the wire realization of a declared field is reachable
-    only where the mapping **renames** the field on the wire. Where the wire name equals the declared name,
-    the collision cannot occur through the sanctioned caller surface, because extras are undeclared fields on
-    the config record and a record cannot carry two fields of one name. The rule is unchanged; what it can be
-    exercised on is stated.
-  - spec/llm-provider/spec.md **§6 Extras pass-through**: clarify that `config.extras` as it appears in
-    conformance fixtures is a fixture-schema device denoting the undeclared fields, not a second API surface.
-    The caller-facing shape is undeclared fields on the config record, which is what makes the same-name
-    collision unreachable.
+  - spec/llm-provider/spec.md **§6 Extras pass-through**: state the shape of the extras surface. It is a
+    **named container on the config record**, distinct from the declared fields, which is what
+    retrieval §10, every §8.x mapping, and all 24 fixtures that use it already assume. §6's current wording
+    ("fields beyond the declared set", "preserved on the config record") reads equally well as undeclared
+    fields sitting alongside the declared ones, and an implementation has read it that way and concluded that
+    a shipped fixture pins an unreachable case. Fix the container's **name** as `extras`, normative for
+    cross-implementation consistency on the §5.5.4 precedent, while leaving its ergonomics
+    implementation-defined.
+  - spec/retrieval-provider/spec.md **§8.1, §8.3 and §8.4**: give each mapping the clause-(b) realization
+    enumeration §6 requires. §10 names three retrieval realization sites for the declared `dimensions`
+    (`dimensions` on §8.1 TEI and §8.3 OpenAI, `output_dimension` on §8.4 Cohere) and none of the three
+    mappings enumerates it. §8.4 is the sharpest case, stating it manages exactly two keys and that "every
+    other undeclared extras key keeps §6's untouched pass-through", which contradicts §10 outright. These
+    enumerations date from proposal 0105, which deferred the declared-field realizations to a follow-on, and
+    0108 extended llm-provider's three mappings but not retrieval's.
   - spec/retrieval-provider/spec.md **§8.4**: change the malformed-`embedding_types` element test from "not a
     precision string" to "not a string". The current wording reads as a vocabulary check, which the general
-    §6 rule it inherits from explicitly is not, and an implementation has already read it that way.
-  - spec/llm-provider/conformance/075-managed-declared-scalar-collision.{yaml,md}: **retire**. Both of its
-    cases rest on a same-name collision that cannot be reached, and fixture 077 already covers both arms of
-    the non-additive rule through a reachable path.
-  - spec/retrieval-provider/conformance/052-embed-openai-dimensions-collision.{yaml,md}: **repoint** from the
-    OpenAI mapping, where `dimensions` keeps its declared name on the wire and the collision is unreachable,
-    onto the Cohere mapping, where §8.4 renames `dimensions` to `output_dimension` and the collision is real.
+    §6 rule it inherits explicitly is not, and an implementation has already read it that way.
   - spec/retrieval-provider/conformance/053-embed-cohere-embedding-types-malformed.{yaml,md}: add a case
     pinning a well-typed but provider-unrecognized element, including the empty string, as **merging** rather
     than being treated as malformed.
-- **Related:** 0099 (made this same reachability argument for `input_type`), 0105 and 0108 (introduced the
-  managed-field collision rule and clause (b)), 0113 (the malformed-merge rule whose wording this tightens)
+  - spec/retrieval-provider/conformance/ **new fixture**: pin the Cohere clause-(b) rename arm (declared
+    `dimensions` set, `output_dimension` supplied in the extras container) across the reject and no-op
+    outcomes. The §8.4 enumeration correction is a behavior change, since that key rides untouched today, so
+    it needs a fixture rather than inheriting coverage. Retrieval 052 already pins the same-name arm that
+    §8.1 and §8.3 share, so those two need no new fixture once their enumerations name the realization.
+- **Related:** 0099 (settled the adjacent *value* case), 0105 (introduced the managed-key enumeration
+  requirement), 0108 (introduced clause (b), which §8.4's enumeration was never extended for), 0113 (the
+  malformed-merge rule whose wording this tightens), 0120 (same defect shape: two sections assuming
+  incompatible models with nothing settling which governs)
 
 ## Summary
 
-Proposal 0108's clause (b) governs a collision between an undeclared extras key and the wire realization of a
-declared field. Two of its fixtures pin instances of that collision which cannot occur, because the extras
-surface is undeclared fields on the config record and both fixtures chose a field whose wire name equals its
-declared name. Separately, the malformed-element test §8.4 states for `embedding_types` reads as a vocabulary
-check while the rule it inherits is explicitly structural, and an implementation has diverged on that reading.
-The rules are sound; this pins what they can be exercised on and removes the ambiguity.
+§6 never states what the extras surface *is*. Read one way it is a named container on the config record
+alongside the declared fields; read the other it is undeclared fields on the record itself. The two readings
+disagree about whether a caller can set a declared field and an extras key of the same name at once, which is
+exactly what proposal 0108's clause (b) governs. Retrieval §10, every §8.x mapping and 24 fixtures assume the
+container; one implementation read §6 the other way and concluded that shipped fixtures pin an unreachable
+case. This settles the shape, reconciles an enumeration §8.4 never updated for clause (b), and tightens a
+malformed-element test that reads as a vocabulary check.
 
 ## Motivation
 
-### The same-name collision cannot be reached
+### Two readings of the same sentence
 
-§6 defines the extras surface: "Implementations MUST accept fields beyond the declared set above without
-erroring at the API boundary; undeclared fields MUST be preserved on the config record and forwarded to the
-wire request body untouched."
+§6 says: "`RuntimeConfig` is extensible. Implementations MUST accept fields beyond the declared set above
+without erroring at the API boundary; undeclared fields MUST be preserved on the config record and forwarded
+to the wire request body untouched."
 
-Extras are therefore **undeclared fields on the config record**, not entries in a separate container. A record
-cannot carry two fields of the same name. So for a declared field whose mapping emits it under its own name,
-a caller cannot simultaneously set the declared field and supply an undeclared field of that name: the second
-is not undeclared, it is the first.
+**Reading A, a named container.** The config record carries its declared fields plus a container holding
+undeclared keys. A caller can set the declared `stop_sequences` and put a key also named `stop_sequences` in
+the container; they occupy different places.
 
-Clause (b) is consequently reachable only where the wire name **differs** from the declared name:
+**Reading B, undeclared fields on the record.** Extras *are* fields on the record, beyond the declared ones. A
+record cannot carry two fields of one name, so a caller cannot set a declared field and supply an extras key
+of the same name. The same-name collision is inexpressible.
 
-| Instance | Declared | Wire | Reachable |
-|---|---|---|---|
-| `stop_sequences` on OpenAI | `stop_sequences` | `stop` | yes |
-| `stop_sequences` on Gemini | `stop_sequences` | `stopSequences` | yes |
-| `stream` | a `complete()` argument, not a config field | `stream` | yes |
-| `dimensions` on Cohere | `dimensions` | `output_dimension` | yes |
-| `temperature` on OpenAI | `temperature` | `temperature` | **no** |
-| `dimensions` on OpenAI | `dimensions` | `dimensions` | **no** |
+Nothing in §6 chooses. "Preserved on the config record" is satisfied by either.
 
-**The spec has already made this argument once.** Proposal 0099 struck a §8.4 sentence claiming Cohere's other
-`input_type` values "are reached via the extras-pass-through bag", on the grounds that it was "unachievable,
-since OA's `input_type` is a **declared** field and the bag carries only *undeclared* keys (llm-provider §6)".
-That is the same reasoning, accepted one proposal before 0108 shipped two fixtures resting on the shape it
-rules out.
+### Everything except that sentence assumes Reading A
 
-Fixture 075 states the condition in its own header: it pins the scalar arm on `temperature`, noting "wire name
-== the declared name on OpenAI". Retrieval fixture 052 does the same for `dimensions` on the OpenAI embeddings
-mapping.
+- **Retrieval §10** states it outright: a declared field's value "is set through its declared slot, never
+  through the extras bag (the bag carries only *undeclared* keys) — though a key whose **name** matches a
+  declared field's wire realization (`dimensions`, or Jina's `task`) **may still appear in the bag as an
+  undeclared colliding key**, governed by the realization rule below." Under Reading B that sentence
+  describes something a caller cannot do.
+- **The mappings** speak of "the bag" as a place: an unmanaged extras key "rides the bag untouched"
+  (llm §8.1.5, retrieval §8.2).
+- **The fixtures**, 24 of them, write `config: {<declared>: ..., extras: {...}}`. Fixture 079 sets
+  `stop_sequences: ["STOP"]` and `extras: {stop_sequences: ["END"]}` in one call and asserts they merge, and
+  its header says so: "the same wire NAME as the declared field, no rename, unlike OpenAI's `stop`".
 
-### Why fixture syntax made this easy to miss
+So Reading A is the operative model everywhere the spec is concrete. Reading B survives only in §6's
+abstraction, which is the section an implementer reads first.
 
-Conformance fixtures express the collision as `config: {temperature: 0.7, extras: {temperature: 0.2}}`, which
-reads as though `extras` were a container a caller populates directly. It is not: it is a fixture-schema
-device for saying "these are the undeclared fields", and the conformance-adapter spec never defines it as an
-API shape. Read as a container, the same-name collision looks perfectly reachable. Read as §6 defines the
-surface, it is not. Stating that distinction is what stops the next fixture making the same choice.
+### The divergence is real, not hypothetical
 
-### The malformed-element test reads as a vocabulary check
+An implementation read §6 as Reading B, built its extras surface accordingly, and concluded that llm fixture
+075 and retrieval fixture 052 pin a collision no caller can reach. Both fixtures are held unrun on that basis.
+That is a correct deduction from Reading B and a wrong one about the corpus, and it happened because §6 let
+them make it.
 
-§6's merge arm is explicit that malformation is structural: "Malformation is judged **structurally**; the
-mapping does **not** semantically validate element *values* against a provider vocabulary (none is
-enumerated), so a well-typed but provider-unrecognized member is not malformed — it merges, and the provider
-rejects it if unsupported."
+Under Reading A both fixtures are reachable and correct, as are 079's merge cases and everything else clause
+(b) governs. Nothing needs retiring or repointing; the surface needs stating.
 
-§8.4 restates that for `embedding_types` as "not a list, or a list carrying an element that is not a precision
-string". "Precision string" is readable two ways: a string of the kind this field holds (structural), or a
-string naming a precision (vocabulary). The second reading contradicts the rule §8.4 says it is inheriting.
+### An enumeration that clause (b) left behind
 
-What settles it is internal to §8.4. That mapping knows how to enumerate a closed vocabulary normatively and
-does so for `input_type`, where the recognized set is "still fixed — a value outside it is still a pre-send
-`provider_invalid_request`". For `embedding_types` it does no such thing: the precisions appear only in prose
-describing what rides the extras bag, with no reject rule attached. So `embedding_types` is not a closed
-vocabulary, the structural reading governs, and a well-typed element such as an empty string merges and is the
-provider's to reject.
+§6 requires each mapping to "enumerate the keys it manages (and, under **(b)**, the declared field each one
+realizes)". Proposal 0105 introduced that requirement and explicitly **deferred** the declared-field
+realizations to a follow-on; 0108 was that follow-on, and it extended llm-provider's mappings but not
+retrieval's.
 
-An implementation has already read it the other way and gates the empty string locally, which is the
-divergence the wording invites. No shipped fixture exercises the case, so it is latent rather than a live
-conformance break, which is why it is worth pinning now rather than after two implementations disagree in
-the field.
+A sweep of every mapping confirms the split. llm-provider is complete: §8.1, §8.2 and §8.3 each carry a
+*Declared-field realizations (§6 clause (b))* block. Retrieval is not:
+
+| Mapping | Clause-(b) realization per §10 | Enumerated in the mapping |
+|---|---|---|
+| §8.1 TEI | `dimensions` to `dimensions` | no, only the clause-(a) `truncate` |
+| §8.2 Jina | `input_type` to `task` | yes |
+| §8.3 OpenAI | `dimensions` to `dimensions` | no, only `encoding_format` as unmanaged |
+| §8.4 Cohere | `dimensions` to `output_dimension` | no, and it states it manages exactly two keys |
+
+§8.4 is the sharpest case because its enumeration is explicit: "§8.4 **manages** two wire keys ...
+`embedding_types` ... and `truncate` ... Every other undeclared extras key keeps §6's untouched
+pass-through." §10 says `output_dimension` is a clause-(b) realization and therefore managed while
+`dimensions` is set. Two implementers reading §8.4 and §10 reach opposite answers about whether an extras
+`output_dimension` is rejected or passed through, and the same question is simply unanswered for TEI and
+OpenAI embeddings.
+
+### A structural test that reads as a vocabulary check
+
+§6's merge arm is explicit: "Malformation is judged **structurally**; the mapping does **not** semantically
+validate element *values* against a provider vocabulary (none is enumerated), so a well-typed but
+provider-unrecognized member is not malformed — it merges, and the provider rejects it if unsupported."
+
+§8.4 restates that for `embedding_types` as "an element that is not a precision string", readable either as
+*a string of the kind this field holds* or *a string naming a precision*. The second contradicts the rule
+§8.4 says it inherits.
+
+What settles it is internal to §8.4: that mapping knows how to enumerate a closed vocabulary normatively and
+does so for `input_type`, whose recognized set is "still fixed — a value outside it is still a pre-send
+`provider_invalid_request`". It does no such thing for `embedding_types`. So the structural reading governs,
+and a well-typed element such as an empty string merges. An implementation has already read it the other way
+and gates the empty string locally. No shipped fixture exercises the case, so it is latent rather than a live
+break.
 
 ## Detailed design
 
-### §6: the reachability condition
+### §6: name the surface
 
-Append to clause (b):
+Amend *Extras pass-through* to state the shape:
 
-> **Reachability.** This clause is exercisable only where the mapping emits the declared field under a wire
-> name that **differs** from the declared name. Extras are undeclared fields on the config record (see
-> *Extras pass-through* above), and a record cannot carry two fields of one name, so where the wire name
-> equals the declared name a caller cannot both set the declared field and supply an undeclared field of that
-> name. Such a pairing is not a collision the caller can express, and a conformance fixture MUST NOT pin one.
-> The rule itself is unchanged and applies wherever the wire name is renamed.
+> Undeclared fields supplied for a call are carried in a **named extras container** on the config record,
+> distinct from its declared fields. A key in that container is undeclared **by virtue of being there**, so a
+> key whose name matches a declared field, or matches the wire name a mapping realizes a declared field
+> under, is a legitimate extras key and is governed by *Managed-field collision* below. The container is
+> addressable separately from the declared fields, so a caller can set a declared field and supply a
+> same-named extras key in one call.
+>
+> The container's **ergonomics** are implementation-defined (a constructor argument, a builder method, a
+> mapping-valued field), but its **name is `extras`** and is normative for cross-implementation consistency,
+> so a caller moving between implementations writes the same key.
 
-### §6: what `config.extras` means in a fixture
+That is the whole resolution. Clause (b) is unchanged, every arm of it stays reachable on every mapping, and
+the fixture corpus is correct as it stands.
 
-Append to *Extras pass-through*:
+The name is fixed for the same reason observability §5.5.4 fixes its flag names, which reads "specific
+ergonomics (constructor argument, builder method, etc.) are implementation-defined; flag names below are
+normative for cross-implementation consistency". A name the caller types is not the mechanism-level API shape
+the language-agnostic rule holds back from; it is the vocabulary the caller writes, and leaving it free would
+repeat this proposal's own defect one level down. All 24 fixtures already spell it `extras`, so fixing it
+also closes the gap between the fixture convention and the caller surface, which the adapter currently
+absorbs.
 
-> Conformance fixtures denote the undeclared fields with a `config.extras` mapping. That is a fixture-schema
-> device for identifying which fields are undeclared, not a second caller-facing surface: the API shape this
-> section defines is undeclared fields on the config record itself.
+**This has a cost, and it belongs on the record.** An implementation whose extras surface is undeclared fields
+on the config record satisfies §6's first sentence but not this one, and will need an addressable container
+named `extras`. That is a real change for at least one implementation, and it is the price of the corpus and
+§10 being right about a surface §6 declined to pin down. The name adds no work beyond the container itself,
+since an implementation adding one chooses a name either way.
+
+### Retrieval §8.1, §8.3 and §8.4: complete the managed enumerations
+
+Each of the three gains the clause-(b) block llm-provider's mappings already carry, naming the realization and
+the declared field it realizes. For §8.4, whose enumeration is explicit and currently excludes it:
+
+> §8.4 **manages** three wire keys: `embedding_types` (list-shaped, merge), `truncate` (scalar fail-loud flag,
+> reject), and `output_dimension` (the realization of the declared `dimensions` under §6 clause (b),
+> non-additive scalar, managed while `dimensions` is set and unmanaged when it is absent). Every other
+> undeclared extras key keeps §6's untouched pass-through.
+
+§8.1 and §8.3 gain the equivalent for their same-name `dimensions` realization, non-additive, managed while
+the declared field is set and unmanaged when absent.
+
+Each mapping **restates** the contract rather than cross-referencing another, following llm-provider's
+pattern: §8.2 and §8.3 there each carry a full block rather than pointing at §8.1's, because the specifics
+differ per mapping (Anthropic's `stop_sequences` is array-only with no scalar-string coercion, Gemini's
+realizations are camelCase under `generationConfig`). A cross-reference cannot carry those.
 
 ### §8.4: structural, not vocabulary
 
@@ -137,60 +195,62 @@ and add:
 
 ### Fixtures
 
-**075 is retired.** Both cases pin an unreachable collision. Fixture 077 already covers the non-additive rule
-through `stream`, which is reachable because `stream` is a `complete()` argument rather than a config field,
-and covers all three outcomes: conflicting reject in both directions, and the matching no-op. Retiring 075
-loses no coverage.
-
-**052 is repointed** from OpenAI to Cohere. On the OpenAI embeddings mapping `dimensions` keeps its declared
-name, so the fixture pins the unreachable case. On Cohere, §8.4 renames it to `output_dimension`, so a caller
-can set the declared `dimensions` and an undeclared `output_dimension` at once and the collision is real. That
-keeps retrieval's clause-(b) coverage and moves it onto a path a caller can take. No fixture currently
-exercises an `output_dimension` collision, so this adds coverage rather than relocating it.
+**No fixture is retired or repointed.** Under the settled surface, llm 075 (same-name scalar reject), llm 079
+(same-name merge on Anthropic), retrieval 051 (Jina `task` rename) and retrieval 052 (same-name `dimensions`
+on OpenAI) are all reachable and all correct. The implementation holding 075 and 052 unrun can run them.
 
 **053 gains a case** supplying `embedding_types: ["float", ""]` alongside a well-typed unrecognized precision,
-asserting the wire carries the merged list rather than the mapping's mandatory value alone. That is what pins
-the structural reading against the vocabulary one.
+asserting the wire carries the merged list rather than the mapping's mandatory value alone. That pins the
+structural reading against the vocabulary one.
+
+**The three enumeration corrections need fixtures**, because each is a behavior change rather than a
+restatement. Today §8.4's "every other undeclared extras key keeps §6's untouched pass-through" sentence makes
+an extras `output_dimension` ride through; afterwards, while declared `dimensions` is set, a conflicting one
+is rejected pre-send and a matching one is absorbed. §8.1 and §8.3 move from unanswered to managed on the
+same rule. A new fixture pins the Cohere rename arm (`dimensions` declared, `output_dimension` in the bag),
+and retrieval 052 already pins the same-name arm that §8.1 and §8.3 share, so it covers those two once their
+enumerations name it.
 
 ## Conformance test impact
 
-**One fixture retired, one repointed, one extended.** Retiring 075 is the only coverage question, and 077's
-three cases cover the same rule through a reachable path, so the answer is that nothing is lost.
+**No fixture changes except 053's new case.** The corpus is correct under the settled reading; that is the
+point of settling it in this direction rather than the other.
 
-**052's repoint changes which mapping it targets**, so an implementation that passed it against OpenAI must
-now satisfy it against Cohere. That is the point: the OpenAI form asserted behavior no caller can trigger.
+**One implementation has work.** An extras surface built as undeclared fields on the config record needs an
+addressable container named `extras`, and the two fixtures currently held unrun become runnable. The name
+constrains the caller-facing surface but nothing observable in wire output or conformance results, so it
+cannot make a passing implementation fail; it is a consistency requirement rather than a behavioral one. 053's new case may fail an
+implementation that gates the empty string locally, which is the second divergence being closed.
 
-**053's new case may fail an implementation that gates the empty string locally.** That is the divergence
-being closed, and the failing implementation is the non-conforming one under the structural reading.
-
-No new directive. The `config.extras` clarification changes no fixture syntax; it states what the existing
-syntax means.
+**§8.4's enumeration change is a behavior change for Cohere embeddings**: an extras `output_dimension` that
+today rides untouched per §8.4's "every other undeclared extras key" sentence must, while declared
+`dimensions` is set, be rejected pre-send when conflicting and absorbed when matching. That follows from §10
+and clause (b) already; §8.4 was the section out of step.
 
 ## Alternatives considered
 
-1. **Do nothing.** Rejected: two fixtures assert behavior no caller can reach, so an implementation either
-   holds them deferred, as one already does, or writes unreachable code to satisfy them. The
-   `embedding_types` ambiguity separately leaves two implementations free to diverge.
-2. **Make the same-name collision reachable** by defining extras as an explicit container alongside the
-   declared fields. Rejected: it would add a second caller-facing surface for the same thing, contradict §6's
-   existing definition, and change the API shape of every implementation to make an unreachable rule
-   reachable. The rule is not valuable enough to reshape the surface for.
-3. **Retire clause (b) entirely.** Rejected: it governs real, reachable collisions on every renamed field,
-   including `stop` and `stopSequences`, which fixtures 077 and 081 exercise.
-4. **Retire 052 rather than repoint it.** Rejected: it is retrieval's only clause-(b) fixture, and Cohere's
-   rename gives it a reachable home, so repointing preserves coverage that retiring would drop.
-5. **Resolve `embedding_types` toward the vocabulary reading**, making the empty string malformed and the
-   local gate correct. Rejected: it contradicts the general rule §8.4 says it inherits, and it would require
-   §8.4 to enumerate a closed precision vocabulary with a reject rule, which it deliberately does not do.
-   Every unrecognized precision would then need spec maintenance each time a vendor adds one.
+1. **Do nothing.** Rejected: §6 admits two readings that disagree about whether shipped fixtures are
+   reachable, and an implementation has already acted on the reading the rest of the spec contradicts.
+2. **Settle toward Reading B** (undeclared fields on the record) and fix everything else to match. Rejected,
+   and this was an earlier draft of this proposal. It requires rewriting §10's colliding-key clause, retiring
+   or repointing llm 075, llm 079 and retrieval 052, and forbidding a shape 24 fixtures use. It would also
+   forbid fixture 077, since `stream` is realized under its own name with no rename, which is the fixture that
+   would have to justify retiring 075. Reading B is the minority reading and settling toward it costs far more
+   than it saves.
+3. **Leave the surface unstated and change only the fixtures.** Rejected: the fixtures are not wrong under the
+   operative reading, and changing them would encode Reading B without saying so, leaving the next implementer
+   to make the same deduction.
+4. **Leave §8.4's enumeration alone** and treat §10 as authoritative. Rejected: §6 requires the mapping to
+   enumerate its own managed keys, so a mapping whose enumeration omits one is non-conforming to §6
+   regardless of what §10 says. The enumeration is the mapping's obligation.
+5. **Resolve `embedding_types` toward the vocabulary reading.** Rejected: it contradicts the general rule §8.4
+   says it inherits, and it would require §8.4 to enumerate a closed precision vocabulary with a reject rule,
+   which it deliberately does not do. Every unrecognized precision would then need spec maintenance each time
+   a vendor adds one.
 
 ## Open questions
 
-1. **Whether other mappings carry unreachable clause-(b) instances** that no fixture pins. The reachability
-   condition makes them identifiable by inspection: any mapping section enumerating a managed declared-field
-   realization whose wire name equals the declared name. A sweep is cheap once the condition is stated, and
-   could fold into the accept.
-2. **Whether `stream` should be described as clause (b) at all.** It is a `complete()` argument rather than a
-   `RuntimeConfig` field, so it is reachable for a different reason than a rename: no declared config field
-   shares its name. The rule covers it correctly today; whether the reachability note should name that as a
-   second condition or leave it as an instance is an editorial call.
+None. The three questions this proposal opened while drafting are settled in the text above: each retrieval
+mapping restates its clause-(b) contract rather than cross-referencing, following llm-provider's pattern; the
+§8.4 enumeration correction is a behavior change and therefore carries a fixture; and the extras container's
+name is fixed as `extras` for cross-implementation consistency, on the §5.5.4 precedent.

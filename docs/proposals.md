@@ -7,7 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
-| [0122](proposals/0122-declared-field-collision-reachability.md) | Pin the reachability of the declared-field collision rule | llm-provider | Draft | —               | —          |
+| [0122](proposals/0122-declared-field-collision-reachability.md) | Settle the shape of the extras surface | llm-provider | Draft | —               | —          |
 | [0121](proposals/0121-diagnostic-event-names-and-otel-observer-directive.md) | Give openarmature's mandated diagnostics a stable identity | observability | Draft | —               | —          |
 | [0120](proposals/0120-fixture-directive-definition-rule.md) | Reconcile where a fixture directive may be defined | conformance-adapter | Draft | —               | —          |
 | [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Cap the harvested error message and close the reserved-key gaps | observability | Draft | —               | —          |
