@@ -89,6 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
+| [0122](proposals/0122-declared-field-collision-reachability.md) | Draft | llm-provider §6; retrieval-provider §8.1–§8.4, §10; observability §5.5.1 | Settle whether the extras surface is a named container or undeclared fields on the config record, since the two readings disagree about whether a shipped collision is expressible, and complete a managed-key enumeration that clause (b) left behind |
 | [0121](proposals/0121-diagnostic-event-names-and-otel-observer-directive.md) | Draft | observability §6, §7; conformance-adapter §5.5 | Give the two WARNING diagnostics observability §6 mandates a stable event name so a fixture can assert which one fired, and add the missing otel_observer directive |
 | [0120](proposals/0120-fixture-directive-definition-rule.md) | Draft | conformance-adapter §3.2, §3.3, §5, §5.9, §8.2, §11 | Reconcile seven statements that name four different homes for a fixture directive's definition and currently contradict each other, leaving two conforming adapters able to reach opposite verdicts on the same fixture |
 | [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Draft | observability §3.4, §5.5.4, §5.5.5, §8.7 | Bound every payload-classified value that has no span-attribute source, including a failed observation's harvested error message, and close both reserved-key gaps in the caller-metadata namespace |
