@@ -13,8 +13,10 @@
     a shipped fixture pins an unreachable case. Fix the container's **name** as `extras`, normative for
     cross-implementation consistency on the §5.5.4 precedent, while leaving its ergonomics
     implementation-defined.
-  - spec/retrieval-provider/spec.md **§8.1, §8.3 and §8.4**: give each mapping the clause-(b) realization
-    enumeration §6 requires. §10 names three retrieval realization sites for the declared `dimensions`
+  - spec/retrieval-provider/spec.md **§8.1, §8.2, §8.3 and §8.4**: give each mapping the clause-(b)
+    realization enumeration §6 requires, derived from that mapping's own wire-shape prose. All four are
+    deficient, including §8.2, which enumerates `input_type` to `task` but not the `dimensions` realization
+    its own text states. §10 names three retrieval realization sites for the declared `dimensions`
     (`dimensions` on §8.1 TEI and §8.3 OpenAI, `output_dimension` on §8.4 Cohere) and none of the three
     mappings enumerates it. §8.4 is the sharpest case, stating it manages exactly two keys and that "every
     other undeclared extras key keeps §6's untouched pass-through", which contradicts §10 outright. These
@@ -26,9 +28,17 @@
   - spec/retrieval-provider/conformance/053-embed-cohere-embedding-types-malformed.{yaml,md}: add a case
     pinning a well-typed but provider-unrecognized element, including the empty string, as **merging** rather
     than being treated as malformed.
-  - spec/retrieval-provider/conformance/ **new fixture**: pin the Cohere clause-(b) rename arm (declared
+  - spec/retrieval-provider/spec.md **§10**: its "the retrieval realizations are ..." list names four and is
+    incomplete, so it reads as exhaustive when it is not. Correct it, or mark it illustrative and point at the
+    per-mapping enumerations as authoritative.
+  - spec/observability/spec.md **§5.5.1**: reword the phrase describing the extras surface as
+    "`extra=\"allow\"` pass-through fields". It states the flat model this proposal settles against, and it is
+    a language-specific configuration idiom in spec text, which the language-agnostic rule forbids
+    independently of which reading wins.
+  - spec/retrieval-provider/conformance/ **new fixtures**: pin the Cohere clause-(b) rename arm (declared
     `dimensions` set, `output_dimension` supplied in the extras container) across the reject and no-op
-    outcomes. The §8.4 enumeration correction is a behavior change, since that key rides untouched today, so
+    outcomes, and the TEI same-name arm, which fixture 052 cannot reach because it is bound to the OpenAI
+    mapping. The §8.4 enumeration correction is a behavior change, since that key rides untouched today, so
     it needs a fixture rather than inheriting coverage. Retrieval 052 already pins the same-name arm that
     §8.1 and §8.3 share, so those two need no new fixture once their enumerations name the realization.
 - **Related:** 0099 (settled the adjacent *value* case), 0105 (introduced the managed-key enumeration
@@ -97,15 +107,23 @@ realizes)". Proposal 0105 introduced that requirement and explicitly **deferred*
 realizations to a follow-on; 0108 was that follow-on, and it extended llm-provider's mappings but not
 retrieval's.
 
-A sweep of every mapping confirms the split. llm-provider is complete: §8.1, §8.2 and §8.3 each carry a
-*Declared-field realizations (§6 clause (b))* block. Retrieval is not:
+A sweep confirms the split, and the **method** matters: a mapping's realizations must be derived from that
+mapping's own wire-shape prose, not from §10's summary list. §10 names four realizations and is itself
+incomplete, so measuring off it scores a mapping complete when it is not.
 
-| Mapping | Clause-(b) realization per §10 | Enumerated in the mapping |
-|---|---|---|
-| §8.1 TEI | `dimensions` to `dimensions` | no, only the clause-(a) `truncate` |
-| §8.2 Jina | `input_type` to `task` | yes |
-| §8.3 OpenAI | `dimensions` to `dimensions` | no, only `encoding_format` as unmanaged |
-| §8.4 Cohere | `dimensions` to `output_dimension` | no, and it states it manages exactly two keys |
+**llm-provider is complete.** §8.1, §8.2 and §8.3 each carry a *Declared-field realizations (§6 clause (b))*
+block covering their own realizations.
+
+**All four retrieval mappings are deficient.** §8.2 Jina enumerates `input_type` to `task` but not the
+`dimensions` realization its own text states ("`EmbeddingRuntimeConfig.dimensions` → Jina's `dimensions`
+(Matryoshka) when set"), which §10 omits as well. §8.1 TEI enumerates only the clause-(a) `truncate`, leaving
+`input_type` to `prompt_name` and the rerank-side `return_documents` to `return_text` unenumerated. §8.3
+OpenAI addresses `encoding_format` as unmanaged and is silent on its `dimensions` realization. §8.4 Cohere is
+the sharpest case, below.
+
+The realization set spans both surfaces, embed-side (`dimensions`, `input_type`) and rerank-side
+(`return_documents`, `top_k`). Deriving each mapping's set from its own prose is part of the accept rather
+than a list transcribed here, because a transcribed list is exactly what has been wrong.
 
 §8.4 is the sharpest case because its enumeration is explicit: "§8.4 **manages** two wire keys ...
 `embedding_types` ... and `truncate` ... Every other undeclared extras key keeps §6's untouched
@@ -137,23 +155,32 @@ break.
 
 Amend *Extras pass-through* to state the shape:
 
-> Undeclared fields supplied for a call are carried in a **named extras container** on the config record,
-> distinct from its declared fields. A key in that container is undeclared **by virtue of being there**, so a
-> key whose name matches a declared field, or matches the wire name a mapping realizes a declared field
-> under, is a legitimate extras key and is governed by *Managed-field collision* below. The container is
-> addressable separately from the declared fields, so a caller can set a declared field and supply a
-> same-named extras key in one call.
+> **Extras container.** Implementations **MUST** carry a call's undeclared fields in a container on the
+> config record that is distinct from, and addressable separately from, its declared fields, so that a caller
+> **MAY** set a declared field and supply an extras key of the same name in one call. A key in that container
+> is undeclared by virtue of being there, so a key whose name matches a declared field, or matches the wire
+> name a mapping realizes a declared field under, is a legitimate extras key and is governed by
+> *Managed-field collision* below.
 >
-> The container's **ergonomics** are implementation-defined (a constructor argument, a builder method, a
-> mapping-valued field), but its **name is `extras`** and is normative for cross-implementation consistency,
-> so a caller moving between implementations writes the same key.
+> The container's ergonomics are implementation-defined (a constructor argument, a builder method, a
+> mapping-valued field); its **name MUST be `extras`**, normative for cross-implementation consistency, so a
+> caller moving between implementations writes the same key.
 
-That is the whole resolution. Clause (b) is unchanged, every arm of it stays reachable on every mapping, and
-the fixture corpus is correct as it stands.
+**The sentence that generated Reading B is amended, not merely supplemented.** §6's existing "undeclared
+fields MUST be preserved on the config record" is the wording that admits the flat reading, and leaving it
+verbatim beside the new paragraph would leave both readings in one subsection with the older one carrying the
+only capitalized obligation. It is reworded to "undeclared fields MUST be preserved in the extras container
+on the config record", so the two sentences state one model. The `repetition_penalty=1.05` example in the same
+paragraph is restated as an extras-container key for the same reason.
 
-The name is fixed for the same reason observability §5.5.4 fixes its flag names, which reads "specific
-ergonomics (constructor argument, builder method, etc.) are implementation-defined; flag names below are
-normative for cross-implementation consistency". A name the caller types is not the mechanism-level API shape
+Clause (b) is unchanged, every arm of it stays reachable on every mapping, and the fixture corpus is correct
+as it stands.
+
+The name is fixed for the same reason observability §5.5.4 fixes its flag names, and on the same
+construction. §5.5.4 reads "Implementations MUST support the following observer-level configuration flags
+(specific ergonomics ... are implementation-defined; flag names below are normative for cross-implementation
+consistency)": the obligation is carried by a capitalized MUST on a named actor, and the parenthetical only
+qualifies its scope. The text above follows that shape rather than the parenthetical alone. A name the caller types is not the mechanism-level API shape
 the language-agnostic rule holds back from; it is the vocabulary the caller writes, and leaving it free would
 repeat this proposal's own defect one level down. All 24 fixtures already spell it `extras`, so fixing it
 also closes the gap between the fixture convention and the caller surface, which the adapter currently
@@ -170,10 +197,18 @@ since an implementation adding one chooses a name either way.
 Each of the three gains the clause-(b) block llm-provider's mappings already carry, naming the realization and
 the declared field it realizes. For §8.4, whose enumeration is explicit and currently excludes it:
 
-> §8.4 **manages** three wire keys: `embedding_types` (list-shaped, merge), `truncate` (scalar fail-loud flag,
-> reject), and `output_dimension` (the realization of the declared `dimensions` under §6 clause (b),
-> non-additive scalar, managed while `dimensions` is set and unmanaged when it is absent). Every other
-> undeclared extras key keeps §6's untouched pass-through.
+> §8.4 **manages** four wire keys: `embedding_types` (list-shaped, merge), `truncate` (scalar fail-loud flag,
+> reject), `output_dimension` (the realization of the declared `dimensions` under §6 clause (b), non-additive
+> scalar, managed while `dimensions` is set and unmanaged when it is absent), and `input_type` (the
+> realization of the declared `input_type`, non-additive and managed on **every** call, since the mapping
+> always emits the field and an absent OA value maps to `search_document`; it has no declared-field-absent
+> branch, the mandatory-wire-field case §6 describes for `stream`). Every other undeclared extras key keeps
+> §6's untouched pass-through.
+
+§8.4 additionally carries a sentence stating that `input_type` can never ride the extras-pass-through bag,
+which rests on the premise the new §6 text reverses. Its conclusion survives, since a conflicting extras
+`input_type` is now rejected pre-send rather than inexpressible, but it is reworded so the conclusion follows
+from the collision rule rather than from the key being unwritable.
 
 §8.1 and §8.3 gain the equivalent for their same-name `dimensions` realization, non-additive, managed while
 the declared field is set and unmanaged when absent.
@@ -208,13 +243,16 @@ restatement. Today §8.4's "every other undeclared extras key keeps §6's untouc
 an extras `output_dimension` ride through; afterwards, while declared `dimensions` is set, a conflicting one
 is rejected pre-send and a matching one is absorbed. §8.1 and §8.3 move from unanswered to managed on the
 same rule. A new fixture pins the Cohere rename arm (`dimensions` declared, `output_dimension` in the bag),
-and retrieval 052 already pins the same-name arm that §8.1 and §8.3 share, so it covers those two once their
-enumerations name it.
+and retrieval 052 pins the same-name arm on the **OpenAI** mapping it is bound to, so it covers §8.3 once
+that enumeration names the realization. §8.1 TEI is a different mapping and 052 cannot exercise it, so TEI's
+enumeration change needs its own coverage.
 
 ## Conformance test impact
 
-**No fixture changes except 053's new case.** The corpus is correct under the settled reading; that is the
-point of settling it in this direction rather than the other.
+**No shipped fixture changes, and fixtures are added.** The corpus is correct under the settled reading,
+which is the point of settling it in this direction rather than the other, so nothing is retired, repointed or
+rewritten. What is added: a case on 053 pinning the structural element test, and fixtures pinning the
+enumeration corrections on the mappings 052 cannot reach.
 
 **One implementation has work.** An extras surface built as undeclared fields on the config record needs an
 addressable container named `extras`, and the two fixtures currently held unrun become runnable. The name
