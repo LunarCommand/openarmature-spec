@@ -1,0 +1,1 @@
+../../proposals/0121-diagnostic-event-names-and-otel-observer-directive.md
