@@ -1,0 +1,1 @@
+../../proposals/0123-case-level-subgraph-declaration.md
