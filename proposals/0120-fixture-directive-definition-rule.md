@@ -16,7 +16,7 @@
 
 The conformance-adapter spec says in seven places where a fixture directive may be defined, naming four
 different candidate homes, and the statements contradict each other. For a directive defined only in a
-per-directory note, §8.2 requires an adapter to raise and §5.9 requires the same adapter to implement it.
+harness note, §8.2 requires an adapter to raise and §5.9 requires the same adapter to implement it.
 This proposal states one answer to "where may a definition live" and re-anchors the affected sections to it.
 
 It deliberately does **not** address what counts as a directive in the first place, which is a separate and
@@ -72,15 +72,20 @@ Add to §5's preamble, and cross-reference it from §3.2, §3.3, §5.9, §8.2 an
 >
 > 1. **§5 of this capability spec**, for a directive used by more than one capability's fixtures, or whose
 >    contract is general even if only one capability currently exercises it.
-> 2. **A per-directory harness note**, for a directive whose contract is specific to one capability's
->    fixtures and does not generalize. A per-directory harness note is the fixture-header comment block or
->    per-directory README described in §3.2, belonging to the `conformance/` directory whose fixtures use the
->    directive.
+> 2. **A fixture harness note**, for a directive whose contract is specific and does not generalize. A
+>    harness note is the fixture-header comment block or per-directory README described in §3.2. Its scope
+>    depends on what is being defined:
+>
+>    - For an **invariant predicate name** (§5.9), the note is the prose of the **fixture that uses the
+>      predicate**. A predicate is a claim about one fixture's executed outcome and does not generalize to
+>      its directory.
+>    - For **every other directive**, the note belongs to the `conformance/` directory whose fixtures use
+>      the directive.
 >
 > Together these are the **recognized vocabulary**. A definition in either home is normative and an adapter
 > MUST honor it. §5 remains authoritative for the general surface and for this rule.
 >
-> Where §5 and a per-directory note both address the same directive, they are read together: §5 governs any
+> Where §5 and a harness note both address the same directive, they are read together: §5 governs any
 > point on which they conflict, and the note MAY supply detail §5 leaves to it. §5 naming a directive does
 > not void a note that specifies its shape.
 
@@ -103,9 +108,16 @@ retroactively invalidating directives it cannot yet identify.
 - **§11's closing paragraph** keeps its division ("the general directive vocabulary lives here; the
   per-directory specialization lives there") and gains a pointer to the definition-homes rule, so it reads as
   an instance of that rule rather than an independent sanction.
-- **§5.9** keeps its predicate delegation. "The originating fixture's prose" is re-anchored to mean the
-  per-directory harness note of home 2, so §5.9 names the same second home as everything else rather than a
-  third one.
+- **§5.9** keeps its predicate delegation, and keeps it pointed at **the originating fixture's prose**. The
+  sentence today reads "documented in the originating fixture's prose per §3.2 per-directory harness notes",
+  naming a per-fixture home and a per-directory one in the same breath; the edit drops the second half rather
+  than the first. An earlier revision of this proposal re-anchored the sentence the other way, to mean the
+  per-directory note, so that §5.9 would name the same second home as everything else. That is withdrawn,
+  because the corpus does not support it: of the 934 distinct predicate names in shipped fixtures, 89 are
+  documented in the sidecar of the individual fixture that uses them, and 803 appear in exactly one file. A
+  close-ordering claim about one fixture's span tree does not generalize to its directory. Home 2's
+  granularity rule above carries the distinction, so §5.9 still names the same *rule* as everything else
+  without being forced to the wrong granularity.
 - **§8.2** is amended in exactly one respect: its vocabulary reference changes from "the §5 directive
   vocabulary" to "the recognized vocabulary" as defined above. Nothing else in §8.2 changes.
 
@@ -141,7 +153,7 @@ undefined directive or a legitimate author-chosen name until the follow-on settl
 an adapter author where to look for a definition.
 
 No fixture's runnability changes, and two populations need distinguishing. A directive defined only in a
-per-directory note is in an impossible position today, required to raise by §8.2 and to be implemented by
+harness note is in an impossible position today, required to raise by §8.2 and to be implemented by
 §5.9; after this it is unambiguously in the recognized vocabulary and an adapter implements it, so an adapter
 that currently raises would stop, which is a correction rather than a regression. A directive defined nowhere
 is outside §8.2's vocabulary before and after, so its status is unchanged and this proposal makes no claim to
@@ -170,8 +182,9 @@ have fixed it.
 ## Open questions
 
 1. **Whether a per-directory README and a fixture-header comment should remain interchangeable.** This
-   proposal treats both as "a per-directory harness note" because §3.2 and §11 already do. If they should be
-   distinguished, that is a smaller follow-on than the vocabulary question.
+   proposal treats both as "a harness note" because §3.2 and §11 already do, and distinguishes them only by
+   scope: per-fixture for an invariant predicate name, per-directory for every other directive. If the two
+   *forms* should also be distinguished, that is a smaller follow-on than the vocabulary question.
 2. **Whether the read-together rule for §5 plus a note needs a worked example** in the spec text. §5.8's
    delegation of Langfuse assertion shapes to observability fixture headers is the natural candidate, since it
    is exactly the partial-definition case the rule exists to permit.
