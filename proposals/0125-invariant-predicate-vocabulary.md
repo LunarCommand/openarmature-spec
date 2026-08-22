@@ -22,8 +22,9 @@
 §5.9 obliges adapters to implement every invariant predicate name a fixture uses, both the canonical ones it
 enumerates and the fixture-specific ones it delegates to fixture prose. It states no consequence for failing
 to, so an unimplemented name is silently skipped and its fixture goes green having checked nothing. A
-recursive scan of the corpus finds 934 distinct predicate names, of which 924 appear nowhere in the §5
-vocabulary. This gives the obligation a failure mode and requires the delegated definitions to exist.
+recursive scan of the corpus finds 934 distinct predicate names, of which 924 are outside the §5 vocabulary
+and 835 are defined nowhere at all. This gives the obligation a failure mode and requires the delegated
+definitions to exist.
 
 ## Motivation
 
@@ -51,18 +52,27 @@ A recursive scan of all 497 fixture files, collecting every key under `invariant
 | | Count |
 |---|---|
 | Distinct predicate names | 934 |
-| Word-matched anywhere in the §5 vocabulary | 10 |
-| Absent from it | 924 |
+| Named in the §5 vocabulary | 10 |
+| Not in §5, but named in their own fixture's prose | 89 |
+| Named in neither | **835** |
 
-§5.9 delegates the 924 to fixture prose. A downstream report supplies a worked instance: fixture 148 asserts
-that a Generation's fixed `usage` record omits `input` when the provider reports no prompt tokens, and the
-claim rests entirely on two predicate names, `generation_usage_input_omitted_when_prompt_tokens_null` and
-`generation_usage_output_and_total_present_when_sound`. Each appears in exactly one fixture and in no spec
-file. Neither is implemented by any adapter the corpus reflects. The fixture passes with no harness work at
-all, which is what prompted the check.
+The two figures answer different questions and should not be conflated. **924** are outside the §5 vocabulary,
+which is where §5.9 delegates them to fixture prose, so being outside it is expected rather than a defect.
+**835** appear in neither §5 nor the prose of any fixture that uses them, and those are the ones with no
+definition anywhere.
 
-The reporter's phrase for it is the general case: the assertion the fixture exists to make is currently made
-by nothing.
+The 89 matter as much as the 835: they show §5.9's delegation working when it is used. The mechanism is not
+broken, it is unenforced. (The 89 is an upper bound: a name appearing in a sidecar is not necessarily
+*defined* there, in the sense of stating what the adapter must check.)
+
+**A worked instance.** Observability fixture 038 asserts
+`invariants.dispatch_spans_close_before_node_span: true`, a relation about the order in which spans close. No
+`expected.span_tree` assertion can express close ordering, so nothing else in the fixture carries that claim.
+The predicate is documented in the fixture's own sidecar, exactly where §5.9 directs, so an adapter is
+obliged to implement it. An adapter that does not implement it skips it, and the fixture reports a pass having
+checked nothing about close ordering.
+
+That is the shape: not an undefined name, but a defined one whose obligation has no failure mode.
 
 ### Why this is not proposal 0120
 
@@ -76,28 +86,80 @@ enforceable definition requirement, not a decision about where definitions live.
 
 ### §5.9: an unimplemented predicate fails the fixture
 
+Two forms are drafted, because the choice between them is a release-timing decision and the accept should pick
+between texts rather than compose one.
+
+**Immediate form:**
+
 > An adapter that encounters an invariant predicate name it does not implement **MUST** fail the fixture with
 > `fixture_predicate_unknown` (§9), reporting the predicate name and the fixture location. It **MUST NOT**
 > skip the predicate and report a pass. A predicate an adapter cannot evaluate is a failure to evaluate the
 > fixture, not an assertion that holds.
 
-This is deliberately the same shape as §8.2's rule for an unrecognized directive, and for the same reason:
-silent skipping masks conformance gaps.
+**Staged form**, identical but with the obligation dated:
+
+> An adapter that encounters an invariant predicate name it does not implement **MUST** fail the fixture with
+> `fixture_predicate_unknown` (§9), reporting the predicate name and the fixture location, from spec version
+> `<TARGET>` onward. Before that version an adapter **SHOULD** fail, and **MUST** report the skipped predicate
+> name in its conformance output so an unimplemented predicate is visible rather than silent. Under neither
+> form may an adapter skip the predicate and report an unqualified pass.
+
+Either shape is the same as §8.2's rule for an unrecognized directive, and for the same reason: silent skipping
+masks conformance gaps. The staged form differs only in when the failure becomes mandatory, and in requiring
+interim visibility so the gap stays measurable while it is closed.
+
+**This proposal does not claim neutrality between them.** The immediate form is preferable on the merits,
+because the staged form's interim state is a conformance report that passes while naming what it did not
+check. The staged form exists for the case where the size of the drop needs a scheduled window, which is a
+release-management judgment rather than one about the rule.
 
 ### §5.9: a fixture-specific predicate must be defined
 
-> A fixture-specific predicate name **MUST** be defined in the prose of the fixture that uses it. A definition
-> states what the adapter must check and what outcome satisfies it. A name appearing only in a fixture's YAML
-> is **undefined**, and a fixture MUST NOT depend on an undefined predicate.
+> A fixture-specific predicate name **MUST** be defined in the prose of the fixture that uses it. A
+> **definition** states what the adapter must check and what outcome satisfies the predicate. A name that
+> appears in prose without both is a mention, not a definition, and a fixture **MUST NOT** depend on a
+> predicate that is undefined in this sense.
 
-The definition test is the one proposal 0120 sets for directives: a name mentioned without a stated obligation
-is not a definition. That test is what makes this checkable rather than aspirational.
+The definition test is stated here rather than borrowed. An earlier draft cited a three-part test from proposal
+0120, which that proposal carried until it was narrowed to the definition-homes contradiction alone; the test
+is not in its merged text, so citing it would point at nothing.
+
+### Reconciling with proposal 0120
+
+0120 re-anchors §5.9's sentence about "the originating fixture's prose" to mean a **per-directory harness
+note**, so that §5.9 names the same second home as every other definition rather than a third one. This
+proposal requires a predicate to be defined in **the prose of the fixture that uses it**. Those are different
+places, and both proposals are amending the same sentence.
+
+The corpus settles which is right for predicates: 89 predicate names are documented in the sidecar of the
+fixture that uses them, and a predicate is by construction fixture-specific, so a per-directory note is the
+wrong granularity for it. A close-ordering claim about one fixture's span tree does not generalize to its
+directory.
+
+So 0120's re-anchoring is correct for directives and over-broad for predicates, which it swept in without
+measuring what the corpus does with them. **Whichever of the two accepts second reconciles the sentence**, and
+the reconciliation is to scope 0120's re-anchoring to directives and leave §5.9's predicate delegation
+pointing at fixture prose. Both are still Draft, so either can carry the wording; this proposal states the
+conflict rather than leaving the second accept to discover it.
 
 ### §9: the error token
 
 > **`fixture_predicate_unknown`**: an adapter encountered an invariant predicate name it does not implement.
-> Silent skipping would report coverage that does not exist; the adapter MUST raise and surface the predicate
-> name plus the fixture location.
+> Silent skipping would report coverage that does not exist, so the adapter **MUST** raise and surface the
+> predicate name plus the fixture location.
+
+### The definition requirement is an authoring rule, not an adapter obligation
+
+The definition requirement above binds **fixture authors**, and it has no adapter-observable consequence. An
+adapter cannot tell whether a predicate it implements was documented, and it should not have to: it implements
+the name either way. So no error token attaches to it, and no conformance run detects a breach.
+
+That is worth stating plainly rather than leaving a reader to infer an enforcement that does not exist,
+particularly in a proposal arguing that an obligation without a failure mode is not an obligation. The
+requirement is not self-defeating for the same reason a style rule is not: it constrains what may be written,
+and what enforces it is review of the fixture rather than execution of it. A repository check could enforce it
+mechanically, which *Open questions* records rather than proposes, because it depends on the definition test
+being machine-decidable and proposal 0120 found that it is not.
 
 ## Conformance test impact
 
@@ -107,12 +169,14 @@ names. So on the day this is accepted, every adapter's conformance numbers drop,
 of coverage that was never real.
 
 That is the intended effect and it is why the change is worth making, but it makes the accept a decision about
-timing rather than only about wording. Two mitigations are available and this proposal does not choose between
-them, because the choice belongs to whoever schedules the release:
+timing as well as wording. Both candidate texts are drafted in *Detailed design*:
 
-1. **Accept the drop.** The numbers become true immediately, and the gap is visible and worked down.
-2. **Stage it.** Accept the definition requirement and the error token now, and set the failure obligation to
-   a stated future spec version, so implementations have a window to close the gap against a fixed date.
+1. **Immediate.** The numbers become true at once, and the gap is visible and worked down. Preferred on the
+   merits, because the alternative's interim state is a conformance report that passes while naming what it
+   did not check.
+2. **Staged.** The definition requirement and the error token land now, and the failure obligation takes
+   effect at a named future spec version, with the skipped predicate names reported in the interim so the gap
+   stays measurable.
 
 **No fixture YAML changes.** The corpus already uses every predicate name; this makes the obligation
 enforceable and requires the delegated definitions to exist.
@@ -141,9 +205,14 @@ this proposal does is make an undefined predicate detectable rather than invisib
 
 ## Open questions
 
-1. **Immediate or staged (the two options in *Conformance test impact*).** This is a release-timing decision
-   rather than a design one, and it should be made deliberately rather than by whichever wording ships. The
-   staged form needs a target version named in the text.
+1. **Immediate or staged.** Both forms are drafted in *Detailed design*, so the accept chooses between texts
+   rather than composing one. This proposal prefers the immediate form on the merits and says so; the staged
+   form exists for the case where the conformance drop needs a scheduled window, and it needs a target version
+   substituted for `<TARGET>`.
+2. **Whether a repository check should enforce the definition requirement.** It would have to decide whether
+   prose states an obligation, which proposal 0120 established is not machine-decidable, so a check would
+   either under-enforce or encode a guess. Left out of scope, and recorded because the alternative is that
+   someone writes it and discovers the same wall.
 2. **Whether the same treatment is owed to the `carries` assertion surface** and any other name-keyed
    vocabulary, which have not been swept. This proposal covers the three invariant blocks it measured;
    whether other surfaces share the shape is unmeasured and should not be assumed either way.

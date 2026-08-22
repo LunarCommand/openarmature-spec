@@ -9,12 +9,28 @@
     **structurally**, from the call's position in the graph, not from which spans the observer has
     materialized at the moment it resolves. The rule already names the correct parents; what it does not say
     is that an observer-side materialization detail cannot change the answer.
-  - spec/observability/spec.md **§6**: replace the sentence pinning the per-branch dispatch span's start time
-    to the inner `started` event. Synthesis is triggered by the first event that needs the span, whichever
-    arrives first, and the start time is the moment of that event. State the same for the fan-out instance
-    dispatch span, which §6 currently leaves silent while pinning the branch one.
-  - spec/observability/conformance/152 and 153: un-defer once an implementation resolves structurally. No
-    fixture change; both assert the parent §5.5 already mandates.
+  - spec/observability/spec.md **§6**: replace both the synthesis **trigger** ("On the first inner `started`
+    event received ...") and the sentence pinning the per-branch dispatch span's **start time** to that event.
+    Synthesis is triggered by the first event that needs the span, whichever arrives first. State the same for
+    the **fan-out instance span**, which §6 leaves without a synthesis paragraph while giving the branch one.
+  - spec/observability/spec.md **§5.7**: the branch's `branch_name` is "sourced from the first inner event of
+    that dispatch span". Under the amended trigger the sourcing event may be a provider event instead, so the
+    sentence is re-anchored to the triggering event. Both event kinds carry `branch_name`.
+  - spec/observability/spec.md **§5.4**: give the fan-out instance span the synthesis statement the
+    per-branch dispatch span has, so the two are stated symmetrically rather than one pinned and one silent.
+  - spec/observability/spec.md **§8.4.8**: the Langfuse observer synthesizes its dispatch Span "lazily, on the
+    first inner observation of each branch", the same trigger with the same defect. Re-anchor it, or make it
+    defer to §6 so the two cannot drift.
+  - spec/observability/spec.md **§5.5, §5.5.8, §5.5.11, §5.5.13**: five cross-references condition the
+    fallback on the calling node's span being "not open" and on a more-specific wrapper being "open". Those
+    conditionals are what the structural rule below replaces, so they are reworded to key on structural
+    enclosure rather than span openness.
+  - spec/conformance-adapter/spec.md **§5.1**: add a wrapper-side scheduling control to
+    `calls_llm_from_wrapper` (a yield or delay before the call returns), without which no fixture can
+    distinguish an implementation that resolves structurally from one that passes on a favourable
+    interleaving.
+  - spec/observability/conformance/152 and 153: set the new scheduling control and un-defer. No assertion
+    changes; both already assert the parent §5.5 mandates.
 - **Related:** 0084 (introduced the *Lineage-resolved parent* clause and the lineage-aware span keying),
   0044 (introduced per-branch dispatch spans)
 
@@ -72,12 +88,19 @@ for each branch, not eagerly at the parallel-branches NODE's `started`. This kee
 from existing NodeEvents without requiring the engine to emit per-branch lifecycle events."
 
 That rationale is about avoiding **new engine events**. An orphan provider event is an existing event, so
-synthesizing from it preserves exactly what laziness protects. The only text that conflicts is one sentence:
-"The dispatch span's start time is the moment the inner `started` event fires."
+synthesizing from it preserves exactly what laziness protects.
 
-Note the asymmetry in the text: §6 pins the start time of the **branch** dispatch span and says nothing about
-the **fan-out instance** dispatch span, although downstream measurement confirms both are synthesized by the
-same path with the same trigger and both race identically. The text is asymmetric where the behaviour is not.
+**Four texts conflict, not one.** §6 states the trigger ("On the first inner `started` event received ...")
+and separately pins the start time ("The dispatch span's start time is the moment the inner `started` event
+fires"). §5.7 sources the branch's `branch_name` "from the first inner event of that dispatch span". And
+§8.4.8 gives the Langfuse observer the same trigger, synthesizing "lazily, on the first inner observation of
+each branch". A change that touched only the start-time sentence would leave three statements asserting the
+trigger it replaces.
+
+Note also an asymmetry in the text: §6 gives the **per-branch dispatch span** a synthesis paragraph and a
+pinned start time, and gives the **fan-out instance span** neither, although downstream measurement confirms
+both are synthesized by the same path with the same trigger and both race identically. The text is asymmetric
+where the behaviour is not.
 
 ## Detailed design
 
@@ -87,36 +110,73 @@ Append to *Lineage-resolved parent*:
 
 > **Resolution is structural.** The enclosing wrapper is determined by the call's position in the graph, not
 > by which spans an observer has materialized at the moment it resolves the parent. A call issued from a
-> parallel branch's middleware is inside that branch and its enclosing wrapper is that branch's dispatch
-> span; a call issued from a fan-out instance's middleware is inside that instance. An implementation **MUST
-> NOT** select a different parent because a wrapper span has not yet been created, and **MUST NOT** let the
-> selected parent depend on the ordering between the provider event and any other event.
+> parallel branch's middleware is inside that branch and its enclosing wrapper is that branch's per-branch
+> dispatch span; a call issued from a fan-out instance's middleware is inside that instance and its enclosing
+> wrapper is that fan-out instance span. An implementation **MUST NOT** select a different parent because a
+> wrapper span has not yet been created, and **MUST NOT** let the selected parent depend on the ordering
+> between the triggering event and any other event.
+
+**The existing conditionals are reworded, not left standing.** §5.5's fallback fires "when the calling node's
+span is **not open**", and its MUST NOT applies "when a more-specific enclosing wrapper (per §4.3) is **open**".
+Both phrases are temporal, and leaving them beside a rule that says resolution is structural would put the
+ambiguity inside one clause instead of removing it. They key on structural enclosure instead: the fallback
+fires when the calling node's span is not the call's immediate enclosure, and the MUST NOT applies when a
+more-specific wrapper per §4.3 encloses the call. The same rewording is owed to the four cross-references in
+§5.5.8, §5.5.11 and §5.5.13, which repeat "when that span is not open" verbatim.
 
 ### §6: synthesis is triggered by the first event that needs the span
 
 Replace the start-time sentence, and state the same rule for both dispatch-span kinds:
 
-> A dispatch span (per-branch or per-fan-out-instance) is synthesized on the **first event that needs it**,
-> whichever arrives first: an inner node's `started` event, or a provider event whose lineage places it
-> inside that branch or instance. Its start time is the moment of that triggering event. A later event that
-> would also have triggered synthesis reuses the existing span rather than creating a second one.
+> An observer **MUST** synthesize a per-branch dispatch span, or a fan-out instance span, on the **first event
+> that needs it**, whichever arrives first: an inner node's `started` event, or any event whose span resolves
+> under §5.5's *Lineage-resolved parent* to that branch or instance. A later event that would also have
+> triggered synthesis **MUST** reuse the existing span rather than create a second one.
 >
-> The synthesis remains **lazy** in the sense §6 intends: it is driven by events the engine already emits and
+> The span's start time is the moment of the triggering event, and **MUST NOT** be later than the start of any
+> span parented under it. Where the triggering event's own span began earlier, the synthesized parent starts no
+> later than that child.
+>
+> The synthesis remains **lazy** in the sense §6 intends: it is driven by events the engine already emits, and
 > requires no per-branch or per-instance lifecycle event.
 
-The start time becoming earlier is a fidelity improvement rather than a concession. A dispatch span that
-starts at the first inner node understates the branch's extent whenever branch middleware does work first,
-which is precisely the case under discussion.
+The trigger is stated over "any event whose span resolves under §5.5's *Lineage-resolved parent*" rather than
+over provider events, because §5.5's rule is already shared by the LLM, embedding, tool-execution and rerank
+spans. Enumerating one kind would leave the other three to inference.
+
+**Why the start time needs the second clause.** A provider call is made before its event is drained, so a span
+synthesized at drain time would start *after* the provider span it then adopts as a child, producing a parent
+shorter than and starting later than its own child. That is malformed in every trace viewer and is not what
+the rule intends. Requiring the parent to start no later than any span beneath it removes the case, and the
+observer can satisfy it because it knows the child's start at the moment it adopts it.
+
+With that clause the start time moving earlier is a fidelity improvement rather than a concession: a dispatch
+span that starts at the first inner node understates the branch's extent whenever branch middleware does work
+first, which is precisely the case under discussion. Without it, the change would trade one malformed tree for
+another.
 
 ### Fixtures
 
-Fixtures 152 and 153 assert the parents §5.5 already mandates and need no change. They are currently deferred
-downstream because they pass only on a favourable interleaving. They un-defer when an implementation resolves
-structurally, and they should be required to pass **with** a yielding wrapper, since passing only without one
-demonstrates the defect rather than the fix.
+Fixtures 152 and 153 assert the parents §5.5 already mandates, so their assertions need no change. But as the
+corpus stands **no fixture can fail the new rule**: both pass today on a favourable interleaving, and nothing
+in the fixture vocabulary makes a wrapper yield, so an implementation that resolves at drain time and one that
+resolves structurally are indistinguishable to the suite.
 
-No new fixture is added. 152 and 153 between them already assert both dispatch-span kinds as the fallback
-parent, which is the whole of what this proposal makes reachable.
+That is why `calls_llm_from_wrapper` gains a **scheduling control** in conformance-adapter §5.1: a yield or
+delay between the call and the wrapper's return. 152 and 153 set it, which forces the interleaving that
+currently makes the defect invisible. Without it this proposal would ship two MUST NOTs that no fixture
+exercises, which is the shape of unearned coverage the surrounding proposals exist to close.
+
+No new fixture file is added. 152 and 153 between them already cover both wrapper kinds; what they lacked was
+the ability to provoke the race.
+
+### Terminology
+
+The spec names these two spans differently: a **per-branch dispatch span** (§5.7, §6) and a **fan-out instance
+span** (§5.4, §4.3). This proposal uses both terms as the spec does rather than coining a collective
+"dispatch span" for the pair, since §8.4.8 and §4.3 already use "dispatch span" for the parallel-branches one
+specifically and a widened sense would make those references ambiguous. Where a statement covers both, it
+names both.
 
 ## Conformance test impact
 
