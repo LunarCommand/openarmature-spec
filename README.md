@@ -89,7 +89,6 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| [0125](proposals/0125-invariant-predicate-vocabulary.md) | Draft | conformance-adapter §5.9, §9 | Give the obligation to implement an invariant predicate a failure mode, since an unimplemented name is silently skipped and its fixture reports a pass; 924 of 934 predicate names sit outside the §5 vocabulary and 835 are defined nowhere at all |
 | [0124](proposals/0124-orphan-provider-span-parent-resolution.md) | Draft | observability §5.5, §6 | Resolve an orphan provider span's parent from the call's position in the graph rather than from which spans the observer has materialized, so the parent stops depending on whether middleware happens to yield |
 | [0123](proposals/0123-case-level-subgraph-declaration.md) | Draft | conformance-adapter §5.4 | Scope a subgraph declaration to the graph specification it accompanies, so it may sit at the document top level, in a case, or in a case's graph block, which 20 shipped fixtures already require and the directive vocabulary does not admit |
 | [0122](proposals/0122-declared-field-collision-reachability.md) | Draft | llm-provider §6; retrieval-provider §8.1–§8.4, §10; observability §5.5.1 | Settle whether the extras surface is a named container or undeclared fields on the config record, since the two readings disagree about whether a shipped collision is expressible, and complete a managed-key enumeration that clause (b) left behind |

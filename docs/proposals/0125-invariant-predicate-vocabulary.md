@@ -1,1 +1,0 @@
-../../proposals/0125-invariant-predicate-vocabulary.md
