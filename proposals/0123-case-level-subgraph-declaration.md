@@ -155,3 +155,18 @@ proposal 0120 scopes to a follow-on.
    alone.** "A declaration is scoped to the graph specification it accompanies" is a general principle, and
    §5.4 carries other composition forms. This proposal states it for the form whose misplacement is
    measured; whether the others share the shape is unmeasured and should not be assumed either way.
+2. **Whether §4.2 should document the per-case `graph:` container.** This proposal sanctions a subgraph
+   declaration inside a case's `graph:` block, but §4.2's multi-case form puts `state:`, `entry:`, `nodes:`
+   and `edges:` directly on the case and never says a case may nest them under `graph:` instead. The key
+   appears nowhere in the conformance-adapter spec. Six shipped fixtures use the container: graph-engine
+   007, 041 and 042, and pipeline-utilities 065, 077 and 078. Two of those, graph-engine 007 and 041, also
+   declare a subgraph inside it, which is the subset this proposal measures. The gap is a **schema**
+   question rather than a vocabulary one: an adapter cannot parse such a case into a shape at all without
+   knowing the container exists, so it is answerable on its own and does not wait on the open-versus-closed
+   vocabulary question that proposal 0120 defers. It is a candidate for a small proposal against §4.2.
+3. **Undefined composition keys adjacent to this one.** Observability 039 uses `inner_subgraphs:` at case
+   level and `fan_out.inner_subgraph:`, neither of which appears anywhere in `spec/` outside a handful of
+   observability fixtures. Unlike the `graph:` container these are vocabulary rather than schema, so they
+   belong to the follow-on proposal 0120 scopes for directives with no definition in either home. Recorded
+   here because they surfaced alongside the container and share its diagnosis: the fixture corpus uses
+   composition shapes the spec never wrote down.
