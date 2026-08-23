@@ -75,19 +75,20 @@ Amend §5.4's three statements so placement is stated once and covers both forms
 > `subgraphs:` for a named mapping) is scoped to the graph specification it accompanies, and an adapter
 > **MUST** accept it wherever that specification appears:
 >
-> - at the fixture document's **top level**, where it is visible to every case in the file;
+> - at the fixture document's **top level**, where it is in scope for every case in the file;
 > - inside an individual **case**, where it is visible to that case alone;
 > - inside a case's **`graph:` block**, for a table fixture whose cases each carry a complete graph
 >   specification.
 >
-> The top-level placement is available when every case in the file binds a given subgraph name to the same
-> body. A fixture whose cases bind one subgraph name to different bodies **MUST** declare it at one of the
-> narrower sites, since one document-root declaration cannot express more than one body for a name.
+> The top-level placement is available only when every case in the file binds a given subgraph name to the
+> same body, since one document-root declaration cannot express more than one body for a name. A fixture whose
+> cases bind a name to different bodies therefore declares it at a narrower site.
 >
-> Where a fixture declares the same subgraph name at more than one of these sites, an adapter **MUST**
-> resolve that name using the innermost declaration that is in scope for the case being run, the three sites
-> ranking from outermost to innermost in the order listed above: document top level, then case, then the
-> case's `graph:` block.
+> Where a fixture declares the same subgraph name at more than one of these sites, an adapter **MUST** resolve
+> that name using the innermost declaration that is in scope for the case being run, the three sites ranking
+> from outermost to innermost in the order listed above: document top level, then case, then the case's
+> `graph:` block. Where both declaration forms appear at the **same** site and bind the same name, the
+> `subgraphs:` mapping entry governs, since it names the binding explicitly.
 
 The resolution sentence is precautionary rather than descriptive: no shipped fixture declares at more than one
 site, so it settles a collision the corpus does not contain. It ships **unexercised by any fixture**, which is
@@ -99,11 +100,12 @@ fixture neither could be said to have failed.
 ### The §5.4 preamble
 
 §5.4 introduces its directives with a sentence scoping the whole section to `nodes.<node_name>:`. That is
-correct for the node-behavior directives and false for the declaration forms, which appear at none of the
-three sanctioned sites under a node. Amending the placement rule while leaving that introduction intact would
-put the contradiction inside one section rather than between two.
-It is qualified so it introduces the node-behavior directives without asserting where the declaration forms
-go, deferring to *Subgraph declaration placement* for that.
+correct for the node-attached composition directives (`subgraph:` as a node's behavior, `fan_out:`,
+`parallel_branches:`) and false for the declaration forms, which appear at none of the three sanctioned sites
+under a node. Amending the placement rule while leaving that introduction intact would put the contradiction
+inside one section rather than between two.
+It is qualified so it introduces the node-attached composition directives without asserting where the
+declaration forms go, deferring to *Subgraph declaration placement* for that.
 
 ## Conformance test impact
 
@@ -113,8 +115,18 @@ should move. The change is to the text that describes where the block may go.
 **No new directive.** `subgraph:` and `subgraphs:` are unchanged in shape and meaning; only their permitted
 placement is stated.
 
-**An adapter built strictly against the current §5.4 gains 20 buildable fixtures.** An adapter that already
-accepts the narrower placements, which any adapter running the suite today must, is unaffected.
+**§5.4 stops contradicting 20 shipped fixtures.** An adapter that already accepts the narrower placements,
+which any adapter running the suite today must, is unaffected.
+
+The claim is deliberately about the placement contradiction rather than about buildability, because for the
+two `graph:`-block fixtures buildability needs one thing more: the per-case **`graph:` container** itself is
+undocumented. §4.2's multi-case form puts `state:`, `entry:`, `nodes:` and `edges:` directly on the case, and
+`graph:` appears nowhere in the conformance-adapter spec. This proposal states where a subgraph declaration
+may sit, including inside that container; documenting the container is §4.2's business and is left to a
+proposal that can survey the table-fixture shape as a whole. Observability 039 carries a related instance,
+using `inner_subgraphs:` at case level and `fan_out.inner_subgraph:`, neither of which appears anywhere in
+`spec/` outside a handful of observability fixtures. Both are undefined-directive instances of the kind
+proposal 0120 scopes to a follow-on.
 
 ## Alternatives considered
 
@@ -126,11 +138,13 @@ accepts the narrower placements, which any adapter running the suite today must,
    document-root declaration cannot express more than one body for a name. It would also churn shipped
    fixtures to match text rather than correcting text to match a deliberate shape.
 3. **Sanction the narrower placements only**, retiring the top-level form. Rejected: 54 files use it, and it
-   is the right shape when every case shares a topology.
-4. **Scope the rule to two placements and defer the `graph:` block.** Rejected: it would leave graph-engine
-   007 and 041 unbuildable by an adapter following the amended text, which is the same defect this proposal
-   exists to close, and the scoping rule that covers all three (the declaration belongs to the graph
-   specification it accompanies) is no more complex than one enumerating two.
+   is the right shape when every case binds a given name to the same body.
+4. **Scope the rule to two placements and defer the `graph:` block.** Rejected: it would leave §5.4 still
+   contradicting graph-engine 007 and 041, which is the same defect this proposal exists to close, and the
+   scoping rule that covers all three (the declaration belongs to the graph specification it accompanies) is
+   no more complex than one enumerating two. Those two fixtures need §4.2's undocumented `graph:` container
+   before an adapter can build them either way, but that is a separate gap and deferring the placement rule
+   would add a second one.
 5. **Leave §5.4 alone and document the case-level form in a per-directory note.** Rejected: the placement is
    used across five capability areas, so it is general rather than directory-local, and proposal 0120's
    definition-homes rule puts a general contract in §5.
