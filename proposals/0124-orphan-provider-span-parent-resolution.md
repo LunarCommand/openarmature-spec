@@ -13,24 +13,44 @@
     event received ...") and the sentence pinning the per-branch dispatch span's **start time** to that event.
     Synthesis is triggered by the first event that needs the span, whichever arrives first. State the same for
     the **fan-out instance span**, which §6 leaves without a synthesis paragraph while giving the branch one.
-  - spec/observability/spec.md **§5.7**: the branch's `branch_name` is "sourced from the first inner event of
-    that dispatch span". Under the amended trigger the sourcing event may be a provider event instead, so the
-    sentence is re-anchored to the triggering event. Both event kinds carry `branch_name`.
+    A fifth statement of the trigger sits three paragraphs below at **:1808** ("the dispatch span is created
+    on the first inner event for each branch"). On the reading §6 uses at :1777, an "inner event" is an event
+    from a node inside the branch, which an orphan issued from the branch's middleware is not, so :1808 can be
+    read as still confining synthesis. It is widened to match rather than left to be read either way.
+  - spec/observability/spec.md **§5.7**: the sentence reads "The branch's `branch_name` is sourced from the
+    first inner event of that branch (`event.branch_name`)." Under the amended trigger the sourcing event may
+    be a provider event instead of an inner-node one, so the sentence is re-anchored to the triggering event.
+    Both event kinds carry `branch_name`.
   - spec/observability/spec.md **§5.4**: give the fan-out instance span the synthesis statement the
     per-branch dispatch span has, so the two are stated symmetrically rather than one pinned and one silent.
   - spec/observability/spec.md **§8.4.8**: the Langfuse observer synthesizes its dispatch Span "lazily, on the
     first inner observation of each branch", the same trigger with the same defect. Re-anchor it, or make it
     defer to §6 so the two cannot drift.
-  - spec/observability/spec.md **§5.5, §5.5.8, §5.5.11, §5.5.13**: five cross-references condition the
-    fallback on the calling node's span being "not open" and on a more-specific wrapper being "open". Those
-    conditionals are what the structural rule below replaces, so they are reworded to key on structural
-    enclosure rather than span openness.
+  - spec/observability/spec.md **§8.4.3, §8.4.5, §8.4.6, §8.4.7**: four Langfuse counterparts restate the
+    parent resolution in the temporal terms being replaced: **:2485** (§8.4.3) promises that "the Langfuse
+    observation tree and the OTel span tree produce the same parent for the nested and orphan cases" while
+    routing to "the nearest open ancestor observation", and **:2630**, **:2712** and **:2725** each say "or
+    the nearest open ancestor when it is closed". Left alone, §5.5 would make the parent structural while
+    these four keep walking to the nearest **open** ancestor, so the two trees disagree on exactly the
+    interleaving this proposal exists to fix and §8.4.3's parity promise becomes false in shipped text. They
+    take the same structural-enclosure rewording, or defer to §5.5.
+  - spec/observability/spec.md **§5.5, §5.5.8, §5.5.11, §5.5.13**: six cross-references condition the
+    fallback on the calling node's span being "not open" or on a more-specific wrapper being "open". They are
+    enumerated by line rather than counted, since a count is what an accept author would work from and stop
+    short on: **:838**, **:862** and **:870** in §5.5 itself, plus **:1341** (§5.5.8), **:1461** (§5.5.11) and
+    **:1520** (§5.5.13). Those conditionals are what the structural rule below replaces, so they are reworded
+    to key on structural enclosure rather than span openness.
   - spec/conformance-adapter/spec.md **§5.1**: add a wrapper-side scheduling control to
     `calls_llm_from_wrapper` (a yield or delay before the call returns), without which no fixture can
     distinguish an implementation that resolves structurally from one that passes on a favourable
     interleaving.
-  - spec/observability/conformance/152 and 153: set the new scheduling control and un-defer. No assertion
-    changes; both already assert the parent §5.5 mandates.
+  - spec/observability/conformance/133, 134, 152 and 153: set the new scheduling control on all four. These
+    are every fixture that already carries `calls_llm_from_wrapper`, and 133 and 134 exercise the same orphan
+    resolution against the same not-yet-synthesized wrapper span, so leaving them without the control leaves
+    them passing on the favourable interleaving. 134 case 2
+    (`orphan_generation_parents_under_inner_fan_out_instance_observation`) is the only Langfuse orphan case in
+    the corpus, so without it the amended §8.4.8 trigger ships with nothing on the Langfuse surface able to
+    fail it. No assertion changes; all four already assert the parent §5.5 mandates.
 - **Related:** 0084 (introduced the *Lineage-resolved parent* clause and the lineage-aware span keying),
   0044 (introduced per-branch dispatch spans)
 
@@ -92,7 +112,7 @@ synthesizing from it preserves exactly what laziness protects.
 
 **Four texts conflict, not one.** §6 states the trigger ("On the first inner `started` event received ...")
 and separately pins the start time ("The dispatch span's start time is the moment the inner `started` event
-fires"). §5.7 sources the branch's `branch_name` "from the first inner event of that dispatch span". And
+fires"). §5.7 sources the branch's `branch_name` "from the first inner event of that branch". And
 §8.4.8 gives the Langfuse observer the same trigger, synthesizing "lazily, on the first inner observation of
 each branch". A change that touched only the start-time sentence would leave three statements asserting the
 trigger it replaces.
@@ -109,11 +129,15 @@ where the behaviour is not.
 Append to *Lineage-resolved parent*:
 
 > **Resolution is structural.** The enclosing wrapper is determined by the call's position in the graph, not
-> by which spans an observer has materialized at the moment it resolves the parent. A call issued from a
-> parallel branch's middleware is inside that branch and its enclosing wrapper is that branch's per-branch
-> dispatch span; a call issued from a fan-out instance's middleware is inside that instance and its enclosing
-> wrapper is that fan-out instance span. An implementation **MUST NOT** select a different parent because a
-> wrapper span has not yet been created, and **MUST NOT** let the selected parent depend on the ordering
+> by which spans an observer has materialized at the moment it resolves the parent. A call issued from
+> middleware or a wrapper around a node inside a parallel branch is inside that branch, and its enclosing
+> wrapper is that branch's per-branch dispatch span; a call issued from middleware or a wrapper around a node
+> inside a fan-out instance is inside that instance, and its enclosing wrapper is that fan-out instance span.
+> This covers node middleware, the placement every shipped fixture exercises, as well as pipeline-utilities'
+> instance middleware (§9.7) and branch middleware (§11.7). Where those run outside the engine's per-instance
+> or per-branch scope, this clause governs the span parent and leaves pipeline-utilities' `branch_name`
+> resolution at the strength it already has. An implementation **MUST NOT** select a different parent because
+> a wrapper span has not yet been created, and **MUST NOT** let the selected parent depend on the ordering
 > between the triggering event and any other event.
 
 **The existing conditionals are reworded, not left standing.** §5.5's fallback fires "when the calling node's
@@ -180,7 +204,19 @@ names both.
 
 ## Conformance test impact
 
-**No fixture changes.** 152 and 153 are correct as written; this makes them satisfiable.
+**Four fixtures gain the scheduling control.** 133, 134, 152 and 153 each add `calls_llm_from_wrapper`'s new
+scheduling parameter. No assertion changes in any of them: their expected parents are the ones §5.5 already
+mandates, and the control exists to force the interleaving that currently lets a non-conforming implementation
+pass.
+
+**One new rule ships unexercised, and this proposal says so rather than leaving it to be discovered.** The
+start-time ordering **MUST NOT** cannot be asserted by any fixture today: §5.8's `otel_spans` shape carries
+`name`, `status`, `attributes` and `children` with no start-time key, and §10 puts timing outside what the
+suite asserts, excluding timing-derived attributes and exact timestamps. So an implementation whose
+synthesized parent starts after its own child passes the whole suite. Closing it needs a relative
+start-ordering assertion shape plus a §10 carve-out, which is a conformance-vocabulary change larger than this
+proposal's subject and is left to one that can measure the need across capabilities. The rule is still worth
+stating, because an unstated ordering constraint is what produced the malformed tree in the first place.
 
 **One implementation obligation.** Structural resolution is new text, though it makes explicit what §5.5's
 enumeration already required rather than adding a parent it did not name. §5.5's MUST NOT against the shared
