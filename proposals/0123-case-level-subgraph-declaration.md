@@ -80,9 +80,10 @@ Amend §5.4's three statements so placement is stated once and covers both forms
 > - inside a case's **`graph:` block**, for a table fixture whose cases each carry a complete graph
 >   specification.
 >
-> The top-level placement is available only when every case in the file binds a given subgraph name to the
-> same body, since one document-root declaration cannot express more than one body for a name. A fixture whose
-> cases bind a name to different bodies therefore declares it at a narrower site.
+> A top-level declaration alone suffices only when every case binds a given subgraph name to the same body,
+> since one document-root declaration cannot express more than one body for a name. Where cases bind a name to
+> different bodies, the differing bodies are declared at the narrower sites; a top-level declaration **MAY**
+> still stand alongside them, and the resolution rule below decides which applies.
 >
 > Where a fixture declares the same subgraph name at more than one of these sites, an adapter **MUST** resolve
 > that name using the innermost declaration that is in scope for the case being run, the three sites ranking

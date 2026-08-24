@@ -40,11 +40,16 @@
     short on: **:838**, **:862** and **:870** in §5.5 itself, plus **:1341** (§5.5.8), **:1461** (§5.5.11) and
     **:1520** (§5.5.13). Those conditionals are what the structural rule below replaces, so they are reworded
     to key on structural enclosure rather than span openness.
-  - spec/conformance-adapter/spec.md **§5.1**: add a wrapper-side scheduling control to
-    `calls_llm_from_wrapper` (a yield or delay before the call returns), without which no fixture can
-    distinguish an implementation that resolves structurally from one that passes on a favourable
-    interleaving.
-  - spec/observability/conformance/133, 134, 152 and 153: set the new scheduling control on all four. These
+  - spec/conformance-adapter/spec.md **§5.1**: add a `yield_after_call` sub-key to
+    `calls_llm_from_wrapper`, without which no fixture can distinguish an implementation that resolves
+    structurally from one that passes on a favourable interleaving. The entry's proposed text:
+
+    > **`yield_after_call: <bool>`** (default `false`) - when `true`, the adapter **MUST** yield control
+    > between the provider call returning and the wrapper returning, in a way that lets observer delivery
+    > queued before that point make progress. The obligation is on what the yield achieves, not on the
+    > host language's mechanism for achieving it. When `false` the wrapper returns immediately after the
+    > call, which is the behavior every fixture carrying `calls_llm_from_wrapper` has today.
+  - spec/observability/conformance/133, 134, 152 and 153: set `yield_after_call: true` on all four. These
     are every fixture that already carries `calls_llm_from_wrapper`, and 133 and 134 exercise the same orphan
     resolution against the same not-yet-synthesized wrapper span, so leaving them without the control leaves
     them passing on the favourable interleaving. 134 case 2
@@ -238,8 +243,8 @@ execution path, none can currently fail: each passes on a favourable interleavin
 vocabulary makes a wrapper yield, so an implementation that resolves at drain time and one that resolves
 structurally are indistinguishable to the suite.
 
-That is why `calls_llm_from_wrapper` gains a **scheduling control** in conformance-adapter §5.1: a yield or
-delay between the call and the wrapper's return. **All four set it**, which forces the interleaving that
+That is why `calls_llm_from_wrapper` gains a **`yield_after_call` sub-key** in conformance-adapter §5.1,
+boolean and defaulting to `false`. **All four set it to `true`**, which forces the interleaving that
 currently makes the defect invisible. Restricting the control to 152 and 153 would leave 133 and 134 exercising
 the same orphan resolution against the same not-yet-synthesized wrapper span while still passing for the wrong
 reason, and 134 case 2 (`orphan_generation_parents_under_inner_fan_out_instance_observation`) is the only
@@ -255,8 +260,9 @@ opposite arrangement, where a directive an adapter treats as a no-op is what mak
 silent-pass shape the surrounding proposals exist to close, and a reader is right to check for it here.
 
 No new fixture file is added. The four between them cover both wrapper kinds on both observer surfaces; what
-they lacked was the ability to provoke the unfavourable ordering where one exists to provoke. The scheduling
-control earns the structural MUST NOTs, which are the only new normative rules this proposal ships.
+they lacked was the ability to provoke the unfavourable ordering where one exists to provoke.
+`yield_after_call` earns the structural MUST NOTs, which are the only new normative rules this proposal
+ships.
 
 ### Terminology
 
@@ -268,8 +274,8 @@ names both.
 
 ## Conformance test impact
 
-**Four fixtures gain the scheduling control.** 133, 134, 152 and 153 each add `calls_llm_from_wrapper`'s new
-scheduling parameter. No assertion changes in any of them: their expected parents are the ones §5.5 already
+**Four fixtures gain the control.** 133, 134, 152 and 153 each add `yield_after_call: true` to their
+`calls_llm_from_wrapper` block. No assertion changes in any of them: their expected parents are the ones §5.5 already
 mandates, and the control exists to force the interleaving that currently lets a non-conforming implementation
 pass.
 
