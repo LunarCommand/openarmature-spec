@@ -135,13 +135,16 @@ comment block documenting the observability fixture suite's per-capability harne
 That comment block is normative for the observability fixture suite even though it isn't part of this
 capability spec. Implementations MUST honor per-directory harness notes when the fixture's YAML
 references them; the directives this capability spec defines are the general surface, but per-directory
-specialization is a permitted extension.
+specialization is a permitted extension. A per-directory harness note is the second of the two
+**definition homes** enumerated in §5's preamble, and a definition it carries is part of the recognized
+vocabulary §8.2 parses against.
 
 ### 3.3 No required README per directory
 
 Conformance directories MAY ship a `README.md` describing the directory's scope, but a README is NOT
-required. The capability spec is the authoritative schema reference; per-directory READMEs are
-navigational aids at most.
+required. The capability spec is the authoritative schema reference. A per-directory README that
+documents no directive is a navigational aid; where a README carries the harness-note content §3.2
+describes, it is normative for the directives it defines, per §5's *Definition homes* rule.
 
 ## 4. Fixture YAML schema
 
@@ -284,9 +287,33 @@ conformance-adapter version is compatible. The version-mismatch rule per §9 *Er
 
 ## 5. Directive vocabulary
 
-This section is the authoritative enumeration of directives currently in use. Each directive entry
-specifies its YAML location, parameters, runtime behavior the adapter MUST honor, and the spec
-section(s) the directive exists to exercise.
+This section is the authoritative enumeration of the **general** directive surface, and is authoritative
+for the *Definition homes* rule below, which governs where any directive's definition may live. Each
+directive entry specifies its YAML location, parameters, runtime behavior the adapter MUST honor, and the
+spec section(s) the directive exists to exercise.
+
+**Definition homes.** A directive introduced or redefined after spec version 0.113.0 MUST have its
+definition in one of exactly two places:
+
+1. **§5 of this capability spec**, for a directive used by more than one capability's fixtures, or whose
+   contract is general even if only one capability currently exercises it.
+2. **A per-directory harness note**, for a directive whose contract is specific to one capability's
+   fixtures and does not generalize. A per-directory harness note is the fixture-header comment block or
+   per-directory README described in §3.2, belonging to the `conformance/` directory whose fixtures use the
+   directive.
+
+Together these are the **recognized vocabulary**. A definition in either home is normative and an adapter
+MUST honor it. §5 remains authoritative for the general surface and for this rule.
+
+Where §5 and a per-directory note both address the same directive, they are read together: §5 governs any
+point on which they conflict, and the note MAY supply detail §5 leaves to it. §5 naming a directive does
+not void a note that specifies its shape.
+
+A body of directives currently in use has a definition in neither home. Such a directive sits outside the
+recognized vocabulary, and this rule is stated prospectively rather than retroactively invalidating it.
+§5.9's fixture-specific invariant predicates are deliberately outside this rule: the corpus documents a
+predicate in the prose of the fixture that uses it, which is neither home, and settling that surface is
+left to a proposal that can measure it.
 
 ### 5.1 Node behavior directives
 
@@ -1355,7 +1382,7 @@ fixtures."
 ### 8.2 Parsing
 
 Translate each fixture's YAML into native graph-construction calls in the host language. Parsing
-MUST be lossless against the §5 directive vocabulary; unknown directives MUST raise
+MUST be lossless against the **recognized vocabulary** (§5 *Definition homes*); unknown directives MUST raise
 `fixture_directive_unknown` (per §9) rather than being silently skipped or treated as defaults.
 Lossless parsing preserves the document order of a node's directives (an order-preserving load), so
 §8.3's execution-order rule has a well-defined order to honor.
@@ -1426,8 +1453,9 @@ establishes per proposal 0022 when its capability spec lands.
 ## 11. Cross-spec touchpoints
 
 Every other capability with a `conformance/` directory contributes fixtures using the schema and
-directive vocabulary defined here. The directive vocabulary §5 is the authoritative enumeration;
-this section is a navigational cross-reference.
+directive vocabulary defined here. §5 is the authoritative enumeration of the general surface and
+states where any directive's definition may live (§5 *Definition homes*); this section is a
+navigational cross-reference.
 
 - **graph-engine** — fixtures under `spec/graph-engine/conformance/`. Originated the v0 informal
   schema (proposal 0001's `spec/graph-engine/conformance/README.md`, now slimmed to a breadcrumb
@@ -1450,7 +1478,8 @@ this section is a navigational cross-reference.
 
 Each capability's `conformance/` directory MAY contain a per-directory README documenting
 specialized harness contracts (per §3.2). The general directive vocabulary lives here; the
-per-directory specialization lives there.
+per-directory specialization lives there. That division is an instance of §5's *Definition homes*
+rule rather than an independent sanction: both are homes in the recognized vocabulary.
 
 ## 12. Out of scope
 
