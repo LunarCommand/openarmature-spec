@@ -173,9 +173,8 @@ Replace the start-time sentence, and state the same rule for both dispatch-span 
 > under §5.5's *Lineage-resolved parent* to that branch or instance. A later event that would also have
 > triggered synthesis **MUST** reuse the existing span rather than create a second one.
 >
-> The span's start time is the moment of the triggering event, and **MUST NOT** be later than the start of the
-> span whose event triggered the synthesis. Where that span began earlier, the synthesized parent starts no
-> later than it.
+> The span's start time is the moment of the triggering event, which under this rule may be a provider event
+> rather than an inner node's `started`.
 >
 > The synthesis remains **lazy** in the sense §6 intends: it is driven by events the engine already emits, and
 > requires no per-branch or per-instance lifecycle event.
@@ -184,21 +183,22 @@ The trigger is stated over "any event whose span resolves under §5.5's *Lineage
 over provider events, because §5.5's rule is already shared by the LLM, embedding, tool-execution and rerank
 spans. Enumerating one kind would leave the other three to inference.
 
-**Why the start time needs the second clause.** A provider call is made before its event is drained, so a span
-synthesized at drain time would start *after* the provider span it then adopts as a child, producing a parent
-shorter than and starting later than its own child. That is malformed in every trace viewer and is not what
-the rule intends. Requiring the parent to start no later than any span beneath it removes the case, and the
-observer can satisfy it because it knows that child's start at the moment it creates the parent. The rule is
-deliberately bounded to the triggering child rather than to every span later parented under the synthesized
-one. A child adopted afterwards may have started earlier still, since §6's delivery is serial and events
-arrive in completion order, and span start times are not mutable after creation in the tracing model the spec
-targets. Requiring the parent to precede every eventual child would oblige an observer to buffer synthesis,
-which contradicts the trigger rule directly above it.
+**Why the start-time sentence changes at all.** §6 currently pins the start to "the moment the inner `started`
+event fires". Under the amended trigger the synthesizing event may be a provider event instead, so leaving the
+sentence would pin the start to an event that no longer necessarily triggers synthesis. Re-anchoring it to the
+triggering event is the minimum the trigger change forces.
 
-With that clause the start time moving earlier is a fidelity improvement rather than a concession: a dispatch
-span that starts at the first inner node understates the branch's extent whenever branch middleware does work
-first, which is precisely the case under discussion. Without it, the change would trade one malformed tree for
-another.
+Moving the start earlier is a fidelity improvement rather than a concession: a dispatch span that starts at the
+first inner node understates the branch's extent whenever branch middleware does work first, which is precisely
+the case under discussion.
+
+**What this proposal deliberately does not state.** A provider call is made before its event is drained, so a
+span synthesized at drain time can still start *after* a span it then adopts as a child, producing a parent
+that starts later than its own child. That is malformed in every trace viewer. An earlier revision of this
+proposal added a start-ordering **MUST NOT** to forbid it. That is withdrawn: no assertion shape on either
+observer surface can express relative span start order, and observability §10 puts timing outside what the
+suite asserts, so the rule could not be tested and `GOVERNANCE.md` requires new behavior to have tests. The
+hazard is recorded in *Open questions* with the vocabulary it would need.
 
 ### Fixtures
 
@@ -217,9 +217,8 @@ Langfuse orphan case in the corpus, so omitting it would leave the amended §8.4
 Langfuse surface able to fail it.
 
 No new fixture file is added. The four between them cover both wrapper kinds on both observer surfaces; what
-they lacked was the ability to provoke the race. The scheduling control earns the structural MUST NOTs; the
-start-time ordering rule is a separate case and ships unexercised, which *Conformance test impact* states
-rather than leaving to be discovered.
+they lacked was the ability to provoke the race. The scheduling control earns the structural MUST NOTs, which
+are the only new normative rules this proposal ships.
 
 ### Terminology
 
@@ -235,18 +234,6 @@ names both.
 scheduling parameter. No assertion changes in any of them: their expected parents are the ones §5.5 already
 mandates, and the control exists to force the interleaving that currently lets a non-conforming implementation
 pass.
-
-**One new rule ships unexercised, and this proposal says so rather than leaving it to be discovered.** The
-start-time ordering **MUST NOT** cannot be asserted by any fixture today. The four fixtures at issue assert
-`expected.span_tree` (133, 152, 153) or `expected.langfuse_trace` (134). `span_tree`'s shape, per §3.2's
-harness note, is a name, subset attribute assertions, status, optional links and children; the Langfuse
-observation shape is equally start-time-free. Neither carries a start-time or relative-ordering key. Nor could
-one help on its own: observability §10 puts timing outside what the suite asserts, excluding timing-derived
-attributes and exact timestamps. So an implementation whose synthesized parent starts after its own child
-passes the whole suite. Closing it needs a relative start-ordering assertion shape on both surfaces plus an
-observability §10 carve-out, which is a conformance-vocabulary change larger than this proposal's subject and
-is left to one that can measure the need across capabilities. The rule is still worth
-stating, because an unstated ordering constraint is what produced the malformed tree in the first place.
 
 **One implementation obligation.** Structural resolution is new text, though it makes explicit what §5.5's
 enumeration already required rather than adding a parent it did not name. §5.5's MUST NOT against the shared
@@ -280,3 +267,12 @@ already requires of it.
    §4.3 owns the parent-child rules §5.5 defers to, so the principle arguably belongs there and would then
    cover any future span kind. §5.5 is where the fallback is defined and where an implementer looks, which is
    why this proposal puts it there; the two placements are not exclusive.
+2. **How a relative span start-ordering constraint could be asserted at all.** Moving the synthesis trigger
+   earlier does not remove the case where a span synthesized at drain time starts after a span it adopts as a
+   child. An earlier revision of this proposal forbade it with a **MUST NOT**, withdrawn because nothing can
+   test it: `expected.span_tree` carries a name, subset attribute assertions, status, optional links and
+   children, the Langfuse observation shape is equally start-time-free, and observability §10 excludes
+   timing-derived attributes and exact timestamps from what the suite asserts. Closing it needs a relative
+   start-ordering assertion shape on both observer surfaces plus a §10 carve-out narrow enough not to
+   reintroduce timestamp comparison generally. That is a conformance-vocabulary change that should be measured
+   across capabilities rather than attached to this proposal.

@@ -91,11 +91,9 @@ Amend §5.4's three statements so placement is stated once and covers both forms
 > `subgraphs:` mapping entry governs, since it names the binding explicitly.
 
 The resolution sentence is precautionary rather than descriptive: no shipped fixture declares at more than one
-site, so it settles a collision the corpus does not contain. It ships **unexercised by any fixture**, which is
-stated here rather than left for a reader to discover. That is acceptable for a rule whose only job is to give
-an adapter a determinate answer where the corpus is silent, and a fixture can be added by the first proposal
-that needs the shape. What it must not be is unstated, since two adapters left to choose would diverge on a
-fixture neither could be said to have failed.
+site, so it settles a collision the corpus does not contain. It is new behavior all the same, so it ships with
+a fixture that exercises it (see *Conformance test impact*) rather than resting on the corpus being silent.
+Two adapters left to choose would diverge on a fixture neither could be said to have failed.
 
 ### The §5.4 preamble
 
@@ -109,8 +107,21 @@ declaration forms go, deferring to *Subgraph declaration placement* for that.
 
 ## Conformance test impact
 
-**No fixture changes.** All 20 fixtures declaring outside the document root are correct as they stand and none
-should move. The change is to the text that describes where the block may go.
+**One new fixture.** The precedence rule and the same-site tie-break are new behavior, so they are exercised
+rather than asserted. A new conformance-adapter fixture carries three cases:
+
+1. the same subgraph name declared at the **document top level** and inside a **case**, bound to a different
+   body at each, asserting the case-level body executes;
+2. the same name declared inside a **case** and inside that case's **`graph:` block**, bound to a different
+   body at each, asserting the `graph:`-block body executes;
+3. the same name declared at one site through both `subgraph:` and `subgraphs:`, asserting the `subgraphs:`
+   mapping entry governs.
+
+Cases 1 and 2 make both ranking steps observable; case 3 covers the tie-break the site ranking cannot decide.
+Without them an adapter that ignored the ordering entirely would pass the suite.
+
+**No existing fixture changes.** All 20 fixtures declaring outside the document root are correct as they stand
+and none should move. The rest of the change is to the text that describes where the block may go.
 
 **No new directive.** `subgraph:` and `subgraphs:` are unchanged in shape and meaning; only their permitted
 placement is stated.
