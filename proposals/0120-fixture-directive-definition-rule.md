@@ -5,10 +5,13 @@
 - **Created:** 2026-08-15
 - **Accepted:**
 - **Targets:**
-  - spec/conformance-adapter/spec.md **§5 preamble, §3.2, §3.3, §5.9, §8.2, §11**: reconcile seven statements
-    about where a directive's definition may live. They currently name four different candidate homes and
-    disagree about which of them count, which leaves two conforming adapters able to reach opposite verdicts
-    on the same shipped fixture. State one answer, and re-anchor §8.2's vocabulary reference to it.
+  - spec/conformance-adapter/spec.md **§5 preamble, §3.2, §3.3, §8.2, §11**: reconcile six of the seven
+    statements about where a directive's definition may live. They currently name four different candidate
+    homes and disagree about which of them count, which leaves two conforming adapters able to reach opposite
+    verdicts on the same shipped fixture. State one answer, and re-anchor §8.2's vocabulary reference to it.
+    The seventh statement is **§5.9**, which is analyzed here but **deliberately left unamended and receives
+    no cross-reference**; adding one would re-anchor its predicate delegation to a rule that excludes the
+    fixture's own prose, which is the change this proposal withdrew. See *Detailed design*.
 - **Related:** 0081 and 0107 (prior directive-vocabulary documentation passes), 0119 (documents
   `content_repeat` and `attribute_truncation`; its open question 1 is what surfaced this)
 
@@ -16,8 +19,10 @@
 
 The conformance-adapter spec says in seven places where a fixture directive may be defined, naming four
 different candidate homes, and the statements contradict each other. For a directive defined only in a
-per-directory note, §8.2 requires an adapter to raise and §5.9 requires the same adapter to implement it.
+harness note, §8.2 requires an adapter to raise and §3.2 requires the same adapter to implement it.
 This proposal states one answer to "where may a definition live" and re-anchors the affected sections to it.
+It resolves the **directive** surface; §5.9's invariant predicates carry the same contradiction and are left
+for a proposal that can measure them on their own evidence.
 
 It deliberately does **not** address what counts as a directive in the first place, which is a separate and
 larger question deferred to a follow-on (see *Explicitly out of scope*).
@@ -47,16 +52,30 @@ not in §5. So:
 
 - **§8.2 requires an adapter to raise** `fixture_directive_unknown` on it, because §8.2's vocabulary is
   anchored to §5 and the directive is outside it.
-- **§5.9 requires the same adapter to implement it**, because it is a fixture-specific predicate documented
-  in the fixture's prose.
+- **§3.2 requires the same adapter to implement it**: "Implementations MUST honor per-directory harness
+  notes when the fixture's YAML references them."
 
 Both are MUSTs. Both are conforming readings. They cannot both be satisfied.
 
-**Worked example.** `no_spans_emitted` appears nowhere in §5. It is defined in
-`spec/observability/conformance/028-caller-metadata-namespace-rejection.md`, which states that
-`expected.no_spans_emitted: true` means the harness verifies the OTel exporter received no spans. An
-implementer following §8.2 raises and fails fixture 028. An implementer following §5.9 implements it and
-passes. Same fixture, opposite verdicts, both defensible from the shipped text.
+**Worked example.** `expected.span_tree` appears nowhere in §5. Its only occurrence in this capability spec
+is §3.2's worked example, which lists it among the "expected-outcome shapes specific to observability"
+documented in `spec/observability/conformance/001-otel-basic-trace.yaml`'s header comment, and which §3.2
+declares "normative for the observability fixture suite even though it isn't part of this capability spec".
+Fifty observability fixtures assert `expected.span_tree`. §3.2's MUST is conditional, binding "when the
+fixture's YAML references them", and the reading this argument uses is that a fixture asserting
+`expected.span_tree` is referencing the note that defines it, there being nowhere else the shape is defined.
+Under that reading an implementer following §8.2 raises and fails all fifty, while an implementer following
+§3.2 implements it and passes. Same fixtures, opposite verdicts, both defensible from the shipped text.
+
+Two things about this example are worth stating rather than glossing. **A fifty-first fixture sits outside the
+rule's reach**: `spec/sessions/conformance/012-session-observability.yaml` also asserts `expected.span_tree`,
+and `spec/sessions/conformance/` has no harness note defining it. §3.2 scopes the observability note to "the
+observability fixture suite", so after this proposal that fixture is in neither home and §8.2 still requires
+an adapter to raise on it. A per-directory home cannot cover a cross-directory user, and this proposal does
+not claim to fix that. **And by this proposal's own home-1 criterion, `span_tree` belongs in §5**, since two
+capabilities' fixtures use it. That is the rule working as intended: it does not merely resolve the
+contradiction, it names where the definition should live. The rule is prospective, so it does not force the
+move; a later documentation pass promoting `span_tree` to §5 would close both points at once.
 
 That is the defect. It needs no count to establish, and one example is enough to show two implementations can
 diverge on shipped work today.
@@ -65,7 +84,8 @@ diverge on shipped work today.
 
 ### One answer to "where may a definition live"
 
-Add to §5's preamble, and cross-reference it from §3.2, §3.3, §5.9, §8.2 and §11:
+Add to §5's preamble, and cross-reference it from §3.2, §3.3, §8.2 and §11 (**not** §5.9, per the
+deferral below):
 
 > **Definition homes.** A directive introduced or redefined after this proposal is accepted MUST have its
 > definition in one of exactly two places:
@@ -103,9 +123,22 @@ retroactively invalidating directives it cannot yet identify.
 - **§11's closing paragraph** keeps its division ("the general directive vocabulary lives here; the
   per-directory specialization lives there") and gains a pointer to the definition-homes rule, so it reads as
   an instance of that rule rather than an independent sanction.
-- **§5.9** keeps its predicate delegation. "The originating fixture's prose" is re-anchored to mean the
-  per-directory harness note of home 2, so §5.9 names the same second home as everything else rather than a
-  third one.
+- **§5.9 is deliberately left unamended.** Its sentence delegates fixture-specific predicates to "the
+  originating fixture's prose per §3.2 per-directory harness notes", naming a per-fixture home and a
+  per-directory one in the same breath. An earlier revision of this proposal re-anchored it to the
+  per-directory note, so that §5.9 would name the same second home as everything else. That is withdrawn:
+  of the 934 distinct predicate names in shipped fixtures, 803 appear in exactly one file, so a predicate
+  does not generalize to its directory; and where the corpus documents a predicate at all it does so per
+  fixture, in the sidecar of a fixture that uses it, which accounts for 99 of the 934. The remaining ~9 in 10
+  are documented nowhere. A per-directory anchor therefore matches neither the documented population nor the
+  undocumented one. Expressing that here would require the definition-homes rule to admit the fixture's own
+  prose (§3.1's `NNN-name.md`) as a third artifact form, which neither §3.2 nor §11 describes. That is a
+  larger change than this proposal's scope, and the predicate surface should settle it on its own evidence.
+
+  **The §8.2-versus-§5.9 contradiction therefore survives this proposal for invariant predicates.** A
+  fixture-specific predicate documented only in its own fixture's prose remains outside the recognized
+  vocabulary, so §8.2 still requires an adapter to raise while §5.9 still requires it to implement. This
+  proposal resolves the directive surface and states the remaining gap rather than appearing to close both.
 - **§8.2** is amended in exactly one respect: its vocabulary reference changes from "the §5 directive
   vocabulary" to "the recognized vocabulary" as defined above. Nothing else in §8.2 changes.
 
@@ -137,15 +170,20 @@ undefined directive or a legitimate author-chosen name until the follow-on settl
 
 ## Conformance test impact
 
-**None.** No fixture changes, no new or changed directive, no new assertion. The change is to prose that tells
-an adapter author where to look for a definition.
+**No fixture file changes**, no new or changed directive, no new assertion. The change is to prose that tells
+an adapter author where to look for a definition. Runnability does change for one population, which is the
+point of the proposal rather than a side effect.
 
-No fixture's runnability changes, and two populations need distinguishing. A directive defined only in a
-per-directory note is in an impossible position today, required to raise by §8.2 and to be implemented by
-§5.9; after this it is unambiguously in the recognized vocabulary and an adapter implements it, so an adapter
-that currently raises would stop, which is a correction rather than a regression. A directive defined nowhere
-is outside §8.2's vocabulary before and after, so its status is unchanged and this proposal makes no claim to
-have fixed it.
+Three populations need distinguishing. A directive defined only in a per-directory harness note is in an
+impossible position today, required to raise by §8.2 and to be implemented by §3.2; after this it is
+unambiguously in the recognized vocabulary and an adapter implements it, so an adapter that raises today
+gains those fixtures rather than failing them. `expected.span_tree` and the other shapes named in §3.2's note
+are this population: an adapter built strictly against §8.2 gains **50 runnable observability fixtures** on
+`span_tree` alone. The sessions fixture that also asserts it is not in this population, for the reason the
+worked example gives. An **invariant predicate** documented only in its own fixture's prose is unchanged by this
+proposal: it stays outside the recognized vocabulary, and the contradiction over it stays live pending the
+predicate proposal. A directive defined nowhere is outside §8.2's vocabulary before and after, so its status
+is unchanged and this proposal makes no claim to have fixed it.
 
 ## Alternatives considered
 
@@ -170,8 +208,13 @@ have fixed it.
 ## Open questions
 
 1. **Whether a per-directory README and a fixture-header comment should remain interchangeable.** This
-   proposal treats both as "a per-directory harness note" because §3.2 and §11 already do. If they should be
-   distinguished, that is a smaller follow-on than the vocabulary question.
+   proposal treats both as "a per-directory harness note" because §3.2 and §11 already do. A per-directory
+   note can hold a fixture-scoped entry: the note §3.2 uses as its worked example carries several, including
+   `expected.log_records` for fixture 010 and `expected.no_openarmature_spans_on_global` for fixture 005. So
+   the deferral of the predicate surface is about matching what the corpus actually does, documenting
+   predicates in each fixture's own sidecar, rather than about what the note form permits. Whether §3.2
+   should also describe the fixture's own prose (§3.1's `NNN-name.md`) as a note form is the question that
+   surface will have to answer.
 2. **Whether the read-together rule for §5 plus a note needs a worked example** in the spec text. §5.8's
    delegation of Langfuse assertion shapes to observability fixture headers is the natural candidate, since it
    is exactly the partial-definition case the rule exists to permit.
