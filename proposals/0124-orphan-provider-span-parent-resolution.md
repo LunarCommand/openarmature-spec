@@ -56,16 +56,17 @@
 
 ## Summary
 
-A provider call issued from a wrapper resolves its parent when the observer drains the event, while a
-dispatch span is synthesized when its first inner node starts. Those two are unordered, so the parent of an
-orphan provider span currently depends on whether user middleware happens to yield between the call and the
-next node start. §5.5 already names the correct parent; this states that the answer is structural, and
-removes the sentences in §6 that make the correct answer unreachable, and reconciles the four further texts
-that restate the trigger or the temporal resolution it replaces.
+A provider call issued from a wrapper resolves its parent when the observer drains the event, while §6
+synthesizes a dispatch span on its first inner node's `started`. Under the pre-phase wrapper the provider
+event is queued first, so the span an orphan needs does not yet exist when the orphan resolves. The wrong
+parent that follows is **either intermittent or constant depending on the observer's architecture**, and the
+spec constrains neither architecture today. §5.5 already names the correct parent; this states that the answer
+is structural, removes the sentences in §6 that make the correct answer unreachable, and reconciles the four
+further texts that restate the trigger or the temporal resolution it replaces.
 
 ## Motivation
 
-### The parent depends on scheduling
+### The parent is wrong in two different ways
 
 Measured downstream on a two-branch graph whose branch middleware issues one orphan call in the `pre` phase:
 
@@ -81,14 +82,34 @@ Measured downstream on a two-branch graph whose branch middleware issues one orp
   [B] register branch dispatch span
 ```
 
-In the second ordering the orphan parents under the invocation root. A single yield is enough, and yielding
-is ordinary for real middleware: any network call, any lock, any sleep.
+In the second ordering the orphan parents under the invocation root. A single yield is enough, and yielding is
+ordinary for real middleware: any network call, any lock, any sleep.
 
-**This is already non-conforming.** §10 scopes determinism to the §6 event stream and excludes only
-implementation-specific data, naming timestamps, span IDs and trace IDs. Parentage is structure derived from
-the event stream, so it falls inside the portion §10 covers and the conformance suite asserts. A parent that
-varies with a scheduling accident is a determinism violation today, independently of anything this proposal
-changes.
+That trace comes from an observer that publishes span state **synchronously, in the engine's execution path,
+before the engine queues the event**, so that a span is in context before the node body runs. Registration and
+resolution then sit on two different timelines, and graph-engine §6's serial-delivery guarantee does not order
+them against each other: it orders queued events, and one of these two operations is not a queued event.
+Unqualified `§6` elsewhere in this proposal means observability §6, the section being amended.
+
+**An observer that does all its work on the delivery queue has the same defect in a different shape.** There
+the ordering is fixed, not raced. Graph-engine §6 dispatches the provider event before `complete()` returns,
+and a pre-phase wrapper calls `complete()` before the node runs, so the provider event precedes the inner
+`started`. The dispatch span therefore does not exist when the orphan resolves, and the orphan parents under
+the invocation root on every run. Consistently wrong rather than intermittently wrong. This holds for a
+`pre`-phase wrapper, which is what all four affected fixtures declare; a `post`-phase orphan arrives after the
+branch's inner node has started, so the span is already there and only the two-timeline shape can miss it.
+
+Both shapes conform to the spec as written, because nothing requires an observer to do its work in one place
+or the other. So this is not one implementation's bug: the spec admits two architectures and gives the wrong
+answer under both.
+
+**The racy shape is additionally non-conforming.** §10 scopes determinism to the §6 event stream and excludes
+only implementation-specific data, naming timestamps, span IDs and trace IDs. Parentage is structure derived
+from the event stream, so it falls inside the portion §10 covers and the conformance suite asserts. A parent
+that varies with a scheduling accident is a determinism violation today, independently of anything this
+proposal changes. The queue-only shape is deterministic and so does not violate §10; it is simply wrong
+against §5.5's enumeration. That difference is why the fix has to be structural rather than a determinism
+patch.
 
 ### §5.5 already names the parent
 
@@ -127,8 +148,8 @@ false in shipped text the moment §5.5 becomes structural. They take the same re
 
 Note also an asymmetry in the text: §6 gives the **per-branch dispatch span** a synthesis paragraph and a
 pinned start time, and gives the **fan-out instance span** neither, although downstream measurement confirms
-both are synthesized by the same path with the same trigger and both race identically. The text is asymmetric
-where the behaviour is not.
+both are synthesized by the same path with the same trigger, so both carry the defect in the same shape. The
+text is asymmetric where the behaviour is not.
 
 ## Detailed design
 
@@ -183,6 +204,15 @@ The trigger is stated over "any event whose span resolves under §5.5's *Lineage
 over provider events, because §5.5's rule is already shared by the LLM, embedding, tool-execution and rerank
 spans. Enumerating one kind would leave the other three to inference.
 
+**The rule converges the two architectures, which is the strongest argument for it.** The orphan provider event
+is the first event that needs the span under *both* readings above. An observer that registers spans in the
+engine's execution path and one that does everything on the delivery queue therefore synthesize at the same
+point in the event stream and produce the same parent, even though the two disagree about when registration
+happens relative to delivery. The alternative fixes do not have this property: resolving at emit time gives the
+two architectures different answers, and buffering leaves the queue-only shape waiting for an event that has
+already passed. A rule that makes observer architecture unobservable in the span tree is what portability
+requires here, and it is why this proposal takes the on-demand synthesis rather than either neighbour.
+
 **Why the start-time sentence changes at all.** §6 currently pins the start to "the moment the inner `started`
 event fires". Under the amended trigger the synthesizing event may be a provider event instead, so leaving the
 sentence would pin the start to an event that no longer necessarily triggers synthesis. Re-anchoring it to the
@@ -203,10 +233,10 @@ hazard is recorded in *Open questions* with the vocabulary it would need.
 ### Fixtures
 
 Four fixtures carry `calls_llm_from_wrapper` today: **133, 134, 152 and 153**. All four assert the parents
-§5.5 already mandates, so no assertion changes. But as the corpus stands **no fixture can fail the new rule**:
-each passes today on a favourable interleaving, and nothing in the fixture vocabulary makes a wrapper yield,
-so an implementation that resolves at drain time and one that resolves structurally are indistinguishable to
-the suite.
+§5.5 already mandates, so no assertion changes. But against an observer that registers spans in the engine's
+execution path, none can currently fail: each passes on a favourable interleaving, and nothing in the fixture
+vocabulary makes a wrapper yield, so an implementation that resolves at drain time and one that resolves
+structurally are indistinguishable to the suite.
 
 That is why `calls_llm_from_wrapper` gains a **scheduling control** in conformance-adapter §5.1: a yield or
 delay between the call and the wrapper's return. **All four set it**, which forces the interleaving that
@@ -216,9 +246,17 @@ reason, and 134 case 2 (`orphan_generation_parents_under_inner_fan_out_instance_
 Langfuse orphan case in the corpus, so omitting it would leave the amended §8.4.8 trigger with nothing on the
 Langfuse surface able to fail it.
 
+**The control is inert for a queue-only observer, and the fixtures still discriminate there.** With one
+timeline there is nothing to reorder, so the yield changes no ordering. It does not need to: that architecture
+produces the wrong parent on every run, so a non-conforming adapter fails these fixtures without any help, and
+a conforming one synthesizes on the orphan and passes. The control is necessary for the two-timeline shape and
+harmless for the other, rather than being the thing the assertion depends on. This is worth stating because the
+opposite arrangement, where a directive an adapter treats as a no-op is what makes a fixture meaningful, is the
+silent-pass shape the surrounding proposals exist to close, and a reader is right to check for it here.
+
 No new fixture file is added. The four between them cover both wrapper kinds on both observer surfaces; what
-they lacked was the ability to provoke the race. The scheduling control earns the structural MUST NOTs, which
-are the only new normative rules this proposal ships.
+they lacked was the ability to provoke the unfavourable ordering where one exists to provoke. The scheduling
+control earns the structural MUST NOTs, which are the only new normative rules this proposal ships.
 
 ### Terminology
 
@@ -248,16 +286,22 @@ already requires of it.
 1. **Resolve at emit time**, making the parent whatever wrapper span is open when the call is made.
    Rejected: for a `pre`-phase branch-middleware orphan that yields the parallel-branches NODE span or the
    invocation, which §5.5 forbids by name. It is deterministic, but deterministically wrong, and it would
-   require amending §5.5's enumeration and retiring fixture 152.
+   require amending §5.5's enumeration and retiring fixture 152. It also gives the two observer architectures
+   different answers, since which wrapper span is open at emit time depends on whether the observer registers
+   spans in the engine's execution path.
 2. **Buffer the orphan** until its enclosing wrapper appears. Rejected: it holds a parent decision open for an
    unbounded period with no principled rule for when to give up, trading a determinable answer for an
-   indeterminable wait.
+   indeterminable wait. It is not equally bad in both architectures, which is itself a reason to reject it: a
+   queue-only observer would resolve the buffered orphan correctly once the inner `started` drains, while the
+   two-timeline shape may already have registered the span, so the two differ in how long the decision hangs
+   open rather than in the answer.
 3. **Emit per-branch and per-instance lifecycle events from the engine**, so dispatch spans can be opened
    eagerly. Rejected: that is precisely the cost §6's laziness exists to avoid, and it changes the engine's
    event surface to fix an observer-side materialization detail.
 4. **Fix only the branch dispatch span**, since that is what the downstream report raised. Rejected:
-   downstream measurement shows both kinds are synthesized by the same path with the same trigger and both
-   race identically. A branch-only fix would leave the defect standing on the other kind, and would preserve
+   downstream measurement shows both kinds are synthesized by the same path with the same trigger, so both
+   carry the defect in whichever shape the observer's architecture produces. A branch-only fix would leave the
+   defect standing on the other kind, and would preserve
    an asymmetry that exists in §6's text (which pins the branch span's start time and is silent on the
    instance span's) but not in the behaviour.
 
