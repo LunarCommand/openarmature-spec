@@ -800,6 +800,31 @@ short-horizon roadmap below.
 
 ## conformance-adapter
 
+### 0120 — where a fixture directive's definition may live
+
+- **The invariant-predicate surface is unresolved, and §8.2 and §5.9 still issue
+  opposite MUSTs for a fixture-specific predicate.** [candidate-for-new-proposal]
+  — 0120 settled the directive surface and deliberately left §5.9 unamended. A
+  predicate documented only in the prose of the fixture that uses it is in neither
+  definition home, so it sits outside the recognized vocabulary: §8.2 requires an
+  adapter to raise `fixture_directive_unknown` on it, while §5.9 requires the same
+  adapter to implement it. Of 934 distinct predicate names in shipped fixtures, 803
+  appear in exactly one file and only 99 are documented in a using fixture's
+  sidecar, so a per-directory anchor matches neither population. Closing this needs
+  a proposal that measures the predicate surface on its own evidence, and may need
+  the definition-homes rule to admit a fixture's own prose (§3.1's `NNN-name.md`)
+  as a third artifact form.
+- **Whether a per-directory README and a fixture-header comment should remain
+  interchangeable.** [still-relevant] — 0120 treats both as "a per-directory
+  harness note" because §3.2 and §11 already do, and §5's rule now cites §3.2 for
+  the comment form and §3.3 for the README form. A note can hold a fixture-scoped
+  entry: §3.2's own worked example carries several. So the deferral above is about
+  matching what the corpus does rather than what the note form permits.
+- **Whether the read-together rule for §5 plus a note needs a worked example** in
+  the spec text. [still-relevant] — §5.8's delegation of Langfuse assertion shapes
+  to observability fixture headers is the natural candidate, since it is exactly
+  the partial-definition case the rule exists to permit.
+
 ### 0089 — embedding / rerank failure-mock error-field vocabulary
 
 - **No `raises: {error_type, message}` equivalent for embedding / rerank failure

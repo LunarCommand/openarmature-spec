@@ -7,5 +7,6 @@ Language-agnostic test fixtures for the graph engine specification. Each test is
 
 The YAML schema, directive vocabulary, harness primitive requirements, and adapter responsibility
 model are specified in the [`conformance-adapter` capability spec](../../conformance-adapter/spec.md).
-That spec is the authoritative reference for what each fixture directive means and what the adapter
-MUST implement to honor it.
+That spec is the authoritative reference for what a general fixture directive means and what the
+adapter MUST implement to honor it; a directive specific to one capability's fixtures is defined in
+that directory's harness note, per its §5 *Definition homes*.

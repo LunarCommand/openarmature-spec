@@ -78,8 +78,10 @@ handful: `update`, `state.fields.*`, `entry`, `nodes`, `edges`, `initial_state`,
 fan-out, parallel-branches, observers, sessions, suspension, drain, middleware, and dozens of
 assertion shapes.
 
-The full enumeration lives in
-[`spec/conformance-adapter/spec.md` §5](capabilities/conformance-adapter.md#5-directive-vocabulary).
+The general surface is enumerated in
+[`spec/conformance-adapter/spec.md` §5](capabilities/conformance-adapter.md#5-directive-vocabulary); a
+directive specific to one capability's fixtures is defined in that directory's harness note instead. The
+two together are the *recognized vocabulary*.
 That section is organized by category:
 
 | Category | What it covers |
@@ -234,12 +236,14 @@ because the directive vocabulary is finite and the assertion shapes are well-def
 
 The directive vocabulary will grow over time. Every proposal that adds new fixture shapes
 extends the vocabulary — the proposal's *Conformance test impact* section enumerates the new
-directives, and the conformance-adapter capability spec's
-[§5](capabilities/conformance-adapter.md#5-directive-vocabulary) gains corresponding entries.
+directives. Where they go is settled by §5 *Definition homes*: a general directive gains an entry in
+the conformance-adapter capability spec's
+[§5](capabilities/conformance-adapter.md#5-directive-vocabulary), while one whose contract does not
+generalize beyond a single capability's fixtures is defined in that directory's harness note.
 
 This is the same pattern other capabilities follow: new pipeline-utilities §6 middleware lands in
-pipeline-utilities, new observability §5 attributes land in observability, new conformance
-directives land in conformance-adapter. The spec's
+pipeline-utilities, new observability §5 attributes land in observability, a new general
+conformance directive lands in conformance-adapter. The spec's
 [`docs/governance.md`](governance.md#conformance-tests) §"Conformance tests" makes this rule
 normative: new conformance tests that any implementation could fail require a proposal.
 

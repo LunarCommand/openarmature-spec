@@ -265,10 +265,12 @@ change and require a proposal. Test additions that only verify already-specified
 clarification fixtures) do not.
 
 **Normative reference.** The `conformance-adapter` capability spec (under `spec/conformance-adapter/`) is the
-authoritative reference for the fixture YAML schema, the full directive vocabulary, the harness primitives implementations
-MUST provide, and the assertion shapes adapters MUST honor. This section is the high-level overview; the capability spec
-is where adapter authors look to know what each directive means at runtime. New proposals that add fixture directives
-extend that capability spec's §5 *Directive vocabulary* the same way they extend any other capability spec. A readable
+authoritative reference for the fixture YAML schema, the general directive vocabulary, the harness primitives
+implementations MUST provide, and the assertion shapes adapters MUST honor. This section is the high-level overview; the capability spec
+is where adapter authors look to know what each directive means at runtime. A proposal that adds a **general** fixture
+directive extends that capability spec's §5 *Directive vocabulary* the same way it extends any other capability spec; a
+directive whose contract does not generalize beyond one capability's fixtures is defined in that directory's harness
+note instead, per §5 *Definition homes*. A readable
 end-to-end explainer with worked examples ships at `docs/conformance.md`.
 
 ---
