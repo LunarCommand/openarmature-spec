@@ -1464,10 +1464,10 @@ establishes per proposal 0022 when its capability spec lands.
 
 ## 11. Cross-spec touchpoints
 
-Every other capability with a `conformance/` directory contributes fixtures using the schema and
-directive vocabulary defined here. §5 is the authoritative home for the general surface and states
-where the definition of a directive introduced or redefined after spec version 0.113.0 must live (§5
-*Definition homes*); this section is a navigational cross-reference.
+Every other capability with a `conformance/` directory contributes fixtures using the schema defined
+here and the **recognized vocabulary** (§5 *Definition homes*). §5 is the authoritative home for the
+general surface and states where the definition of a directive introduced or redefined after spec
+version 0.113.0 must live; this section is a navigational cross-reference.
 
 - **graph-engine** — fixtures under `spec/graph-engine/conformance/`. Originated the v0 informal
   schema (proposal 0001's `spec/graph-engine/conformance/README.md`, now slimmed to a breadcrumb

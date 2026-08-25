@@ -242,8 +242,8 @@ the conformance-adapter capability spec's
 generalize beyond a single capability's fixtures is defined in that directory's harness note.
 
 This is the same pattern other capabilities follow: new pipeline-utilities §6 middleware lands in
-pipeline-utilities, new observability §5 attributes land in observability, new conformance
-directives land in conformance-adapter. The spec's
+pipeline-utilities, new observability §5 attributes land in observability, a new general
+conformance directive lands in conformance-adapter. The spec's
 [`docs/governance.md`](governance.md#conformance-tests) §"Conformance tests" makes this rule
 normative: new conformance tests that any implementation could fail require a proposal.
 
