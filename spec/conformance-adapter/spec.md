@@ -24,15 +24,18 @@ into host-runtime tests.
 
 The capability is **descriptive of the system that already exists** as of spec v0.47.0. The fixture
 format, directive vocabulary, and adapter pattern have accreted across more than two dozen prior
-proposals since proposal 0001 introduced the first fixtures; this capability gives that vocabulary a
-single normative home. Future proposals that introduce new directives extend §5 *Directive vocabulary*
-the same way new pipeline-utilities §6 middleware extend pipeline-utilities or new observability §5
-attribute sets extend observability.
+proposals since proposal 0001 introduced the first fixtures; this capability gives that vocabulary its
+authoritative home. A future proposal that introduces a **general** directive extends §5 *Directive
+vocabulary*, the same way new pipeline-utilities §6 middleware extend pipeline-utilities or new
+observability §5 attribute sets extend observability; a directive whose contract does not generalize
+beyond one capability's fixtures is defined in that directory's harness note instead, per §5
+*Definition homes*.
 
 The capability composes with:
 
 - **Every other capability.** Each existing capability's `conformance/` directory contains fixtures
-  written in the schema defined here, drawing directives from the vocabulary enumerated in §5.
+  written in the schema defined here, drawing directives from the recognized vocabulary (§5
+  *Definition homes*).
 - **Cross-language consistency rules** (`docs/governance.md` §"Multi-language consistency"). The
   fixtures are the behavioral floor cross-language implementations promise — "APIs MAY differ in
   syntactic shape; behavior MUST match conformance tests." This capability spec is the contract
@@ -125,7 +128,7 @@ comment block documenting the observability fixture suite's per-capability harne
 - Optional config blocks the fixtures accept: `caller_correlation_id`, `detached_subgraphs`,
   `detached_fan_outs`, `disable_llm_spans`, `mock_llm`, `caller_global_otel_active`.
 - Expected-outcome shapes specific to observability: `expected.span_tree`, `expected.log_records`,
-  `expected.no_global_provider_spans`.
+  `expected.no_openarmature_spans_on_global`.
 - Attribute placeholder syntax: `<uuid>` matches any canonical UUIDv4, `<any-string>` matches any
   non-empty string, `<trace_id_X>` matches an opaque trace_id with first-occurrence binding for
   cross-reference. (These inline value-tokens are normatively enumerated in §5.10 *Value matchers*,
@@ -287,33 +290,41 @@ conformance-adapter version is compatible. The version-mismatch rule per §9 *Er
 
 ## 5. Directive vocabulary
 
-This section is the authoritative enumeration of the **general** directive surface, and is authoritative
-for the *Definition homes* rule below, which governs where any directive's definition may live. Each
-directive entry specifies its YAML location, parameters, runtime behavior the adapter MUST honor, and the
-spec section(s) the directive exists to exercise.
+This section is the authoritative home for the **general** directive surface, and is authoritative for
+the *Definition homes* rule below, which governs where the definition of a directive introduced or
+redefined after spec version 0.113.0 must live. Each directive entry specifies its YAML location,
+parameters, runtime behavior the adapter MUST honor, and the spec section(s) the directive exists to
+exercise. General directives in use that this section does not yet enumerate are a documentation gap, not
+a licence to define them elsewhere.
 
-**Definition homes.** A directive introduced or redefined after spec version 0.113.0 MUST have its
-definition in one of exactly two places:
+**Definition homes.** A proposal that introduces or redefines a directive after spec version 0.113.0
+**MUST** place that directive's definition in one of exactly two places:
 
 1. **§5 of this capability spec**, for a directive used by more than one capability's fixtures, or whose
    contract is general even if only one capability currently exercises it.
 2. **A per-directory harness note**, for a directive whose contract is specific to one capability's
-   fixtures and does not generalize. A per-directory harness note is the fixture-header comment block or
-   per-directory README described in §3.2, belonging to the `conformance/` directory whose fixtures use the
-   directive.
+   fixtures and does not generalize. A per-directory harness note is the fixture-header comment block
+   described in §3.2 or the per-directory README described in §3.3, belonging to the `conformance/`
+   directory whose fixtures use the directive.
 
 Together these are the **recognized vocabulary**. A definition in either home is normative and an adapter
-MUST honor it. §5 remains authoritative for the general surface and for this rule.
+**MUST** honor it. §5 remains authoritative for the general surface and for this rule.
 
-Where §5 and a per-directory note both address the same directive, they are read together: §5 governs any
-point on which they conflict, and the note MAY supply detail §5 leaves to it. §5 naming a directive does
-not void a note that specifies its shape.
+A definition carried by a per-directory note is recognized **only for fixtures under that note's
+`conformance/` directory**. A fixture in another directory that uses the same directive is outside the
+recognized vocabulary, because no note in its own directory defines it.
+
+Where §5 and a per-directory note both address the same directive, an adapter **MUST** follow §5 on any
+point where they conflict. The note **MAY** supply detail §5 leaves to it, and an adapter **MUST NOT**
+treat §5 naming a directive as voiding a note that specifies its shape.
 
 A body of directives currently in use has a definition in neither home. Such a directive sits outside the
 recognized vocabulary, and this rule is stated prospectively rather than retroactively invalidating it.
-§5.9's fixture-specific invariant predicates are deliberately outside this rule: the corpus documents a
-predicate in the prose of the fixture that uses it, which is neither home, and settling that surface is
-left to a proposal that can measure it.
+§5.9's fixture-specific invariant predicates are deliberately outside this rule: where the corpus
+documents such a predicate at all it does so in the prose of the fixture that uses it, which is neither
+home, and most are documented nowhere. Settling that surface is left to a proposal that can measure it.
+Until then such a predicate remains outside the recognized vocabulary, so §8.2's unknown-name rule and
+§5.9's obligation to implement it remain in conflict.
 
 ### 5.1 Node behavior directives
 
@@ -1382,8 +1393,9 @@ fixtures."
 ### 8.2 Parsing
 
 Translate each fixture's YAML into native graph-construction calls in the host language. Parsing
-MUST be lossless against the **recognized vocabulary** (§5 *Definition homes*); unknown directives MUST raise
-`fixture_directive_unknown` (per §9) rather than being silently skipped or treated as defaults.
+MUST be lossless against the **recognized vocabulary** (§5 *Definition homes*); unknown directives
+MUST raise `fixture_directive_unknown` (per §9) rather than being silently skipped or treated as
+defaults.
 Lossless parsing preserves the document order of a node's directives (an order-preserving load), so
 §8.3's execution-order rule has a well-defined order to honor.
 
@@ -1453,9 +1465,9 @@ establishes per proposal 0022 when its capability spec lands.
 ## 11. Cross-spec touchpoints
 
 Every other capability with a `conformance/` directory contributes fixtures using the schema and
-directive vocabulary defined here. §5 is the authoritative enumeration of the general surface and
-states where any directive's definition may live (§5 *Definition homes*); this section is a
-navigational cross-reference.
+directive vocabulary defined here. §5 is the authoritative home for the general surface and states
+where the definition of a directive introduced or redefined after spec version 0.113.0 must live (§5
+*Definition homes*); this section is a navigational cross-reference.
 
 - **graph-engine** — fixtures under `spec/graph-engine/conformance/`. Originated the v0 informal
   schema (proposal 0001's `spec/graph-engine/conformance/README.md`, now slimmed to a breadcrumb
@@ -1524,3 +1536,4 @@ rule rather than an independent sanction: both are homes in the recognized vocab
 - §5.5 *Observer / observability directives* extended the `langfuse_client` directive with `preexisting_same_key_client` (primes the SDK's per-credential singleton so openarmature is not the first constructor) and `accept_shared_provider` (the single shared-provider caller opt-out), added the `adapter_capabilities.langfuse_bound_provider_detection` declaration that gates fixture 158's raise vs. suppress arms, a setup-scope `expected_construction_error: {category}` assertion (the observer/client-construction analogue of `expected_compile_error`), and a `level` key on `expected.log_records` so a mandated `WARNING` severity is assertable; §6.4 *Langfuse mock* extended the provider-faithful fake with per-credential-singleton semantics, a bound-provider accessor, and a payload-bearing vs. payload-free distinction — the machinery gating observability §6's payload-leak invariant (new observability fixture 158) by [proposal 0116](../../proposals/0116-langfuse-isolation-fail-loud.md)
 - §5.5 *Observer / observability directives* and §6.4 *Langfuse mock* broadened the **payload-bearing** classification to any harvested payload — provider `input` / `output`, the Trace-level state `input` / `output` (raw state or a `trace_*_from_state` hook value), and a failed Tool / Embedding / Retriever observation's `error_type` / `error_message` — with the §8.4.1 minimal stub and a category-only failed observation as payload-free; no new directive (the state-channel controls and mock-failure directives exist since proposals 0043 / 0107). Observability fixture 158 gains six cases exercising the state channel, a supplied hook, and the error-message omission (rerank and tool) across detection-capable and non-detection-capable adapters by [proposal 0117](../../proposals/0117-payload-leak-invariant-channels.md)
 - §5.5 *Observer / observability directives* gained **`metadata_absent: [<key>, ...]`** on a Langfuse observation entry, asserting none of the listed keys are present in that observation's `metadata`. The existing `metadata:` assertion is a subset match, so it can pin a key's value but never its absence; this is the Langfuse-observation analogue of the OTel-span `attributes_absent` directive (§5.11, proposal 0095), added for the same reason. It gates observability's move of a failed provider observation's `error_message` under the `disable_provider_payload` flag (new fixture 159), which is an absence assertion by nature. §6.4's payload-bearing classification is **narrowed** in the same change: a failed observation's `error_type` is a classification token rather than harvested text, so it no longer makes an observation payload-bearing by [proposal 0118](../../proposals/0118-llm-error-message-channel.md)
+- §5's preamble gained a **Definition homes** rule naming exactly two places a directive's definition may live: §5 itself for the general surface, and a per-directory harness note for a contract specific to one capability's fixtures. Together they are the **recognized vocabulary**; §8.2's lossless-parsing rule is re-anchored to that phrase from "the §5 directive vocabulary", and §1, §3.2, §3.3 and §11 are reconciled to it. Prospective, binding on a proposal that introduces or redefines a directive after spec version 0.113.0. §5.9's fixture-specific invariant predicates are deliberately outside the rule and the §8.2-versus-§5.9 conflict survives for them, by [proposal 0120](../../proposals/0120-fixture-directive-definition-rule.md)
