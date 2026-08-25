@@ -310,9 +310,10 @@ a licence to define them elsewhere.
 Together these are the **recognized vocabulary**. A definition in either home is normative and an adapter
 **MUST** honor it. §5 remains authoritative for the general surface and for this rule.
 
-A definition carried by a per-directory note is recognized **only for fixtures under that note's
-`conformance/` directory**. A fixture in another directory that uses the same directive is outside the
-recognized vocabulary, because no note in its own directory defines it.
+An adapter **MUST** treat a definition carried by a per-directory note as recognized **only for
+fixtures under that note's own `conformance/` directory**. A fixture in another directory that uses
+the same directive is outside the recognized vocabulary, because no note in its own directory defines
+it, and §8.2's unknown-directive rule applies to it there.
 
 Where §5 and a per-directory note both address the same directive, an adapter **MUST** follow §5 on any
 point where they conflict. The note **MAY** supply detail §5 leaves to it, and an adapter **MUST NOT**
