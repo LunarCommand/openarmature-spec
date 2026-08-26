@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-15
-- **Accepted:** 2026-08-25
+- **Accepted:** 2026-08-26
 - **Targets:**
   - spec/conformance-adapter/spec.md **§5 preamble, §3.2, §3.3, §8.2, §11**: reconcile six of the seven
     statements about where a directive's definition may live. They currently name four different candidate
