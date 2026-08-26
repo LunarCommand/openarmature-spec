@@ -7,8 +7,11 @@ independent and MAY both be populated on the same event.
 
 **Spec sections exercised:**
 
-- §11.6 / §11 cross-spec — parallel branches and fan-out compose
-  without interference.
+- §9 / §11 cross-spec — parallel branches and fan-out compose without
+  interference. §11.3 *Concurrent execution* names fan-out as the sibling
+  exception to graph-engine §3's single-threaded rule, which is the closest
+  the spec comes to stating the composition; "without interference" is this
+  fixture's own characterisation rather than normative text.
 - graph-engine §6 — the §6 `NodeEvent.branch_name` and
   `NodeEvent.fan_out_index` fields are populated independently;
   inner-node events from inside a fan-out inside a parallel-branches

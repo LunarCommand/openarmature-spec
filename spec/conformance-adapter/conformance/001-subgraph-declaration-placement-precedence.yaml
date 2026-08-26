@@ -1,0 +1,203 @@
+# Subgraph declaration placement and precedence (conformance-adapter §5.4
+# *Subgraph declaration placement*, proposal 0123).
+#
+# First fixture under spec/conformance-adapter/conformance/. Its subject is the
+# fixture format itself: §5.4's rule binds an ADAPTER, and every assertion turns
+# on which declaration the adapter resolved while building the graph, a choice
+# made before the engine runs. The graph is identical in all four cases; only the
+# marker and the declaration site differ.
+#
+# A subgraph declaration is scoped to the graph specification it accompanies, so
+# it may sit at three sites: the document top level, inside a case, or inside a
+# case's `graph:` block. Where the same name is declared at more than one site,
+# the INNERMOST declaration in scope for the running case governs, the sites
+# ranking outermost -> innermost as: top level, case, case's `graph:` block.
+# Where both declaration FORMS appear at one site and bind the same name, the
+# `subgraphs:` mapping entry governs.
+#
+# Each subgraph body writes a distinct marker into its own `which` field, and
+# the subgraph-as-node projects it out via the explicit `outputs:` map (per
+# fixture 011), so the parent's `resolved` field names which declaration the
+# adapter actually resolved. The four cases together catch every wrong
+# resolution strategy we could construct:
+#
+#   outermost-wins                 caught by cases 1, 2, 3 and 4
+#   stop-at-case (no graph block)  caught by case 2
+#   inline-preferred at one site   caught by case 4
+#   flat merge, first write wins   caught by cases 1, 2, 3 and 4
+#   flat merge, last write wins    caught by case 4
+#   form before site (any in-scope caught by case 3
+#     mapping beats any inline)
+#
+# Two of those need the cases arranged deliberately.
+#
+# Case 4 writes `subgraphs:` BEFORE the inline `subgraph:`. Without that ordering
+# the winning declaration is also the last one in document order in every case,
+# and a resolver that flattens every declaration into one mapping with
+# last-write-wins passes them all while implementing neither the site ranking nor
+# the tie-break. Document order carries no meaning for a conforming adapter, so
+# the ordering is free to deny that shortcut a pass.
+#
+# Case 3 exists because every other case puts the winning declaration in a
+# `subgraphs:` mapping, so site ranking and form tie-break are never separated.
+# It makes the innermost declaration the INLINE form while an outer site holds a
+# mapping for the same name, which is the one arrangement that tells a
+# site-before-form adapter apart from a form-before-site one.
+#
+# The top-level declaration below stays in scope for all three cases and is
+# shadowed in each, which is what makes case 1 load-bearing rather than a test
+# that a case-level declaration is merely accepted.
+
+subgraphs:
+  pick:
+    state:
+      fields:
+        which: {type: string, default: ""}
+    entry: mark
+    nodes:
+      mark: {update: {which: "top-level"}}
+    edges:
+      - {from: mark, to: END}
+
+cases:
+  # A case-level declaration shadows the document-level one of the same name.
+  - name: case_level_declaration_shadows_top_level
+    subgraphs:
+      pick:
+        state:
+          fields:
+            which: {type: string, default: ""}
+        entry: mark
+        nodes:
+          mark: {update: {which: "case-level"}}
+        edges:
+          - {from: mark, to: END}
+    state:
+      fields:
+        resolved: {type: string, default: "unset"}
+    entry: run
+    nodes:
+      run:
+        subgraph: pick
+        outputs: {resolved: which}
+    edges:
+      - {from: run, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        resolved: "case-level"
+
+  # A declaration inside the case's `graph:` block shadows the case-level one,
+  # which in turn shadows the document-level one. Both outer declarations are
+  # present and in scope, so this exercises the full three-site ranking.
+  - name: graph_block_declaration_shadows_case_level
+    subgraphs:
+      pick:
+        state:
+          fields:
+            which: {type: string, default: ""}
+        entry: mark
+        nodes:
+          mark: {update: {which: "case-level"}}
+        edges:
+          - {from: mark, to: END}
+    graph:
+      subgraphs:
+        pick:
+          state:
+            fields:
+              which: {type: string, default: ""}
+          entry: mark
+          nodes:
+            mark: {update: {which: "graph-block"}}
+          edges:
+            - {from: mark, to: END}
+      state:
+        fields:
+          resolved: {type: string, default: "unset"}
+      entry: run
+      nodes:
+        run:
+          subgraph: pick
+          outputs: {resolved: which}
+      edges:
+        - {from: run, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        resolved: "graph-block"
+
+  # The innermost in-scope declaration wins even when it is the INLINE form and
+  # an outer site carries a `subgraphs:` mapping for the same name. Site ranks
+  # before form: the tie-break only applies where two forms meet at one site.
+  # Without this case an adapter that preferred any in-scope `subgraphs:` mapping
+  # over any inline `subgraph:`, ignoring site entirely, passes the other three.
+  - name: inline_declaration_at_inner_site_beats_mapping_at_outer_site
+    subgraph:
+      name: pick
+      state:
+        fields:
+          which: {type: string, default: ""}
+      entry: mark
+      nodes:
+        mark: {update: {which: "case-inline"}}
+      edges:
+        - {from: mark, to: END}
+    state:
+      fields:
+        resolved: {type: string, default: "unset"}
+    entry: run
+    nodes:
+      run:
+        subgraph: pick
+        outputs: {resolved: which}
+    edges:
+      - {from: run, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        resolved: "case-inline"
+
+  # Both declaration forms at the SAME site binding the same name. The site
+  # ranking cannot decide this, so the tie-break applies: the `subgraphs:`
+  # mapping entry governs because it names the binding explicitly.
+  - name: subgraphs_mapping_governs_over_inline_subgraph_at_one_site
+    # The `subgraphs:` mapping is written FIRST and the inline `subgraph:` second,
+    # deliberately. The mapping must win on the tie-break, so putting it earlier
+    # means a resolver that merges declarations flat and lets the last write win
+    # yields "inline" and fails here. Document order carries no meaning for a
+    # conforming adapter; this ordering exists to deny that shortcut a pass.
+    subgraphs:
+      pick:
+        state:
+          fields:
+            which: {type: string, default: ""}
+        entry: mark
+        nodes:
+          mark: {update: {which: "mapping"}}
+        edges:
+          - {from: mark, to: END}
+    subgraph:
+      name: pick
+      state:
+        fields:
+          which: {type: string, default: ""}
+      entry: mark
+      nodes:
+        mark: {update: {which: "inline"}}
+      edges:
+        - {from: mark, to: END}
+    state:
+      fields:
+        resolved: {type: string, default: "unset"}
+    entry: run
+    nodes:
+      run:
+        subgraph: pick
+        outputs: {resolved: which}
+    edges:
+      - {from: run, to: END}
+    initial_state: {}
+    expected:
+      final_state:
+        resolved: "mapping"

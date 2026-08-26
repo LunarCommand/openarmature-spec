@@ -1,9 +1,9 @@
 # 0123: Scope a Subgraph Declaration to the Graph Specification It Accompanies
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-21
-- **Accepted:**
+- **Accepted:** 2026-08-26
 - **Targets:**
   - spec/conformance-adapter/spec.md **§5.4 Composition directives**: state that a subgraph declaration
     (`subgraph:` or `subgraphs:`) is scoped to the **graph specification it accompanies**, and so appears
