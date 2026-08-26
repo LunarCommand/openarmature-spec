@@ -107,6 +107,14 @@ Anything unresolved at the time of writing.
 2. **Review.** Discussion happens on the PR. Proposal text is iterated.
 3. **Accept.** Maintainer merges the PR with `Status: Accepted` and `Accepted: YYYY-MM-DD` filled in. The proposal
    text becomes immutable from this point — further changes happen via new proposals.
+
+   **Header corrections are the one exception.** A factual error in a header field of an Accepted proposal
+   MAY be corrected in place and does not need a superseding proposal. The `Accepted:` date is the case in
+   point: it is filled in when the PR merges, so an entry written while the PR was still open can be a day
+   early, and the convention is that it matches the date of the release that carries the proposal. Everything
+   below the header stays immutable, including Targets, and a correction MUST NOT change what the proposal
+   decided. Anything touching behavior, public types, or conformance expectations goes through a new proposal
+   as above.
 4. **Implement spec change.** A follow-up PR (or the same PR if small) updates the relevant `spec/<capability>/spec.md`
    and `conformance/` directory to reflect the accepted design.
 5. **Version bump.** `CHANGELOG.md` is updated with the new spec version and a link to the proposal(s) that drove the
