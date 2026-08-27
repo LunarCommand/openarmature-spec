@@ -584,12 +584,14 @@ alone reaches every case only where every case binds that name to the same body.
 to different bodies, the differing bodies appear at the narrower sites. A top-level declaration **MAY**
 still stand alongside them; the resolution rule below decides which applies.
 
-Where a fixture declares the same subgraph name at more than one of these sites, an adapter **MUST**
-resolve that name using the innermost declaration that is in scope for the case being run, the three sites
-ranking from outermost to innermost in the order listed above: document top level, then case, then the
-case's `graph:` block. Where both declaration forms appear at the **same** site and bind the same name, an
-adapter **MUST** resolve the name using the `subgraphs:` mapping entry, since it names the binding
-explicitly.
+The three sites rank from outermost to innermost in the order listed above: document top level, then
+case, then the case's `graph:` block. Where a fixture declares the same subgraph name at more than one of
+them, an adapter **MUST** resolve that name using the innermost declaration in scope for the case being
+run.
+
+Where both declaration forms appear at the **same** site and bind the same name, the site ranking cannot
+decide between them. An adapter **MUST** then resolve the name using the `subgraphs:` mapping entry, since
+it names the binding explicitly.
 
 - **`fan_out:`** — fan-out node configuration:
   ```yaml

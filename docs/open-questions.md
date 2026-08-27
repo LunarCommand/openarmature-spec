@@ -827,8 +827,8 @@ short-horizon roadmap below.
   waiting on the open-versus-closed vocabulary question 0120 defers.
 
   The seventh is the hard one. Every container case except conformance-adapter
-  001's second is `{name, graph, expected_compile_error}` or its warning variant: the
-  container is only ever compiled, never invoked. 043's case 2 is the first with
+  001's second is `{name, graph, expected_compile_error}` or its warning variant:
+  the container is only ever compiled, never invoked. That case is the first with
   `initial_state:` and `expected:` as case-level siblings of `graph:`, and the
   first that must execute. A §4.2 paragraph therefore has to say more than that
   the container exists; it has to say a case carrying one runs like any other.
