@@ -223,6 +223,35 @@ cases:
 Each case is a fully-formed test in its own right. The adapter MUST run each case independently — no
 state, observers, or backend instances are shared across cases within one fixture file.
 
+**The `graph:` container.** A case MAY nest its graph specification under a `graph:` key instead of
+carrying it directly:
+
+```yaml
+cases:
+  - name: <case_name>
+    graph:
+      state: { ... }
+      entry: <node_name>
+      nodes: { ... }
+      edges: [ ... ]
+    initial_state: { ... }
+    expected: { ... }
+```
+
+The container holds the graph specification and nothing else: `state:`, `entry:`, `nodes:`, `edges:`,
+and any subgraph declaration the specification carries (§5.4 *Subgraph declaration placement*). Every
+other case key stays a **sibling** of `graph:`, including `name:`, `description:`, `initial_state:`,
+`expected:`, the compile-outcome assertions, and a case-level subgraph declaration.
+
+The two forms are equivalent in what they specify, and an adapter **MUST** treat a case carrying a
+`graph:` container exactly as it treats one carrying the specification directly: it compiles the same
+way, and it **MUST** be executed when the case asserts a runtime outcome rather than only a
+compile-time one. The container exists because a table fixture reads better when each case's graph is
+one nested block, and it is the innermost of §5.4's three declaration sites.
+
+An adapter **MUST NOT** require the container: a case carrying `state:`, `entry:`, `nodes:` and
+`edges:` directly is the equally valid form shown above, and most shipped fixtures use it.
+
 ### 4.3 Multi-invocation form (`invocations:`)
 
 A fixture MAY exercise multiple sequential invocations against the same compiled graph + shared
@@ -511,12 +540,15 @@ These directives appear under `edges:` as a list of edge specifications.
 
 ### 5.4 Composition directives
 
-These directives appear under `nodes.<node_name>:` and configure compound node shapes per
-pipeline-utilities §9 / §11.
+The **node-attached** directives in this section (`subgraph:` as a node's behavior, `fan_out:`,
+`parallel_branches:`) appear under `nodes.<node_name>:` and configure compound node shapes: `subgraph:`
+per graph-engine §2, `fan_out:` and `parallel_branches:` per pipeline-utilities §9 / §11. The **declaration forms** below appear at none of those positions; where
+they may sit is stated in *Subgraph declaration placement*.
 
-- **`subgraph: <subgraph_name>`** — the node executes a named subgraph (declared at fixture top
-  level via `subgraph:` or `subgraphs:` mapping). Exercises graph-engine §2 (subgraph composition).
-- **Subgraph declaration via top-level `subgraph:`** — single inline subgraph (used when only one
+- **`subgraph: <subgraph_name>`** — the node executes a named subgraph (declared via `subgraph:` or a
+  `subgraphs:` mapping, at any of the positions *Subgraph declaration placement* below permits).
+  Exercises graph-engine §2 (subgraph composition).
+- **Subgraph declaration via `subgraph:`** — single inline subgraph (used when only one
   subgraph is needed):
   ```yaml
   subgraph:
@@ -526,13 +558,41 @@ pipeline-utilities §9 / §11.
     nodes: { ... }
     edges: [ ... ]
   ```
-- **Subgraph declaration via top-level `subgraphs:`** — named mapping (used when multiple subgraphs
+- **Subgraph declaration via `subgraphs:`** — named mapping (used when multiple subgraphs
   are needed, typically with parallel-branches):
   ```yaml
   subgraphs:
     <name_1>: { state: ..., entry: ..., nodes: ..., edges: ... }
     <name_2>: { ... }
   ```
+
+**Subgraph declaration placement.** A subgraph declaration (`subgraph:` for a single inline subgraph,
+`subgraphs:` for a named mapping) is scoped to the graph specification it accompanies, and an adapter
+**MUST** accept it wherever that specification appears:
+
+- at the fixture document's **top level**, where it is in scope for every case in the file;
+- inside an individual **case**, where it is visible to that case alone;
+- inside a case's **`graph:` block**, for a table fixture whose cases each carry a complete graph
+  specification.
+
+A subgraph body is itself a graph specification, so a declaration nested inside one is scoped to that
+body by the same principle. This rule governs the three sites above, which are the ones a case resolves
+against; it neither sanctions nor forbids the nested site.
+
+One document-root declaration cannot express more than one body for a name, so a top-level declaration
+alone reaches every case only where every case binds that name to the same body. Where cases bind a name
+to different bodies, the differing bodies appear at the narrower sites. A top-level declaration **MAY**
+still stand alongside them; the resolution rule below decides which applies.
+
+The three sites rank from outermost to innermost in the order listed above: document top level, then
+case, then the case's `graph:` block. Where a fixture declares the same subgraph name at more than one of
+them, an adapter **MUST** resolve that name using the innermost declaration in scope for the case being
+run.
+
+Where both declaration forms appear at the **same** site and bind the same name, the site ranking cannot
+decide between them. An adapter **MUST** then resolve the name using the `subgraphs:` mapping entry, since
+it names the binding explicitly.
+
 - **`fan_out:`** — fan-out node configuration:
   ```yaml
   fan_out:
@@ -1538,3 +1598,4 @@ rule rather than an independent sanction: both are homes in the recognized vocab
 - §5.5 *Observer / observability directives* and §6.4 *Langfuse mock* broadened the **payload-bearing** classification to any harvested payload — provider `input` / `output`, the Trace-level state `input` / `output` (raw state or a `trace_*_from_state` hook value), and a failed Tool / Embedding / Retriever observation's `error_type` / `error_message` — with the §8.4.1 minimal stub and a category-only failed observation as payload-free; no new directive (the state-channel controls and mock-failure directives exist since proposals 0043 / 0107). Observability fixture 158 gains six cases exercising the state channel, a supplied hook, and the error-message omission (rerank and tool) across detection-capable and non-detection-capable adapters by [proposal 0117](../../proposals/0117-payload-leak-invariant-channels.md)
 - §5.5 *Observer / observability directives* gained **`metadata_absent: [<key>, ...]`** on a Langfuse observation entry, asserting none of the listed keys are present in that observation's `metadata`. The existing `metadata:` assertion is a subset match, so it can pin a key's value but never its absence; this is the Langfuse-observation analogue of the OTel-span `attributes_absent` directive (§5.11, proposal 0095), added for the same reason. It gates observability's move of a failed provider observation's `error_message` under the `disable_provider_payload` flag (new fixture 159), which is an absence assertion by nature. §6.4's payload-bearing classification is **narrowed** in the same change: a failed observation's `error_type` is a classification token rather than harvested text, so it no longer makes an observation payload-bearing by [proposal 0118](../../proposals/0118-llm-error-message-channel.md)
 - §5's preamble gained a **Definition homes** rule naming exactly two places a directive's definition may live: §5 itself for the general surface, and a per-directory harness note for a contract specific to one capability's fixtures. Together they are the **recognized vocabulary**; §8.2's lossless-parsing rule is re-anchored to that phrase from "the §5 directive vocabulary", and §1, §3.2, §3.3 and §11 are reconciled to it. Prospective, binding on a proposal that introduces or redefines a directive after spec version 0.113.0. §5.9's fixture-specific invariant predicates are deliberately outside the rule and the §8.2-versus-§5.9 conflict survives for them, by [proposal 0120](../../proposals/0120-fixture-directive-definition-rule.md)
+- §4.2 *Multi-case form* gained **The `graph:` container**, specifying a case form 17 shipped cases already used and no section defined: what the container holds, that every other case key stays its sibling, that the two case forms are equivalent, and that a container case asserting a runtime outcome MUST be executed. §5.4 *Composition directives* gained a **Subgraph declaration placement** rule: a declaration (`subgraph:` or `subgraphs:`) is scoped to the graph specification it accompanies, so an adapter MUST accept it at the document top level, inside a case, or inside a case's `graph:` block, and MUST resolve a name declared at more than one site using the innermost declaration in scope, with the `subgraphs:` mapping entry governing where both forms appear at one site. The section's three top-level claims and its `nodes.<node_name>:` preamble are reworded to match. Its own `conformance/` directory opens with fixture 001 by [proposal 0123](../../proposals/0123-case-level-subgraph-declaration.md)

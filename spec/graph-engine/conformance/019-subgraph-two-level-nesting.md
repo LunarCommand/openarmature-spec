@@ -58,9 +58,11 @@ inner:  inner_p -> inner_q
 
 **Fixture format note:**
 
-This is the first graph-engine fixture to use the plural `subgraphs:` form (a map of named subgraphs at
-the top level). The format is already used in observability and pipeline-utilities fixtures (e.g.
-`observability/008`, `pipeline-utilities/029`) and is documented in §2. Implementations whose
+This is the first graph-engine fixture to use the plural `subgraphs:` form (a map of named subgraphs).
+The format is already used in observability and pipeline-utilities fixtures, both of which declare it
+at **case** level rather than the document top level (`observability/008`,
+`pipeline-utilities/029`). Where a declaration may sit is specified in conformance-adapter §5.4
+*Subgraph declaration placement*. Implementations whose
 conformance harness only handles the singular `subgraph:` form will need a small adapter change to
 build the named subgraphs in topological order (innermost first) before compiling the outer graph.
 

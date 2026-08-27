@@ -800,6 +800,45 @@ short-horizon roadmap below.
 
 ## conformance-adapter
 
+### 0123 — subgraph declaration placement
+
+- **Whether the scoping rule should be stated once for every declaration form
+  rather than for subgraphs alone.** [still-relevant] — "a declaration is scoped
+  to the graph specification it accompanies" is a general principle and §5.4
+  carries other composition forms. 0123 states it for the form whose misplacement
+  was measured; whether the others share the shape is unmeasured and should not be
+  assumed either way.
+- **Whether §4.2 should document the per-case `graph:` container.**
+  [resolved-by-acceptance] — 0123's accept added **The `graph:` container** to
+  §4.2 rather than deferring it, because conformance-adapter fixture 001's case 2 is the sole
+  coverage of the newly normative third declaration site and every pre-existing
+  container case is compile-diagnostic only, so an adapter built from the corpus
+  alone would have had no code path that runs one. The paragraph is scoped to
+  what §5.4 needs and does not attempt the wider table-fixture survey. Original
+  question follows. — 0123 sanctions a subgraph declaration inside a
+  case's `graph:` block, but §4.2's multi-case form puts `state:`, `entry:`,
+  `nodes:` and `edges:` directly on the case and never says a case may nest them
+  under `graph:` instead. §5.4 now names the container without defining it, and
+  it appears nowhere else in this spec. Seven shipped fixtures use it:
+  graph-engine 007, 041 and 042, conformance-adapter 001, and pipeline-utilities
+  065, 077 and 078.
+  An adapter cannot parse such a case into a shape at all without it, so this is
+  a **schema** gap rather than a vocabulary one, answerable on its own without
+  waiting on the open-versus-closed vocabulary question 0120 defers.
+
+  The seventh is the hard one. Every container case except conformance-adapter
+  001's second is `{name, graph, expected_compile_error}` or its warning variant:
+  the container is only ever compiled, never invoked. That case is the first with
+  `initial_state:` and `expected:` as case-level siblings of `graph:`, and the
+  first that must execute. A §4.2 paragraph therefore has to say more than that
+  the container exists; it has to say a case carrying one runs like any other.
+- **Undefined composition keys adjacent to this one.** [still-relevant] —
+  observability 039 uses `inner_subgraphs:` at case level and
+  `fan_out.inner_subgraph:`, neither of which appears anywhere in `spec/` outside
+  a handful of observability fixtures. Unlike the container these are vocabulary
+  rather than schema, so they belong with the directives 0120 leaves defined in
+  neither home.
+
 ### 0120 — where a fixture directive's definition may live
 
 - **The invariant-predicate surface is unresolved, and §8.2 and §5.9 still issue
