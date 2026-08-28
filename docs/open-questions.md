@@ -461,6 +461,20 @@ response-side clause.
 
 ## observability
 
+### 0121 — diagnostic event names
+
+- **Whether the token-budget and mode-(a) names belonged in this proposal.**
+  [resolved-by-acceptance] — both were included so §7's table is the complete set
+  rather than the two fixture 158 happens to assert. Neither is fixture-gated and
+  both keep their existing obligation levels (SHOULD and MAY). The accept also
+  cross-referenced their emission sites, so every name in the table is reachable
+  from the site that emits it rather than only from the table.
+- **Whether `EventName` should also carry openarmature's non-diagnostic records.**
+  [still-relevant] — 0121 covers records signalling a condition openarmature
+  specifies. Whether ordinary framework logging should be event-named is a broader
+  question about openarmature's logging surface, deliberately out of scope.
+
+
 ### 0034 — caller-supplied invocation metadata
 
 - **Six design choices resolved at draft.**
@@ -838,19 +852,6 @@ short-horizon roadmap below.
   a handful of observability fixtures. Unlike the container these are vocabulary
   rather than schema, so they belong with the directives 0120 leaves defined in
   neither home.
-
-### 0121 — diagnostic event names
-
-- **Whether the token-budget and mode-(a) names belonged in this proposal.**
-  [resolved-by-acceptance] — both were included so §7's table is the complete set
-  rather than the two fixture 158 happens to assert. Neither is fixture-gated and
-  both keep their existing obligation levels (SHOULD and MAY). The accept also
-  cross-referenced their emission sites, so every name in the table is reachable
-  from the site that emits it rather than only from the table.
-- **Whether `EventName` should also carry openarmature's non-diagnostic records.**
-  [still-relevant] — 0121 covers records signalling a condition openarmature
-  specifies. Whether ordinary framework logging should be event-named is a broader
-  question about openarmature's logging surface, deliberately out of scope.
 
 ### 0120 — where a fixture directive's definition may live
 
