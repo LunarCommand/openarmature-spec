@@ -11,7 +11,8 @@ cases:
       A tool execution emits an openarmature.tool.call span carrying the
       OA-namespace openarmature.tool.* attributes, parented under the calling
       node's span; the Development gen_ai.tool.* attributes are NOT emitted.
-    disable_provider_payload: false
+    otel_observer:
+      disable_provider_payload: false
     state:
       fields:
         out: {type: record, default: null}

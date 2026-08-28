@@ -1,9 +1,9 @@
 # 0121: Give openarmature's Mandated Diagnostics a Stable Identity
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-19
-- **Accepted:**
+- **Accepted:** 2026-08-27
 - **Targets:**
   - spec/observability/spec.md **§6 Driving span lifecycle**: the two `WARNING`-level log records §6 mandates
     (the accepted-shared-provider arm and the cannot-establish-binding arm) MUST carry a stable event name

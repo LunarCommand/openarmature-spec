@@ -37,7 +37,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "hello back"}, finish_reason: stop}
           usage: {prompt_tokens: 7, completion_tokens: 2, total_tokens: 9}
-    disable_provider_payload: false
+    otel_observer:
+      disable_provider_payload: false
     expected:
       span_tree:
         - name: "openarmature.invocation"

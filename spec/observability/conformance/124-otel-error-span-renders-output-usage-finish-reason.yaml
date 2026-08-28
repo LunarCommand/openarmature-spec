@@ -61,7 +61,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":'}, finish_reason: length}
           usage: {prompt_tokens: 20, completion_tokens: 16, total_tokens: 36}
-    disable_provider_payload: false
+    otel_observer:
+      disable_provider_payload: false
     expected_error:
       category: structured_output_invalid
       raised_from: ask

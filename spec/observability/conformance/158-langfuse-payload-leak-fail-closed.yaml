@@ -136,7 +136,8 @@ cases:
       mode: credentials
       preexisting_same_key_client: true
       accept_shared_provider: false
-    disable_provider_payload: false  # OTel side ALSO emits payload — no suppression to "defeat"
+    otel_observer:
+      disable_provider_payload: false  # OTel side ALSO emits payload — no suppression to "defeat"
     langfuse_observer:
       disable_provider_payload: false
     caller_global_otel_active: true
@@ -192,6 +193,7 @@ cases:
       no_payload_bearing_langfuse_observations_on_global: true  # ...but payload-free (suppressed)
       log_records:
         - level: WARNING
+          event_name: openarmature.langfuse.payload_suppressed
 
   - name: singleton_preexists_optout_proceeds
     description: |
@@ -235,6 +237,7 @@ cases:
       payload_bearing_langfuse_observations_on_global: true
       log_records:
         - level: WARNING
+          event_name: openarmature.langfuse.shared_provider_accepted
 
   # ---- proposal 0117: the state and error-message harvested channels ----
 
@@ -409,6 +412,7 @@ cases:
       no_payload_bearing_langfuse_observations_on_global: true
       log_records:
         - level: WARNING
+          event_name: openarmature.langfuse.payload_suppressed
 
   - name: tool_failure_omitted_on_shared
     description: |
@@ -484,6 +488,7 @@ cases:
       no_payload_bearing_langfuse_observations_on_global: true
       log_records:
         - level: WARNING
+          event_name: openarmature.langfuse.payload_suppressed
 
   - name: locked_down_failure_on_detected_shared_provider_does_not_raise
     description: |
@@ -597,6 +602,7 @@ cases:
       no_payload_bearing_langfuse_observations_on_global: true
       log_records:
         - level: WARNING
+          event_name: openarmature.langfuse.payload_suppressed
 
   - name: hook_preexists_suppresses
     description: |
@@ -648,3 +654,4 @@ cases:
       no_payload_bearing_langfuse_observations_on_global: true
       log_records:
         - level: WARNING
+          event_name: openarmature.langfuse.payload_suppressed

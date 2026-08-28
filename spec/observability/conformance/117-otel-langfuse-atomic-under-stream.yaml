@@ -36,7 +36,8 @@ cases:
         - {choices: [{index: 0, delta: {content: "lo "}, finish_reason: null}]}
         - {choices: [{index: 0, delta: {content: "world"}, finish_reason: stop}]}
         - {choices: [], usage: {prompt_tokens: 9, completion_tokens: 3, total_tokens: 12}}
-    disable_provider_payload: false
+    otel_observer:
+      disable_provider_payload: false
     expected:
       span_tree:
         - name: "openarmature.invocation"

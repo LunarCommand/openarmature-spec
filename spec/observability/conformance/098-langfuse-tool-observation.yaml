@@ -11,7 +11,8 @@ cases:
       observation under the calling node's Span — type tool (not generation),
       DEFAULT level, with input / output populated and tool_name / tool_call_id in
       metadata.
-    disable_provider_payload: false     # OTel observer side
+    otel_observer:
+      disable_provider_payload: false     # OTel observer side
     langfuse_observer:
       # The Langfuse observer keeps its OWN copy of this flag (conformance-adapter
       # §5.5, observability §8.7). The top-level key above configures only the OTel
