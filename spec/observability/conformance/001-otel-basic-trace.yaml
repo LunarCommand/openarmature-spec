@@ -26,7 +26,9 @@
 #       0115): credentials = the impl builds it from credentials; supplied = the
 #       harness builds it (on `provider`, default global) and hands it in. Uses
 #       the provider-faithful Langfuse fake (conformance-adapter §6.4); payload
-#       flags via the existing `langfuse_observer` block + the OTel §5.5.4 default.
+#       flags via the `langfuse_observer` block for the Langfuse side and the
+#       `otel_observer` block for the OTel side (conformance-adapter §5.5); each
+#       flag omitted keeps its observability §5.5.4 default.
 #       Proposal 0116 adds sub-keys `preexisting_same_key_client` (bool — prime a
 #       same-credential client before the impl constructs, defeating isolation via
 #       the SDK singleton) and `accept_shared_provider` (bool — the single caller

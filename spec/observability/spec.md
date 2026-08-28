@@ -1604,7 +1604,8 @@ after the call returns: every §5.5.7 `LlmCompletionEvent`, and a `structured_ou
 `LlmFailedEvent` (the failure category that carries `usage` per proposal 0082 / §5.5.7); other failure
 categories carry no usage, so no evaluation occurs. It is **advisory observability only** — `token_budget`
 never affects the request (prompt-management §3). On an exceedance the implementation SHOULD also emit a
-`WARNING`-level log record (§7) and set the Langfuse generation's `observation.level = "WARNING"` (§8.4.3);
+`WARNING`-level log record (§7) carrying the event name `openarmature.token_budget.exceeded` (§7
+*Diagnostic event names*) and set the Langfuse generation's `observation.level = "WARNING"` (§8.4.3);
 those WARNING surfaces are SHOULD, while the span attribute + the §11 metrics are MUST. This is proposal
 0083.
 
@@ -1927,7 +1928,8 @@ obligations **track which party controls the provider** (the ownership mode of �
   _When the caller has accepted a shared provider (opted in):_ openarmature is **not** required to isolate the
   client's provider (it **MAY** honor the caller's preference for a single shared provider); it **MUST NOT**
   raise and **MUST NOT** suppress its payload on account of the provider; if its observations would (or might)
-  reach a shared provider it **MUST** emit a `WARNING`-level log record (§7) and proceed.
+  reach a shared provider it **MUST** emit a `WARNING`-level log record (§7) carrying the event name
+  `openarmature.langfuse.shared_provider_accepted` (§7 *Diagnostic event names*) and proceed.
 
   _Otherwise (not opted in):_ openarmature **SHOULD** determine whether the constructed client's observations
   would reach a **shared / non-isolated provider** — any provider other than one openarmature itself
@@ -1949,7 +1951,7 @@ obligations **track which party controls the provider** (the ownership mode of �
     - **A payload channel is live and openarmature cannot establish the binding** (the SDK surface exposes no
       way) → it **MUST NOT** raise; it **MUST** suppress **all** its harvested-payload channels (below) so no
       payload-bearing observation can reach a shared provider, and **MUST** emit a `WARNING`-level log record
-      (§7).
+      (§7) carrying the event name `openarmature.langfuse.payload_suppressed` (§7 *Diagnostic event names*).
     - **openarmature establishes the observations reach an openarmature-established isolated provider, or no
       payload channel is live** → it proceeds (the *no-payload clause* below governs the latter case).
 
@@ -1988,6 +1990,7 @@ obligations **track which party controls the provider** (the ownership mode of �
   **and** no `trace_*_from_state` hook is supplied — a **successful** run's observations carry only metadata
   and span structure; a shared provider then duplicates only that (the same duplication the private-provider
   rule above prevents for openarmature's own OTel spans). openarmature **SHOULD** isolate and **MAY** warn,
+  carrying the event name `openarmature.langfuse.shared_provider_no_payload` (§7 *Diagnostic event names*),
   but **MUST NOT** raise. A *failed* observation adds nothing harvested in this configuration either, because
   `disable_provider_payload=True` also suppresses its `error_message` (§5.5.4), leaving its `error_type` and
   error category. So the locked-down posture carries no harvested content on either the success or the failure
@@ -1998,7 +2001,9 @@ obligations **track which party controls the provider** (the ownership mode of �
   openarmature's own emitted spans. It **SHOULD** state, in its user-facing guidance, that a caller-supplied
   client bound to a shared/global provider exports openarmature's observations to every exporter on that
   provider and that the caller isolates it via the client's own isolated `TracerProvider`. It **MAY**
-  additionally emit a `WARNING`-level diagnostic *if* it can determine that the supplied client is bound to
+  additionally emit a `WARNING`-level diagnostic, carrying the event name
+  `openarmature.langfuse.supplied_client_shared_provider` (§7 *Diagnostic event names*), *if* it can
+  determine that the supplied client is bound to
   the global (or another shared) provider — MAY, not SHOULD, because reading a supplied client's bound
   provider may rest on non-portable SDK internals with no cross-language guarantee. A client the caller has
   already isolated **MUST NOT** be warned about.
@@ -2075,7 +2080,43 @@ OTel Logs SDK so that:
 
 **Token-budget WARNING (proposal 0083).** When an active prompt's `token_budget` is exceeded (§5.5.15),
 the implementation SHOULD emit a `WARNING`-level log record naming the prompt (`openarmature.prompt.*`),
-the exceeded bound, the budget, and the actual usage — carrying the correlation fields below.
+the exceeded bound, the budget, and the actual usage — carrying the event name
+`openarmature.token_budget.exceeded` (*Diagnostic event names* below) and the correlation fields below.
+
+**Diagnostic event names.** A log record openarmature emits to signal one of the conditions **enumerated in
+the table below** **MUST** carry that condition's event name on the OTel `LogRecord` **`EventName`** field,
+which the OTel Logs Data Model defines as identifying "the class / type of the Event". An event name **MUST**
+be in the `openarmature.` namespace and **MUST NOT** be reworded once shipped; the record's human-readable
+message is free to change independently.
+
+The table is the **complete** set of event names openarmature defines, and the rule reaches exactly the
+conditions it lists. Other records openarmature emits, including diagnostics this or another capability spec
+mandates but the table does not name, carry no event-name obligation. An implementation **MUST NOT** invent a
+name for one: naming a diagnostic is a proposal, because a name invented independently by two implementations
+diverges permanently under the no-rewording rule above. A proposal that adds such a diagnostic to any
+capability spec adds its row here in the same change.
+
+The names openarmature currently defines:
+
+| Event name | Emitted when | Obligation |
+|---|---|---|
+| `openarmature.langfuse.shared_provider_accepted` | §6, the caller has opted in to a shared provider and openarmature's observations would (or might) reach one, so it proceeds | MUST |
+| `openarmature.langfuse.payload_suppressed` | §6, openarmature cannot establish the client's bound provider and suppresses every harvested-payload channel | MUST |
+| `openarmature.token_budget.exceeded` | §5.5.15, an active prompt's `token_budget` is exceeded | SHOULD |
+| `openarmature.langfuse.supplied_client_shared_provider` | §6 mode (a), a caller-supplied client is determined to be bound to a shared provider | MAY |
+| `openarmature.langfuse.shared_provider_no_payload` | §6, no harvested-payload channel is live and openarmature isolates rather than raising | MAY |
+
+The obligation column restates the obligation on the **record**, which this rule does not change. Where a
+record is emitted, it carries its event name.
+
+Adopting the `EventName` field is distinct from adopting an upstream event **name**: the Event semantic
+conventions that prescribe particular names remain in Development, so openarmature names its own diagnostics
+in its own namespace rather than taking any name from them.
+
+`event_name` also appears in pipeline-utilities §6.3 as a caller-supplied field on the failure-isolation
+middleware. The two are unrelated: that one is chosen by the caller to label a catch site and is a
+caller-attached dimension (§8.4), while these are openarmature-emitted identifiers for conditions this spec
+mandates.
 
 **Required log-record fields:**
 
@@ -3294,3 +3335,4 @@ spec:
 - §6 *Driving span lifecycle* broadened the mode-(b) payload-leak invariant (proposal 0116) from the provider-payload channel to **every channel openarmature emits harvested payload through** — adding the Trace-level **state payload** (`disable_state_payload` + the `trace_*_from_state` hooks, §8.4.1) and a failed Tool/Embedding/Retriever observation's **error message** (§8.4.5–§8.4.7, ungated by any privacy knob) — with an explicit **exemption** for the caller-attached identity/correlation dimensions (`correlation_id`, `session_id`, the promoted `userId`, trace name, caller metadata) as opaque cross-backend join keys the caller owns. The construction-time raise/suppress arms cover the provider + state channels (gated on a live payload channel); the error-message channel is handled per-emission (omit to a not-established-isolated provider, category only — a failed Tool observation has no error category, so nothing message-derived is surfaced). Reconciled the §6 section-level paragraphs (subsection lead-in, *No hard failure*, *isolation trade-off*), the §8.4 header and §8.4.1 / §8.4.2 / §8.4.5–§8.4.7 mappings (adding the §8.4.2 `error_type` / `error_message` row, in-cell-scoped to the three failed provider observations), and fixed the now-false "only metadata and span structure" clause. Fixture **158** gains six cases (state-raises, hook-raises, error-message-omitted, tool-failure-omitted, state-suppress, hook-suppress) by [proposal 0117](../../proposals/0117-payload-leak-invariant-channels.md)
 - §5.5.4 *Opt-out flags* extended `disable_provider_payload` to gate a failed provider call's harvested exception **text** (the `error_message` field the Langfuse mapping writes to `observation.metadata`), so the default posture withholds it. `error_type` is deliberately **not** gated: it is a classification token, so suppressing it buys no privacy while removing the only failure discriminator on a Tool observation, which has no error category (conformance-adapter §6.4's payload-bearing classification is narrowed to match). §8.7 lists the message in both the flag-`False` emission set and the flag-`True` suppression set. Langfuse-side only, since the OTel surface defines no `error_message` attribute and its `record_exception` path is unaffected. §8.4.2 / §8.4.3 additionally added the failed **LLM Generation** to the mapped error-message surfaces, which proposal 0117 had excluded on the rationale that a Generation's error output is the payload-gated `generation.output`; that holds only for `structured_output_invalid`, while every other failure category carries no output, leaving the exception message (`LlmFailedEvent` §5.5.7) as its only harvested error content. §6 **retired 0117's per-emission error-message rule**, which the flag makes unreachable in every configuration, keeping the suppress-all arm's coverage of the error message and the Tool anti-smuggling MUST NOT, and reconciled the *No hard failure* and *isolation trade-off* paragraphs. New fixture **159** (`langfuse-llm-failure-error-message`, two cases) gates the flag on a normal provider: flag on withholds the message while `error_type` and the category are retained, flag off emits it. Five shipped fixtures that asserted the message present under the default posture were **reconciled in the same change** (137 / 138 assert it absent; 150 / 151 / 098's failure case move to the flag-off configuration their literal assertions require), since leaving them would have made the corpus unsatisfiable. **098** gained a default-posture case carrying the Tool anti-smuggling clause for every adapter, and **123**'s payload-disabled case gained `metadata_absent: [error_message]`, gating the `structured_output_invalid` leak this change exists to close. Fixture **158**'s two error-message cases were repointed to the flag-off suppress arm, where they gate suppress-all covering the message. conformance-adapter §5.5 gained `metadata_absent` for the absence assertions this requires by [proposal 0118](../../proposals/0118-llm-error-message-channel.md)
 - §8.4 *Attribute mapping table* and §6 added the **exhaustive-mapping rule** (elevating proposal 0117's Open Question #2 to normative): the §8.4.x tables are the complete definition of the **harvested content** openarmature renders to Langfuse, so a harvested error message / content field is emitted only where a table maps it (there, subject to §6's rule) and harvested content no table maps — a stacktrace, or the exception detail on a framework-emitted observer event the tables do not render (e.g. the failure-isolation event's `caught_exception`, pipeline-utilities §6.3) — is **non-conforming over-emission** that **MUST NOT** be written to any Langfuse observation; such detail reaches consumers through the surface that owns it (openarmature's OTel span via `record_exception` where the error propagates, else the typed observer event itself). Caller-**attached** dimensions (the failure-isolation `event_name`, the §6-exempt identity/correlation tags) stay governed by the harvest-vs-attach exemption. §8.4.2 additionally states that framework-emitted observer events the tables do not render — notably the failure-isolation event, which carries neither `NodeEvent.error` nor a §4 category — have no mapping there at all. Closes the invariant's channel enumeration after the failure-isolation event's caught-exception message surfaced as a second missed emission site. That event is observer-event-only (§6.3), carrying neither `NodeEvent.error` nor a §4 category, and the §8.4.x tables render it nowhere, so it was never a fifth channel: any Langfuse `error_message` on it is an emission the tables never defined. The rule forbids such emission, so it is gated by the mapping tables themselves rather than by a fixture by [proposal 0118](../../proposals/0118-llm-error-message-channel.md)
+- §7 *Log correlation* gained a **Diagnostic event names** rule: a log record openarmature emits to signal one of the conditions the section's table enumerates MUST carry that condition's event name on the OTel `LogRecord` `EventName` field, in the `openarmature.` namespace and never reworded once shipped. The table is the complete set and the rule reaches exactly what it lists; a record the table does not name carries no obligation and an implementation MUST NOT invent a name for one. Five diagnostics are enumerated, and every emission site the table names cross-references its row. Fixture 158's six `WARNING` cases gain `event_name` assertions, and twelve cases across eleven fixtures migrate off a bare case-level OTel observer flag onto the new `otel_observer` directive. Adopting the `EventName` field is distinct from adopting an upstream event name; the Event semantic conventions remain Development by [proposal 0121](../../proposals/0121-diagnostic-event-names-and-otel-observer-directive.md)

@@ -43,7 +43,8 @@ cases:
                   - {id: call_x, type: function, function: {name: search_db, arguments: '{"q": "secret query"}'}}
               finish_reason: tool_calls
           usage: {prompt_tokens: 6, completion_tokens: 5, total_tokens: 11}
-    disable_provider_payload: true
+    otel_observer:
+      disable_provider_payload: true
     expected:
       span_tree:
         - name: "openarmature.invocation"
@@ -101,7 +102,8 @@ cases:
                   - {id: call_x, type: function, function: {name: search_db, arguments: '{"q": "secret query"}'}}
               finish_reason: tool_calls
           usage: {prompt_tokens: 6, completion_tokens: 5, total_tokens: 11}
-    disable_provider_payload: false
+    otel_observer:
+      disable_provider_payload: false
     expected:
       span_tree:
         - name: "openarmature.invocation"

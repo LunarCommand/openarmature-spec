@@ -1,6 +1,6 @@
 # External-dependency compatibility
 
-**Last refreshed:** 2026-08-08
+**Last refreshed:** 2026-08-27
 
 OpenArmature normatively references several external specifications and APIs.
 This page is the **operational tracking artifact** for those references:
@@ -42,6 +42,7 @@ publishes it.
 |---|---|---|---|---|
 | [OpenTelemetry semantic conventions](https://github.com/open-telemetry/semantic-conventions) | v1.41.1 (core); GenAI in [semantic-conventions-genai](https://github.com/open-telemetry/semantic-conventions-genai) | Mixed (core Stable; GenAI all Development) | 2026-06-17 | Core semconv (`otel.*`, `error.type`) adopted directly when Stable. The GenAI `gen_ai.*` conventions moved to a dedicated repo where the whole surface is Development (verified 2026-06-17); OA adopts the recognized **core** names directly per the GenAI de-facto-standard carve-out (governance), mirrors peripheral ones (`gen_ai.usage.cache_read.*`, `gen_ai.operation.name`) to `openarmature.*`, and **retains** `gen_ai.system` (upstream-removed → `gen_ai.provider.name`) per the post-adoption retention rule. See detail below. |
 | [OpenTelemetry trace + span core spec](https://opentelemetry.io/docs/specs/otel/trace/) | Tracking v1.41.x line | Stable | 2026-05-31 | Span / attribute / status semantics referenced in observability §3–§7. |
+| [OpenTelemetry Logs data model](https://opentelemetry.io/docs/specs/otel/logs/data-model/) | `LogRecord` shape; the top-level `EventName` field | Stable | 2026-08-27 | Observability §7 *Diagnostic event names* carries openarmature's diagnostic identifiers on `LogRecord.EventName`, which the data model defines as "Name that identifies the class / type of the Event". Verified 2026-08-27 against the published data model: the field exists as a top-level `LogRecord` field with that definition, and the **document** carries Stable status. The field is not separately stability-marked within the document, so adoption rests on the document's status. Distinct from the Event **semantic conventions**, which prescribe particular event names and remain Development; openarmature names its own diagnostics in the `openarmature.` namespace and takes no name from them. |
 | [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat) | URL-path `v1`; ChatCompletions shape | Stable (continuously updated) | 2026-05-31 | Wire shape per llm-provider §8.1. `usage.prompt_tokens_details.cached_tokens` confirmed present for prompt caching (≥1024-token threshold). |
 | [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) | URL-path `v1`; Responses shape | Stable (continuously updated) | 2026-05-31 | Newer companion API shape; `usage.input_tokens_details.cached_tokens` rather than `prompt_tokens_details`. Not currently referenced by llm-provider §8.X. |
 | [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) | Header `anthropic-version: 2023-06-01` | Stable (date-versioned) | 2026-05-31 | Wire shape per llm-provider §8.2. **No implicit caching** — `cache_read_input_tokens` / `cache_creation_input_tokens` fire only under explicit `cache_control` annotations. |

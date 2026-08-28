@@ -1,9 +1,9 @@
 # 0121: Give openarmature's Mandated Diagnostics a Stable Identity
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-19
-- **Accepted:**
+- **Accepted:** 2026-08-27
 - **Targets:**
   - spec/observability/spec.md **§6 Driving span lifecycle**: the two `WARNING`-level log records §6 mandates
     (the accepted-shared-provider arm and the cannot-establish-binding arm) MUST carry a stable event name
@@ -103,7 +103,8 @@ entitled to ignore the key, and the case then differs from case 1 in nothing an 
 The OTel Logs Data Model, which is **Stable**, defines a top-level `LogRecord` field `EventName`: "Name that
 identifies the class / type of the Event. This name SHOULD uniquely identify the event structure (both
 attributes and body)." That is precisely the affordance missing here, and openarmature's stable-only adoption
-policy permits it because the field is Stable.
+policy permits it because the data model **document** carries Stable status. The field is not separately
+stability-marked within it, so adoption rests on the document's status rather than a per-field marker.
 
 > **Diagnostic event names.** A log record openarmature emits to signal a condition it specifies MUST carry
 > an event name on the OTel `LogRecord` `EventName` field. Event names are in the `openarmature.` namespace,
@@ -203,9 +204,9 @@ case would assert the same rule the tightened blocks already gate.
    a conformance break, and a substring is not a stable identifier in any sense the spec can hold an
    implementation to.
 3. **Carry the identity on an `openarmature.*` log-record attribute** rather than `EventName`. Rejected: the
-   Logs Data Model defines a field whose stated purpose is identifying the class of the event, and it is
-   Stable, so introducing a parallel attribute would duplicate a standard mechanism. This was the fallback if
-   `EventName` had turned out to be Development.
+   Logs Data Model defines a field whose stated purpose is identifying the class of the event, in a document
+   carrying Stable status, so introducing a parallel attribute would duplicate a standard mechanism. This was
+   the fallback if the data model had turned out to be Development.
 4. **Leave fixture 158 case 2 as a documented duplicate of case 1.** Rejected: it guards against a rejected
    alternative that nothing else in the corpus catches, and the guard costs one directive.
 5. **Define the `otel_observer` directive without migrating fixture 014.** Rejected: it would leave two ways

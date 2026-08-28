@@ -37,7 +37,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "ok"}, finish_reason: stop}
           usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
-    disable_genai_semconv: true
+    otel_observer:
+      disable_genai_semconv: true
     expected:
       span_tree:
         - name: "openarmature.invocation"

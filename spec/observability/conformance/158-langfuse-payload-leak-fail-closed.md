@@ -47,11 +47,19 @@ does not make an observation payload-bearing).
 the 0116 group emits the provider payload, the state cases run with the provider payload off to isolate that
 channel, and the two error-message cases run with it on so the suppress arm is what omits the message):
 
+**Diagnostic event names.** The six cases asserting a `WARNING` record now also assert its `event_name`
+(conformance-adapter §5.5, observability §7 *Diagnostic event names*), so each pins **which** mandated
+diagnostic fired rather than only that something logged at that severity. Five assert
+`openarmature.langfuse.payload_suppressed`, the cannot-establish-the-binding arm; the opt-out case asserts
+`openarmature.langfuse.shared_provider_accepted`. Without the name a record from either arm, or an unrelated
+`WARNING`, satisfies the assertion.
+
 - `singleton_preexists_raises` *(detection-capable adapters)* — OTel observer suppressing (its default), no
   opt-out; asserts `expected_construction_error: {category: langfuse_provider_isolation_unavailable}` **and**
   `no_payload_bearing_langfuse_observations_on_global`.
 - `singleton_preexists_raises_otel_not_suppressing` *(detection-capable adapters)* — the OTel observer also
-  emits payload (`disable_provider_payload: false`), so there is no OTel-side suppression to "defeat"; still
+  emits payload (`otel_observer: {disable_provider_payload: false}`, conformance-adapter §5.5), so there is
+  no OTel-side suppression to "defeat"; still
   raises. Gates the widened trigger. **Note:** proposal 0116 names this case `..._no_otel_observer` ("no OTel
   observer composed"). The observability harness always installs the OTel `SpanExporter` + private provider
   (§6 isolation), so it cannot express "no OTel observer composed"; this case ships the equivalent — and

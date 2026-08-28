@@ -20,8 +20,8 @@ dedicated `Tool` observation type, not a `Generation`.
 2. `failed_tool_execution_renders_error_level` — failure → `Tool` observation at
    `ERROR` with `error_type` / `error_message`. Both of these cases set
    `langfuse_observer: {disable_provider_payload: false}`, the per-observer convention
-   (conformance-adapter §5.5): the Langfuse observer keeps its own copy of the flag, so a top-level
-   setting configures only the OTel side and would leave Langfuse at its default `true`.
+   (conformance-adapter §5.5): each observer keeps its own copy of the flag, so the Langfuse setting
+   leaves the OTel side at its default `true` unless an `otel_observer` block sets it too.
    `error_message` is harvested exception text gated by that flag (observability §5.5.4, proposal
    0118), so the failure case sets it explicitly rather than relying on the default. `error_type` is
    not gated.
