@@ -15,8 +15,8 @@ cases:
       disable_provider_payload: false     # OTel observer side
     langfuse_observer:
       # The Langfuse observer keeps its OWN copy of this flag (conformance-adapter
-      # §5.5, observability §8.7). The top-level key above configures only the OTel
-      # side, so the Langfuse assertions below need it set here explicitly.
+      # §5.5, observability §8.7). The `otel_observer` block above configures only
+      # the OTel side, so the Langfuse assertions below need it set here explicitly.
       disable_provider_payload: false
     state:
       fields:
