@@ -1,7 +1,7 @@
 # §3.4 namespace-collision rejection: caller-supplied metadata keys
-# under reserved namespaces (openarmature.* and gen_ai.*) MUST be
-# rejected at the invoke() API boundary, before any observer
-# emission. Two cases cover both reserved prefixes.
+# under reserved namespaces (openarmature.*, openarmature_* and
+# gen_ai.*) MUST be rejected at the invoke() API boundary, before any
+# observer emission. Three cases cover the three reserved prefixes.
 
 cases:
   - name: rejects_openarmature_prefix
@@ -300,6 +300,145 @@ cases:
     caller_metadata:
       tenantId: "acme-corp"
       implementation_version: "9.9.9"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_oa_name_error_type
+    description: |
+      Caller supplies the bare key `error_type`, which exactly matches an
+      OA-emitted top-level Langfuse metadata key name written on a failed
+      Generation / Embedding / Tool / Retriever observation (§8.4.2, §8.4.3,
+      §8.4.5 to §8.4.7). Newly reserved per §3.4 by proposal 0119; without the
+      reservation a caller key would silently shadow the failure's error
+      classification in Langfuse's flat metadata.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      error_type: "caller-supplied"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_oa_name_error_message
+    description: |
+      Caller supplies the bare key `error_message`, the OA-emitted harvested
+      exception text on a failed observation (§8.4.3, §8.4.5 to §8.4.7). Newly
+      reserved per §3.4 by proposal 0119. Reserved even though the field is
+      gated by `disable_provider_payload` (§5.5.4): the reservation is about
+      key collision, not about whether OA emits the value in a given posture.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      error_message: "caller-supplied"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_oa_name_token_budget
+    description: |
+      Caller supplies the bare key `token_budget`, the parent of the OA-emitted
+      `generation.metadata.token_budget.*` bounds (§8.4.3, proposal 0083).
+      Newly reserved per §3.4 by proposal 0119; a caller scalar here would
+      collide with the OA-emitted nested object.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      token_budget: "caller-supplied"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_reserved_oa_name_token_budget_exceeded
+    description: |
+      Caller supplies the bare key `token_budget_exceeded`, the OA-emitted flat
+      boolean sibling of `token_budget.*` (§8.4.3, proposal 0109). Newly
+      reserved per §3.4 by proposal 0119.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      token_budget_exceeded: "caller-supplied"
+    expected:
+      invoke_rejects_at_api_boundary: true
+      no_spans_emitted: true
+      no_langfuse_observations_emitted: true
+
+  - name: rejects_openarmature_underscore_prefix
+    description: |
+      Caller supplies a key in the `openarmature_` **underscore** namespace,
+      which clears both the dotted `openarmature.` namespace rule and the
+      exact-match reserved set, yet collides with the nine metadata keys
+      §8.4.5 to §8.4.7 write in that form (`openarmature_input_count`,
+      `openarmature_dimensions`, `openarmature_query_length`,
+      `openarmature_document_count`, `openarmature_top_k`,
+      `openarmature_result_count`, `openarmature_tool_name`,
+      `openarmature_tool_call_id`, `openarmature_response_id`). Proposal 0119
+      extends the reserved-namespace rule to cover it. The key here is not one
+      of the nine, proving the rule is a **namespace** reservation rather than
+      nine more exact matches.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: noop
+    nodes:
+      noop:
+        update: {msg: "should never run"}
+    edges:
+      - {from: noop, to: END}
+    initial_state: {}
+    caller_metadata:
+      tenantId: "acme-corp"
+      openarmature_anything: "caller-supplied"
     expected:
       invoke_rejects_at_api_boundary: true
       no_spans_emitted: true

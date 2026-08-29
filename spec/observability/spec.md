@@ -162,7 +162,12 @@ outermost `invoke()` call, alongside the correlation ID. Implementations MUST:
   bool, or homogeneous arrays of those types. Nested objects, null values, and mixed-type
   arrays are NOT permitted (matching OTel's `AttributeValue` type contract — narrower than
   the broader OTLP `AnyValue` container, which permits nested objects and is NOT used here).
-- Keys MUST NOT collide with reserved namespaces: `openarmature.*` and `gen_ai.*`.
+- Keys MUST NOT collide with reserved namespaces: `openarmature.*`, `openarmature_*` and `gen_ai.*`.
+  The underscore form is reserved because the §8.4.5 to §8.4.7 mappings write nine metadata keys in it
+  (`openarmature_input_count`, `openarmature_dimensions`, `openarmature_query_length`,
+  `openarmature_document_count`, `openarmature_top_k`, `openarmature_result_count`,
+  `openarmature_tool_name`, `openarmature_tool_call_id`, `openarmature_response_id`), which clear both
+  the dotted-namespace rule and the exact-match set below.
   Implementations MUST reject (raise an error at the `invoke()` API boundary, before any work
   begins) a metadata mapping that contains a colliding key. The error category is
   implementation-defined per the language's API-boundary error idiom (Python `ValueError`,
@@ -179,14 +184,17 @@ outermost `invoke()` call, alongside the correlation ID. Implementations MUST:
   `response_model`, `response_id`, `prompt`, `invocation_id`, `branch_name`, `detached`,
   `detached_from_invocation_id`, `implementation_name`, `implementation_version`,
   `parallel_branches_branch_count`, `parallel_branches_error_policy`,
-  `parallel_branches_parent_node_name`.
+  `parallel_branches_parent_node_name`, `error_type`, `error_message`, `token_budget`,
+  `token_budget_exceeded`.
   Implementations MUST reject a caller key that exactly
   matches a reserved name at the `invoke()` API boundary, before any work begins, with the same
-  per-language error idiom as the `openarmature.*` / `gen_ai.*` reservation above. The match is
+  per-language error idiom as the `openarmature.*` / `openarmature_*` / `gen_ai.*` reservation above. The match is
   exact (whole keys, not prefixes), and the reservation applies regardless of which backends are
   wired — these are OA's observability vocabulary, reserved for cross-backend consistency. Any
   future proposal that introduces a new top-level OA-emitted metadata key in a §8 backend mapping
-  MUST add the key name to this reserved set.
+  MUST add the key name to this reserved set, unless the key already falls under one of the
+  reserved namespaces above, in which case the namespace reservation covers it and a separate
+  exact-match entry is redundant.
 - Key length, value length, and entry count are NOT constrained by the spec; backends MAY
   enforce their own limits (Langfuse caps trace-metadata values at a vendor-defined size,
   etc.) and surface rejections via existing error channels.
@@ -205,7 +213,7 @@ The helper:
 - Performs an additive merge into the current async context's metadata. Existing keys with
   the same name are overwritten; other keys are preserved.
 - Validates added keys against the reserved-key rules above — both the reserved
-  `openarmature.*` / `gen_ai.*` namespaces and the reserved OA-emitted metadata key names —
+  `openarmature.*` / `openarmature_*` / `gen_ai.*` namespaces and the reserved OA-emitted metadata key names —
   and the value-type contract above. Violations MUST raise at the call site, before any
   downstream span emission picks up the partially-applied state. The reservation is enforced
   identically at the `invoke()` boundary and at this mid-invocation helper, so a reserved
@@ -1096,7 +1104,10 @@ below are normative for cross-implementation consistency):
     message is the raised exception's rendered text, harvested runtime content that can embed the very payload the flag
     exists to suppress: it is the failure's human-readable description as the source failure event
     carries it. A `structured_output_invalid` failure's message commonly quotes the model output that
-    failed validation, and a provider 4xx can quote the request.
+    failed validation, and a provider 4xx can quote the request. A message the flag **permits** to emit is
+    payload like any other and is subject to §5.5.5's cap, applied directly by the mapping that writes it
+    (§8.7); classifying the message as payload for gating and exempting it from the bound would leave the
+    one payload channel with no size limit.
 
     **`error_type` is NOT gated.** It is a classification token, a vendor error code or an upstream
     exception class name, not harvested runtime text, so suppressing it buys no privacy while removing
@@ -1136,23 +1147,52 @@ The three flags are independent. Typical configurations:
 
 #### 5.5.5 Truncation contract
 
-The payload attributes — the §5.5.1 LLM attributes (`openarmature.llm.input.messages`,
-`openarmature.llm.output.content`, `openarmature.llm.request.extras`), the §5.5.8 embedding payload
-(`openarmature.embedding.input.strings`, `openarmature.embedding.request.extras`), and the §5.5.11 tool
-payload (`openarmature.tool.call.arguments`, `openarmature.tool.call.result`) — MAY be arbitrarily large
-in principle (a long conversation, a verbose model response, a multi-image user message, a large tool
-result). Emission
-without bounds would produce spans larger than typical OTLP exporters accept and inflate
-observability storage unbounded. The following contract applies:
+This contract governs **every payload-classified value**, not only the values that happen to be span
+attributes. The span attributes it reaches **include** the §5.5.1 LLM attributes
+(`openarmature.llm.input.messages`, `openarmature.llm.output.content`,
+`openarmature.llm.output.tool_calls`, `openarmature.llm.request.extras`), the §5.5.8 embedding payload
+(`openarmature.embedding.input.strings`, `openarmature.embedding.request.extras`), the §5.5.11 tool
+payload (`openarmature.tool.call.arguments`, `openarmature.tool.call.result`), and the §5.5.13 rerank
+payload. This list is illustrative: each section declares its own payload attributes, and a section
+declaring one brings it under this contract without an entry here. Any of them MAY be
+arbitrarily large in principle (a long conversation, a verbose model response, a multi-image user message,
+a large tool result). Emission without bounds would produce spans larger than typical OTLP exporters accept
+and inflate observability storage unbounded.
 
-**Per-attribute byte cap.** Implementations MUST enforce a maximum byte length on each
-payload attribute individually. The default cap is **65,536 bytes (64 KiB)** per
-attribute. Implementations MUST allow the cap to be configured per observer (specific mechanism —
+**Values with no span-attribute source.** Most payload-classified values originate as an `openarmature.*`
+span attribute and reach a backend mapping already truncated (§8.7). Two do not, and for those the cap is
+enforced by the backend mapping that writes the field rather than inherited from an attribute:
+
+- the Trace-level **state payload** (`trace.input` / `trace.output`, §8.4.1), whether sourced from the
+  serialized state or from a caller-supplied `trace_*_from_state` hook's return value; and
+- a failed observation's **`error_message`** (§5.5.4, §8.4.3, §8.4.5 to §8.4.7), because the OTel surface
+  defines no `error_message` span attribute (§5.5.4).
+
+Both are subject to this contract on the same terms as the attributes above: the same configured cap, the
+same default, the same truncation algorithm, and the same marker. A value **MUST NOT** escape the cap merely
+because no span attribute carries it. Both values are strings, so the algorithm applies to them unchanged;
+this rule does not by itself reach a structured payload whose truncated rendering a mapping does not
+define.
+
+The OTel `record_exception` path is **not** such a value. §5.5.4 keeps the exception recorded on the OTel
+span full and ungated, and §6 records it verbatim; this contract does not reach it. The cap governs the
+`error_message` a **backend mapping** writes, which is the Langfuse channel §8.7 describes.
+
+**Truncating a value that is not JSON-encoded.** The marker is appended to the value as a plain string.
+The unparseable-JSON signal below is a property of truncating a JSON-encoded attribute and does **not**
+apply to a value that was never JSON-encoded, such as `error_message`; for those, the marker's presence is
+itself the signal.
+
+The following contract applies:
+
+**Per-value byte cap.** Implementations MUST enforce a maximum byte length on each
+payload-classified value individually. The default cap is **65,536 bytes (64 KiB)** per
+value. Implementations MUST allow the cap to be configured per observer (specific mechanism —
 constructor argument, environment variable, etc. — is implementation-defined). The byte length
-is measured on the UTF-8 encoding of the final attribute string, after JSON serialization and
-after inline-image redaction (below).
+is measured on the UTF-8 encoding of the final string, after JSON serialization where the value
+is JSON-encoded, and after inline-image redaction (below).
 
-**Truncation algorithm.** When an attribute's serialized value exceeds the configured cap, the
+**Truncation algorithm.** When a value's serialized form exceeds the configured cap, the
 implementation:
 
 1. Computes M, the pre-truncation byte length of the serialized value.
@@ -1170,7 +1210,7 @@ implementation:
    marks) and emitting invalid UTF-8 that OTLP exporters may reject.
 5. Emits the first `N'` bytes of the serialized value followed by the marker.
 
-The resulting attribute is at most `configured_cap` bytes (may be strictly less if `N' < N` due
+The resulting value is at most `configured_cap` bytes (may be strictly less if `N' < N` due
 to boundary backtracking). The marker is a fixed UTF-8 string (its leading character is U+2026
 HORIZONTAL ELLIPSIS, encoded as the 3-byte sequence `0xE2 0x80 0xA6`). It introduces no further
 UTF-8 boundary concerns beyond those step 4 already handled, because the implementation appends
@@ -1211,7 +1251,7 @@ readers (it points to the actual image asset). The redaction rule applies only t
 **Tool-call serialization.** Assistant `tool_calls` (per llm-provider §3) in
 `openarmature.llm.input.messages` are JSON-encoded as `[{id, name, arguments}, ...]` with
 `arguments` serialized verbatim from the parsed mapping. Tool-call argument content is subject
-only to the overall per-attribute byte cap; this specification does not specify a separate
+only to the overall §5.5.5 byte cap; this specification does not specify a separate
 per-tool-call cap. The **output** side reuses this exact `[{id, name, arguments}]` encoding:
 `openarmature.llm.output.tool_calls` (§5.5.1) serializes the model's output tool calls the same way.
 (First-class tool-call observability — forecast here — is delivered by that gated
@@ -2898,10 +2938,15 @@ metadata.system, metadata.response_model, metadata.response_id, prompt linkage) 
 `metadata.error_type` and its error category / `statusMessage`, which are classifications rather than
 harvested text (§5.5.4, §8.4.2).
 
-**Truncation contract.** The §5.5.5 per-attribute byte cap applies to the OA-attribute source
+**Truncation contract.** The §5.5.5 per-value byte cap applies to the OA-attribute source
 values; when the source attribute is truncated, the Langfuse observer receives the
 already-truncated string (the OTel and Langfuse observers MAY share the same truncation
-implementation upstream). The Langfuse observer:
+implementation upstream). In this **inheritance** arm the value is governed by the cap of the
+observer that produced the source attribute, and the Langfuse observer does **not** re-apply its
+own cap to it. That is deliberate, and it is why the direct-application arm below sources the cap
+differently: an inherited value has already been truncated once, and re-truncating it against a
+second cap would move the marker and misreport `M`. A value with no such source has been truncated
+by nobody, so the observer that writes it applies its own. The Langfuse observer:
 
 - Sets `generation.input` / `generation.output` / `generation.metadata.request_extras` to the
   truncated value as-is when the source string ends with the §5.5.5 truncation marker
@@ -2910,6 +2955,14 @@ implementation upstream). The Langfuse observer:
   not parseable JSON — the observer MUST set those fields to the raw truncated string in that
   case, preserving the marker; the Langfuse UI surfaces this as a string rather than a structured
   view. This matches the §5.5.5 design intent: the unparseable JSON IS the truncation signal.
+
+The paragraph above covers **inheritance** from an already-truncated attribute source. A failed
+observation's `metadata.error_message` has no such source: nothing writes it to a span attribute, so the
+Langfuse observer applies the cap **directly** when it writes the field, on a failed Generation and on its
+Embedding, Tool and Retriever counterparts (§8.4.5 to §8.4.7). The **Langfuse observer's own** configured
+cap governs, since §5.5.5 makes the cap per-observer and §8.9 makes the two observers independent; an
+observer **MUST NOT** take the OTel observer's cap for this value. `error_message` is not JSON-encoded, so
+per §5.5.5 the marker is appended to the plain string and the unparseable-JSON signal does not apply.
 
 **Inline-image redaction.** The §5.5.5 inline-image redaction rule applies identically — inline
 image bytes never reach Langfuse, only the placeholder `{type: "image", source: {type:
@@ -3336,3 +3389,5 @@ spec:
 - §5.5.4 *Opt-out flags* extended `disable_provider_payload` to gate a failed provider call's harvested exception **text** (the `error_message` field the Langfuse mapping writes to `observation.metadata`), so the default posture withholds it. `error_type` is deliberately **not** gated: it is a classification token, so suppressing it buys no privacy while removing the only failure discriminator on a Tool observation, which has no error category (conformance-adapter §6.4's payload-bearing classification is narrowed to match). §8.7 lists the message in both the flag-`False` emission set and the flag-`True` suppression set. Langfuse-side only, since the OTel surface defines no `error_message` attribute and its `record_exception` path is unaffected. §8.4.2 / §8.4.3 additionally added the failed **LLM Generation** to the mapped error-message surfaces, which proposal 0117 had excluded on the rationale that a Generation's error output is the payload-gated `generation.output`; that holds only for `structured_output_invalid`, while every other failure category carries no output, leaving the exception message (`LlmFailedEvent` §5.5.7) as its only harvested error content. §6 **retired 0117's per-emission error-message rule**, which the flag makes unreachable in every configuration, keeping the suppress-all arm's coverage of the error message and the Tool anti-smuggling MUST NOT, and reconciled the *No hard failure* and *isolation trade-off* paragraphs. New fixture **159** (`langfuse-llm-failure-error-message`, two cases) gates the flag on a normal provider: flag on withholds the message while `error_type` and the category are retained, flag off emits it. Five shipped fixtures that asserted the message present under the default posture were **reconciled in the same change** (137 / 138 assert it absent; 150 / 151 / 098's failure case move to the flag-off configuration their literal assertions require), since leaving them would have made the corpus unsatisfiable. **098** gained a default-posture case carrying the Tool anti-smuggling clause for every adapter, and **123**'s payload-disabled case gained `metadata_absent: [error_message]`, gating the `structured_output_invalid` leak this change exists to close. Fixture **158**'s two error-message cases were repointed to the flag-off suppress arm, where they gate suppress-all covering the message. conformance-adapter §5.5 gained `metadata_absent` for the absence assertions this requires by [proposal 0118](../../proposals/0118-llm-error-message-channel.md)
 - §8.4 *Attribute mapping table* and §6 added the **exhaustive-mapping rule** (elevating proposal 0117's Open Question #2 to normative): the §8.4.x tables are the complete definition of the **harvested content** openarmature renders to Langfuse, so a harvested error message / content field is emitted only where a table maps it (there, subject to §6's rule) and harvested content no table maps — a stacktrace, or the exception detail on a framework-emitted observer event the tables do not render (e.g. the failure-isolation event's `caught_exception`, pipeline-utilities §6.3) — is **non-conforming over-emission** that **MUST NOT** be written to any Langfuse observation; such detail reaches consumers through the surface that owns it (openarmature's OTel span via `record_exception` where the error propagates, else the typed observer event itself). Caller-**attached** dimensions (the failure-isolation `event_name`, the §6-exempt identity/correlation tags) stay governed by the harvest-vs-attach exemption. §8.4.2 additionally states that framework-emitted observer events the tables do not render — notably the failure-isolation event, which carries neither `NodeEvent.error` nor a §4 category — have no mapping there at all. Closes the invariant's channel enumeration after the failure-isolation event's caught-exception message surfaced as a second missed emission site. That event is observer-event-only (§6.3), carrying neither `NodeEvent.error` nor a §4 category, and the §8.4.x tables render it nowhere, so it was never a fifth channel: any Langfuse `error_message` on it is an emission the tables never defined. The rule forbids such emission, so it is gated by the mapping tables themselves rather than by a fixture by [proposal 0118](../../proposals/0118-llm-error-message-channel.md)
 - §7 *Log correlation* gained a **Diagnostic event names** rule: a log record openarmature emits to signal one of the conditions the section's table enumerates MUST carry that condition's event name on the OTel `LogRecord` `EventName` field, in the `openarmature.` namespace and never reworded once shipped. The table is the complete set and the rule reaches exactly what it lists; a record the table does not name carries no obligation and an implementation MUST NOT invent a name for one. Five diagnostics are enumerated, and every emission site the table names cross-references its row. Fixture 158's six `WARNING` cases gain `event_name` assertions, and twelve cases across eleven fixtures migrate off a bare case-level OTel observer flag onto the new `otel_observer` directive. Adopting the `EventName` field is distinct from adopting an upstream event name; the Event semantic conventions remain Development by [proposal 0121](../../proposals/0121-diagnostic-event-names-and-otel-observer-directive.md)
+- §5.5.5 *Truncation contract* generalized from an enumerated list of `openarmature.*` span attributes to **every payload-classified value**, with the cap applied by the backend mapping that writes a value having no span-attribute source, and a note that the marker is appended to a plain string for a value that was never JSON-encoded. §8.7 gained the direct-application arm for a failed observation's `metadata.error_message` under the Langfuse observer's own cap; §5.5.4 states that a message the payload flag permits is subject to the cap. §3.4 reserved four further exact names (`error_type`, `error_message`, `token_budget`, `token_budget_exceeded`) and extended the reserved-namespace rule to `openarmature_`, closing the nine underscore-prefixed keys §8.4.5 to §8.4.7 write, with §3.4's maintenance rule reconciled so a key already under a reserved namespace needs no redundant exact-match entry. The generalization reaches the operative rules, not only the framing: the cap, the truncation algorithm and the measurement basis are stated over a **value** rather than an attribute, the OTel `record_exception` path is carved out explicitly as one §5.5.4 keeps full, and the two source-less
+values are stated to be strings so the rule does not silently reach a structured payload, and the §8.7 inheritance arm now says why it sources the cap differently from the direct-application arm. New fixture 160 (five cases, gating the Embedding, Generation and Retriever arms plus a below-cap control; the Tool arm is recorded as a gap since `mock_tool` is undefined); fixture 028 gained five rejection cases by [proposal 0119](../../proposals/0119-error-message-cap-and-reserved-keys.md)

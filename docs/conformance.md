@@ -90,13 +90,13 @@ That section is organized by category:
 | §5.2 State / schema | Field types, defaults, reducers |
 | §5.3 Edges | Static + conditional edges |
 | §5.4 Composition | `fan_out`, `parallel_branches`, `subgraph` |
-| §5.5 Observers | `observers[]` (behavior enum `record` / `accumulate` / `raise`, pacing, phase filters), plus `typed_observers` / `contains_event` typed-event assertions (with the present-but-null vs absent rule) |
+| §5.5 Observers | `observers[]` (behavior enum `record` / `accumulate` / `raise`, pacing, phase filters), plus `typed_observers` / `contains_event` typed-event assertions (with the present-but-null vs absent rule), the per-observer flag and `payload_byte_cap` directives, and `metadata_truncation` on a Langfuse observation entry |
 | §5.6 Persistence | `session_store`, `checkpointer`, per-invocation backend assertions |
 | §5.7 Invocation shape | Single-invocation vs `invocations[]` multi-invoke (sessions, resume, suspension cycles) |
 | §5.8 Expected outcomes | `final_state`, `execution_order`, `outcome`, `error.category`, `caught_exception` cause-chains, `drain_summary`, `observer_events`, OTel + Langfuse assertion shapes |
 | §5.9 Invariants | Name-keyed boolean predicates for nondeterministic-ordering cases |
 | §5.10 Value matchers | Format tokens (`<uuid>`, `<any-string>`, …) and first-occurrence bindings usable in any assertion value |
-| §5.11 Provider call-retry | Adaptive-retry directives — `per_attempt_override` schedules, caller `reask` builders, per-attempt wire assertions (llm-provider §7.1) |
+| §5.11 Provider call-retry | Adaptive-retry directives — `per_attempt_override` schedules, caller `reask` builders, per-attempt wire assertions (llm-provider §7.1) — plus `attribute_truncation`, the span-attribute byte-cap assertion (observability §5.5.5) |
 | §5.12 Structured-output error | The `structured_output_invalid` failure assertion and its `carries`-keyed error fields (llm-provider §7) |
 | §5.13 `carries` | Raised-error field assertion — pins named fields on a *raised* error by value / presence / substring |
 | §5.14 `chunk_size` | Construction override of a provider's per-call input cap, to exercise batch-chunking deterministically |

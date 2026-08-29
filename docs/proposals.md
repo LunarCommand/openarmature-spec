@@ -12,7 +12,7 @@ lifecycle and the proposal template.
 | [0122](proposals/0122-declared-field-collision-reachability.md) | Settle the shape of the extras surface | llm-provider | Draft | —               | —          |
 | [0121](proposals/0121-diagnostic-event-names-and-otel-observer-directive.md) | Give openarmature's mandated diagnostics a stable identity | observability | Accepted | Pending         | —          |
 | [0120](proposals/0120-fixture-directive-definition-rule.md) | Reconcile where a fixture directive may be defined | conformance-adapter | Accepted | Pending         | —          |
-| [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Cap the harvested error message and close the reserved-key gaps | observability | Draft | —               | —          |
+| [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Cap the harvested error message and close the reserved-key gaps | observability | Accepted | Pending         | —          |
 | [0118](proposals/0118-llm-error-message-channel.md) | Bring the harvested error message under the payload flag | observability | Accepted | Shipped (0.17.0)| —          |
 | [0117](proposals/0117-payload-leak-invariant-channels.md) | Broaden the Langfuse payload-leak invariant to all harvested-payload channels | observability | Accepted | Shipped (0.17.0)| —          |
 | [0116](proposals/0116-langfuse-isolation-fail-loud.md) | Fail-closed when Langfuse payloads would reach a shared provider | observability | Accepted | Shipped (0.17.0)| —          |

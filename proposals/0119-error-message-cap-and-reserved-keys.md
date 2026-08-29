@@ -1,9 +1,9 @@
 # 0119: Cap the Harvested Error Message and Close the Reserved-Key Gaps
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-14
-- **Accepted:**
+- **Accepted:** 2026-08-29
 - **Targets:**
   - spec/observability/spec.md **§5.5.5 Truncation contract**: generalize the contract from an enumerated
     list of `openarmature.*` span attributes to **every payload-classified value**, and state that where a
@@ -376,7 +376,8 @@ is what missed the nine underscore keys in the first place.
 
    That is not an isolated case. Four undefined directives surfaced while drafting this proposal
    (`content_repeat` and `attribute_truncation`, both documented here; `mock_tool` and the case-level
-   `disable_provider_payload`, both left). A subsequent sweep of every directive-shaped key used three or
+   `disable_provider_payload`, both left at the time. Proposal 0121 has since retired the latter, migrating
+   twelve cases across eleven fixtures onto the documented `otel_observer` directive). A subsequent sweep of every directive-shaped key used three or
    more times across the fixture corpus, checked against this capability spec, found **at least fifteen**
    more with no definition in it, among them `capture_as`, `expected_failure_isolation_event`,
    `no_spans_emitted`, `no_langfuse_observations_emitted`, `run_tool`, `noop`, `recoverable_state`,
@@ -385,11 +386,19 @@ is what missed the nine underscore keys in the first place.
    fixture green for the wrong reason.
 
    §3.2 permits per-directory harness notes, so some of these are legitimately per-directory rather than
-   defects. Sorting which is which turned out to be proposal-sized rather than open-question-sized, and it is
-   now **proposal 0120**, which measures the gap at 52 directives defined nowhere at all (35 of them
-   expected-outcome assertions, the class that passes silently when unimplemented) and adds the missing rule
-   that every directive must have a definition. This proposal still documents `content_repeat` and
-   `attribute_truncation` itself, since it is the one that mirrors them and 0120 does not depend on it.
+   defects. Sorting which is which turned out to be proposal-sized rather than open-question-sized, and it
+   became **proposal 0120**.
+
+   0120 as accepted is narrower than earlier drafts of this paragraph described. It reconciles **where** a
+   directive's definition may live, naming exactly two homes and re-anchoring §8.2's parsing rule to them.
+   It deliberately does **not** add a rule that every directive must have a definition, and it explicitly
+   leaves the population defined in neither home unresolved, since identifying which keys are genuinely
+   directives requires settling the open-versus-closed vocabulary question it puts out of scope. `span_tree`
+   appears there as its worked example rather than as an open gap. So the systemic gap this open question
+   names is still open after 0120; what 0120 settled is where a definition belongs once someone writes one.
+
+   This proposal still documents `content_repeat`, `attribute_truncation` and `base64_data_synthetic`
+   itself, since it is the one that mirrors them and 0120 does not depend on it.
 2. **Whether the cap should be configurable separately from the attribute cap.** This reuses the single
    per-observer cap on the grounds that one bound is easier to reason about than two. If a caller wants
    generous payload attributes and a tight bound on error text, that is a second knob, introduced by the
