@@ -461,6 +461,35 @@ response-side clause.
 
 ## observability
 
+### 0119 — error-message cap and reserved keys
+
+- **The directive vocabulary has a systemic documentation gap, and 0119 patched
+  only its edge.** [candidate-for-new-proposal] — 0119 documented four
+  primitives that were used by fixtures and defined nowhere (`content_repeat`,
+  `attribute_truncation`, `base64_data_synthetic`, plus the new `message_repeat`).
+  A sweep during drafting found at least fifteen more directive-shaped keys with
+  no definition, among them `capture_as`, `expected_failure_isolation_event`,
+  `no_spans_emitted`, `run_tool`, `recoverable_state` and `render_variables`.
+  Several are expected-outcome assertions, the category where an adapter silently
+  not implementing one turns a fixture green for the wrong reason. 0120 settled
+  **where** a definition may live but deliberately left this population alone,
+  since identifying which keys are genuinely directives needs the
+  open-versus-closed vocabulary question it put out of scope. The node-level
+  `calls_tool` block remains the sharpest instance: eight fixtures declare it, and
+  neither it nor any of its five sub-keys (`tool_name`, `tool_call_id`,
+  `arguments`, `mock_tool`, `stores_result_in`) is defined anywhere, while two
+  sections cite `mock_tool` as though one of them were.
+- **Whether the error-message cap should be configurable separately from the
+  attribute cap.** [still-relevant] — 0119 reuses the single per-observer cap on
+  the grounds that one bound is easier to reason about than two. A caller wanting
+  generous payload attributes and a tight bound on error text needs a second
+  knob, which belongs to the proposal that has a caller asking for it.
+- **Where truncation assertions belong in the directive vocabulary.**
+  [resolved-by-acceptance] — `metadata_truncation` sits in §5.5 beside
+  `metadata_absent`, its stated analogue, and `attribute_truncation` in §5.11
+  beside `attributes_absent`. That mirrors the existing organization rather than
+  reorganizing it, which a later pass may still want to do.
+
 ### 0121 — diagnostic event names
 
 - **Whether the token-budget and mode-(a) names belonged in this proposal.**

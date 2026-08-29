@@ -1,0 +1,186 @@
+# Langfuse error_message truncation (observability §5.5.5 / §8.7, proposal 0119).
+#
+# A failed observation's metadata.error_message is harvested exception text, so
+# §5.5.4 classifies it as payload and §5.5.5's byte cap governs it. Nothing
+# writes it to a span attribute, so the Langfuse observer cannot inherit an
+# already-truncated value the way §8.7's other payload fields do: it MUST apply
+# the cap DIRECTLY when it writes the field.
+#
+# The oversized message is synthesized with `message_repeat` (conformance-adapter
+# §5.15 for the retrieval mock, §5.5 for mock_llm) rather than carried inline, so
+# the fixture stays readable.
+#
+# Case 1 gates the Embedding path, case 2 the Generation path: §8.7 states the
+# rule for a failed Generation and its Embedding / Tool / Retriever counterparts,
+# and an implementation that hooked the cap into only one mapping passes the
+# other. Case 3 gates the flag interaction: with disable_provider_payload TRUE
+# the message is not emitted at all, so there is nothing to truncate and the
+# absence rather than a truncated value is what MUST be observed.
+#
+# All three set the Langfuse observer's payload flag explicitly. The cap that
+# governs is the LANGFUSE observer's own (§5.5.5 makes it per-observer, §8.9
+# makes the two observers independent), which is why no otel_observer block
+# appears here: an implementation taking the OTel observer's cap for this value
+# is non-conforming, and this fixture must not accidentally make the two agree.
+
+cases:
+  # Embedding path: the mock raises with a 100 KiB message, well over the 64 KiB
+  # default cap. error_type is unaffected by the cap (it is a classification
+  # token, ungated and short) and is asserted present to keep the truncation
+  # assertion from passing on an observation that emitted nothing at all.
+  - name: embedding_failure_error_message_truncated_to_cap
+    description: |
+      One embedding call fails with an oversized harvested message. The
+      Embedding observation emits at ERROR with error_message truncated per
+      §5.5.5: at most the default 64 KiB, ending with the truncation marker,
+      valid UTF-8, and a byte-exact prefix of the untruncated message. The
+      marker is appended to a plain string, since error_message is not
+      JSON-encoded, so the unparseable-JSON truncation signal does not apply.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["query one"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    mock_embedding:
+      - status: 503
+        raises:
+          error_type: "server_error"
+          message_repeat: {char: "E", bytes: 102400}
+    langfuse_observer:
+      disable_provider_payload: false
+    expected_error:
+      category: provider_unavailable
+      raised_from: embed_node
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "embed_node"
+            children:
+              - type: embedding
+                name: "openarmature.embedding.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"
+                metadata:
+                  error_type: "<any-string>"
+                metadata_truncation:
+                  error_message:
+                    max_bytes: 65536
+                    marker_pattern: "…\\[truncated, [0-9]+ bytes total\\]$"
+                    utf8_valid: true
+                    prefix_of_full_serialization: true
+
+  # Generation path: the same rule on the LLM mapping. An implementation that
+  # hooked the cap into the Embedding mapping alone passes case 1 and fails here.
+  - name: generation_failure_error_message_truncated_to_cap
+    description: |
+      One LLM call fails with an oversized harvested message. The Generation
+      observation emits at ERROR with error_message truncated per §5.5.5, the
+      same four properties as case 1. Gates that the cap is applied by the
+      §8.7 rule rather than by one mapping in isolation.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages:
+            - {role: user, content: "hello"}
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 503
+        raises:
+          error_type: "server_error"
+          message_repeat: {char: "G", bytes: 102400}
+    langfuse_observer:
+      disable_provider_payload: false
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask_llm
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"
+                metadata:
+                  error_type: "<any-string>"
+                metadata_truncation:
+                  error_message:
+                    max_bytes: 65536
+                    marker_pattern: "…\\[truncated, [0-9]+ bytes total\\]$"
+                    utf8_valid: true
+                    prefix_of_full_serialization: true
+
+  # Flag interaction: under the default posture the message is gated off
+  # entirely (§5.5.4, proposal 0118), so there is nothing to cap. Without this
+  # case an implementation could satisfy the cap by always suppressing the
+  # message, which would pass cases 1 and 2 vacuously if they were flag-agnostic.
+  - name: default_posture_withholds_message_so_nothing_to_truncate
+    description: |
+      The same oversized failure under disable_provider_payload TRUE. The
+      message is not emitted at all, so error_message is absent rather than
+      truncated, while error_type still emits because it is ungated (§8.4.3,
+      proposal 0118). Gates that truncation is applied to a message the flag
+      permits rather than substituting for the gate.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages:
+            - {role: user, content: "hello"}
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 503
+        raises:
+          error_type: "server_error"
+          message_repeat: {char: "G", bytes: 102400}
+    langfuse_observer:
+      disable_provider_payload: true
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask_llm
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"
+                metadata:
+                  error_type: "<any-string>"
+                metadata_absent:
+                  - error_message

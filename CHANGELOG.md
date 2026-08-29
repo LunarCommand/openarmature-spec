@@ -4,6 +4,28 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.116.0] — 2026-08-28
+
+**Changed**
+
+- **The truncation contract governs every payload-classified value** ([proposal 0119](proposals/0119-error-message-cap-and-reserved-keys.md)). observability §5.5.5 was written as a contract over an enumerated list of `openarmature.*` span attributes. Two payload-classified values are not span attributes at all and were therefore outside it: §8.4.1's Trace-level state payload, which §8.4.1 already subjected to this cap without §5.5.5 listing it, and a failed observation's `error_message`, which **nothing capped**. §5.5.5 now scopes itself to every payload-classified value and states that where a value has no span-attribute source the cap **MUST** be applied by the mapping that writes it. A value **MUST NOT** escape the cap merely because no span attribute carries it. It also states that the marker is appended to a plain string for a value that was never JSON-encoded, so the unparseable-JSON truncation signal does not apply to `error_message`.
+- **§8.7** described only inheritance from an already-truncated attribute source. It gains the direct-application arm for `metadata.error_message` on a failed Generation and its Embedding, Tool and Retriever counterparts (§8.4.5 to §8.4.7), and states that the **Langfuse observer's own** configured cap governs, since §5.5.5 makes the cap per-observer and §8.9 makes the two observers independent. An observer **MUST NOT** take the OTel observer's cap for this value.
+- **§5.5.4** now says a message the payload flag permits to emit is subject to §5.5.5. Proposal 0118 classified the message as payload for gating without saying whether the bound followed it, which left the one payload channel with no size limit.
+- **§3.4 closes two reservation gaps.** The exact-match reserved set gains `error_type`, `error_message`, `token_budget` and `token_budget_exceeded`, all written at the top level of a Langfuse metadata object by the §8.4 mappings, taking it from 29 names to 33. And the reserved-**namespace** rule is extended to `openarmature_` alongside the dotted `openarmature.` and `gen_ai.`, closing the nine underscore-prefixed keys §8.4.5 to §8.4.7 write, which cleared both existing rules.
+
+**Added**
+
+- conformance-adapter **§5.11** documents the existing **`attribute_truncation`** directive beside its span-side sibling `attributes_absent`, including all four sub-keys (`max_bytes`, `marker_pattern`, `utf8_valid`, `prefix_of_full_serialization`) and what each distinguishes: a value shortened without the marker, one that split a multi-byte sequence, and one that re-serialized rather than cut all fail a different sub-key.
+- conformance-adapter **§5.5** gains **`metadata_truncation`** on a Langfuse observation entry, the metadata-field analogue carrying the same four sub-keys, and a **`raises: {error_type, message | message_repeat}`** form on the case-level `mock_llm`, which otherwise accepts only `{status, body}` and so could not induce a Generation failure with a caller-controlled message.
+- conformance-adapter **§5.15** gains **`message_repeat: {char, bytes}`** as an alternative to a literal `message` on the retrieval mocks' `raises` sub-directive, synthesizing an oversized exception message. Mutually exclusive with `message`; an adapter **MUST** reject an entry carrying both.
+- conformance-adapter **§5.1** documents the existing **`content_repeat`** primitive beside `calls_llm`, and **`base64_data_synthetic`**, which the proposal does not name. Both are test-only input shaping of exactly the class `message_repeat` joins, and both were used by fixtures while defined nowhere in §5; documenting two of the three would have left the third as the remaining example of the undocumented shape.
+- New observability fixture **160** (`langfuse-error-message-truncation`, three cases) gating the cap on a failed Embedding and a failed Generation, plus the flag interaction: under the default posture the message is withheld entirely, so it is absent rather than truncated. Without that third case an implementation could satisfy the cap by always suppressing the message. It deliberately configures only the Langfuse observer, since setting both would make the two caps agree and hide an implementation taking the wrong one.
+- Fixture **028** gains five rejection cases following the 0042 precedent, one per newly reserved name plus one for the `openarmature_` namespace. The namespace case uses a key that is **not** one of the nine, so it gates a namespace reservation rather than nine additional exact matches.
+
+**Notes**
+
+- **MINOR.** New normative obligations on values openarmature already emits, and four new conformance directives. No caller metadata key that was previously accepted becomes rejected except the newly reserved names, which is the point. observability and conformance-adapter `Latest` both move to 0.116.0.
+
 ## [0.115.0] — 2026-08-27
 
 **Added**

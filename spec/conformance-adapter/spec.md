@@ -405,6 +405,19 @@ These directives appear under `nodes.<node_name>:` and define what the node does
   provider (configured by the case-level `mock_llm`, §5.5) with the given messages and stores the
   response content in `<state_field>`. Used by the observability LLM-span fixtures. Exercises
   observability §5.5 (LLM provider span).
+
+  Two **synthesis primitives** may stand in for literal content inside a `messages:` entry, so a fixture can
+  induce an oversized or shaped payload without carrying one inline:
+
+  - **`content_repeat: {char: <str>, bytes: <int>}`** in place of a message's text content, synthesizing it
+    by repeating `char` until the content is `bytes` long. Used by the payload-truncation fixtures, whose
+    whole subject is a value larger than the §5.5.5 cap.
+  - **`base64_data_synthetic: {bytes: <int>}`** in place of an inline image's `source.data`, synthesizing a
+    base64 blob of the given byte length. The redaction rule it exercises (observability §5.5.5) is about
+    the payload's shape, so no valid image bytes are needed.
+
+  Both are test-only input shaping and assert nothing themselves. `message_repeat` (§5.15) is the same
+  primitive applied to an exception message.
 - **`calls_llm_from_wrapper: {phase: pre|post, messages: [...]}`** — the adapter wraps the node in a
   middleware that issues exactly one real `complete()` call against the configured mock provider in
   the named phase: `pre` (before `next()`, so the calling node's span is not yet open) or `post`
@@ -655,7 +668,14 @@ fixture.
   top level (siblings of `nodes:` / `expected:`, not under `observers:`): `mock_llm: [{status: <int>,
   body: {...}}, ...]` supplies the canned OpenAI-compatible chat-completion responses (llm-provider §8
   wire shape) the mock provider returns to successive `complete()` calls (paired with `calls_llm` /
-  `calls_llm_from_wrapper`); `disable_llm_spans: true` constructs the OTel observer with the §5.5
+  `calls_llm_from_wrapper`). A **non-2xx** `mock_llm` entry MAY carry a
+  **`raises: {error_type, message | message_repeat}`** sub-directive, the LLM-side counterpart of §5.15's
+  retrieval form and of the tool path's `mock_tool: {raises: ...}` (fixtures 093 / 098): it overrides
+  only the exception's literal `error_type` / `error_message` while the `status` still fixes the
+  deterministic llm-provider §7 `error_category`. `message_repeat` carries §5.15's shape and the same
+  mutual exclusion with `message`.
+  Without it a fixture cannot induce a Generation failure with a caller-controlled message, since
+  `mock_llm` otherwise accepts only `{status, body}`. `disable_llm_spans: true` constructs the OTel observer with the §5.5
   LLM-span opt-out; `caller_global_otel_active: true` installs a second exporter on the OTel global
   TracerProvider to exercise the §6 isolation rule.
 
@@ -696,6 +716,7 @@ fixture.
   - **`otel_observer: {disable_provider_payload: <bool>, disable_genai_semconv: <bool>}`** configures the composed OTel observer's flags for the case, the OTel-side counterpart of `langfuse_observer`. Both keys are optional; omitted, the observer keeps that flag's observability §5.5.4 default. An adapter **MUST** honor the directive when present: a case that sets a flag and an adapter that ignores it produce the same observable result as a case that does not set it, so silently dropping it makes the case vacuous rather than failing it.
 
 - **`metadata_absent` on a Langfuse observation entry** (observability §5.5.4 / §8.4, [proposal 0118](../../proposals/0118-llm-error-message-channel.md)). An observation entry inside `expected.langfuse_trace.observations` MAY carry **`metadata_absent: [<key>, ...]`**, asserting none of the listed keys are present in that observation's `metadata`. The existing `metadata:` assertion is a **subset** match (an observation carries cross-cutting keys such as `correlation_id` and the §8.4.2 node dimensions that a fixture does not enumerate), so it can assert a key's value but never its absence. This is the Langfuse-observation analogue of the OTel-span `attributes_absent` directive (§5.11, proposal 0095), added for the same reason and with the same semantics. Fixture 159 uses it to gate `disable_provider_payload`'s suppression of a failed observation's `error_message`, which cannot be expressed by asserting values. `error_type` is not gated and stays present, so it is asserted by value in the same case rather than through this directive.
+- **`metadata_truncation` on a Langfuse observation entry** (observability §5.5.5 / §8.7, [proposal 0119](../../proposals/0119-error-message-cap-and-reserved-keys.md)). **`metadata_truncation: {<key>: {max_bytes: <int>, marker_pattern: <str>, utf8_valid: <bool>, prefix_of_full_serialization: <bool>}}`** asserts that the named `metadata` field was truncated per observability §5.5.5. It is the metadata-field analogue of the span-side `attribute_truncation` (§5.11) and carries the same four independent sub-keys with the same meanings; an entry MAY carry any subset. It exists because a value written directly by the Langfuse mapping, such as a failed observation's `error_message`, has no span attribute for `attribute_truncation` to assert against.
 
 OTel and Langfuse emission are NOT observer behaviors. Observability fixtures that exercise OTel
 span emission OR Langfuse trace/observation emission rely on **harness primitives** the adapter
@@ -1069,6 +1090,21 @@ attempts. Because those attribute assertions are a subset match, asserting an at
 **`attributes_absent: [<key>, ...]`**, asserting none of the listed attribute keys are present on
 that span.
 
+A span entry MAY also carry **`attribute_truncation: {<attribute_key>: {max_bytes: <int>, marker_pattern:
+<str>, utf8_valid: <bool>, prefix_of_full_serialization: <bool>}}`**, asserting that the named attribute was
+truncated per observability §5.5.5. All four sub-keys are independent assertions and an entry MAY carry any
+subset:
+
+- `max_bytes` — the attribute's UTF-8 byte length is at most this value.
+- `marker_pattern` — the value ends with a string matching this pattern, the §5.5.5 truncation marker.
+- `utf8_valid` — the value is valid UTF-8, gating §5.5.5's code-point-boundary backtracking.
+- `prefix_of_full_serialization` — the value up to the marker is a byte-exact prefix of what the untruncated
+  serialization would have been, gating that truncation cut rather than re-encoded.
+
+Together they distinguish a correctly truncated value from one that is merely short: an implementation that
+emitted a shortened value without the marker, or that split a multi-byte sequence, or that re-serialized
+rather than cut, fails a different sub-key in each case.
+
 ### 5.12 Provider structured-output error assertion (llm-provider §7)
 
 llm-provider call fixtures assert a raised `structured_output_invalid` error (llm-provider §7, its
@@ -1213,6 +1249,12 @@ the harness-internal stand-in shape used by the pre-wire-mapping fixtures applie
   `error_message` (the mock `message` maps to the event's `error_message`) **while the `status` still fixes the
   deterministic §7 `error_category`**, so a fixture can assert those two fields literally rather than by format.
   `raises` is not used without a `status` (retrieval has no other category source).
+
+  In place of a literal `message`, a `raises` entry MAY carry **`message_repeat: {char: <str>, bytes: <int>}`**,
+  which synthesizes an exception message by repeating `char` until the message is `bytes` long. It exists so a
+  fixture can induce an **oversized** message without carrying one inline, the same reason `content_repeat`
+  (§5.1) exists for message content. `message` and `message_repeat` are mutually exclusive on one entry; an
+  adapter **MUST** reject an entry carrying both, since the intended message would be ambiguous.
 
 **Wire-request assertions** (case-level):
 
@@ -1605,3 +1647,4 @@ rule rather than an independent sanction: both are homes in the recognized vocab
 - §5's preamble gained a **Definition homes** rule naming exactly two places a directive's definition may live: §5 itself for the general surface, and a per-directory harness note for a contract specific to one capability's fixtures. Together they are the **recognized vocabulary**; §8.2's lossless-parsing rule is re-anchored to that phrase from "the §5 directive vocabulary", and §1, §3.2, §3.3 and §11 are reconciled to it. Prospective, binding on a proposal that introduces or redefines a directive after spec version 0.113.0. §5.9's fixture-specific invariant predicates are deliberately outside the rule and the §8.2-versus-§5.9 conflict survives for them, by [proposal 0120](../../proposals/0120-fixture-directive-definition-rule.md)
 - §4.2 *Multi-case form* gained **The `graph:` container**, specifying a case form 17 shipped cases already used and no section defined: what the container holds, that every other case key stays its sibling, that the two case forms are equivalent, and that a container case asserting a runtime outcome MUST be executed. §5.4 *Composition directives* gained a **Subgraph declaration placement** rule: a declaration (`subgraph:` or `subgraphs:`) is scoped to the graph specification it accompanies, so an adapter MUST accept it at the document top level, inside a case, or inside a case's `graph:` block, and MUST resolve a name declared at more than one site using the innermost declaration in scope, with the `subgraphs:` mapping entry governing where both forms appear at one site. The section's three top-level claims and its `nodes.<node_name>:` preamble are reworded to match. Its own `conformance/` directory opens with fixture 001 by [proposal 0123](../../proposals/0123-case-level-subgraph-declaration.md)
 - §5.5 *Observer / observability directives* gained **`event_name`** on an `expected.log_records` entry, asserting the record's OTel `EventName` field so a fixture can pin which mandated diagnostic fired rather than only a severity, and **`otel_observer: {disable_provider_payload: <bool>}`**, the OTel-side counterpart of `langfuse_observer` which an adapter MUST honor. The `langfuse_client` paragraph is reconciled to the new directive, and twelve cases across eleven fixtures migrated off the undocumented bare case-level form, covering both `disable_provider_payload` and `disable_genai_semconv`, by [proposal 0121](../../proposals/0121-diagnostic-event-names-and-otel-observer-directive.md)
+- §5.11 documented the existing **`attribute_truncation`** directive and all four of its sub-keys beside `attributes_absent`; §5.5 gained **`metadata_truncation`** on a Langfuse observation entry and a **`raises: {error_type, message | message_repeat}`** form on `mock_llm`; §5.15 gained **`message_repeat`** on the retrieval mocks' `raises`; and §5.1 documented the existing **`content_repeat`** and **`base64_data_synthetic`** synthesis primitives beside `calls_llm` by [proposal 0119](../../proposals/0119-error-message-cap-and-reserved-keys.md)

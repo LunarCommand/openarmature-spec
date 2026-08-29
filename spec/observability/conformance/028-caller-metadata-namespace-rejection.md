@@ -1,13 +1,13 @@
 # 028 — Caller-Metadata Namespace Rejection
 
 Verifies §3.4's reserved-key rejection at the `invoke()` API boundary. Caller metadata keys
-under the reserved `openarmature.*` / `gen_ai.*` namespaces, OR exactly matching a reserved
+under the reserved `openarmature.*`, `openarmature_*` or `gen_ai.*` namespaces, OR exactly matching a reserved
 OA-emitted metadata key name (the §8.4 Langfuse set), MUST cause the framework to raise an
 error BEFORE any work begins — no spans emitted, no observability backend artifacts produced.
 
 **Spec sections exercised:**
 
-- §3.4 — reserved-namespace rule: keys under `openarmature.*` and `gen_ai.*` MUST be rejected
+- §3.4 — reserved-namespace rule: keys under `openarmature.*`, `openarmature_*` or `gen_ai.*` MUST be rejected
   at the `invoke()` API boundary. Error category is implementation-defined per the language's
   API-boundary error idiom (Python `ValueError`, TypeScript `RangeError`, etc.), same shape
   as §6 of graph-engine's drain-timeout-input validation.
@@ -75,6 +75,16 @@ error BEFORE any work begins — no spans emitted, no observability backend arti
 - Helper case (9): `set_invocation_metadata` raises at the call site with the same per-language
   error idiom; no spans / observations follow.
 
+**Proposal 0119 catch-up (five cases).** §3.4's reservation had two gaps, closed together following the
+0042 precedent of one rejection case per newly reserved name:
+
+- Four names the §8.4 mappings write at the top level of a Langfuse metadata object but the exact-match
+  set omitted: `error_type`, `error_message`, `token_budget` and `token_budget_exceeded`.
+- The **`openarmature_` underscore namespace**. Nine keys §8.4.5 to §8.4.7 write in that form cleared both
+  existing rules: they are not in the dotted `openarmature.` namespace and they are not exact matches.
+  `rejects_openarmature_underscore_prefix` deliberately uses a key that is **not** one of the nine, so it
+  gates a namespace reservation rather than nine additional exact matches.
+
 **What fails:**
 
 - Framework accepts the invalid metadata and proceeds with the invocation, emitting spans /
@@ -91,3 +101,6 @@ error BEFORE any work begins — no spans emitted, no observability backend arti
 - Framework rejects reserved names only at the `invoke()` boundary but NOT in the
   `set_invocation_metadata` helper — a caller can still inject a reserved name mid-invocation
   and collide with OA-emitted Langfuse metadata (the gap case 6 guards against).
+- Framework reserves the nine `openarmature_` keys individually rather than the namespace — passes the
+  four exact-name cases and the nine literal keys, but admits any other `openarmature_`-prefixed caller
+  key, which is what the namespace rule exists to forbid.
