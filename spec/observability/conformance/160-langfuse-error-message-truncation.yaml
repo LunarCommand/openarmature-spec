@@ -26,9 +26,11 @@
 #   N = 1024 - 34 = 990;  990 mod 4 = 2, so N falls INSIDE a sequence
 #   step 4 backtracks to 988; emitted value = 988 + 34 = 1022 bytes
 #
-# bytes: 102400 is divisible by 4, so message_repeat synthesizes a whole number
-# of characters and the fixture never depends on rounding behaviour that
-# conformance-adapter §5.15 leaves unspecified. Do not "tidy" the cap to a round
+# bytes: 102400 is divisible by 4, so message_repeat synthesizes exactly 25600
+# characters and the synthesized length is exactly 102400 bytes. Where it does
+# not divide, §5.15 rounds DOWN to the largest whole number of repetitions
+# fitting in `bytes`; this fixture avoids depending on that only because the
+# marker arithmetic below quotes an exact M. Do not "tidy" the cap to a round
 # 1024-multiple of the character width or change the filler to ASCII: either
 # silently disables the utf8_valid assertion.
 #
@@ -266,3 +268,56 @@ cases:
                     marker_pattern: "…\\[truncated, [0-9]+ bytes total\\]$"
                     utf8_valid: true
                     prefix_of_full_serialization: true
+
+  # The below-cap control. Cases 1, 2 and 4 all assert that an OVERSIZED message
+  # comes back truncated; none of them asserts that a message UNDER the cap comes
+  # back whole. Without this case an implementation that truncated every message
+  # unconditionally, or that appended the marker regardless of length, passes all
+  # of them. §5.5.5 truncates only when the value EXCEEDS the configured cap.
+  - name: error_message_below_cap_untouched
+    description: |
+      A failed Generation whose harvested message is far shorter than the cap.
+      error_message is asserted by its literal value, which no truncated form
+      can satisfy: truncation would both shorten it and append the §5.5.5
+      marker. Keeps the three truncation cases honest by pinning the other side
+      of §5.5.5's threshold.
+    state:
+      fields:
+        msg:
+          type: string
+          default: ""
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages:
+            - {role: user, content: "hello"}
+          stores_response_in: msg
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 503
+        raises:
+          error_type: "server_error"
+          message: "service unavailable"
+    langfuse_observer:
+      disable_provider_payload: false
+      payload_byte_cap: 1024
+    expected_error:
+      category: provider_unavailable
+      raised_from: ask_llm
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "ask_llm"
+            children:
+              - type: generation
+                name: "openarmature.llm.complete"
+                level: ERROR
+                statusMessage: "provider_unavailable"
+                metadata:
+                  error_type: "server_error"
+                  error_message: "service unavailable"

@@ -490,6 +490,29 @@ response-side clause.
   `metadata_absent`, its stated analogue, and `attribute_truncation` in §5.11
   beside `attributes_absent`. That mirrors the existing organization rather than
   reorganizing it, which a later pass may still want to do.
+- **Structured payload channels have no truncation rule.** [candidate-for-new-proposal]
+  — §5.5.5's two source-less values are both strings, so the algorithm applies
+  unchanged. `embedding.output` (§8.4.5) is a third source-less payload channel
+  and it is **not** covered: its vectors reach no OTel attribute, unlike the
+  rerank output which §5.5.13 carries as `openarmature.rerank.results`, and it
+  can be arbitrarily large. Extending the cap to it was drafted into 0119's
+  accept and withdrawn, because §5.5.5 serializes, cuts at a code-point boundary
+  and appends a marker, which would render a numeric array as a marker-bearing
+  string and §8.4.5 defines no such shape. Closing this needs a defined
+  rendering for a truncated structured value (drop trailing elements, or emit a
+  count, or something else) rather than a scope extension, plus a fixture.
+- **observability §8.7's Tool arm is normative but has no fixture.**
+  [candidate-for-new-proposal] — the direct-application arm binds a failed
+  Generation and its Embedding, Tool and Retriever counterparts (§8.4.5 to
+  §8.4.7). Fixture 160 gates three of the four. The Tool arm is not gated
+  because inducing an oversized harvested message from a tool call requires
+  `mock_tool`, and neither it nor the `calls_tool` block it sits inside is
+  defined in conformance-adapter §5, so a case would rest on undocumented
+  vocabulary. This matters more than an ordinary coverage gap: the mappings are
+  separate, an implementation can cap one and not another, and detecting exactly
+  that is why fixture 160 exists. An implementer should read the Tool arm as
+  binding and unpinned. It closes with the change that documents the
+  `calls_tool` family, where the vocabulary and the case land together.
 
 ### 0121 — diagnostic event names
 

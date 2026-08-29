@@ -410,8 +410,13 @@ These directives appear under `nodes.<node_name>:` and define what the node does
   induce an oversized or shaped payload without carrying one inline:
 
   - **`content_repeat: {char: <str>, bytes: <int>}`** in place of a message's text content, synthesizing it
-    by repeating `char` until the content is `bytes` long. Used by the payload-truncation fixtures, whose
-    whole subject is a value larger than the §5.5.5 cap.
+    by repeating `char` until adding another repetition would exceed `bytes`. The result is the **largest
+    whole number of repetitions whose UTF-8 encoding is at most `bytes`**: never longer than `bytes`,
+    possibly shorter when `char` is multi-byte, and always valid UTF-8. A fixture needing an exact byte
+    count uses a single-byte `char`. Used by the payload-truncation fixtures, whose whole subject is a value
+    larger than the §5.5.5 cap, which is why the multi-byte case is specified rather than left to the
+    adapter. `content` and `content_repeat` are mutually exclusive on one message; an adapter **MUST**
+    reject a message carrying both with **`fixture_schema_invalid`** (§9).
   - **`base64_data_synthetic: {bytes: <int>}`** in place of an inline image's `source.base64_data` (llm-provider §3.1.3 *Image source*), synthesizing a
     base64 blob of the given byte length. The redaction rule it exercises (observability §5.5.5) is about
     the payload's shape, so no valid image bytes are needed.
@@ -1265,10 +1270,16 @@ the harness-internal stand-in shape used by the pre-wire-mapping fixtures applie
   `raises` is not used without a `status` (retrieval has no other category source).
 
   In place of a literal `message`, a `raises` entry MAY carry **`message_repeat: {char: <str>, bytes: <int>}`**,
-  which synthesizes an exception message by repeating `char` until the message is `bytes` long. It exists so a
+  which synthesizes an exception message by repeating `char` until adding another repetition would exceed
+  `bytes`. The result is the **largest whole number of repetitions whose UTF-8 encoding is at most `bytes`**:
+  never longer than `bytes`, possibly shorter when `char` is multi-byte, and always valid UTF-8. A fixture
+  needing an exact byte count uses a single-byte `char`. The rule is normative rather than incidental,
+  because these directives feed the §5.5.5 truncation contract and an off-by-one at a sequence boundary is
+  the precise defect `utf8_valid` exists to catch. It exists so a
   fixture can induce an **oversized** message without carrying one inline, the same reason `content_repeat`
   (§5.1) exists for message content. `message` and `message_repeat` are mutually exclusive on one entry; an
-  adapter **MUST** reject an entry carrying both, since the intended message would be ambiguous.
+  adapter **MUST** reject an entry carrying both with **`fixture_schema_invalid`** (§9), since the intended
+  message would be ambiguous.
 
 **Wire-request assertions** (case-level):
 
@@ -1563,8 +1574,10 @@ recover or default) when the corresponding condition fires:
   does not recognize. Silent skipping would mask conformance gaps; the adapter MUST raise and
   surface the unknown directive name + the fixture location.
 - **`fixture_schema_invalid`** — a fixture's YAML is structurally broken (required directive
-  missing, malformed type for a known directive, invalid YAML syntax). The adapter MUST raise
-  rather than infer defaults.
+  missing, malformed type for a known directive, invalid YAML syntax), **or** a co-occurrence
+  constraint between known directives is violated (two mutually exclusive directives supplied on
+  one entry, such as `message` with `message_repeat` or `content` with `content_repeat`). The
+  adapter MUST raise rather than infer defaults or pick one of the two.
 - **`fixture_version_unsupported`** — a fixture declares `conformance_version > adapter_version`.
   The adapter MUST raise per §4.4 + §8.5.
 - **`harness_primitive_missing`** — a fixture references a harness primitive (named SessionStore

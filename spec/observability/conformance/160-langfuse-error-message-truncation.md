@@ -38,16 +38,18 @@ N = 1024 - 34 = 990;  990 mod 4 = 2, so N falls inside a sequence
 step 4 backtracks to 988;  emitted value = 988 + 34 = 1022 bytes
 ```
 
-`bytes: 102400` is divisible by 4, so `message_repeat` synthesizes a whole number of characters and the
-fixture never depends on rounding behaviour that conformance-adapter §5.15 leaves unspecified.
+`bytes: 102400` is divisible by 4, so `message_repeat` synthesizes exactly 25600 characters and the message
+is exactly 102400 bytes, which is the `M` the marker quotes. Where `bytes` does not divide evenly,
+conformance-adapter §5.15 rounds **down** to the largest whole number of repetitions that fits.
 
 Changing the filler to ASCII, or rounding the cap to a multiple of the character width, silently disables
 the `utf8_valid` assertion while leaving the fixture green. The YAML header says so at the point of change.
 
 ## How the cases discriminate
 
-Each case fails a call whose mock supplies a 100 KiB harvested message, synthesized with `message_repeat`
-(conformance-adapter §5.15 for the retrieval mocks, §5.5 for `mock_llm`) rather than carried inline.
+Cases 1 to 4 fail a call whose mock supplies a 100 KiB harvested message, synthesized with `message_repeat`
+(conformance-adapter §5.15 for the retrieval mocks, §5.5 for `mock_llm`) rather than carried inline. Case 5
+supplies a short literal message instead, as the control.
 
 1. **`embedding_failure_error_message_truncated_to_cap`** — the Embedding mapping (§8.4.5). Asserts all four
    `metadata_truncation` sub-keys: at most 1024 bytes, ends with the §5.5.5 marker, valid UTF-8 across the
@@ -66,6 +68,11 @@ Each case fails a call whose mock supplies a 100 KiB harvested message, synthesi
 4. **`retriever_failure_error_message_truncated_to_cap`** — the Retriever mapping (§8.4.7). An
    implementation that wired the cap into the Generation and Embedding mappings but not this one passes
    cases 1 and 2 and fails here.
+5. **`error_message_below_cap_untouched`** — the control. Cases 1, 2 and 4 all assert an **oversized**
+   message comes back truncated; none of them asserts a message **under** the cap comes back whole. An
+   implementation that truncated unconditionally, or appended the marker regardless of length, passes all
+   three. This case pins the other side of §5.5.5's threshold by asserting `error_message` literally, which
+   no truncated form can satisfy: truncation both shortens the value and appends the marker.
 
 `error_type` is asserted by its **literal** value in all four. The mock's `raises` pins it, so a format
 matcher would assert less than the fixture knows; fixture 150 sets the same precedent. Asserting it also
@@ -81,6 +88,10 @@ The Tool arm is not gated. It needs an oversized harvested message from `mock_to
 nor the `calls_tool` block it sits inside is defined in conformance-adapter §5, so the case would rest on
 undocumented vocabulary. Recorded here rather than built on an undefined directive; closing it belongs with
 the work that documents that family.
+
+This is a **normative rule with no fixture**, not merely a thin spot, so it is also recorded in
+`docs/open-questions.md` where an implementer building against §8.7 will look. The mappings are separate and
+an implementation can cap one and not another, which is the defect this fixture exists to detect.
 
 ## Not JSON-encoded
 
