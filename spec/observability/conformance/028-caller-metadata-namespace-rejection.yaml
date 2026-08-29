@@ -1,7 +1,7 @@
 # §3.4 namespace-collision rejection: caller-supplied metadata keys
-# under reserved namespaces (openarmature.* and gen_ai.*) MUST be
-# rejected at the invoke() API boundary, before any observer
-# emission. Two cases cover both reserved prefixes.
+# under reserved namespaces (openarmature.*, openarmature_* and
+# gen_ai.*) MUST be rejected at the invoke() API boundary, before any
+# observer emission. Three cases cover the three reserved prefixes.
 
 cases:
   - name: rejects_openarmature_prefix

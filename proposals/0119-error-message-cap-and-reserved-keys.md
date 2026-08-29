@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-14
-- **Accepted:** 2026-08-28
+- **Accepted:** 2026-08-29
 - **Targets:**
   - spec/observability/spec.md **§5.5.5 Truncation contract**: generalize the contract from an enumerated
     list of `openarmature.*` span attributes to **every payload-classified value**, and state that where a

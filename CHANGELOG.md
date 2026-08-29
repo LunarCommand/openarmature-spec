@@ -4,7 +4,7 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
-## [0.116.0] — 2026-08-28
+## [0.116.0] — 2026-08-29
 
 **Changed**
 
@@ -19,12 +19,14 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - conformance-adapter **§5.5** gains **`metadata_truncation`** on a Langfuse observation entry, the metadata-field analogue carrying the same four sub-keys, and a **`raises: {error_type, message | message_repeat}`** form on the case-level `mock_llm`, which otherwise accepts only `{status, body}` and so could not induce a Generation failure with a caller-controlled message.
 - conformance-adapter **§5.15** gains **`message_repeat: {char, bytes}`** as an alternative to a literal `message` on the retrieval mocks' `raises` sub-directive, synthesizing an oversized exception message. Mutually exclusive with `message`; an adapter **MUST** reject an entry carrying both.
 - conformance-adapter **§5.1** documents the existing **`content_repeat`** primitive beside `calls_llm`, and **`base64_data_synthetic`**, which the proposal does not name. Both are test-only input shaping of exactly the class `message_repeat` joins, and both were used by fixtures while defined nowhere in §5; documenting two of the three would have left the third as the remaining example of the undocumented shape.
-- New observability fixture **160** (`langfuse-error-message-truncation`, three cases) gating the cap on a failed Embedding and a failed Generation, plus the flag interaction: under the default posture the message is withheld entirely, so it is absent rather than truncated. Without that third case an implementation could satisfy the cap by always suppressing the message. It deliberately configures only the Langfuse observer, since setting both would make the two caps agree and hide an implementation taking the wrong one.
+- New observability fixture **160** (`langfuse-error-message-truncation`, four cases) gating the cap on a failed Embedding, Generation and Retriever observation, plus the flag interaction: under the default posture the message is withheld entirely, so it is absent rather than truncated, which gates that an implementation applies the §5.5.4 gate and the §5.5.5 cap in that order. Every case sets a **non-default** `payload_byte_cap` on the Langfuse observer alone and leaves the OTel observer at the default, because §8.7's *MUST NOT take the OTel observer's cap* is only testable when the two differ; leaving both unset puts them at the same default, where an implementation reading the wrong one passes. The filler is a four-byte character with arithmetic that lands the cut inside a sequence, so `utf8_valid` can actually fail. §8.7's **Tool** arm is left uncovered and recorded in the fixture: it would need `mock_tool`, which conformance-adapter §5 does not define.
+- conformance-adapter **§5.5** documents the existing **`payload_byte_cap`** on `langfuse_observer` and `otel_observer`, the per-observer byte cap of observability §5.5.5. It was used by fixture 023 and defined nowhere in §5, and it is the directive a fixture needs to separate the two observers' caps, which §8.7's new MUST NOT requires.
 - Fixture **028** gains five rejection cases following the 0042 precedent, one per newly reserved name plus one for the `openarmature_` namespace. The namespace case uses a key that is **not** one of the nine, so it gates a namespace reservation rather than nine additional exact matches.
 
 **Notes**
 
-- **MINOR.** New normative obligations on values openarmature already emits, and four new conformance directives. No caller metadata key that was previously accepted becomes rejected except the newly reserved names, which is the point. observability and conformance-adapter `Latest` both move to 0.116.0.
+- **MINOR.** New normative obligations on values openarmature already emits, plus three new conformance directives (`metadata_truncation`, `message_repeat`, `mock_llm`'s `raises` form) and three existing ones documented for the first time (`attribute_truncation`, `content_repeat`, `base64_data_synthetic`, alongside `payload_byte_cap`).
+- **Breaking for some callers**, in the pre-1.0 sense GOVERNANCE.md permits in a MINOR bump, and on the same footing as the 0042 catch-up. Two surfaces become rejected at `invoke()`: the four newly reserved exact names, and **any** caller key under the `openarmature_` prefix. The second is a namespace reservation rather than a fixed list, so the set of newly rejected keys is unbounded; fixture 028's namespace case uses a key that is not one of the nine openarmature already writes, precisely to pin that. observability and conformance-adapter `Latest` both move to 0.116.0.
 
 ## [0.115.0] — 2026-08-27
 

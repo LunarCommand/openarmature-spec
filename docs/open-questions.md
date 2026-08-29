@@ -464,9 +464,10 @@ response-side clause.
 ### 0119 — error-message cap and reserved keys
 
 - **The directive vocabulary has a systemic documentation gap, and 0119 patched
-  only its edge.** [candidate-for-new-proposal] — 0119 documented four
+  only its edge.** [candidate-for-new-proposal] — 0119 documented five
   primitives that were used by fixtures and defined nowhere (`content_repeat`,
-  `attribute_truncation`, `base64_data_synthetic`, plus the new `message_repeat`).
+  `attribute_truncation`, `base64_data_synthetic`, `payload_byte_cap`, plus the
+  new `message_repeat`).
   A sweep during drafting found at least fifteen more directive-shaped keys with
   no definition, among them `capture_as`, `expected_failure_isolation_event`,
   `no_spans_emitted`, `run_tool`, `recoverable_state` and `render_variables`.
