@@ -1,4 +1,4 @@
-# 054 — Cohere `output_dimension` Declared-Field Collision (the rename arm)
+# 054 — Cohere Declared-Field Collisions (the rename and always-managed arms)
 
 Verifies llm-provider §6 clause (b) on §8.4 Cohere, where the declared
 `EmbeddingRuntimeConfig.dimensions` is realized on the wire under a **different** name,
@@ -34,6 +34,20 @@ set. The enumeration is now three keys, so these cases pin new behavior and cann
 3. `extras_output_dimension_rides_untouched_when_declared_absent` — declared `dimensions` **absent**, extras
    `output_dimension: 8`. The mapping produces no `output_dimension` of its own, so the key is not managed on
    this call and the extras value rides untouched.
+4. `conflicting_extras_input_type_rejected_even_with_declared_absent` — the **always-managed** arm. Cohere's
+   `/v2/embed` requires `input_type` and an absent OA value maps to `search_document`, so the mapping emits
+   the key on **every** call. Per §6 that makes it a clause-(b) key with **no declared-field-absent branch**,
+   the always-determined case §6 describes for a mode switch such as `stream`. With the declared field absent
+   and extras `input_type: "search_query"`, the value still conflicts and is rejected pre-send.
+5. `matching_extras_input_type_is_no_op` — the same shape with `search_document`, which matches what the
+   mapping emits, so it is a redundant no-op. Cases 4 and 5 together pin that always-managed is a collision
+   rule, not a blanket ban on the key.
+
+Cases 4 and 5 exist because `output_dimension` and `input_type` are **opposite** arms of clause (b). An
+implementation that applied the `output_dimension` pattern uniformly would look for a declared value, find
+none, and let the extras key through onto a wire field it had already written, putting two values on one JSON
+key so one silently wins. Case 3 and case 4 differ only in which key they use and disagree on the outcome,
+which is the whole point.
 
 **What passes:**
 

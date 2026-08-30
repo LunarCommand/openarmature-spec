@@ -5,7 +5,7 @@
 # mandatory "float". This fixture pins the malformed edge 0099/0105 left open.
 #
 # A malformed extras value — not a list, or a list carrying an element that is
-# not of the expected element type/shape (here, not a precision string) — is
+# not of the expected element type/shape (here, not a string) — is
 # treated as if no extra were supplied: the wire carries embedding_types:
 # ["float"] ONLY (the mapping's mandatory value). It is ALL-OR-NOTHING — a
 # partially-malformed list is NOT salvaged (the well-formed "int8" is NOT sent),

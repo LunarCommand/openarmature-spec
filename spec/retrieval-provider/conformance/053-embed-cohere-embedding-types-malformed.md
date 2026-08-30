@@ -6,14 +6,14 @@ merge-managed wire field: a well-formed extras value merges with the mapping's m
 039). This fixture pins the malformed edge 0099 / 0105 left open.
 
 A **malformed** extras value — not a list, or a list carrying an element that is not of the expected element
-type/shape (here, not a precision string) — is treated as **absent**: the wire request carries
+type/shape (here, not a string) — is treated as **absent**: the wire request carries
 `embedding_types: ["float"]` only (the mapping's mandatory value). It is **all-or-nothing** — a
 partially-malformed list is **not** salvaged (the well-formed `"int8"` is not sent), because salvaging would
 send a precision set the caller never wrote and the caller reads the effective set off the verbatim response
 (§4 `raw`). No error is raised and no diagnostic is emitted — the request-side application of §7's treatment of
 a malformed *ancillary* figure as not-reported. Malformation is **structural** (shape/type): a well-typed but
-provider-unrecognized precision string is not malformed (out of scope here — it merges, and the provider
-rejects it if unsupported).
+provider-unrecognized precision string is not malformed. It merges, and the provider rejects it if
+unsupported. Case 3 pins that, including the empty string.
 
 **Spec sections exercised:**
 

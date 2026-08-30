@@ -523,10 +523,12 @@ The container's ergonomics are implementation-defined (a constructor argument, a
 mapping-valued field); its **name MUST be `extras`**, normative for cross-implementation consistency, so a
 caller moving between implementations writes the same key.
 
-**Extras pass-through.** `RuntimeConfig` is extensible. Implementations MUST accept fields beyond
-the declared set above without erroring at the API boundary; undeclared fields MUST be preserved
-in the extras container on the config record and forwarded to the wire request body untouched, subject
-to the wire-format mapping (§8). The pass-through MUST NOT translate, rename, or otherwise transform
+**Extras pass-through.** `RuntimeConfig` is extensible. Implementations MUST accept undeclared keys in
+the extras container without erroring at the API boundary; those keys MUST be preserved
+in the container on the config record and forwarded to the wire request body untouched, subject
+to the wire-format mapping (§8). Whether an implementation additionally tolerates an undeclared key
+supplied at the record's top level, rather than in the container, is implementation-defined; only the
+container is the spec's surface, and only keys in it are governed here. The pass-through MUST NOT translate, rename, or otherwise transform
 undeclared fields. A caller supplying `repetition_penalty=1.05` as an extras-container key MUST see
 `repetition_penalty: 1.05` in the wire
 body under whatever placement the wire-format mapping defines (e.g., §8.1's OpenAI-compatible

@@ -189,3 +189,105 @@ cases:
         unmanaged_when_declared_field_absent: true
         extras_output_dimension_forwarded_untouched: true
         no_error_raised_when_declared_field_absent: true
+
+  # The ALWAYS-MANAGED arm. `output_dimension` above is managed only WHILE the
+  # declared field is set (case 3 is its escape hatch). `input_type` is the
+  # opposite: Cohere's /v2/embed REQUIRES the field, and an absent OA value maps
+  # to "search_document", so the mapping emits it on EVERY call. Per §6 that
+  # makes it a clause-(b) key with NO declared-field-absent branch — the
+  # always-determined case §6 describes for a mode switch such as `stream` — so
+  # an extras input_type NEVER rides untouched. Cases 4 and 5 pin both outcomes
+  # with the declared field ABSENT, which is where an implementation applying
+  # the output_dimension pattern uniformly gets it wrong: it would look for a
+  # declared value, find none, and let the extras key through onto a wire field
+  # the mapping already wrote.
+  - name: conflicting_extras_input_type_rejected_even_with_declared_absent
+    description: |
+      embed(config={extras: {input_type: "search_query"}}) with no declared
+      input_type. The mapping still emits input_type: "search_document" (the
+      mandatory default), so the extras value CONFLICTS with a key the mapping
+      produces on this very call. Per §6 clause (b) applied to an
+      always-determined field, the mapping MUST raise provider_invalid_request
+      pre-send and MUST NOT issue any /v2/embed request. Forwarding it would put
+      two values on one JSON key and silently let one win, which §6 forbids.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            extras:
+              input_type: "search_query"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        always_managed_key_has_no_declared_absent_branch: true
+        conflicting_extras_input_type_rejected_pre_send: true
+        no_embed_request_issued: true
+
+  - name: matching_extras_input_type_is_no_op
+    description: |
+      embed(config={extras: {input_type: "search_document"}}) with no declared
+      input_type. The extras value EQUALS the value the mapping emits by
+      default, so it is a redundant no-op: the wire carries a single
+      input_type: "search_document" and the call proceeds. Pins that the
+      always-managed treatment is a COLLISION rule and not a blanket ban on the
+      key, which case 4 alone cannot distinguish.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            extras:
+              input_type: "search_document"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha string"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-054e-id
+          embeddings:
+            float:
+              - [0.31, 0.32, 0.33, 0.34]
+          texts: ["alpha string"]
+          meta:
+            billed_units:
+              input_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          model: cohere-embed-test
+      invariants:
+        matching_extras_input_type_no_op: true
+        wire_input_type_emitted_once: true

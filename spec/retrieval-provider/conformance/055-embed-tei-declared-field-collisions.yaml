@@ -111,3 +111,85 @@ cases:
         matching_extras_dimensions_no_op: true
         wire_dimensions_is_declared_value_once: true
         wire_body_stays_minimal_prompt_name_absent: true
+
+  # The PRODUCTION-CONDITION arm. §8.1 is the one retrieval mapping where
+  # "the declared field is set" and "the mapping emits the wire key" come apart:
+  # prompt_name is produced only on the SERVER-SIDE-PROMPT path, via the
+  # construction input_type -> prompt_name map. §6 clause (b) keys management to
+  # PRODUCTION, so an implementation testing declared-field presence instead
+  # manages the key on a call where the mapping never wrote it.
+  - name: conflicting_extras_prompt_name_rejected_when_produced
+    description: |
+      embed(config={input_type: query, extras: {prompt_name: "passage"}}) with a
+      construction prompt map that carries "query". The mapping produces
+      prompt_name: "query", so the extras value CONFLICTS and MUST be rejected
+      pre-send with provider_invalid_request; no /embed request is issued.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            input_type: query
+            extras:
+              prompt_name: "passage"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        conflicting_extras_prompt_name_rejected_pre_send: true
+        no_embed_request_issued: true
+
+  - name: extras_prompt_name_rides_untouched_when_not_produced
+    description: |
+      embed(config={extras: {prompt_name: "passage"}}) with input_type ABSENT.
+      The mapping emits no prompt_name on this call, so the key is NOT managed
+      and the extras value keeps §6's untouched pass-through: the wire carries
+      prompt_name: "passage". An implementation keying management to the
+      declared field's presence gets the same answer here; one that reserved the
+      key unconditionally does not, and fails.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            extras:
+              prompt_name: "passage"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      inputs: ["alpha string"]
+      prompt_name: "passage"
+    expected_wire_request_absent_keys: [dimensions]
+    expected_wire_request_count: 1
+    mock_embedding:
+      - status: 200
+        body:
+          - [0.01, 0.02, 0.03, 0.04]
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          model: tei-embed-test
+      invariants:
+        unmanaged_when_key_not_produced: true
+        extras_prompt_name_forwarded_untouched: true

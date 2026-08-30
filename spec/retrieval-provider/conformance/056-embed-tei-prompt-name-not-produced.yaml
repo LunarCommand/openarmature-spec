@@ -1,0 +1,126 @@
+# retrieval-provider §8.1 TEI /embed + llm-provider §6 clause (b) — the
+# PRODUCTION test, on the one path where it diverges from declared-field
+# presence.
+#
+# §6 clause (b) manages a wire key WHILE THE MAPPING IS PRODUCING IT. For every
+# other retrieval realization that is indistinguishable from "while the declared
+# field is set", because the mapping emits the key exactly when the field is
+# supplied. §8.1's `prompt_name` is the exception: it is produced only on the
+# SERVER-SIDE-PROMPT path, via the construction input_type -> prompt_name map.
+# For a model without configured prompts the mapping MAY instead prepend
+# query_prefix / document_prefix CLIENT-SIDE and send no prompt_name at all.
+#
+# So on this path `input_type` IS set and `prompt_name` is NOT produced. An
+# implementation that keys management to the declared field's presence rejects a
+# conflicting extras prompt_name here; the correct one lets it ride untouched,
+# because there is nothing for it to collide with.
+#
+# Fixture 055 cannot reach this. Its provider block configures the prompt map,
+# and a provider block is FIXTURE-level, not per-case, so production and
+# declared-presence coincide in every one of its cases. That is why this is a
+# separate fixture rather than a fifth case there.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 017's header (mapping: tei,
+# tei_embedding_provider, the /embed {inputs[, prompt_name][, dimensions]}
+# request and bare-vector-array response), 027's header (the client-side
+# query_prefix / document_prefix construction shape), and 039's header
+# (calls_embed.config.extras).
+
+mapping: tei
+
+tei_embedding_provider:
+  base_url: "http://tei-embed.invalid"
+  model: tei-embed-test
+  query_prefix: "query: "
+  document_prefix: "passage: "
+
+cases:
+  - name: extras_prompt_name_rides_untouched_on_client_side_prefix_path
+    description: |
+      embed(input_type=query, config={extras: {prompt_name: "passage"}}) against
+      a provider configured with client-side prefixes and NO prompt map. The
+      mapping applies the prefix to the input and sends NO prompt_name, so the
+      key is not managed on this call and the extras value keeps §6's untouched
+      pass-through: the wire carries prompt_name: "passage".
+
+      This is the case that separates §6's production test from declared-field
+      presence. An implementation reading the condition as "while input_type is
+      set" rejects this call as a conflict and fails.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["how tall is the eiffel tower?"]
+          config:
+            input_type: query
+            extras:
+              prompt_name: "passage"
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      inputs: ["query: how tall is the eiffel tower?"]
+      prompt_name: "passage"
+    expected_wire_request_absent_keys: [dimensions]
+    expected_wire_request_count: 1
+    mock_embedding:
+      - status: 200
+        body:
+          - [0.01, 0.02, 0.03, 0.04]
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          model: tei-embed-test
+      invariants:
+        client_side_prefix_applied_to_input: true
+        mapping_produced_no_prompt_name: true
+        extras_prompt_name_forwarded_untouched: true
+
+  - name: no_extras_prompt_name_absent_on_client_side_prefix_path
+    description: |
+      The control. Same provider and same input_type, with no extras. The
+      mapping prefixes the input client-side and the wire carries NO
+      prompt_name, which is what makes the case above an unmanaged-key case
+      rather than a collision.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["how tall is the eiffel tower?"]
+          config:
+            input_type: query
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      inputs: ["query: how tall is the eiffel tower?"]
+    expected_wire_request_absent_keys: [prompt_name, dimensions]
+    expected_wire_request_count: 1
+    mock_embedding:
+      - status: 200
+        body:
+          - [0.11, 0.12, 0.13, 0.14]
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          model: tei-embed-test
+      invariants:
+        client_side_prefix_applied_to_input: true
+        mapping_produced_no_prompt_name: true

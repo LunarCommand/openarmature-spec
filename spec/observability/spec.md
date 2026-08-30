@@ -955,8 +955,8 @@ following attributes on the LLM provider span:
 
 - `openarmature.llm.request.extras` — string. The `RuntimeConfig` extras container (the
   undeclared pass-through keys llm-provider §6 permits), JSON-encoded as an object.
-  Emitted only when the mapping is non-empty. This attribute is OA-shape (the extras bag is the
-  spec's structure, not the GenAI semconv's); it is grouped with payload because it MAY contain
+  Emitted only when the container is non-empty. This attribute is OA-shape (the extras container is
+  the spec's structure, not the GenAI semconv's); it is grouped with payload because it MAY contain
   provider-specific parameters that warrant the same default-off treatment as messages.
   Implementations MAY choose to gate `request.extras` separately from `input.messages` /
   `output.content` / `output.tool_calls`; the default is to gate all four under the same flag.

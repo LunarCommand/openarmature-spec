@@ -39,8 +39,11 @@
 # - calls_embed.config.extras: {<key>: <value>, ...} — the §2
 #   extras-pass-through bag on the embedding runtime config (the
 #   retrieval-provider realization of the config.extras idiom llm-provider
-#   fixture 032 uses for §6 RuntimeConfig). Carries UNDECLARED keys only —
-#   vendor-specific knobs with no declared OA field. The keys land on the
+#   fixture 032 uses for §6 RuntimeConfig). Carries the keys the caller
+#   supplies outside the declared set. A key whose NAME matches a declared
+#   field, or the wire name a mapping realizes one under, is still an
+#   undeclared key by virtue of being in the container (llm-provider §6
+#   *Extras container*) and is governed by the collision rule, not excluded. The keys land on the
 #   §8 wire request body per the mapping; where an extras key collides with
 #   a field the mapping MANAGES (embedding_types here), the mapping's
 #   collision rule governs — the §8.4 merge this fixture pins.
