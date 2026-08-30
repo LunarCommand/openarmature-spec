@@ -380,8 +380,9 @@ response-side clause.
   wherever a mapping manages a wire field and also advertises extras (§8.4's
   `truncate` / `input_type`, §8.2's `truncation` / `task`, §8.3's note that a
   server extending the wire "with its own `input_type`-style field" takes it
-  through the bag — which is impossible if that field is literally named
-  `input_type`, since a *declared* field can never ride the bag).
+  through the bag — which proposal 0122 later settled: the extras container is
+  addressable separately from the declared fields, so such a key IS expressible
+  and the collision rule governs it).
   A general rule belongs in llm-provider §6 with an §8 pointer. Candidate
   postures: (a) a managed field always wins — a colliding extras key is
   merged where the field is list-shaped, else rejected pre-send; (b) extras

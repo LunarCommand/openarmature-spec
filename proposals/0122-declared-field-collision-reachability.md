@@ -1,9 +1,9 @@
 # 0122: Settle the Shape of the Extras Surface
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-19
-- **Accepted:**
+- **Accepted:** 2026-08-30
 - **Targets:**
   - spec/llm-provider/spec.md **§6 Extras pass-through**: state the shape of the extras surface. It is a
     **named container on the config record**, distinct from the declared fields, which is what

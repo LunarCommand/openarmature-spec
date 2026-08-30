@@ -512,11 +512,25 @@ A `RuntimeConfig` record:
 | `presence_penalty` | Float, optional. Penalty on token presence; commonly `[-2.0, 2.0]`. Same cross-vendor framing as `frequency_penalty`. |
 | `stop_sequences` | List of strings, optional. Stop sequences. When any string in the list appears in the generated text, generation halts. The OA declared name matches the OpenTelemetry GenAI semconv (`gen_ai.request.stop_sequences`) and the wire-key convention used by most cross-vendor providers (Anthropic uses `stop_sequences`, Gemini uses `stopSequences`). The OpenAI-compatible wire mapping (§8.1) translates this field to OpenAI's request-body key `stop`. Per-provider limits MAY differ (OpenAI accepts up to four; others vary) and are enforced at the wire layer by the provider, not by the framework. |
 
-**Extras pass-through.** `RuntimeConfig` is extensible. Implementations MUST accept fields beyond
-the declared set above without erroring at the API boundary; undeclared fields MUST be preserved
-on the config record and forwarded to the wire request body untouched, subject to the wire-format
-mapping (§8). The pass-through MUST NOT translate, rename, or otherwise transform undeclared
-fields. A caller passing `repetition_penalty=1.05` MUST see `repetition_penalty: 1.05` in the wire
+**Extras container.** Implementations **MUST** carry a call's undeclared fields in a container on the
+config record that is distinct from, and addressable separately from, its declared fields, so that a caller
+**MAY** set a declared field and supply an extras key of the same name in one call. A key in that container
+is undeclared by virtue of being there, so a key whose name matches a declared field, or matches the wire
+name a mapping realizes a declared field under, is a legitimate extras key and is governed by
+*Managed-field collision* below.
+
+The container's ergonomics are implementation-defined (a constructor argument, a builder method, a
+mapping-valued field); its **name MUST be `extras`**, normative for cross-implementation consistency, so a
+caller moving between implementations writes the same key.
+
+**Extras pass-through.** `RuntimeConfig` is extensible. Implementations MUST accept undeclared keys in
+the extras container without erroring at the API boundary; those keys MUST be preserved
+in the container on the config record and forwarded to the wire request body untouched, subject
+to the wire-format mapping (§8). Whether an implementation additionally tolerates an undeclared key
+supplied at the record's top level, rather than in the container, is implementation-defined; only the
+container is the spec's surface, and only keys in it are governed here. The pass-through MUST NOT translate, rename, or otherwise transform
+undeclared fields. A caller supplying `repetition_penalty=1.05` as an extras-container key MUST see
+`repetition_penalty: 1.05` in the wire
 body under whatever placement the wire-format mapping defines (e.g., §8.1's OpenAI-compatible
 mapping places undeclared keys at the request-body root). Undeclared fields are NOT validated by
 the spec; the provider's backend is the source of truth on what extra parameters it recognizes.
@@ -574,7 +588,8 @@ TypeScript `undefined`, the language's equivalent "unset" sentinel) MUST be omit
 request body. Such a value denotes "field not supplied for this call," distinct from "field
 supplied with an explicit null value." Implementations MUST NOT serialize `None`-valued declared
 fields as JSON `null` in the wire body. The null-skip rule applies to declared fields only;
-undeclared fields supplied to `RuntimeConfig` are forwarded per the extras-pass-through contract
+undeclared fields supplied in `RuntimeConfig`'s extras container are forwarded per the
+extras-pass-through contract
 above (the implementation's wire-format mapping determines whether an undeclared-field `None`
 appears as `null` in the request body or is omitted — implementation-defined, since the spec does
 not constrain undeclared-field types).
@@ -1005,7 +1020,7 @@ The §6 `RuntimeConfig` declared fields map to the OpenAI request body as follow
 
 The bound model identifier becomes OpenAI's `model` field.
 
-**Undeclared `RuntimeConfig` fields** (those a caller supplies beyond the declared set, per §6's
+**Undeclared `RuntimeConfig` fields** (those a caller supplies in §6's extras container, per its
 extras-pass-through contract) appear at the OpenAI request-body root, as siblings to
 `temperature`, `model`, etc. This codifies the behavior every existing OpenAI-compatible adopter
 relies on (e.g., the OpenAI Python SDK's `extra_body=` parameter; LangChain's wrapper splatting
@@ -1589,7 +1604,7 @@ name. Gemini's fourth mode, `VALIDATED` (the model may call only
 declared functions, validated against their schemas, or respond
 in natural language), has no §5 `tool_choice` analogue; it is
 reachable via the extras-pass-through path (`toolConfig` supplied
-as an undeclared field) and is documented here so implementations
+as an extras-container key) and is documented here so implementations
 recognize it rather than treating it as invalid.
 
 **RuntimeConfig field mapping.** The §6 `RuntimeConfig` declared
@@ -1931,3 +1946,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §6 *Managed-field collision* extended: a wire field is managed not only when the mapping sets it for its own correctness (0105) but also when it is the **wire realization of a declared OA field**, and only **while producing it** (a field whose value is always determined — `stream` — is always managed). This is **general** over every declared field a mapping puts on the wire, resolving the *declared-field-vs-extras* residual 0105 deferred. §8.1 OpenAI enumerates the realizations: the scalar sampling fields (`temperature` / `top_p` / `max_tokens` / `seed` / `frequency_penalty` / `presence_penalty`, non-additive — matching no-op, conflicting reject pre-send) and the **`stop`** wire key (realizing `stop_sequences`, list-shaped — an extras `stop` merges, a scalar-string coerced to a one-element list, an over-cap merged list sent fail-loud); §8.1.6 makes **`stream`** an always-managed non-additive field. §8.2 Anthropic (`stop_sequences` merge, the `temperature` / `top_p` / `max_tokens` scalars — `seed` and the penalties are Anthropic-unsupported and pre-send reject; and, since §8.2 is atomic-only, an extras `stream` selecting streaming is rejected rather than smuggled onto the wire) and §8.3 Gemini (`stopSequences` merge, the six scalar `generationConfig` fields; no body `stream` — Gemini streams by endpoint, so an extras `stream` is a benign stray key) enumerate theirs. When a declared field is absent the wire key is unmanaged and an extras key rides untouched (the escape hatch) by [proposal 0108](../../proposals/0108-declared-field-vs-extras-collision.md)
 - §7.1 *reask* — the **assistant-prefill continuation** branch is removed. The clause that continued a trailing `assistant` message (a caller prefill) rather than appending a new one is deleted, along with its only fixture (067). §3 already requires the last message before the call to be `user` or `tool` (a MUST, validated pre-send), so the reask working transcript never ends in `assistant` and the branch was unreachable — a reask retry now always appends the model's output as a fresh `assistant` message, which never produces the consecutive-`assistant` sequence §8.2 forbids. Non-behavioral (dead-branch removal): fixture 067 was unsatisfiable against a §3-conforming implementation, and reachable reask behavior stays covered by fixtures 062–066. First-class caller prefill remains unsupported, deferred to a dedicated future proposal by [proposal 0110](../../proposals/0110-remove-reask-assistant-prefill-continuation.md)
 - §6 *Managed-field collision* — the **merge arm** gains a rule for a **malformed** caller value (the arm previously defined only the well-formed case): an extras value that is not the field's expected list shape, or a list with any element not of the expected element type/shape, is treated as **absent** — the mapping sends only the value(s) it would send with no such extra (all-or-nothing, the well-formed elements of a partially-malformed list are not salvaged), and MUST NOT raise or emit a diagnostic. Malformation is judged structurally (the mapping does not semantically validate element values against a provider vocabulary), and this is the request-side counterpart of §7's malformed-ancillary-is-not-reported rule. The **reject** arm is unaffected — a malformed value is already unequal to the managed value under the deep-equality test, so it is a rejected conflict. New fixture 081 (malformed extras `stop` → the declared value only); the retrieval `embedding_types` instance is retrieval fixture 053 by [proposal 0113](../../proposals/0113-malformed-merge-managed-extras.md)
+- §6 *Extras pass-through* gained an **Extras container** paragraph settling the shape of the extras surface: undeclared fields are carried in a container on the config record **distinct from and addressable separately from** the declared fields, so a caller MAY set a declared field and an extras key of the same name in one call, and a key in that container is undeclared by virtue of being there. The container's ergonomics stay implementation-defined; its **name is normative as `extras`**, on the observability §5.5.4 precedent for flag names. §6's existing "preserved on the config record" wording, which admitted a flat reading in which undeclared fields sit alongside declared ones, is amended rather than merely supplemented, and the four other sites stating that reading (§6's own example, the `None`-forwarding sentence, §8.1's request-body-root placement, and §8.3's Gemini `toolConfig` note) are reconciled to the container model by [proposal 0122](../../proposals/0122-declared-field-collision-reachability.md)

@@ -1,5 +1,5 @@
 # RuntimeConfig extras: a provider-specific pass-through field (repetition_penalty)
-# is supplied via RuntimeConfig's extra="allow" bag. Verifies §5.5.1
+# is supplied via RuntimeConfig's extras container. Verifies §5.5.1
 # openarmature.llm.request.extras — emitted as a JSON-encoded object when
 # disable_provider_payload=False and the extras mapping is non-empty.
 

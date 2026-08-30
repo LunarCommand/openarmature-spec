@@ -1,7 +1,7 @@
 # 018 — LLM Request Extras
 
 Verifies §5.5.1: `openarmature.llm.request.extras` is emitted as a JSON-encoded object carrying
-the `RuntimeConfig` extras mapping (per llm-provider §6 `extra="allow"`) when the extras mapping
+the `RuntimeConfig` extras container (the undeclared pass-through keys llm-provider §6 permits) when the container
 is non-empty and `disable_provider_payload = False`.
 
 **Spec sections exercised:**
@@ -20,7 +20,7 @@ is non-empty and `disable_provider_payload = False`.
 **Harness extensions:**
 
 - `extras` block under `config` — provider-specific pass-through fields routed through
-  `RuntimeConfig`'s `extra="allow"` bag.
+  `RuntimeConfig`'s extras container.
 - `attribute_parses_as_object` — mapping of attribute name → expected JSON-decoded object. The
   harness parses the attribute string as JSON and asserts structural equivalence to the supplied
   object. Bytewise JSON comparison is NOT required.
