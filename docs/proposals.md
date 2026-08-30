@@ -9,7 +9,7 @@ lifecycle and the proposal template.
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
 | [0124](proposals/0124-orphan-provider-span-parent-resolution.md) | Resolve an orphan provider span's parent structurally | observability | Draft | —               | —          |
 | [0123](proposals/0123-case-level-subgraph-declaration.md) | Scope a subgraph declaration to the graph specification it accompanies | conformance-adapter | Accepted | Pending         | —          |
-| [0122](proposals/0122-declared-field-collision-reachability.md) | Settle the shape of the extras surface | llm-provider | Draft | —               | —          |
+| [0122](proposals/0122-declared-field-collision-reachability.md) | Settle the shape of the extras surface | llm-provider | Accepted | Pending         | —          |
 | [0121](proposals/0121-diagnostic-event-names-and-otel-observer-directive.md) | Give openarmature's mandated diagnostics a stable identity | observability | Accepted | Pending         | —          |
 | [0120](proposals/0120-fixture-directive-definition-rule.md) | Reconcile where a fixture directive may be defined | conformance-adapter | Accepted | Pending         | —          |
 | [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Cap the harvested error message and close the reserved-key gaps | observability | Accepted | Pending         | —          |

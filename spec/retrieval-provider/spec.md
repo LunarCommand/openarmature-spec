@@ -463,6 +463,19 @@ explicit `truncate: false`; on `/embed` the matching value is **omitted**, not a
 relies on TEI's default rather than sending the flag. The mapping **MUST NOT** silently drop or silently honor
 a conflicting value.
 
+**Managed wire keys.** Per llm-provider §6's enumeration requirement, §8.1 **manages** three wire keys:
+
+- `prompt_name` — clause **(b)**, the wire realization of the declared `input_type`, looked up through the
+  construction `input_type → prompt_name` map. Non-additive, managed **while `input_type` is set**; absent
+  `input_type` the mapping sends no `prompt_name` and an extras key of that name rides untouched.
+- `dimensions` — clause **(b)**, the wire realization of the declared `EmbeddingRuntimeConfig.dimensions`,
+  under the same name. Non-additive, managed **while `dimensions` is set**.
+- `truncate` — clause **(a)**, the fail-loud scalar, managed on **every** call on both endpoints, whether
+  the mapping sends it explicitly (`/rerank`) or relies on TEI's `false` default (`/embed`), because the
+  fail-loud contract depends on its value either way.
+
+Every other undeclared extras key keeps §6's untouched pass-through.
+
 **Errors.** TEI HTTP / transport failures map to the §7 categories per the shared enumeration:
 connection / 5xx → `provider_unavailable`; unknown model → `provider_invalid_model`; over-length /
 malformed request (413 / 422) → `provider_invalid_request`; malformed response →
@@ -534,6 +547,19 @@ fail-loud posture). The per-endpoint truncation flag is a **managed scalar** (ll
 and the mapping **MUST NOT** silently drop or silently honor it; an extras value equal to `false` is a
 redundant no-op.
 
+**Managed wire keys.** Per llm-provider §6's enumeration requirement, §8.2 **manages** three wire keys:
+
+- `task` — clause **(b)**, the wire realization of the declared `input_type`. Non-additive, managed
+  **while `input_type` is set**; absent `input_type` the mapping omits `task` and an extras key of that
+  name rides untouched, which is the escape hatch for the `task` values outside the closed set.
+- `dimensions` — clause **(b)**, the wire realization of the declared `EmbeddingRuntimeConfig.dimensions`,
+  under the same name. Non-additive, managed **while `dimensions` is set**.
+- `truncation` (`/v1/rerank`) / `truncate` (`/v1/embeddings`) — clause **(a)**, the per-endpoint fail-loud
+  scalar, managed on **every** call. The two names are Jina's own inconsistency; the mapping manages
+  whichever name the endpoint uses.
+
+Every other undeclared extras key keeps §6's untouched pass-through.
+
 **Errors.** Jina HTTP failures map to the §7 categories per the shared enumeration: `401` →
 `provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`;
 unknown model (`404`) → `provider_invalid_model`; malformed / over-length request (`400` / `422`) →
@@ -600,6 +626,17 @@ and the mapping does not error on it. For an **asymmetric** model served behind 
 before sending — the only way to express the distinction on a wire with no `input_type` field. A server
 that *extends* the wire with its own `input_type`-style field instead takes it through the
 extras-pass-through bag.
+
+**Managed wire keys.** Per llm-provider §6's enumeration requirement, §8.3 **manages** one wire key:
+
+- `dimensions` — clause **(b)**, the wire realization of the declared `EmbeddingRuntimeConfig.dimensions`
+  (Matryoshka, on models that support it), under the same name. Non-additive, managed **while `dimensions`
+  is set**; absent it the mapping emits no `dimensions` and an extras key of that name rides untouched.
+
+`encoding_format` is explicitly **unmanaged** (above): the consumer keys on the response shape rather than
+the request parameter, so no collision arm applies to it. The base OpenAI embeddings wire carries no
+fail-loud truncation flag, so §8.3 has no clause **(a)** counterpart to §8.1's and §8.2's `truncate`. Every
+other undeclared extras key keeps §6's untouched pass-through.
 
 **Errors.** HTTP failures map to the §7 categories per the shared enumeration: `401` →
 `provider_authentication`; `429` (rate limit) → `provider_rate_limit`; `5xx` → `provider_unavailable`;
@@ -711,14 +748,23 @@ merges:
   and therefore decidable by a conformance fixture that asserts the request body.
 - The caller reads the extra precisions off the verbatim response on `EmbeddingResponse.raw` (§4).
 - A **malformed** extras `embedding_types` — not a list, or a list carrying an element that is not a
-  precision string — falls back per the general §6 malformed-merge rule (llm-provider §6, inherited): the
+  string — falls back per the general §6 malformed-merge rule (llm-provider §6, inherited): the
   wire **MUST** carry `embedding_types: ["float"]` only (all-or-nothing — a partially-malformed list is not
   salvaged; no error, no diagnostic).
 
 This is the merge arm of the general llm-provider §6 *Managed-field collision* rule, not a mapping-local
-exception. §8.4 **manages** two wire keys, per §6's enumeration requirement: `embedding_types` (list-shaped —
-**merge**, above) and `truncate` (scalar fail-loud flag — **reject**, below). Every other undeclared extras
-key keeps §6's untouched pass-through.
+exception. §8.4 **manages** three wire keys, per §6's enumeration requirement:
+
+- `embedding_types` — clause **(a)**, list-shaped, **merge** (above). Managed on every call, since the
+  mapping must request `"float"` for its own response consumer.
+- `truncate` — clause **(a)**, scalar fail-loud flag, **reject** (below). Managed on every call.
+- `output_dimension` — clause **(b)**, the wire realization of the declared `EmbeddingRuntimeConfig.dimensions`
+  (Cohere's name for the Matryoshka knob). Non-additive scalar, so an extras key of that name is a redundant
+  no-op when it matches and a **reject** when it conflicts, **while `dimensions` is set**. When `dimensions`
+  is absent the mapping emits no `output_dimension`, the key is not managed, and an extras
+  `output_dimension` keeps the untouched pass-through as the escape hatch (§6 clause (b)).
+
+Every other undeclared extras key keeps §6's untouched pass-through.
 
 It sends `truncate: "NONE"`
 so an over-length input **errors** (surfacing `provider_invalid_request` per §7) rather than being
@@ -782,10 +828,11 @@ detail) unless the provider documents a tie-breaking rule; the spec MUST NOT ass
   §8.1 / §8.2 / §8.4 fail-loud `truncate` / `truncation` flags). A wire field is **also** managed when it is the
   **realization of a declared field**, **while the mapping is producing it** (§6 clause (b)): an extras key
   naming that wire key is governed by the same arms while the declared field is set, and rides untouched when it
-  is absent (the escape hatch). The retrieval realizations are `input_type` → Jina's `task` (§8.2, non-additive)
-  and `dimensions` → `dimensions` (§8.1 TEI / §8.3 OpenAI) or `output_dimension` (§8.4 Cohere) (non-additive
-  scalar). Each §8.x mapping enumerates its managed keys; every other undeclared key keeps untouched
-  pass-through.
+  is absent (the escape hatch). Retrieval realizations **include** `input_type` → TEI's `prompt_name` (§8.1) and Jina's
+  `task` (§8.2), and `dimensions` → `dimensions` (§8.1 TEI / §8.2 Jina / §8.3 OpenAI) or `output_dimension`
+  (§8.4 Cohere), all non-additive scalars. **This list is illustrative, not exhaustive: each §8.x mapping's
+  own enumeration is authoritative** for the keys it manages and the declared field each one realizes. Every
+  other undeclared key keeps untouched pass-through.
 - **llm-provider §7** — error-category enumeration (inherited).
 - **pipeline-utilities §6 (middleware)** — `EmbeddingProvider` and `RerankProvider` calls are
   eligible for retry middleware identically to `complete()` calls.
@@ -833,4 +880,5 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §4 / §6 `response_id` rows — an **empty-string** identifier, like a malformed one, is not a present identifier; it is `null` (an empty string is not a usable id, so it is absent, not present-as-`""`). Deliberately diverges from 0097's empty-`document` handling (content preserves an empty value; an identifier collapses it to absent). §8.2 Jina error mapping — a bare `400` maps to `provider_invalid_request` (a malformed request will not succeed on retry), not the transient `provider_unavailable`, aligning §8.2 with §8.1 / §8.3 / §8.4 and the general §7 semantics. Fixtures 044 (empty-string `response_id` → null) and 045 (Jina `400` → `provider_invalid_request`) by [proposal 0104](../../proposals/0104-retrieval-id-error-clarifications.md)
 - §8 managed-field collision (via llm-provider §6, inherited per §10) — the fail-loud truncation flag is a **managed scalar** in each retrieval mapping that carries one (embed and rerank surfaces): §8.1 TEI `truncate` (both endpoints), §8.2 Jina `truncation` (`/v1/rerank`) / `truncate` (`/v1/embeddings`), §8.4 Cohere `truncate: "NONE"` (`/v2/embed`): an extras-supplied value **conflicting** with the mapping's fail-loud value is **rejected pre-send** `provider_invalid_request` (honoring it would silently truncate an input the mapping fails loud on); a matching value is a no-op. §8.4's `embedding_types` merge (0099) is re-anchored as the *merge* arm of the same general §6 rule (behavior unchanged), and §8.4 now enumerates its two managed keys (`embedding_types` merge, `truncate` reject). Reject-arm fixtures across all three bound mappings — 046 (Cohere `/v2/embed` `truncate`), 047 (TEI `/embed` `truncate`, the relied-upon-default case + matching-value-omitted body-minimal outcome), 048 (Jina `/v1/rerank` `truncation`, the distinct name) — plus the §10 cross-spec touchpoint and §8.3's `encoding_format` note reconciled to the general rule by [proposal 0105](../../proposals/0105-extras-managed-field-collision-rule.md)
 - §10's inherited *Managed-field collision* clause extended for **declared-field realizations** (llm-provider §6 clause (b)): a wire key realizing a declared field is managed **while produced**. §8.2 Jina **`task`** (realizing the declared `input_type`) is a managed non-additive field while `input_type` is set — a conflicting extras `task` rejects pre-send `provider_invalid_request`, a matching one is a no-op — and rides untouched when `input_type` is absent (the escape hatch for a model-specific `task` the closed `input_type` set does not model, reconciling 0099's note); `dimensions` → `dimensions` (§8.1 TEI / §8.3 OpenAI) / `output_dimension` (§8.4 Cohere) is a managed non-additive scalar on the same rule by [proposal 0108](../../proposals/0108-declared-field-vs-extras-collision.md)
-- §8.4 `embedding_types` — a **malformed** extras value (not a list, or a list carrying an element that is not a precision string) is treated as **absent** per the general §6 malformed-merge rule (llm-provider §6, inherited): the wire carries `embedding_types: ["float"]` only (all-or-nothing — a partially-malformed list is not salvaged; no error, no diagnostic), the request-side counterpart of §7's malformed-ancillary handling. New fixture 053 (partial + fully malformed `embedding_types` → `["float"]`) by [proposal 0113](../../proposals/0113-malformed-merge-managed-extras.md)
+- §8.4 `embedding_types` — a **malformed** extras value (not a list, or a list carrying an element that is not a string) is treated as **absent** per the general §6 malformed-merge rule (llm-provider §6, inherited): the wire carries `embedding_types: ["float"]` only (all-or-nothing — a partially-malformed list is not salvaged; no error, no diagnostic), the request-side counterpart of §7's malformed-ancillary handling. New fixture 053 (partial + fully malformed `embedding_types` → `["float"]`) by [proposal 0113](../../proposals/0113-malformed-merge-managed-extras.md)
+- §8.1, §8.2 and §8.3 gained the **managed wire key enumerations** llm-provider §6 requires and none of them carried, and §8.4's was corrected from two keys to **three**: it omitted `output_dimension`, the clause-(b) realization of the declared `dimensions`, while asserting that every other undeclared extras key rode untouched, which contradicted §10 outright. That correction is a **behavior change**, since the key rode untouched while `dimensions` was set, and carries new fixture 054 across the reject, no-op and declared-field-absent arms. New fixture 055 pins the same-name arm on §8.1, which fixture 052 cannot reach because a fixture is bound to one wire mapping. §8.4's malformed-`embedding_types` element test changed from "not a precision string" to "not a string" at both sites: the general §6 rule it inherits is structural, never a vocabulary check, and fixture 053 gained a case pinning a well-typed but provider-unrecognized element, including the empty string, as **merging**. §10's realization list is marked **illustrative** with the per-mapping enumerations authoritative, and corrected: it named four realizations and omitted TEI's `prompt_name` and Jina's `dimensions` by [proposal 0122](../../proposals/0122-declared-field-collision-reachability.md)

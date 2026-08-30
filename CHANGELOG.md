@@ -4,6 +4,27 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.117.0] — 2026-08-30
+
+**Changed**
+
+- **The extras surface has a shape, and it is a container** ([proposal 0122](proposals/0122-declared-field-collision-reachability.md)). llm-provider §6 never said what the extras surface *is*. Read one way it is a named container on the config record alongside the declared fields; read the other it is undeclared fields on the record itself. The two readings disagree about whether a caller can set a declared field and an extras key of the same name at once, which is exactly what proposal 0108's clause (b) governs, and an implementation read it the second way and concluded that shipped fixtures pin an unreachable case. §6 now requires the container, **distinct from and addressable separately from** the declared fields, and fixes its name as **`extras`**, normative for cross-implementation consistency on the §5.5.4 precedent while leaving ergonomics implementation-defined.
+- **retrieval-provider §8.4's managed-key enumeration was wrong.** It stated it manages exactly two wire keys and that "every other undeclared extras key keeps §6's untouched pass-through", while §10 already named `dimensions` → `output_dimension` as a §8.4 realization. The enumeration is now three keys. This is a **behavior change**: `output_dimension` rode untouched while `dimensions` was set, and now collides per §6 clause (b).
+- **retrieval-provider §8.4's malformed-element test** changed from "not a precision string" to "not a string" at both sites. The general §6 rule it inherits is structural and explicitly not a vocabulary check, and an implementation had already read the old wording as one.
+- **retrieval-provider §10's realization list** is marked **illustrative**, with each §8.x mapping's own enumeration authoritative. It named four realizations and read as exhaustive while omitting TEI's `prompt_name` and Jina's `dimensions`.
+- **observability §5.5.1** drops `extra="allow"` from the `openarmature.llm.request.extras` description. It is a language-specific configuration idiom in spec text, which the language-agnostic rule forbids independently of which extras reading wins.
+
+**Added**
+
+- retrieval-provider **§8.1, §8.2 and §8.3** gain the managed wire key enumerations llm-provider §6 requires and none of them carried. §8.1 manages `prompt_name` and `dimensions` under clause (b) and `truncate` under clause (a); §8.2 manages `task` and `dimensions` under (b) and the per-endpoint `truncation` / `truncate` under (a); §8.3 manages `dimensions` alone, with `encoding_format` explicitly unmanaged and no fail-loud counterpart on the base OpenAI wire.
+- New retrieval-provider fixture **054** (`embed-cohere-output-dimension-collision`, three cases) pins the clause-(b) **rename** arm: reject on conflict, no-op on match, and untouched pass-through when the declared field is absent. The third case exists because an implementation that over-applied the correction and reserved the key unconditionally would pass the first two.
+- New retrieval-provider fixture **055** (`embed-tei-dimensions-collision`, two cases) pins the same-name arm on §8.1. Fixture 052 pins it on §8.3 and cannot reach TEI, because a fixture is bound to one wire mapping and each mapping realizes clause (b) independently.
+- Fixture **053** gains a third case pinning a well-typed but provider-unrecognized `embedding_types` element, including the empty string, as **merging** rather than malformed.
+
+**Notes**
+
+- **MINOR.** One behavior change (§8.4's `output_dimension` collision) plus settled wording that closes a reading two implementations could differ on. The `extras` container name is newly normative, so an implementation naming the surface something else is now non-conforming; the fixture corpus already spelled it `extras` in all 24 fixtures that use it, so no fixture changed. llm-provider, retrieval-provider and observability `Latest` all move to 0.117.0.
+
 ## [0.116.0] — 2026-08-29
 
 **Changed**

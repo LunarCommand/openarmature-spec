@@ -1,0 +1,191 @@
+# retrieval-provider §8.4 Cohere /v2/embed + llm-provider §6 clause (b)
+# (inherited via §10) — the RENAME declared-field realization: the declared
+# `EmbeddingRuntimeConfig.dimensions` is realized on Cohere's wire under a
+# DIFFERENT name, `output_dimension`.
+#
+# Fixture 052 pins the SAME-name arm (§8.3 OpenAI, declared `dimensions` → wire
+# `dimensions`). This pins the rename arm, which 052 cannot reach because it is
+# bound to the OpenAI mapping and because a rename has an extra failure mode: an
+# implementation can realize the declared field correctly and still fail to
+# recognize that the RENAMED wire key is the managed one.
+#
+# Before proposal 0122, §8.4 stated it managed exactly two wire keys
+# (embedding_types, truncate) and that "every other undeclared extras key keeps
+# §6's untouched pass-through", which contradicted §10's enumeration of
+# `dimensions` → `output_dimension` as a §8.4 realization. Under that reading an
+# extras `output_dimension` rode untouched even while `dimensions` was set. 0122
+# corrected the enumeration to three keys, so cases 1 and 2 below are a BEHAVIOR
+# CHANGE and cannot inherit coverage from any existing fixture.
+#
+# Case 3 pins the other side of clause (b): with the declared field ABSENT the
+# mapping produces no `output_dimension`, the key is not managed, and the extras
+# value rides untouched as the escape hatch. Without it, an implementation that
+# over-applied the correction and rejected `output_dimension` unconditionally
+# would pass cases 1 and 2.
+#
+# ---------------------------------------------------------------------
+# Per-directory harness directives: see 032's header (mapping: cohere,
+# cohere_embedding_provider, expected_wire_request), 034's header (the
+# pre-send-reject convention: NO mock_embedding + NO expected_wire_request, the
+# no_embed_request_issued invariant), 016's header (expected_error:
+# {category, raised_from}), and 039's header (calls_embed.config.extras).
+
+mapping: cohere
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
+  api_key: "test-cohere-key"
+
+cases:
+  - name: conflicting_extras_output_dimension_rejected_pre_send
+    description: |
+      embed(config={dimensions: 4, extras: {output_dimension: 8}}). The declared
+      `dimensions` (4) is realized as the wire `output_dimension` field; the
+      extras `output_dimension` (8) is an UNDECLARED key naming that same wire
+      field and CONFLICTS. Per §6 clause (b), managed non-additive while
+      `dimensions` is set, the mapping MUST raise provider_invalid_request (§7)
+      at pre-send validation, MUST NOT issue any /v2/embed request, and MUST NOT
+      silently drop or forward either value.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            dimensions: 4
+            extras:
+              output_dimension: 8
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_error:
+      category: provider_invalid_request
+      raised_from: embed_node
+    expected:
+      invariants:
+        declared_dimensions_conflict_on_renamed_wire_key_rejected_pre_send: true
+        no_embed_request_issued: true
+        extras_output_dimension_neither_dropped_nor_forwarded: true
+
+  - name: matching_extras_output_dimension_is_no_op
+    description: |
+      embed(config={dimensions: 4, extras: {output_dimension: 4}}). The extras
+      value EQUALS the value the declared field realizes, so it is a redundant
+      no-op: the wire carries a single `output_dimension: 4` and the call
+      proceeds. An implementation that emitted the key twice, or that rejected a
+      matching value, fails here.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            dimensions: 4
+            extras:
+              output_dimension: 4
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha string"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+      output_dimension: 4
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-054b-id
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04]
+          texts: ["alpha string"]
+          meta:
+            billed_units:
+              input_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+      invariants:
+        matching_extras_output_dimension_no_op: true
+        wire_output_dimension_is_declared_value_once: true
+
+  - name: extras_output_dimension_rides_untouched_when_declared_absent
+    description: |
+      embed(config={extras: {output_dimension: 8}}) with the declared
+      `dimensions` ABSENT. The mapping produces no `output_dimension` of its
+      own, so per §6 clause (b) the key is NOT managed on this call and the
+      extras value keeps the untouched pass-through: the wire carries
+      `output_dimension: 8`. This is the escape hatch for a raw wire value the
+      declared field does not model, and it is what separates the corrected
+      enumeration from a blanket reservation of the key name.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["alpha string"]
+          config:
+            extras:
+              output_dimension: 8
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["alpha string"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+      output_dimension: 8
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-054c-id
+          embeddings:
+            float:
+              - [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08]
+          texts: ["alpha string"]
+          meta:
+            billed_units:
+              input_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors_length: 1
+          dimensions: 8
+          inner_vector_lengths_all_equal: 8
+          model: cohere-embed-test
+      invariants:
+        unmanaged_when_declared_field_absent: true
+        extras_output_dimension_forwarded_untouched: true
+        no_error_raised_when_declared_field_absent: true

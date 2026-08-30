@@ -28,13 +28,23 @@ rejects it if unsupported).
    salvaged); no error.
 2. `fully_malformed_embedding_types_falls_back_to_float` — extras `embedding_types: 5` (not a list) → wire
    `embedding_types: ["float"]`; no error.
+3. `unrecognized_precision_strings_merge_rather_than_malform` — extras `embedding_types: ["banana", ""]`,
+   both well-typed strings the provider does not recognize, one empty → wire
+   `embedding_types: ["float", "banana", ""]`. The malformed test is **structural**, never a vocabulary
+   check, so neither element is malformed and both merge. The empty string is included deliberately: it is
+   the element an implementation reading the test as a vocabulary check is most likely to reject.
 
 **What passes:**
 
-- The wire request carries `embedding_types: ["float"]` only, the call succeeds, and vectors assemble from
-  `embeddings.float` as usual.
+- Cases 1 and 2: the wire request carries `embedding_types: ["float"]` only, the call succeeds, and vectors
+  assemble from `embeddings.float` as usual.
+- Case 3: the wire request carries the merged list in the mapping-value-first order, and the call succeeds.
 
 **What fails:**
 
 - The wire carries the malformed value, or a salvaged subset (`["float", "int8"]`), or drops `"float"`.
 - The call raises on the malformed extras (it must fall back gracefully, not error).
+- An implementation reads the element test as a **vocabulary** check and treats `"banana"` or `""` as
+  malformed, sending `["float"]` in case 3. Proposal 0122 changed the spec's own wording from "not a
+  precision string" to "not a string" because that wording invited exactly this reading, and case 3 is what
+  pins the corrected rule.

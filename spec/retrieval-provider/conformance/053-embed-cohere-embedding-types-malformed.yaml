@@ -12,9 +12,14 @@
 # because salvaging would send a precision set the caller never wrote and the
 # caller reads the effective set off the verbatim response (§4 raw). No error is
 # raised and no diagnostic is emitted (§7's malformed-ancillary principle applied
-# to the request side). Malformation is STRUCTURAL (shape/type): a well-typed but
-# provider-unrecognized precision string is NOT malformed (it merges, and the
-# provider rejects it if unsupported) — that case is out of scope here.
+# to the request side). Malformation is STRUCTURAL (shape/type), never a
+# VOCABULARY check: a well-typed but provider-unrecognized precision string is
+# NOT malformed. It merges, and the provider rejects it if unsupported. Case 3
+# pins that, including the empty string, which is the element most likely to be
+# mistaken for malformed by an implementation reading the test as a vocabulary
+# check. Proposal 0122 tightened the spec's own wording here for the same
+# reason: "not a precision string" read as a vocabulary check, and the rule it
+# inherits explicitly is not one.
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 032's header (mapping: cohere,
@@ -176,6 +181,87 @@ cases:
         wire_request_embedding_types_is_float_only: true
         malformed_extras_embedding_types_treated_as_absent: true
         no_error_raised_on_malformed_extras: true
+        wire_request_truncate_none: true
+        authorization_bearer_header_present: true
+        vectors_assembled_from_embeddings_float_in_input_order: true
+
+  - name: unrecognized_precision_strings_merge_rather_than_malform
+    description: |
+      embed(config={extras: {embedding_types: ["banana", ""]}}) — both elements
+      are well-typed strings the provider does not recognize, one of them empty.
+      The malformed test is STRUCTURAL, not a vocabulary check, so neither is
+      malformed: the list merges with the mapping's mandatory "float" in the
+      deterministic order (mapping value first), giving
+      ["float", "banana", ""]. The provider would reject the unsupported
+      precisions on a real call; that is the provider's business, not the
+      mapping's. An implementation reading "not a string" as "not one of the
+      known precision names" sends ["float"] here and fails.
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["gamma string"]
+          config:
+            extras:
+              embedding_types: ["banana", ""]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["gamma string"]
+      # Well-typed and unrecognized is NOT malformed: both elements merge.
+      embedding_types: ["float", "banana", ""]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 200
+        body:
+          id: cohere-embed-053c-id
+          embeddings:
+            float:
+              - [0.21, 0.22, 0.23, 0.24]
+          texts: ["gamma string"]
+          meta:
+            billed_units:
+              input_tokens: 2
+    expected:
+      final_state:
+        embedding_response:
+          vectors:
+            - [0.21, 0.22, 0.23, 0.24]
+          vectors_length: 1
+          dimensions: 4
+          inner_vector_lengths_all_equal: 4
+          model: cohere-embed-test
+          response_id: cohere-embed-053c-id
+          usage:
+            input_tokens: 2
+          raw:
+            id: cohere-embed-053c-id
+            embeddings:
+              float:
+                - [0.21, 0.22, 0.23, 0.24]
+            texts: ["gamma string"]
+            meta:
+              billed_units:
+                input_tokens: 2
+      invariants:
+        exactly_one_embed_request_issued: true
+        unrecognized_precision_string_is_not_malformed: true
+        empty_string_element_is_not_malformed: true
+        wire_request_embedding_types_merged_mapping_value_first: true
+        no_error_raised_on_unrecognized_precision: true
         wire_request_truncate_none: true
         authorization_bearer_header_present: true
         vectors_assembled_from_embeddings_float_in_input_order: true
