@@ -50,6 +50,7 @@ subgraphs:
         calls_llm_from_wrapper:
           phase: pre
           messages: [{role: user, content: "guardrail check"}]
+          yield_after_call: true
     edges:
       - {from: guard, to: END}
 

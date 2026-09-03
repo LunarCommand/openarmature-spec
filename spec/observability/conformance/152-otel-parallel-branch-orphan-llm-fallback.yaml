@@ -42,6 +42,7 @@ cases:
             calls_llm_from_wrapper:
               phase: pre
               messages: [{role: user, content: "guardrail a"}]
+              yield_after_call: true
         edges:
           - {from: guard, to: END}
       branch_b:
@@ -55,6 +56,7 @@ cases:
             calls_llm_from_wrapper:
               phase: pre
               messages: [{role: user, content: "guardrail b"}]
+              yield_after_call: true
         edges:
           - {from: guard, to: END}
     state:

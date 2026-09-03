@@ -829,6 +829,12 @@ fields, preserving the two-span-category distinction above:
   `openarmature.node.fan_out_index` also goes on per-instance instance spans (and on
   inner-node spans nested below); it is sourced directly from `event.fan_out_index` on those
   inner-node events.
+- **Fan-out instance span synthesis.** The instance span is synthesized on the **first event that
+  needs it**, on the same terms §6 states for the per-branch dispatch span: an inner node's
+  `started` event, or any event whose span resolves under §5.5's *Lineage-resolved parent* to that
+  instance, whichever arrives first. A later event that would also have triggered synthesis reuses
+  the existing span. Stated here so the two dispatch-span kinds are governed symmetrically rather
+  than one pinned and the other silent.
 
 The per-instance span layout (one per-instance subgraph span as a child of the fan-out node
 span, with inner-node spans nested below) is required by §4 for both detached and
@@ -843,7 +849,8 @@ with an OTel observer per this mapping, MUST emit a span per LLM provider attemp
 existing single-span framing), and one span per attempt when call-level retry per llm-provider
 §7.1 produces N attempts. The per-attempt spans are siblings parented
 under the calling node's span (resolved per *Lineage-resolved parent* below — including the orphan
-fallback when that span is not open), disambiguated by the `openarmature.llm.attempt_index` attribute
+fallback when that span is not the call's immediate enclosure), disambiguated by the
+`openarmature.llm.attempt_index` attribute
 (per §5.5 below). This is a cross-capability coupling: any implementation that ships both
 llm-provider and the OTel mapping MUST wire them together so that LLM calls are not invisible
 in the OTel trace. Production observability has no gaps by default rather than hoping the user
@@ -867,7 +874,8 @@ provides direct attribution of LLM calls to the graph nodes they originate from.
 chain — for a node nested inside one or more fan-out instances or parallel branches, the
 calling-node span disambiguated by `fan_out_index_chain` / `branch_name_chain` (§6), not the
 innermost scalar (which can coincide across concurrent enclosing instances). When the calling
-node's span is **not open** — a call issued from middleware (pre- or post-phase) or a wrapper
+node's span is **not the call's immediate enclosure** — a call issued from middleware (pre- or
+post-phase) or a wrapper
 rather than the node body — the LLM provider span (and, under call-level retry, its per-attempt
 sibling spans) parents under the **nearest enclosing wrapper span per the §4.3 parent-child
 rules**, resolved via the chain: the fan-out instance span (the correct *inner* instance identified
@@ -875,8 +883,26 @@ by the chain — not the top-level instance, and not a coincidentally-indexed si
 per-branch dispatch span inside a parallel branch, the innermost of the two when both are nested
 (§4.3's mixed-nesting rule), the subgraph span inside a subgraph, otherwise the invocation span.
 The span MUST NOT parent under a shared fan-out node span, a shared parallel-branches node span, or
-the invocation span when a more-specific enclosing wrapper (per §4.3) is open. This rule is shared
-by the embedding (§5.5.8), tool-execution (§5.5.11), and rerank (§5.5.13) spans.
+the invocation span when a more-specific enclosing wrapper (per §4.3) **encloses the call**. This
+rule is shared by the embedding (§5.5.8), tool-execution (§5.5.11), and rerank (§5.5.13) spans.
+
+**Resolution is structural.** The enclosing wrapper is determined by the call's position in the graph, not
+by which spans an observer has materialized at the moment it resolves the parent. A call issued from
+middleware or a wrapper anywhere inside a parallel branch, whether the branch's own middleware
+(pipeline-utilities §11.7) or middleware around a node within it, is inside that branch, and its enclosing
+wrapper is that branch's per-branch dispatch span. A call issued from middleware or a wrapper anywhere
+inside a fan-out instance, whether the instance's own middleware (pipeline-utilities §9.7) or middleware
+around a node within it, is inside that instance, and its enclosing wrapper is that fan-out instance span.
+
+This rule binds **where the event's lineage identifies the enclosing instance or branch**. Where it does
+not, because the middleware ran outside the engine's per-instance or per-branch scope and
+pipeline-utilities leaves resolving to the wrapped instance or branch a SHOULD rather than a MUST, the
+observer **MUST** parent the span under the nearest enclosing wrapper its lineage does identify, and
+§5.5's MUST NOT against the shared node span and the invocation span does not apply to that case.
+
+An implementation **MUST NOT** select a different parent because a wrapper span has not yet been created,
+and **MUST NOT** let the selected parent depend on the ordering between the triggering event and any other
+event.
 
 **Baseline attributes (v0.7.0).** The following attributes are emitted on every LLM provider
 span unless the span itself is suppressed via `disable_llm_spans`:
@@ -1378,7 +1404,7 @@ bundled span mapping consumes the terminal events only.
 
 OTel mapping for `EmbeddingProvider.embed()` calls per the retrieval-provider capability. Parallels
 the §5.5 *LLM provider attributes* block but covers the embedding operation. A new span emits per
-embedding call, parented under the calling node's span (resolved lineage-aware per the §5.5 *Lineage-resolved parent* clause, including the orphan fallback when that span is not open).
+embedding call, parented under the calling node's span (resolved lineage-aware per the §5.5 *Lineage-resolved parent* clause, including the orphan fallback when that span is not the call's immediate enclosure).
 
 **Span name.** `openarmature.embedding.complete` discriminates the operation type from the LLM
 completion span (`openarmature.llm.complete`) without requiring an explicit operation-name
@@ -1498,7 +1524,7 @@ There is no flat upstream attribute to adopt or mirror.
 Distinct from §5.5.10 (the model *requesting* tools, projected onto the LLM completion span), this
 section covers the *execution* of a tool — the caller running a requested (or standalone) tool through
 the graph-engine §6 tool-call instrumentation scope. A **tool span** emits per instrumented tool
-execution, parented under the calling node's span (resolved lineage-aware per the §5.5 *Lineage-resolved parent* clause, including the orphan fallback when that span is not open).
+execution, parented under the calling node's span (resolved lineage-aware per the §5.5 *Lineage-resolved parent* clause, including the orphan fallback when that span is not the call's immediate enclosure).
 
 **Span name** — `openarmature.tool.call`. The `.call` suffix (rather than the sibling spans'
 `.complete` — `openarmature.llm.complete` / `openarmature.embedding.complete`) matches the terminology
@@ -1557,7 +1583,7 @@ tool code has no closed llm-provider §7 failure taxonomy; see graph-engine §6)
 
 OTel mapping for `RerankProvider.rerank()` calls per the retrieval-provider capability. Parallels
 §5.5.8 *Embedding provider attributes* but covers the rerank operation. A new span emits per rerank
-call, parented under the calling node's span (resolved lineage-aware per the §5.5 *Lineage-resolved parent* clause, including the orphan fallback when that span is not open).
+call, parented under the calling node's span (resolved lineage-aware per the §5.5 *Lineage-resolved parent* clause, including the orphan fallback when that span is not the call's immediate enclosure).
 
 **Span name.** `openarmature.rerank.complete` discriminates the operation type from the LLM
 completion span (`openarmature.llm.complete`) and the embedding span
@@ -1728,8 +1754,9 @@ fields, preserving the two-span-category distinction above:
   `openarmature.parallel_branches.parent_node_name` go on the synthesized per-branch dispatch
   span. The observer caches the `parent_node_name` from the parallel-branches node's `started`
   event (via `parallel_branches_config.parent_node_name`) and applies it on each synthesized
-  dispatch span. The branch's `branch_name` is sourced from the first inner event of that
-  branch (`event.branch_name`).
+  dispatch span. The branch's `branch_name` is sourced from the **triggering event** for that
+  branch (`event.branch_name`), which under §6's synthesis trigger may be an inner node's event or a
+  provider event. Both kinds carry `branch_name`.
 
 **Per-branch dispatch span name.** The OTel observer MUST set the per-branch dispatch span's
 `name` attribute to the branch's `branch_name` value (e.g., `"fraud_check"`, `"policy_audit"`).
@@ -1815,7 +1842,7 @@ OTel observer:
    disambiguates such nested executions; `attempt_index` and `fan_out_index_chain` similarly
    disambiguate retried attempts and (nested) fan-out-instance contexts.
 
-On the **first inner `started` event** received whose containing parallel-branches NODE matches
+On the **first event that needs the span** whose containing parallel-branches NODE matches
 a cached entry (matched by the inner event's `attempt_index`, a namespace prefix that matches the
 cached NODE's namespace, and the cached NODE's `fan_out_index_chain` / `branch_name_chain` matching
 the corresponding prefix of the inner event's chains — all of which propagate from the
@@ -1829,8 +1856,9 @@ parallel-branches NODE per §6's nested-retry / nested-fan-out / nested-branch r
    `(parallel_branches_node_namespace, parallel_branches_node_attempt_index,
    parallel_branches_node_fan_out_index_chain, parallel_branches_node_branch_name_chain, branch_name)`
    — the NODE's full lineage chains plus the dispatched branch, so a parallel-branches node nested in
-   concurrent outer branches does not collide on a shared inner branch name. The dispatch span's start time is the
-   moment the inner `started` event fires.
+   concurrent outer branches does not collide on a shared inner branch name. The dispatch span's start
+   time is the moment of the **triggering event**, which under this rule may be a provider event rather
+   than an inner node's `started`.
 4. The inner event itself opens its span as a child of the synthesized per-branch dispatch span
    (not a direct child of the parallel-branches NODE span).
 
@@ -1846,10 +1874,17 @@ On the parallel-branches NODE's `completed` event, the observer:
 6. Closes the parallel-branches NODE span itself (children-before-parents — this is the
    standard close order for nested-span emission).
 
-The synthesis is **lazy**: the dispatch span is created on the first inner event for each
-branch, not eagerly at the parallel-branches NODE's `started`. This keeps the synthesis
-observable from existing NodeEvents without requiring the engine to emit per-branch lifecycle
-events.
+An observer **MUST** synthesize a per-branch dispatch span, or a fan-out instance span, on the **first
+event that needs it**, whichever arrives first: an inner node's `started` event, or any event whose span
+resolves under §5.5's *Lineage-resolved parent* to that branch or instance. A later event that would also
+have triggered synthesis **MUST** reuse the existing span rather than create a second one. The trigger is
+stated over any event whose span resolves under §5.5 rather than over provider events specifically,
+because §5.5's rule is already shared by the LLM (§5.5), embedding (§5.5.8), tool-execution (§5.5.11) and
+rerank (§5.5.13) spans.
+
+The synthesis remains **lazy** in the sense §6 intends: it is driven by events the engine already emits,
+not eagerly at the parallel-branches NODE's `started`, and requires no per-branch or per-instance
+lifecycle event.
 
 Because the §6 delivery queue is strictly serial across an invocation, the start/close pairing is
 unambiguous — `started` and `completed` events for the same attempt are delivered in order, with
@@ -2563,9 +2598,11 @@ level/statusMessage). The fields below are additional, specific to Generations.
 
 The Generation's parent observation follows the same resolution as the OTel LLM span (§5.5
 *Lineage-resolved parent*): the calling node's `Span` observation identified by the event's lineage
-chain, and — when that observation is not open — the nearest open ancestor observation per the §4.3
-rule, so the Langfuse observation tree and the OTel span tree produce the same parent for the nested
-and orphan cases.
+chain, and — when that observation is not the call's immediate enclosure — the nearest enclosing
+ancestor observation per the §4.3 rule, resolved **structurally** per §5.5 rather than by which
+observations the observer has materialized. Because both trees resolve the same way, the Langfuse
+observation tree and the OTel span tree produce the same parent for the nested and orphan cases; that
+parity is what would break if either side kept walking to the nearest *open* ancestor.
 
 | OA attribute (per §5.5) | Langfuse Generation field |
 |---|---|
@@ -2708,7 +2745,8 @@ dedicated observation type carries embedding-specific semantics (`model`, `usage
 `Embedding` type's `usageDetails` field natively. Implementations create the observation via the
 Langfuse SDK's `asType: "embedding"` parameter (or per-language idiomatic equivalent). The
 observation's parent follows the §5.5 *Lineage-resolved parent* resolution (the calling node's
-observation identified by the event's lineage chain, or the nearest open ancestor when it is closed),
+observation identified by the event's lineage chain, or the nearest enclosing ancestor when that
+observation is not the call's immediate enclosure, resolved structurally per §5.5),
 as for the Generation (§8.4.3) and Tool (§8.4.6) observations.
 
 The observation type is `Embedding` per Langfuse's data model (10 observation types currently:
@@ -2790,7 +2828,8 @@ failure from another. Fixture 098's default-posture case gates this.
 
 **Nesting and rollup.** Tool observations nest under the calling node's `Span` observation —
 resolved lineage-aware per §5.5 *Lineage-resolved parent* (the calling node's observation identified
-by the event's lineage chain, or the nearest open ancestor when it is closed) — and trace-level cost /
+by the event's lineage chain, or the nearest enclosing ancestor when that observation is not the call's
+immediate enclosure, resolved structurally per §5.5) — and trace-level cost /
 latency aggregation includes them alongside `Generation` / `Embedding` / `Retriever` observations.
 
 #### 8.4.7 Rerank-specific mapping (sourced from rerank provider span attributes)
@@ -2803,7 +2842,8 @@ broader than vector-store-fetch and inclusive of reranking when it is part of th
 Implementations create the observation via the Langfuse SDK's `asType: "retriever"` parameter (or
 per-language idiomatic equivalent) — the `Retriever` type in §8.4.5's observation-type enumeration. The
 observation's parent follows the §5.5 *Lineage-resolved parent* resolution (the calling node's
-observation identified by the event's lineage chain, or the nearest open ancestor when it is closed),
+observation identified by the event's lineage chain, or the nearest enclosing ancestor when that
+observation is not the call's immediate enclosure, resolved structurally per §5.5),
 as for the Generation (§8.4.3) and Tool (§8.4.6) observations.
 
 Field mappings:
@@ -2848,7 +2888,8 @@ A parallel-branches node renders a three-level Observation subtree, mirroring th
 (§4.3 / §6): the parallel-branches NODE's Span observation, a synthesized **per-branch dispatch Span
 observation** for each branch (one per `branch_name`), and the branch's inner-node observations
 beneath the dispatch Span. The Langfuse observer synthesizes the per-branch dispatch Span as the OTel
-observer synthesizes its OTel counterpart — lazily, on the first inner observation of each branch,
+observer synthesizes its OTel counterpart — lazily, on the **first event that needs it** per §6's
+synthesis trigger, which may be an inner observation or a provider observation whichever arrives first,
 closed children-before-parents on the parallel-branches NODE's completion; the contract is the
 emitted Observation tree, not the driver mechanism (per §6's framing). The synthesized Span's
 `observation.name` is the `branch_name` (resolving §5.7's forward-reference to "the Langfuse mapping's
@@ -3392,3 +3433,4 @@ spec:
 - §5.5.5 *Truncation contract* generalized from an enumerated list of `openarmature.*` span attributes to **every payload-classified value**, with the cap applied by the backend mapping that writes a value having no span-attribute source, and a note that the marker is appended to a plain string for a value that was never JSON-encoded. §8.7 gained the direct-application arm for a failed observation's `metadata.error_message` under the Langfuse observer's own cap; §5.5.4 states that a message the payload flag permits is subject to the cap. §3.4 reserved four further exact names (`error_type`, `error_message`, `token_budget`, `token_budget_exceeded`) and extended the reserved-namespace rule to `openarmature_`, closing the nine underscore-prefixed keys §8.4.5 to §8.4.7 write, with §3.4's maintenance rule reconciled so a key already under a reserved namespace needs no redundant exact-match entry. The generalization reaches the operative rules, not only the framing: the cap, the truncation algorithm and the measurement basis are stated over a **value** rather than an attribute, the OTel `record_exception` path is carved out explicitly as one §5.5.4 keeps full, and the two source-less
 values are stated to be strings so the rule does not silently reach a structured payload, and the §8.7 inheritance arm now says why it sources the cap differently from the direct-application arm. New fixture 160 (five cases, gating the Embedding, Generation and Retriever arms plus a below-cap control; the Tool arm is recorded as a gap since `mock_tool` is undefined); fixture 028 gained five rejection cases by [proposal 0119](../../proposals/0119-error-message-cap-and-reserved-keys.md)
 - §5.5.1's `openarmature.llm.request.extras` description dropped a language-specific configuration idiom (`extra="allow"`) that the language-agnostic rule forbids, and that stated the flat extras model llm-provider §6 now settles against. It reads "the `RuntimeConfig` extras container (the undeclared pass-through keys llm-provider §6 permits)" by [proposal 0122](../../proposals/0122-declared-field-collision-reachability.md)
+- §5.5 *Lineage-resolved parent* gained **Resolution is structural**: the enclosing wrapper is determined by the call's position in the graph, not by which spans an observer has materialized when it resolves. An implementation MUST NOT select a different parent because a wrapper span does not yet exist, and MUST NOT let the parent depend on event ordering. The six span-openness conditionals that made the temporal reading available are reworded to key on structural enclosure: two inside §5.5 and one each in the §5.5.8 / §5.5.11 / §5.5.13 cross-references, plus §5.5's own retry-sibling clause. §6's synthesis trigger changes from the **first inner `started` event** to the **first event that needs the span**, stated over any event whose span resolves under §5.5 rather than over provider events, so the LLM, embedding, tool-execution and rerank spans are covered without enumeration; the start time re-anchors to the triggering event, and a fifth statement of the trigger three paragraphs below is widened to match rather than left to be read as still confining synthesis. §5.4 gains the instance-span synthesis statement the per-branch dispatch span already had, so the two kinds are governed symmetrically. §5.7's `branch_name` sourcing re-anchors to the triggering event. On the Langfuse side §8.4.8's trigger defers to §6, and the four counterparts in §8.4.3 / §8.4.5 / §8.4.6 / §8.4.7 stop routing to the nearest **open** ancestor; §8.4.3's parity promise and its temporal routing were one sentence and moved together, since rewording only the routing would have left the promise asserting a parity the two trees no longer had by [proposal 0124](../../proposals/0124-orphan-provider-span-parent-resolution.md)

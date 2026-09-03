@@ -29,3 +29,22 @@ so its provider span falls back to the nearest enclosing wrapper — here the sy
 - Resolving a branch-issued orphan to the dispatcher node span or invocation (fallback too shallow), to the
   wrong branch's dispatch span (branch_name mis-routing), or making it a child of the `guard` node span (which
   opens only after the pre-phase call fires).
+
+## Why `yield_after_call: true`
+
+Every case here carries `yield_after_call: true` (conformance-adapter §5.1, proposal 0124). Without it
+the wrapper returns immediately after the provider call, so whether the enclosing dispatch span exists
+when the orphan resolves is decided by the observer's architecture rather than by the spec.
+
+An observer that registers spans in the engine's execution path has already materialized the wrapper
+span and passes. An observer that does its work on the delivery queue has not, and under the pre-0124
+trigger it had no span to parent under. Both were conforming, and this fixture could not tell them
+apart, so it passed on a favourable interleaving rather than on the rule.
+
+The directive forces the interleaving that separates them: observer delivery queued before the wrapper
+returns makes progress first. Combined with §6's amended trigger, which synthesizes the dispatch span
+on the first event that needs it, and §5.5's *Resolution is structural*, the correct parent is now
+reachable and the wrong one is now failing rather than merely unlucky.
+
+No assertion changed. This fixture already asserted the parent §5.5 mandates; what changed is that it
+can now fail an implementation that gets there by accident.
