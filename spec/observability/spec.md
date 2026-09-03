@@ -829,12 +829,12 @@ fields, preserving the two-span-category distinction above:
   `openarmature.node.fan_out_index` also goes on per-instance instance spans (and on
   inner-node spans nested below); it is sourced directly from `event.fan_out_index` on those
   inner-node events.
-- **Fan-out instance span synthesis.** The instance span is synthesized on the **first event that
-  needs it**, on the same terms §6 states for the per-branch dispatch span: an inner node's
-  `started` event, or any event whose span resolves under §5.5's *Lineage-resolved parent* to that
-  instance, whichever arrives first. A later event that would also have triggered synthesis reuses
-  the existing span. Stated here so the two dispatch-span kinds are governed symmetrically rather
-  than one pinned and the other silent.
+- **Fan-out instance span synthesis.** An observer **MUST** synthesize the instance span on the
+  **first event that needs it**, on the same terms §6 states for the per-branch dispatch span: an
+  inner node's `started` event, or any event whose span resolves under §5.5's *Lineage-resolved
+  parent* to that instance, whichever arrives first. A later event that would also have triggered
+  synthesis **MUST** reuse the existing span rather than create a second one. Stated here so the two
+  dispatch-span kinds are governed symmetrically rather than one pinned and the other silent.
 
 The per-instance span layout (one per-instance subgraph span as a child of the fan-out node
 span, with inner-node spans nested below) is required by §4 for both detached and
@@ -1755,8 +1755,10 @@ fields, preserving the two-span-category distinction above:
   span. The observer caches the `parent_node_name` from the parallel-branches node's `started`
   event (via `parallel_branches_config.parent_node_name`) and applies it on each synthesized
   dispatch span. The branch's `branch_name` is sourced from the **triggering event** for that
-  branch (`event.branch_name`), which under §6's synthesis trigger may be an inner node's event or a
-  provider event. Both kinds carry `branch_name`.
+  branch (`event.branch_name`). That is whichever event §6's synthesis trigger fires on, which is any
+  event whose span resolves under §5.5's *Lineage-resolved parent* rule. Every event kind that rule
+  reaches carries `branch_name`, so the sourcing is defined for all of them; the population is stated
+  by reference to the trigger rather than enumerated, so the two cannot fall out of step.
 
 **Per-branch dispatch span name.** The OTel observer MUST set the per-branch dispatch span's
 `name` attribute to the branch's `branch_name` value (e.g., `"fraud_check"`, `"policy_audit"`).
@@ -1843,9 +1845,9 @@ OTel observer:
    disambiguate retried attempts and (nested) fan-out-instance contexts.
 
 On the **first event that needs the span** whose containing parallel-branches NODE matches
-a cached entry (matched by the inner event's `attempt_index`, a namespace prefix that matches the
-cached NODE's namespace, and the cached NODE's `fan_out_index_chain` / `branch_name_chain` matching
-the corresponding prefix of the inner event's chains — all of which propagate from the
+a cached entry (matched by the triggering event's `attempt_index`, a namespace prefix that matches
+the cached NODE's namespace, and the cached NODE's `fan_out_index_chain` / `branch_name_chain`
+matching the corresponding prefix of the triggering event's chains — all of which propagate from the
 parallel-branches NODE per §6's nested-retry / nested-fan-out / nested-branch rules), and whose
 `branch_name` value hasn't yet been seen for that cached entry, the observer:
 
@@ -1859,8 +1861,9 @@ parallel-branches NODE per §6's nested-retry / nested-fan-out / nested-branch r
    concurrent outer branches does not collide on a shared inner branch name. The dispatch span's start
    time is the moment of the **triggering event**, which under this rule may be a provider event rather
    than an inner node's `started`.
-4. The inner event itself opens its span as a child of the synthesized per-branch dispatch span
-   (not a direct child of the parallel-branches NODE span).
+4. The triggering event itself opens its span as a child of the synthesized per-branch dispatch
+   span (not a direct child of the parallel-branches NODE span). This holds whichever kind of event
+   triggered synthesis: an inner node's span and an orphan provider span both parent there.
 
 On the parallel-branches NODE's `completed` event, the observer:
 

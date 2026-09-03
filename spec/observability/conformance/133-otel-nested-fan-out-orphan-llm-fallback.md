@@ -122,3 +122,8 @@ reachable and the wrong one is now failing rather than merely unlucky.
 
 No assertion changed. This fixture already asserted the parent §5.5 mandates; what changed is that it
 can now fail an implementation that gets there by accident.
+
+The trigger this fixture exercises binds **four** event kinds (§5.5's rule is shared by the embedding,
+tool-execution and rerank spans), and `calls_llm_from_wrapper` is the only orphan-wrapper primitive the
+adapter defines. So this fixture gates the LLM arm and nothing gates the other three. Recorded in
+`docs/open-questions.md`; do not read coverage of the trigger from this fixture alone.

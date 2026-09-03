@@ -100,9 +100,13 @@ Per conformance-adapter §5.9, documented here.
 
 ## Why `yield_after_call: true`
 
-Every case here carries `yield_after_call: true` (conformance-adapter §5.1, proposal 0124). Without it
-the wrapper returns immediately after the provider call, so whether the enclosing dispatch span exists
-when the orphan resolves is decided by the observer's architecture rather than by the spec.
+Case 2, the orphan case, carries `yield_after_call: true` (conformance-adapter §5.1, proposal 0124).
+Case 1 does not and should not: its `calls_llm` runs in the node body, so its Generation parents under
+its own calling-node observation and there is no orphan for the control to act on.
+
+Without the control on case 2 the wrapper returns immediately after the provider call, so whether the
+enclosing dispatch span exists when the orphan resolves is decided by the observer's architecture
+rather than by the spec.
 
 An observer that registers spans in the engine's execution path has already materialized the wrapper
 span and passes. An observer that does its work on the delivery queue has not, and under the pre-0124
@@ -116,3 +120,8 @@ reachable and the wrong one is now failing rather than merely unlucky.
 
 No assertion changed. This fixture already asserted the parent §5.5 mandates; what changed is that it
 can now fail an implementation that gets there by accident.
+
+The trigger this fixture exercises binds **four** event kinds (§5.5's rule is shared by the embedding,
+tool-execution and rerank spans), and `calls_llm_from_wrapper` is the only orphan-wrapper primitive the
+adapter defines. So this fixture gates the LLM arm and nothing gates the other three. Recorded in
+`docs/open-questions.md`; do not read coverage of the trigger from this fixture alone.
