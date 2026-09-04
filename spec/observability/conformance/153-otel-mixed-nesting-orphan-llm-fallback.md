@@ -28,9 +28,9 @@ inner one.
 - Resolving the orphan to the outer `work` branch dispatch span (outermost, not innermost — the §4.3 violation),
   to a node span or the invocation, or making it a child of the `guard` node span.
 
-## Why `yield_after_call: true`
+## Why `await_event_delivery: true`
 
-Every case here carries `yield_after_call: true` (conformance-adapter §5.1, proposal 0124). Without it
+Every case here carries `await_event_delivery: true` (conformance-adapter §5.1, proposal 0124). Without it
 the wrapper returns immediately after the provider call, so whether the enclosing dispatch span exists
 when the orphan resolves is decided by the observer's architecture rather than by the spec.
 

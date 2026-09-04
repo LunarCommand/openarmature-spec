@@ -30,9 +30,9 @@ so its provider span falls back to the nearest enclosing wrapper — here the sy
   wrong branch's dispatch span (branch_name mis-routing), or making it a child of the `guard` node span (which
   opens only after the pre-phase call fires).
 
-## Why `yield_after_call: true`
+## Why `await_event_delivery: true`
 
-Every case here carries `yield_after_call: true` (conformance-adapter §5.1, proposal 0124). Without it
+Every case here carries `await_event_delivery: true` (conformance-adapter §5.1, proposal 0124). Without it
 the wrapper returns immediately after the provider call, so whether the enclosing dispatch span exists
 when the orphan resolves is decided by the observer's architecture rather than by the spec.
 

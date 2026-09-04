@@ -104,9 +104,9 @@ Per conformance-adapter §5.9, documented here.
 - An orphan span parents under the `guard` node span (treating it as a normal in-body call), which is
   not open when the pre-phase call fires.
 
-## Why `yield_after_call: true`
+## Why `await_event_delivery: true`
 
-Every case here carries `yield_after_call: true` (conformance-adapter §5.1, proposal 0124). Without it
+Every case here carries `await_event_delivery: true` (conformance-adapter §5.1, proposal 0124). Without it
 the wrapper returns immediately after the provider call, so whether the enclosing dispatch span exists
 when the orphan resolves is decided by the observer's architecture rather than by the spec.
 

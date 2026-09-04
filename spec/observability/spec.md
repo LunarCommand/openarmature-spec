@@ -1874,11 +1874,13 @@ parallel-branches NODE per §6's nested-retry / nested-fan-out / nested-branch r
    parallel_branches_node_fan_out_index_chain, parallel_branches_node_branch_name_chain, branch_name)`
    — the NODE's full lineage chains plus the dispatched branch, so a parallel-branches node nested in
    concurrent outer branches does not collide on a shared inner branch name. The dispatch span's start
-   time is the moment of the **triggering event**, which under this rule may be a provider event rather
-   than an inner node's `started`.
-4. The triggering event itself opens its span as a child of the synthesized per-branch dispatch
-   span (not a direct child of the parallel-branches NODE span). This holds for **every** kind of
-   event that can trigger synthesis, not only the kinds named as common cases below.
+   time **MUST** be the moment of the **triggering event**, which under this rule may be a provider
+   event rather than an inner node's `started`.
+4. Where the triggering event's own span is **distinct from** the synthesized wrapper, that span opens
+   as a child of the per-branch dispatch span (not a direct child of the parallel-branches NODE span),
+   whatever kind of event it is. Where the dispatch span **is** the event's span, as for an
+   inline-callable branch (§5.7), there is no child to open and the dispatch span carries the branch on
+   its own.
 
 On the parallel-branches NODE's `completed` event, the observer:
 
@@ -1894,7 +1896,10 @@ On the parallel-branches NODE's `completed` event, the observer:
 
 An observer **MUST** synthesize a per-branch dispatch span, or a fan-out instance span, on the **first
 event that needs it**, whichever arrives first. An event needs the span when the span it opens, or the
-span it causes to be synthesized, parents under that branch or instance. That test is the definition;
+span it causes to be synthesized, parents under that branch or instance, **or when the synthesized span
+is itself the span that event is represented by**. The third case is the inline-callable branch (§5.7):
+it has no inner nodes, so its event opens no child and causes no other span; the dispatch span is what
+represents it, and without this clause nothing would trigger that span's synthesis. That test is the definition;
 what follows are examples of it, **not** the membership. An inner node's `started` event qualifies, and
 so does any event whose span resolves under §5.5's *Lineage-resolved parent* to that branch or instance.
 Naming those two does not close the set, because a branch with no inner
@@ -1908,8 +1913,11 @@ tool-execution (§5.5.11) and rerank (§5.5.13) spans.
 
 The numbered algorithm above states the mechanics for the **per-branch dispatch span**. The fan-out
 instance span has no separate algorithm: it follows the same shape with the fan-out node's cached
-`fan_out_config` in place of the parallel-branches node's `parallel_branches_config`, and
-`fan_out_index_chain` in place of `branch_name`. The rule stated here governs both; §5.4 carries the
+`fan_out_config` in place of the parallel-branches node's `parallel_branches_config`, and the current
+scalar `fan_out_index` in place of the scalar `branch_name` as the per-instance discriminator appended
+to the cached node identity. It is the **scalar**, not `fan_out_index_chain`: the chain carries
+enclosing lineage and is already part of that cached identity, so substituting it would leave the key
+with no per-instance component and collapse sibling instances onto one span. The rule stated here governs both; §5.4 carries the
 instance span's attribute sourcing.
 
 The synthesis remains **lazy** in the sense §6 intends: it is driven by events the engine already emits,
@@ -2919,7 +2927,7 @@ A parallel-branches node renders a three-level Observation subtree, mirroring th
 observation** for each branch (one per `branch_name`), and the branch's inner-node observations
 beneath the dispatch Span. The Langfuse observer synthesizes the per-branch dispatch Span as the OTel
 observer synthesizes its OTel counterpart — lazily, on the **first event that needs it** per §6's
-synthesis trigger, which may be an inner observation or a provider observation whichever arrives first,
+synthesis trigger, whose membership §6 defines and this section does not restate,
 closed children-before-parents on the parallel-branches NODE's completion; the contract is the
 emitted Observation tree, not the driver mechanism (per §6's framing). The synthesized Span's
 `observation.name` is the `branch_name` (resolving §5.7's forward-reference to "the Langfuse mapping's

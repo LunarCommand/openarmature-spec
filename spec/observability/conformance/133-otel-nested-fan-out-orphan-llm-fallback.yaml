@@ -13,7 +13,7 @@
 #   calls_llm_from_wrapper:
 #     phase: pre            # pre | post (default pre)
 #     messages: [ ... ]
-#     yield_after_call: true  # barrier: delivery through THIS call's provider
+#     await_event_delivery: true  # barrier: delivery through THIS call's provider
 #                             # event completes before the wrapper proceeds
 #                             # past the call site (for `pre`, before next())
 #
@@ -53,7 +53,7 @@ subgraphs:
         calls_llm_from_wrapper:
           phase: pre
           messages: [{role: user, content: "guardrail check"}]
-          yield_after_call: true
+          await_event_delivery: true
     edges:
       - {from: guard, to: END}
 

@@ -100,9 +100,9 @@ Per conformance-adapter §5.9, documented here.
 - Case 2: an orphan Generation parents under the `guard` observation (not open when the pre-phase call
   fires), or the Langfuse parent disagrees with the OTel parent.
 
-## Why `yield_after_call: true`
+## Why `await_event_delivery: true`
 
-Case 2, the orphan case, carries `yield_after_call: true` (conformance-adapter §5.1, proposal 0124).
+Case 2, the orphan case, carries `await_event_delivery: true` (conformance-adapter §5.1, proposal 0124).
 Case 1 does not and should not: its `calls_llm` runs in the node body, so its Generation parents under
 its own calling-node observation and there is no orphan for the control to act on.
 
