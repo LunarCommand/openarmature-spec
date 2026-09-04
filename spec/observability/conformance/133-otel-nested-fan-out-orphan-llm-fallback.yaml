@@ -7,12 +7,15 @@
 # instance span -- not the top-level fan-out node / invocation, and not a
 # coincidentally-indexed sibling inner instance.
 #
-# Orphan-call primitive (NEW; defined here, reported for normative addition
-# to conformance-adapter §5.1):
+# Orphan-call primitive (normative in conformance-adapter §5.1 since proposal
+# 0124; this block is the reader-facing summary 152 and 153 point at):
 #
 #   calls_llm_from_wrapper:
 #     phase: pre            # pre | post (default pre)
 #     messages: [ ... ]
+#     yield_after_call: true  # barrier: delivery through THIS call's provider
+#                             # event completes before the wrapper proceeds
+#                             # past the call site (for `pre`, before next())
 #
 # The adapter wraps the node in a middleware that issues exactly one real
 # complete() call against the mock provider in the named phase:

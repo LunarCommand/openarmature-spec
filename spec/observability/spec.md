@@ -827,8 +827,11 @@ fields, preserving the two-span-category distinction above:
   themselves carry `fan_out_config` — the observer caches the value from the fan-out node's
   started event and applies it when synthesizing each per-instance instance span.
   `openarmature.node.fan_out_index` also goes on per-instance instance spans (and on
-  inner-node spans nested below); it is sourced directly from `event.fan_out_index` on those
-  inner-node events.
+  inner-node spans nested below); it is sourced directly from `event.fan_out_index` on the event the
+  span is built from. For an inner-node span that is the node's own event. For a synthesized instance
+  span it is the **triggering event** per the synthesis rule below, which under §6's trigger may be a
+  provider event rather than an inner-node one; every event kind that trigger reaches carries
+  `fan_out_index`, so the sourcing holds for all of them.
 - **Fan-out instance span synthesis.** An observer **MUST** synthesize the instance span on the
   **first event that needs it**, on the same terms §6 states for the per-branch dispatch span: an
   inner node's `started` event, or any event whose span resolves under §5.5's *Lineage-resolved
@@ -894,11 +897,19 @@ wrapper is that branch's per-branch dispatch span. A call issued from middleware
 inside a fan-out instance, whether the instance's own middleware (pipeline-utilities §9.7) or middleware
 around a node within it, is inside that instance, and its enclosing wrapper is that fan-out instance span.
 
+Where a call is inside **both**, the two sentences above do not compete: the enclosing wrapper is the
+**innermost** of the two, per §4.3's mixed-nesting rule, exactly as for a call resolved through the chain
+above. Each sentence states which wrapper a given nesting places the call inside, not that it outranks
+another the call is also inside.
+
 This rule binds **where the event's lineage identifies the enclosing instance or branch**. Where it does
 not, because the middleware ran outside the engine's per-instance or per-branch scope and
-pipeline-utilities leaves resolving to the wrapped instance or branch a SHOULD rather than a MUST, the
-observer **MUST** parent the span under the nearest enclosing wrapper its lineage does identify, and
-§5.5's MUST NOT against the shared node span and the invocation span does not apply to that case.
+pipeline-utilities **§6.3** leaves resolving the event's lineage to the wrapped instance or branch a
+SHOULD rather than a MUST, the observer **MUST** parent the span under the nearest enclosing wrapper its
+lineage does identify, and §5.5's MUST NOT against the shared node span and the invocation span does not
+apply to that case. The carve-out is bounded by that SHOULD: it reaches only a call whose lineage does
+not resolve to the instance or branch, never a call whose lineage does and whose parent an implementation
+would simply prefer to place elsewhere.
 
 An implementation **MUST NOT** select a different parent because a wrapper span has not yet been created,
 and **MUST NOT** let the selected parent depend on the ordering between the triggering event and any other
@@ -1721,8 +1732,10 @@ query, regardless of which node, subgraph, or fan-out instance emitted the span.
 The following attributes MUST appear on per-branch dispatch spans (synthesized by the OTel
 observer per §4.3 and §6):
 
-- `openarmature.node.branch_name` — string. The branch's identifier, sourced from the §6
-  NodeEvent `branch_name` field. Also appears on every inner-node span beneath the per-branch
+- `openarmature.node.branch_name` — string. The branch's identifier, sourced from the
+  `branch_name` field of the §6 event the attribute is taken from. On an inner-node span that is
+  the node's own event; on a synthesized dispatch span it is the triggering event, which under
+  §6's synthesis trigger need not be a node event. Also appears on every inner-node span beneath the per-branch
   dispatch span — consistent with how `openarmature.node.fan_out_index` propagates onto inner
   nodes from §5.4. (Newly introduced by proposal 0044; prior spec versions did not define an
   OTel span attribute carrying `branch_name`.)
@@ -1743,8 +1756,10 @@ Parallel-branches node spans (the parent of the per-branch dispatch spans) carry
 `openarmature.node.branch_name` (the branch's name) like any branch — the branch is the single
 unit, with no inner-node spans beneath it. A `when`-skipped branch (§11.10) produces no span.
 
-Implementations source these attributes from the corresponding graph-engine §6 NodeEvent
-fields, preserving the two-span-category distinction above:
+Implementations source these attributes from the corresponding graph-engine §6 event fields,
+preserving the two-span-category distinction above. For an inner-node span that event is the node's
+own `NodeEvent`; for a synthesized dispatch span it is whichever event triggered synthesis, which
+under §6's trigger may be a provider event carrying the same fields:
 
 - **Parallel-branches node span attributes.** `openarmature.parallel_branches.branch_count` and
   `openarmature.parallel_branches.error_policy` go on the parallel-branches node span. Sourced
@@ -1755,10 +1770,11 @@ fields, preserving the two-span-category distinction above:
   span. The observer caches the `parent_node_name` from the parallel-branches node's `started`
   event (via `parallel_branches_config.parent_node_name`) and applies it on each synthesized
   dispatch span. The branch's `branch_name` is sourced from the **triggering event** for that
-  branch (`event.branch_name`). That is whichever event §6's synthesis trigger fires on, which is any
-  event whose span resolves under §5.5's *Lineage-resolved parent* rule. Every event kind that rule
-  reaches carries `branch_name`, so the sourcing is defined for all of them; the population is stated
-  by reference to the trigger rather than enumerated, so the two cannot fall out of step.
+  branch (`event.branch_name`). That is whichever event §6's synthesis trigger fires on, which is an
+  inner node's `started` event **or** any event whose span resolves under §5.5's *Lineage-resolved
+  parent* rule, whichever arrives first. Every event kind either arm reaches carries `branch_name`, so
+  the sourcing is defined for all of them; the population is stated by reference to the trigger rather
+  than re-enumerated here, so the two cannot fall out of step.
 
 **Per-branch dispatch span name.** The OTel observer MUST set the per-branch dispatch span's
 `name` attribute to the branch's `branch_name` value (e.g., `"fraud_check"`, `"policy_audit"`).
@@ -1878,12 +1894,23 @@ On the parallel-branches NODE's `completed` event, the observer:
    standard close order for nested-span emission).
 
 An observer **MUST** synthesize a per-branch dispatch span, or a fan-out instance span, on the **first
-event that needs it**, whichever arrives first: an inner node's `started` event, or any event whose span
-resolves under §5.5's *Lineage-resolved parent* to that branch or instance. A later event that would also
-have triggered synthesis **MUST** reuse the existing span rather than create a second one. The trigger is
-stated over any event whose span resolves under §5.5 rather than over provider events specifically,
-because §5.5's rule is already shared by the LLM (§5.5), embedding (§5.5.8), tool-execution (§5.5.11) and
-rerank (§5.5.13) spans.
+event that needs it**, whichever arrives first. An event needs the span when the span it opens, or the
+span it causes to be synthesized, parents under that branch or instance. The common cases are an inner
+node's `started` event and any event whose span resolves under §5.5's *Lineage-resolved parent* to that
+branch or instance; these are **illustrative rather than exhaustive**, because a branch with no inner
+nodes at all still renders a dispatch span (§5.7's inline-callable case), and closing the list would
+leave that shape without a trigger. A later event that would also have triggered synthesis **MUST** reuse
+the existing span rather than create a second one.
+
+The §5.5 arm is stated over any event whose span resolves under that rule rather than over provider
+events specifically, because §5.5's rule is already shared by the LLM (§5.5), embedding (§5.5.8),
+tool-execution (§5.5.11) and rerank (§5.5.13) spans.
+
+The numbered algorithm above states the mechanics for the **per-branch dispatch span**. The fan-out
+instance span has no separate algorithm: it follows the same shape with the fan-out node's cached
+`fan_out_config` in place of the parallel-branches node's `parallel_branches_config`, and
+`fan_out_index_chain` in place of `branch_name`. The rule stated here governs both; §5.4 carries the
+instance span's attribute sourcing.
 
 The synthesis remains **lazy** in the sense §6 intends: it is driven by events the engine already emits,
 not eagerly at the parallel-branches NODE's `started`, and requires no per-branch or per-instance

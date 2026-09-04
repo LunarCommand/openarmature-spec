@@ -11,7 +11,8 @@ Langfuse mirror of OTel fixtures 132 (case 1) and 133 (case 2).
 
 - §8.4.3 — the Generation's parent observation follows the §5.5 *Lineage-resolved parent* resolution:
   the calling node's `Span` observation identified by the event's lineage chain, and — when that
-  observation is not open — the nearest open ancestor observation per §4.3.
+  observation is not the call's immediate enclosure — the nearest enclosing ancestor observation per
+  §4.3, resolved structurally per §5.5 rather than by which observations exist yet.
 - §8.4.6 — the same resolution for tool / non-Generation observations (cross-referenced; this fixture
   exercises the Generation path).
 - §8.3 / §8.4.2 — fan-out node → dispatch `Span` observation (`fan_out_item_count` /
@@ -56,7 +57,8 @@ is defined in fixture 133.
   observation, which sits under the correct inner instance under the correct outer instance. All four
   inner subtrees appear (no dropped observations).
 - **Case 2.** Each orphan Generation parents under its inner fan-out instance Span observation (the
-  nearest open ancestor, since the `guard` Span observation is not open), appearing as a **sibling**
+  nearest enclosing ancestor, since the `guard` node's observation is not the call's immediate
+  enclosure — the call comes from the wrapper, not the node body), appearing as a **sibling**
   of the `guard` Span — chain-resolved to the correct inner instance, never the outer NODE / Trace,
   never the coincidentally-indexed sibling.
 
@@ -110,11 +112,14 @@ rather than by the spec.
 
 An observer that registers spans in the engine's execution path has already materialized the wrapper
 span and passes. An observer that does its work on the delivery queue has not, and under the pre-0124
-trigger it had no span to parent under. Both were conforming, and this fixture could not tell them
-apart, so it passed on a favourable interleaving rather than on the rule.
+trigger it had no span to parent under, so it failed. The problem was not that the fixture could not
+separate them: it did, reliably. The problem was that the spec did not say which of the two was right,
+so the fixture was pinning an observer architecture rather than a rule, and an implementation could
+argue its failure was the fixture's fault.
 
-The directive forces the interleaving that separates them: observer delivery queued before the wrapper
-returns makes progress first. Combined with §6's amended trigger, which synthesizes the dispatch span
+The directive removes the architectural difference instead of adjudicating it: delivery through this
+call's provider event completes before the wrapper proceeds past the call site, so **both** observers
+reach the orphan's resolution with the same spans materialized. Combined with §6's amended trigger, which synthesizes the dispatch span
 on the first event that needs it, and §5.5's *Resolution is structural*, the correct parent is now
 reachable and the wrong one is now failing rather than merely unlucky.
 

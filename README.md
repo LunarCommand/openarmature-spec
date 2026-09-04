@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 Nothing open. Every proposal is Accepted.
 
-See [`proposals/`](proposals/) for the full history (Accepted and Draft both).
+See [`proposals/`](proposals/) for the full history.
 
 ---
 

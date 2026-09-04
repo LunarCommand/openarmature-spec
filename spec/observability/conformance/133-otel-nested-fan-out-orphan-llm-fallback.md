@@ -112,11 +112,14 @@ when the orphan resolves is decided by the observer's architecture rather than b
 
 An observer that registers spans in the engine's execution path has already materialized the wrapper
 span and passes. An observer that does its work on the delivery queue has not, and under the pre-0124
-trigger it had no span to parent under. Both were conforming, and this fixture could not tell them
-apart, so it passed on a favourable interleaving rather than on the rule.
+trigger it had no span to parent under, so it failed. The problem was not that the fixture could not
+separate them: it did, reliably. The problem was that the spec did not say which of the two was right,
+so the fixture was pinning an observer architecture rather than a rule, and an implementation could
+argue its failure was the fixture's fault.
 
-The directive forces the interleaving that separates them: observer delivery queued before the wrapper
-returns makes progress first. Combined with §6's amended trigger, which synthesizes the dispatch span
+The directive removes the architectural difference instead of adjudicating it: delivery through this
+call's provider event completes before the wrapper proceeds past the call site, so **both** observers
+reach the orphan's resolution with the same spans materialized. Combined with §6's amended trigger, which synthesizes the dispatch span
 on the first event that needs it, and §5.5's *Resolution is structural*, the correct parent is now
 reachable and the wrong one is now failing rather than merely unlucky.
 
