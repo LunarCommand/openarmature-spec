@@ -4,7 +4,7 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
-## [0.118.0] — 2026-09-03
+## [0.118.0] — 2026-09-04
 
 **Changed**
 
@@ -16,7 +16,7 @@ The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 **Added**
 
-- conformance-adapter **§5.1** gains **`yield_after_call`** on `calls_llm_from_wrapper` (default `false`). When `true` the adapter **MUST** ensure observer delivery **through this call's provider event** has completed **before the wrapper proceeds past the call site** (for `phase: pre`, before invoking `next()`). The obligation is on what is achieved, not on the host language's mechanism, and an adapter **MUST** honor the directive or fail the case rather than run it without the barrier.
+- conformance-adapter **§5.1** gains **`yield_after_call`** on `calls_llm_from_wrapper` (default `false`). When `true` the adapter **MUST** ensure observer delivery **through this call's provider event** has completed **before the wrapper proceeds past the call site** (for `phase: pre`, before invoking `next()`). Delivery is complete when every registered observer has finished receiving the event, which is graph-engine §6's own unit; a barrier satisfied by enqueue alone would let a queue-driven observer take the event and the wrapper proceed before the orphan resolved. The obligation is on what is achieved, not on the host language's mechanism, and an adapter **MUST** honor the directive or fail the case rather than run it without the barrier.
 
   **This diverges from 0124's prescribed wording, deliberately.** The proposal specifies a *yield* that lets queued delivery "make progress". A review of the accept showed that cannot do the directive's job: graph-engine §6 makes the delivery queue strictly serial across the whole invocation, so conceding one turn hands the queue one event and nothing binds that event to this call. An older event takes the turn, the wrapper resumes, the node body runs, and its `started` event synthesizes the dispatch span before the provider event is drained, preserving the exact interleaving the directive exists to eliminate. Stated as a barrier on this call's event instead. The proposal body is unedited. Without it no fixture can distinguish an implementation that resolves structurally from one that passes because the wrapper span happened to be materialized already, which is a difference of observer architecture rather than of conformance.
 - Observability fixtures **133, 134, 152 and 153** set `yield_after_call: true` on all five directive blocks they carry between them. These are every fixture using the primitive. 134's case 2 is the only Langfuse orphan case in the corpus, so without it the amended §8.4.8 trigger would ship with nothing on the Langfuse surface able to fail it. No assertion changed; all four already asserted the parent §5.5 mandates, and what changed is that they can now fail an implementation that arrives there by a favourable interleaving.

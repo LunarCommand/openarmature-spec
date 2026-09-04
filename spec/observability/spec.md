@@ -1770,11 +1770,10 @@ under §6's trigger may be a provider event carrying the same fields:
   span. The observer caches the `parent_node_name` from the parallel-branches node's `started`
   event (via `parallel_branches_config.parent_node_name`) and applies it on each synthesized
   dispatch span. The branch's `branch_name` is sourced from the **triggering event** for that
-  branch (`event.branch_name`). That is whichever event §6's synthesis trigger fires on, which is an
-  inner node's `started` event **or** any event whose span resolves under §5.5's *Lineage-resolved
-  parent* rule, whichever arrives first. Every event kind either arm reaches carries `branch_name`, so
-  the sourcing is defined for all of them; the population is stated by reference to the trigger rather
-  than re-enumerated here, so the two cannot fall out of step.
+  branch (`event.branch_name`). That is whichever event §6's synthesis trigger fires on; §6 defines that
+  population and this section does not restate it, so the two cannot fall out of step. Every event that
+  can trigger synthesis carries `branch_name`, so the sourcing is defined for all of them, including the
+  inline-callable branch below, which has no inner-node events at all.
 
 **Per-branch dispatch span name.** The OTel observer MUST set the per-branch dispatch span's
 `name` attribute to the branch's `branch_name` value (e.g., `"fraud_check"`, `"policy_audit"`).
@@ -1878,8 +1877,8 @@ parallel-branches NODE per §6's nested-retry / nested-fan-out / nested-branch r
    time is the moment of the **triggering event**, which under this rule may be a provider event rather
    than an inner node's `started`.
 4. The triggering event itself opens its span as a child of the synthesized per-branch dispatch
-   span (not a direct child of the parallel-branches NODE span). This holds whichever kind of event
-   triggered synthesis: an inner node's span and an orphan provider span both parent there.
+   span (not a direct child of the parallel-branches NODE span). This holds for **every** kind of
+   event that can trigger synthesis, not only the kinds named as common cases below.
 
 On the parallel-branches NODE's `completed` event, the observer:
 
@@ -1895,9 +1894,10 @@ On the parallel-branches NODE's `completed` event, the observer:
 
 An observer **MUST** synthesize a per-branch dispatch span, or a fan-out instance span, on the **first
 event that needs it**, whichever arrives first. An event needs the span when the span it opens, or the
-span it causes to be synthesized, parents under that branch or instance. The common cases are an inner
-node's `started` event and any event whose span resolves under §5.5's *Lineage-resolved parent* to that
-branch or instance; these are **illustrative rather than exhaustive**, because a branch with no inner
+span it causes to be synthesized, parents under that branch or instance. That test is the definition;
+what follows are examples of it, **not** the membership. An inner node's `started` event qualifies, and
+so does any event whose span resolves under §5.5's *Lineage-resolved parent* to that branch or instance.
+Naming those two does not close the set, because a branch with no inner
 nodes at all still renders a dispatch span (§5.7's inline-callable case), and closing the list would
 leave that shape without a trigger. A later event that would also have triggered synthesis **MUST** reuse
 the existing span rather than create a second one.
