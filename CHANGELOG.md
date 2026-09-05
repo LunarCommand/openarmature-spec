@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.118.1] — 2026-09-04
+
+**Fixed**
+
+- **Corrected a false claim that observability §8.7's Tool arm was blocked.** `docs/open-questions.md` (two entries) and fixture 160's sidecar and YAML header all stated that a Tool case could not be written because `mock_tool` and the `calls_tool` block are undefined in conformance-adapter §5. Those directives are undefined, and that remains an open question in its own right, but it does not block a fixture: **fixture 098 case 2 already drives `mock_tool: {raises: ...}` into a Langfuse Tool observation and asserts `error_message`**, and nine fixtures rest on the same vocabulary. The arm is unwritten, not blocked, which is a materially cheaper gap than the record described. Surfaced by the Python implementation, which retracted the half of the claim that was theirs.
+- The 0124 entry's version of the same gap named the wrong constraint. The orphan-wrapper coverage gap is real, but it is bounded by there being no embedding, rerank or tool counterpart to `calls_llm_from_wrapper`, not by `calls_tool` being undefined.
+
+**Notes**
+
+- **PATCH, non-behavioral (editorial).** No spec text, no fixture assertions, and no directive changed. No conforming implementation can newly fail: the corrections are to prose describing why a fixture does not exist. Capability `Latest` versions are unchanged.
+
 ## [0.118.0] — 2026-09-04
 
 **Changed**

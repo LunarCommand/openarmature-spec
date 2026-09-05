@@ -39,11 +39,12 @@
 #
 # COVERAGE. §8.7's direct-application arm binds a failed Generation and its
 # Embedding, Tool and Retriever counterparts (§8.4.5 to §8.4.7). Cases 1, 2 and 4
-# gate Embedding, Generation and Retriever. The TOOL arm is NOT gated here: it
-# needs an oversized message from `mock_tool`, and neither `mock_tool` nor the
-# `calls_tool` block it sits in is defined in conformance-adapter §5, so a case
-# would depend on undocumented vocabulary. Recorded as a coverage gap rather than
-# built on an undefined directive.
+# gate Embedding, Generation and Retriever. The TOOL arm is NOT gated here, and
+# it is NOT blocked: it is unwritten. It needs an oversized message from
+# `mock_tool: {raises: ...}`, which fixture 098 case 2 already uses to drive a
+# failed Tool observation asserting error_message. `mock_tool` and `calls_tool`
+# are undefined in conformance-adapter §5 and that is tracked separately, but
+# nine fixtures rest on that vocabulary, so it does not block a tenth.
 
 cases:
   # Embedding path (§8.4.5). error_type is asserted by its literal value: the
