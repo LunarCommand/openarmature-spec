@@ -515,6 +515,47 @@ response-side clause.
   binding and unpinned. It closes with the change that documents the
   `calls_tool` family, where the vocabulary and the case land together.
 
+### 0124 — orphan provider span parent resolution
+
+- **§6's synthesis trigger binds four event kinds and is fixture-gated on
+  one.** [candidate-for-new-proposal] — the trigger is stated over any event
+  whose span resolves under §5.5's *Lineage-resolved parent*, which §5.5 shares
+  with the embedding (§5.5.8), tool-execution (§5.5.11) and rerank (§5.5.13)
+  spans. `calls_llm_from_wrapper` is the only orphan-wrapper primitive the
+  conformance adapter defines, so every fixture exercising the trigger does so
+  through an LLM call. An implementation that resolves structurally for LLM
+  events and temporally for the other three passes the suite. The four span
+  kinds have separate OTel and Langfuse mapping paths, so that is a reachable
+  divergence rather than a theoretical one.
+
+  The gap pre-dates 0124: §5.5 already shared the orphan fallback across all
+  four kinds with only LLM fixture-covered. What 0124 changes is that the
+  synthesis trigger now depends on that shared rule, which makes it matter more.
+
+  Closing it needs orphan-wrapper primitives for the other three. The
+  tool-execution one is blocked on `calls_tool`, which conformance-adapter §5
+  does not define, so it lands with the work that documents that family.
+
+- **Whether the structural-resolution rule should be stated once in §4.3**
+  rather than appended to §5.5. [candidate-for-new-proposal] — §4.3 owns the
+  parent-child rules §5.5 defers to, so the principle arguably belongs there and
+  would then cover any future span kind. §5.5 is where the fallback is defined
+  and where an implementer looks, which is why 0124 put it there. The two
+  placements are not exclusive, and a later pass may state it in §4.3 and have
+  §5.5 defer.
+- **How a relative span start-ordering constraint could be asserted at all.**
+  [candidate-for-new-proposal] — moving the synthesis trigger earlier does not
+  remove the case where a span synthesized at drain time starts after a span it
+  adopts as a child, which is malformed in every trace viewer. An earlier
+  revision of 0124 forbade it with a MUST NOT, withdrawn because nothing can
+  test it: `expected.span_tree` carries a name, subset attribute assertions,
+  status, optional links and children, the Langfuse observation shape is equally
+  start-time-free, and §10 excludes timing-derived attributes and exact
+  timestamps from what the suite asserts. So an implementation whose synthesized
+  parent starts after its own child passes the whole suite. Closing it needs a
+  relative start-ordering assertion shape on **both** observer surfaces plus a
+  §10 carve-out narrow enough not to reintroduce timestamp comparison generally.
+
 ### 0121 — diagnostic event names
 
 - **Whether the token-budget and mode-(a) names belonged in this proposal.**

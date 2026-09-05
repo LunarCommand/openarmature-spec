@@ -103,3 +103,30 @@ Per conformance-adapter §5.9, documented here.
   `fan_out_index`) — the mis-parent the chain prevents.
 - An orphan span parents under the `guard` node span (treating it as a normal in-body call), which is
   not open when the pre-phase call fires.
+
+## Why `await_event_delivery: true`
+
+Every case here carries `await_event_delivery: true` (conformance-adapter §5.1, proposal 0124). Without it
+the wrapper returns immediately after the provider call, so whether the enclosing dispatch span exists
+when the orphan resolves is decided by the observer's architecture rather than by the spec.
+
+An observer that registers spans in the engine's execution path has already materialized the wrapper
+span and passes. An observer that does its work on the delivery queue has not, and under the pre-0124
+trigger it had no span to parent under, so it failed. The problem was not that the fixture could not
+separate them: it did, reliably. The problem was that the spec did not say which of the two was right,
+so the fixture was pinning an observer architecture rather than a rule, and an implementation could
+argue its failure was the fixture's fault.
+
+The directive removes the architectural difference instead of adjudicating it: delivery through this
+call's provider event completes before the wrapper proceeds past the call site, so **both** observers
+reach the orphan's resolution with the same spans materialized. Combined with §6's amended trigger, which synthesizes the dispatch span
+on the first event that needs it, and §5.5's *Resolution is structural*, the correct parent is now
+reachable and the wrong one is now failing rather than merely unlucky.
+
+No assertion changed. This fixture already asserted the parent §5.5 mandates; what changed is that it
+can now fail an implementation that gets there by accident.
+
+The trigger this fixture exercises binds **four** event kinds (§5.5's rule is shared by the embedding,
+tool-execution and rerank spans), and `calls_llm_from_wrapper` is the only orphan-wrapper primitive the
+adapter defines. So this fixture gates the LLM arm and nothing gates the other three. Recorded in
+`docs/open-questions.md`; do not read coverage of the trigger from this fixture alone.

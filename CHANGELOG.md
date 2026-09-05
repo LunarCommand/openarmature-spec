@@ -4,6 +4,30 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.118.0] — 2026-09-04
+
+**Changed**
+
+- **An orphan provider span's parent is resolved structurally** ([proposal 0124](proposals/0124-orphan-provider-span-parent-resolution.md)). A provider call issued from a wrapper resolves its parent when the observer drains the event, while §6 synthesized the enclosing dispatch span on its first inner node's `started`. Under a pre-phase wrapper the provider event is queued first, so the span the orphan needs did not yet exist when the orphan resolved. The wrong parent that followed was **intermittent or constant depending on the observer's architecture**, and the spec constrained neither. §5.5 gains *Resolution is structural*: the enclosing wrapper is determined by the call's position in the graph, not by which spans an observer has materialized, and an implementation **MUST NOT** select a different parent because a wrapper span does not yet exist or let the parent depend on event ordering.
+- **§6's synthesis trigger** changes from the *first inner `started` event* to the **first event that needs the span**, whichever arrives first. It is stated over any event whose span resolves under §5.5 rather than over provider events, because §5.5's rule is already shared by the LLM, embedding, tool-execution and rerank spans; enumerating one kind would have left the other three to inference. The span's start time re-anchors to the triggering event, and a fifth statement of the trigger three paragraphs below is widened rather than left readable as still confining synthesis.
+- **Six span-openness conditionals** are reworded to key on structural enclosure rather than on whether a span is open: two in §5.5, one each in the §5.5.8 / §5.5.11 / §5.5.13 cross-references, and §5.5's retry-sibling clause. Leaving them beside a rule that says resolution is structural would have moved the ambiguity inside one clause instead of removing it.
+- **The Langfuse side is reconciled.** §8.4.8's trigger defers to §6, and the four counterparts in §8.4.3, §8.4.5, §8.4.6 and §8.4.7 stop routing to the nearest **open** ancestor. §8.4.3's cross-tree parity promise and its temporal routing are one sentence: rewording only the routing would have left the promise asserting a parity the two trees no longer had.
+- **§5.4** gains the fan-out instance span's synthesis statement, which §6 gave the per-branch dispatch span and left silent for the instance span. **§5.7**'s `branch_name` sourcing re-anchors to the triggering event, since under the amended trigger it may be a provider event; both event kinds carry `branch_name`.
+
+**Added**
+
+- conformance-adapter **§5.1** gains **`await_event_delivery`** on `calls_llm_from_wrapper` (default `false`). When `true` the adapter **MUST** ensure observer delivery **through this call's provider event** has completed **before the wrapper proceeds past the call site** (for `phase: pre`, before invoking `next()`). Delivery is complete when every registered observer has finished receiving the event, which is graph-engine §6's own unit; a barrier satisfied by enqueue alone would let a queue-driven observer take the event and the wrapper proceed before the orphan resolved. The obligation is on what is achieved, not on the host language's mechanism, and an adapter **MUST** honor the directive or fail the case rather than run it without the barrier.
+
+  **The directive is named `await_event_delivery`, not the `yield_after_call` 0124 prescribes**, because the name has to describe the contract: §5.1 states that a scheduler yield is insufficient, so a name built on "yield" invites exactly the implementation the prose forbids. The directive is introduced by this accept and has never shipped, so renaming it costs only its own fixtures.
+
+  **This diverges from 0124's prescribed wording, deliberately.** The proposal specifies a *yield* that lets queued delivery "make progress". A review of the accept showed that cannot do the directive's job: graph-engine §6 makes the delivery queue strictly serial across the whole invocation, so conceding one turn hands the queue one event and nothing binds that event to this call. An older event takes the turn, the wrapper resumes, the node body runs, and its `started` event synthesizes the dispatch span before the provider event is drained, preserving the exact interleaving the directive exists to eliminate. Stated as a barrier on this call's event instead. The proposal body is unedited. Without it no fixture can distinguish an implementation that resolves structurally from one that passes because the wrapper span happened to be materialized already, which is a difference of observer architecture rather than of conformance.
+- Observability fixtures **133, 134, 152 and 153** set `await_event_delivery: true` on all five directive blocks they carry between them. These are every fixture using the primitive. 134's case 2 is the only Langfuse orphan case in the corpus, so without it the amended §8.4.8 trigger would ship with nothing on the Langfuse surface able to fail it. No assertion changed; all four already asserted the parent §5.5 mandates, and what changed is that they can now fail an implementation that arrives there by a favourable interleaving.
+
+**Notes**
+
+- **MINOR.** The rule names the same parents §5.5 already named; what changes is that an observer-side materialization detail can no longer change the answer, so an implementation that was passing intermittently becomes deterministic rather than newly wrong. observability and conformance-adapter `Latest` both move to 0.118.0.
+- **Completes the 0119-0124 accept run.** Every proposal in the repository is now Accepted; nothing is in the pipeline.
+
 ## [0.117.0] — 2026-08-30
 
 **Changed**

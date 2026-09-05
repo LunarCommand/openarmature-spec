@@ -247,6 +247,7 @@ cases:
             calls_llm_from_wrapper:
               phase: pre
               messages: [{role: user, content: "guardrail check"}]
+              await_event_delivery: true
         edges:
           - {from: guard, to: END}
       mid:

@@ -11,7 +11,8 @@ Langfuse mirror of OTel fixtures 132 (case 1) and 133 (case 2).
 
 - §8.4.3 — the Generation's parent observation follows the §5.5 *Lineage-resolved parent* resolution:
   the calling node's `Span` observation identified by the event's lineage chain, and — when that
-  observation is not open — the nearest open ancestor observation per §4.3.
+  observation is not the call's immediate enclosure — the nearest enclosing ancestor observation per
+  §4.3, resolved structurally per §5.5 rather than by which observations exist yet.
 - §8.4.6 — the same resolution for tool / non-Generation observations (cross-referenced; this fixture
   exercises the Generation path).
 - §8.3 / §8.4.2 — fan-out node → dispatch `Span` observation (`fan_out_item_count` /
@@ -56,7 +57,8 @@ is defined in fixture 133.
   observation, which sits under the correct inner instance under the correct outer instance. All four
   inner subtrees appear (no dropped observations).
 - **Case 2.** Each orphan Generation parents under its inner fan-out instance Span observation (the
-  nearest open ancestor, since the `guard` Span observation is not open), appearing as a **sibling**
+  nearest enclosing ancestor, since the `guard` node's observation is not the call's immediate
+  enclosure — the call comes from the wrapper, not the node body), appearing as a **sibling**
   of the `guard` Span — chain-resolved to the correct inner instance, never the outer NODE / Trace,
   never the coincidentally-indexed sibling.
 
@@ -97,3 +99,34 @@ Per conformance-adapter §5.9, documented here.
   nesting).
 - Case 2: an orphan Generation parents under the `guard` observation (not open when the pre-phase call
   fires), or the Langfuse parent disagrees with the OTel parent.
+
+## Why `await_event_delivery: true`
+
+Case 2, the orphan case, carries `await_event_delivery: true` (conformance-adapter §5.1, proposal 0124).
+Case 1 does not and should not: its `calls_llm` runs in the node body, so its Generation parents under
+its own calling-node observation and there is no orphan for the control to act on.
+
+Without the control on case 2 the wrapper returns immediately after the provider call, so whether the
+enclosing dispatch span exists when the orphan resolves is decided by the observer's architecture
+rather than by the spec.
+
+An observer that registers spans in the engine's execution path has already materialized the wrapper
+span and passes. An observer that does its work on the delivery queue has not, and under the pre-0124
+trigger it had no span to parent under, so it failed. The problem was not that the fixture could not
+separate them: it did, reliably. The problem was that the spec did not say which of the two was right,
+so the fixture was pinning an observer architecture rather than a rule, and an implementation could
+argue its failure was the fixture's fault.
+
+The directive removes the architectural difference instead of adjudicating it: delivery through this
+call's provider event completes before the wrapper proceeds past the call site, so **both** observers
+reach the orphan's resolution with the same spans materialized. Combined with §6's amended trigger, which synthesizes the dispatch span
+on the first event that needs it, and §5.5's *Resolution is structural*, the correct parent is now
+reachable and the wrong one is now failing rather than merely unlucky.
+
+No assertion changed. This fixture already asserted the parent §5.5 mandates; what changed is that it
+can now fail an implementation that gets there by accident.
+
+The trigger this fixture exercises binds **four** event kinds (§5.5's rule is shared by the embedding,
+tool-execution and rerank spans), and `calls_llm_from_wrapper` is the only orphan-wrapper primitive the
+adapter defines. So this fixture gates the LLM arm and nothing gates the other three. Recorded in
+`docs/open-questions.md`; do not read coverage of the trigger from this fixture alone.

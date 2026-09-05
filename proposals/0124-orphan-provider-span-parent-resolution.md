@@ -1,9 +1,9 @@
 # 0124: Resolve an Orphan Provider Span's Parent Structurally
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-08-21
-- **Accepted:**
+- **Accepted:** 2026-09-04
 - **Targets:**
   - spec/observability/spec.md **§5.5 *Lineage-resolved parent***: state that the fallback parent is resolved
     **structurally**, from the call's position in the graph, not from which spans the observer has

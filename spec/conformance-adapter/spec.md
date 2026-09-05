@@ -423,7 +423,7 @@ These directives appear under `nodes.<node_name>:` and define what the node does
 
   Both are test-only input shaping and assert nothing themselves. `message_repeat` (§5.15) is the same
   primitive applied to an exception message.
-- **`calls_llm_from_wrapper: {phase: pre|post, messages: [...]}`** — the adapter wraps the node in a
+- **`calls_llm_from_wrapper: {phase: pre|post, messages: [...], await_event_delivery: <bool>}`** — the adapter wraps the node in a
   middleware that issues exactly one real `complete()` call against the configured mock provider in
   the named phase: `pre` (before `next()`, so the calling node's span is not yet open) or `post`
   (after `next()` returns, so the node's span is already closed) — default `pre`. Either way the
@@ -433,6 +433,54 @@ These directives appear under `nodes.<node_name>:` and define what the node does
   still opens, making the orphan provider span a sibling of — not a child of — the node span).
   Exercises observability §5.5 *Lineage-resolved parent* (the orphan fallback to the nearest
   enclosing wrapper per §4.3).
+
+  **`await_event_delivery: <bool>`** (default `false`). When `true`, the adapter **MUST** ensure that
+  observer delivery **through this call's provider event** has completed **before the wrapper
+  proceeds past the call site**: for `phase: pre` that is before invoking `next()`, and for
+  `phase: post` before returning. The obligation is on what is achieved, not on the host language's
+  mechanism for achieving it. When `false` the wrapper continues immediately after the call, which is
+  the behavior every fixture carrying `calls_llm_from_wrapper` had before proposal 0124.
+
+  **The deadline is the call site, not the wrapper's return.** For `phase: pre` the wrapper does not
+  return until `next()` has run the node body, so a barrier placed at the wrapper's exit would let
+  the node's `started` event synthesize the dispatch span first while still satisfying the rule. That
+  is the interleaving this directive exists to eliminate, so the deadline is stated at the point the
+  wrapper resumes rather than at the point it returns. The two coincide for `phase: post` and differ
+  for `phase: pre`, which is the phase every fixture carrying this primitive uses.
+
+  The obligation is stated as a barrier on **this call's** event rather than as a yield, because
+  graph-engine §6 makes the delivery queue strictly serial across the whole invocation: conceding a
+  single turn hands the queue one event, and nothing binds that event to this call. An older event
+  consumes the turn, the wrapper resumes, the node body runs, and its `started` event synthesizes
+  the dispatch span before the provider event is ever drained, which is the interleaving the
+  directive exists to eliminate.
+
+  An adapter **MUST** honor the directive when present. An adapter that does not implement it produces
+  the same observable result as a case that never set it, so silently ignoring it makes every case
+  carrying it **vacuous rather than failing** — the same hazard `otel_observer` (§5.5) names for the
+  same reason. An adapter that cannot provide the barrier **MUST** fail the case rather than run it
+  without one.
+
+  **Delivery is complete when every registered observer has finished receiving the event**, which is
+  graph-engine §6's own unit: "No observer receives event e+1 until every observer has finished
+  receiving event e". The barrier is over that, not over the handoff to the queue. A barrier
+  satisfied by enqueue alone would let a queue-driven observer take the event, the wrapper proceed,
+  and the orphan's resolution never run before the node body executes, which is the vacuity this
+  directive exists to remove.
+
+  What is **excluded** is work an observer callback detaches rather than the callback itself: a
+  background task it spawns, an exporter flush it schedules. An observer that suppresses the span
+  (`disable_llm_spans`), and a case wired with no observers at all, both satisfy the barrier
+  trivially, because the callback set completes without emitting or is empty. An adapter **MUST NOT**
+  implement it as a wait for work the invocation itself must perform later, which would not
+  terminate; the event is dispatched before `complete()` returns, so the barrier is over an event
+  already queued rather than one the wrapper is still waiting to cause.
+
+  Without it no fixture can distinguish an implementation that resolves the parent **structurally**
+  (observability §5.5) from one that happens to pass because the wrapper span was already
+  materialized when the orphan resolved. An observer that does its work on the delivery queue and one
+  that registers spans in the engine's execution path disagree about exactly that interleaving, and
+  the directive is what makes the difference observable rather than architecture-dependent.
 - **`augment_metadata: {<key>: <value>, ...}`** — node calls `set_invocation_metadata(**kwargs)` per
   observability §3.4 with the given key/value pairs. Used in observability fixtures testing
   per-async-context metadata propagation. Exercises observability §3.4.
@@ -1675,3 +1723,4 @@ rule rather than an independent sanction: both are homes in the recognized vocab
 - §4.2 *Multi-case form* gained **The `graph:` container**, specifying a case form 17 shipped cases already used and no section defined: what the container holds, that every other case key stays its sibling, that the two case forms are equivalent, and that a container case asserting a runtime outcome MUST be executed. §5.4 *Composition directives* gained a **Subgraph declaration placement** rule: a declaration (`subgraph:` or `subgraphs:`) is scoped to the graph specification it accompanies, so an adapter MUST accept it at the document top level, inside a case, or inside a case's `graph:` block, and MUST resolve a name declared at more than one site using the innermost declaration in scope, with the `subgraphs:` mapping entry governing where both forms appear at one site. The section's three top-level claims and its `nodes.<node_name>:` preamble are reworded to match. Its own `conformance/` directory opens with fixture 001 by [proposal 0123](../../proposals/0123-case-level-subgraph-declaration.md)
 - §5.5 *Observer / observability directives* gained **`event_name`** on an `expected.log_records` entry, asserting the record's OTel `EventName` field so a fixture can pin which mandated diagnostic fired rather than only a severity, and **`otel_observer: {disable_provider_payload: <bool>}`**, the OTel-side counterpart of `langfuse_observer` which an adapter MUST honor. The `langfuse_client` paragraph is reconciled to the new directive, and twelve cases across eleven fixtures migrated off the undocumented bare case-level form, covering both `disable_provider_payload` and `disable_genai_semconv`, by [proposal 0121](../../proposals/0121-diagnostic-event-names-and-otel-observer-directive.md)
 - §5.11 documented the existing **`attribute_truncation`** directive and all four of its sub-keys beside `attributes_absent`; §5.5 gained **`metadata_truncation`** on a Langfuse observation entry and a **`raises: {error_type, message | message_repeat}`** form on `mock_llm`; §5.15 gained **`message_repeat`** on the retrieval mocks' `raises`; and §5.1 documented the existing **`content_repeat`** and **`base64_data_synthetic`** synthesis primitives beside `calls_llm`. §5.5 also documented the existing **`payload_byte_cap`** on both observer directives, the per-observer cap a fixture must set asymmetrically to gate observability §8.7's MUST NOT. Both truncation assertions gained an adapter **MUST**-honor rule, a key-presence requirement and an at-least-one-sub-key requirement, so a silently-skipping adapter fails rather than passing vacuously; `utf8_valid` gained the multi-byte-filler requirement without which it cannot fail. §5.11's scope sentence and §5.1's `base64_data_synthetic` field name (`source.base64_data`, not `source.data`) were corrected in the same pass by [proposal 0119](../../proposals/0119-error-message-cap-and-reserved-keys.md)
+- §5.1 *Node behavior directives* gained **`await_event_delivery`** on `calls_llm_from_wrapper` (named for the contract rather than 0124's prescribed `yield_after_call`, since §5.1 states a scheduler yield is insufficient and a yield-shaped name invites the implementation the prose forbids): when `true` the adapter MUST ensure observer delivery **through this call's provider event** has completed **before the wrapper proceeds past the call site**, which for `phase: pre` is before invoking `next()` rather than before the wrapper returns; a deadline at the wrapper's return would sit after the node body had run and let its `started` event synthesize the span first, satisfying the rule while producing the interleaving it forbids. Delivery is complete when every registered observer has finished receiving the event, graph-engine §6's own unit, rather than at handoff to the queue; work an observer callback detaches is excluded, the callback itself is not. An adapter MUST honor the directive or fail the case. Stated as a barrier rather than as the yield 0124 prescribed, because graph-engine §6's strictly serial delivery queue means conceding one turn hands the queue one event with nothing binding it to this call. Without it no fixture can distinguish an implementation that resolves an orphan's parent structurally (observability §5.5) from one that passes because the wrapper span happened to be materialized already, which is a difference of observer architecture rather than of conformance. Set on all five directive blocks across observability fixtures 133, 134, 152 and 153, every fixture carrying the primitive; no assertion changed by [proposal 0124](../../proposals/0124-orphan-provider-span-parent-resolution.md)
