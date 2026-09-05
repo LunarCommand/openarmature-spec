@@ -505,11 +505,14 @@ response-side clause.
 - **observability §8.7's Tool arm is normative but has no fixture.**
   [candidate-for-new-proposal] — the direct-application arm binds a failed
   Generation and its Embedding, Tool and Retriever counterparts (§8.4.5 to
-  §8.4.7). Fixture 160 gates three of the four. The Tool arm is not gated
-  because inducing an oversized harvested message from a tool call requires
-  `mock_tool`, and neither it nor the `calls_tool` block it sits inside is
-  defined in conformance-adapter §5, so a case would rest on undocumented
-  vocabulary. This matters more than an ordinary coverage gap: the mappings are
+  §8.4.7). Fixture 160 gates three of the four. The Tool arm is simply **not
+  written yet**. An earlier revision of this entry called it blocked on
+  `calls_tool` and `mock_tool` being undefined in conformance-adapter §5. Those
+  directives are indeed undefined, and that is tracked separately, but it does
+  not block a fixture: **fixture 098 case 2 already drives
+  `mock_tool: {raises: ...}` into a Langfuse Tool observation and asserts
+  `error_message`**, and nine fixtures rest on the same vocabulary. This matters
+  more than an ordinary coverage gap: the mappings are
   separate, an implementation can cap one and not another, and detecting exactly
   that is why fixture 160 exists. An implementer should read the Tool arm as
   binding and unpinned. It closes with the change that documents the
@@ -532,9 +535,11 @@ response-side clause.
   four kinds with only LLM fixture-covered. What 0124 changes is that the
   synthesis trigger now depends on that shared rule, which makes it matter more.
 
-  Closing it needs orphan-wrapper primitives for the other three. The
-  tool-execution one is blocked on `calls_tool`, which conformance-adapter §5
-  does not define, so it lands with the work that documents that family.
+  Closing it needs orphan-wrapper primitives for the other three, none of which
+  exists: `calls_llm_from_wrapper` has no embedding, rerank or tool counterpart.
+  That is the real constraint. It is **not** blocked on `calls_tool` being
+  undefined, which an earlier revision of this entry claimed; the tool-call
+  machinery is in use by nine fixtures.
 
 - **Whether the structural-resolution rule should be stated once in §4.3**
   rather than appended to §5.5. [candidate-for-new-proposal] — §4.3 owns the

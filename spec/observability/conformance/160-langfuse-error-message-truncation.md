@@ -84,10 +84,11 @@ keeps the truncation assertions from passing against an observation that emitted
 §8.7's direct-application arm binds a failed Generation and its Embedding, **Tool** and Retriever
 counterparts (§8.4.5 to §8.4.7). This fixture gates three of the four.
 
-The Tool arm is not gated. It needs an oversized harvested message from `mock_tool`, and neither `mock_tool`
-nor the `calls_tool` block it sits inside is defined in conformance-adapter §5, so the case would rest on
-undocumented vocabulary. Recorded here rather than built on an undefined directive; closing it belongs with
-the work that documents that family.
+The Tool arm is not gated, and it is **not blocked**: it is simply unwritten. Inducing an oversized
+harvested message from a tool call needs `mock_tool: {raises: ...}`, which fixture 098 case 2 already uses
+to drive a failed Tool observation asserting `error_message`. `mock_tool` and the `calls_tool` block are
+undefined in conformance-adapter §5, which is tracked separately, but nine fixtures already rest on that
+vocabulary, so it cannot be the reason a tenth is not written.
 
 This is a **normative rule with no fixture**, not merely a thin spot, so it is also recorded in
 `docs/open-questions.md` where an implementer building against §8.7 will look. The mappings are separate and
