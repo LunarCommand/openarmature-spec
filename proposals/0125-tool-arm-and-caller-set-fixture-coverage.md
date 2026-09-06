@@ -12,10 +12,11 @@
     wire one and not another, which is the defect this fixture exists to detect.
   - spec/observability/conformance/098-langfuse-tool-observation.{yaml,md}: supply `caller_metadata` and
     assert those keys on the Tool observation, pinning §8.4.2's scope. The row maps each caller-metadata
-    entry to `observation.metadata.<key>` on **EVERY** Observation; no fixture asserts it on a Tool
-    observation, and 098 supplies no caller metadata at all.
+    entry to `observation.metadata.<key>` on **EVERY** Observation. Fixture 027 pins that on a Langfuse
+    **Generation** observation; nothing pins it on a **Tool** observation, and 098 supplies no caller
+    metadata at all.
 - **Related:** 0119 (made §8.7's Tool arm normative and left it unpinned), 0118 (classified the harvested
-  message as payload), 0043 (introduced §8.4.2's caller-set row)
+  message as payload), 0034 (introduced the caller-supplied metadata surface and its §8.4.2 mapping)
 
 ## Summary
 
@@ -78,6 +79,17 @@ step 4 backtracks to 224;  emitted value = 224 + 31 = 255 bytes <= 256
 The cut landing inside a multi-byte sequence is the point: it is what lets `utf8_valid` fail against an
 implementation that splits one, which is the reason fixture 160 uses multi-byte filler at all.
 
+**The case sets `disable_provider_payload: false` as well as the cap**, matching the other three arms:
+without it §5.5.4 withholds `error_message` entirely and there is nothing to truncate.
+
+**The low cap reaches every payload-classified value on that observation, not only `error_message`.**
+§5.5.5's cap is per value, and a Tool observation's `tool.input` (the tool's arguments) is payload-bearing
+under the same flag the case must set to `false`. At a 256-byte cap the arguments are subject to it too.
+The case therefore **MUST** keep its arguments comfortably under the cap, so the only value that truncates
+is the one under test. That is a real constraint on the case rather than an incidental detail: enlarging
+the arguments later would silently truncate them as well, and the case would assert something other than
+what it claims. It is stated here so the accept writes it into the fixture's own prose.
+
 ### Fixture 098: the caller-set scope
 
 `caller_metadata` supplied at the case level, with those keys asserted on the Tool observation's `metadata`.
@@ -122,11 +134,11 @@ directive proposal. Both cases rest on vocabulary eight fixtures already use.
 
 ## Open questions
 
-1. **Whether §8.4.2's caller set should be asserted on more than the Tool observation.** This proposal pins
-   the one observation type where an implementation was observed to omit it. The row says EVERY Observation,
-   and the Generation, Embedding and Retriever types are equally unpinned by any fixture; they simply have
-   not been observed to fail. A later pass could assert it across all four, which is a broader fixture sweep
-   than this proposal takes on.
+1. **Whether §8.4.2's caller set should be asserted on the Embedding and Retriever types too.** The row says
+   EVERY Observation. Fixture 027 already pins it on a **Generation** observation, and this proposal adds the
+   **Tool** one. That leaves **Embedding** and **Retriever** unpinned by any fixture. Neither has been
+   observed to fail, and asserting them is a broader sweep than this proposal takes on, but the asymmetry is
+   now two types rather than three and worth closing in one pass rather than one type per defect report.
 2. **Whether the low-cap route should become the house pattern for oversized-message cases.** It needs no
    synthesis primitive and is easier to read than `message_repeat`, but it makes the cap the variable under
    test rather than the message, which is a different thing to get wrong. Fixture 160 would then carry two
