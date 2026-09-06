@@ -87,7 +87,9 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-Nothing open. Every proposal is Accepted.
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0125](proposals/0125-tool-arm-and-caller-set-fixture-coverage.md) | Draft | observability conformance fixtures 160, 098 | Two normative rules ship with no fixture able to fail them: §8.7's direct-application arm binds four observation types and fixture 160 gates three, and §8.4.2 maps the caller-metadata set onto every Observation with no fixture asserting it on a Tool observation. Adds one case to each. No spec text. |
 
 See [`proposals/`](proposals/) for the full history.
 
