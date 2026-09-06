@@ -511,7 +511,7 @@ response-side clause.
   directives are indeed undefined, and that is tracked separately, but it does
   not block a fixture: **fixture 098 case 2 already drives
   `mock_tool: {raises: ...}` into a Langfuse Tool observation and asserts
-  `error_message`**, and nine fixtures rest on the same vocabulary. This matters
+  `error_message`**, and eight fixtures rest on the same vocabulary. This matters
   more than an ordinary coverage gap: the mappings are
   separate, an implementation can cap one and not another, and detecting exactly
   that is why fixture 160 exists. An implementer should read the Tool arm as
@@ -539,7 +539,7 @@ response-side clause.
   exists: `calls_llm_from_wrapper` has no embedding, rerank or tool counterpart.
   That is the real constraint. It is **not** blocked on `calls_tool` being
   undefined, which an earlier revision of this entry claimed; the tool-call
-  machinery is in use by nine fixtures.
+  machinery is in use by eight fixtures.
 
 - **Whether the structural-resolution rule should be stated once in §4.3**
   rather than appended to §5.5. [candidate-for-new-proposal] — §4.3 owns the

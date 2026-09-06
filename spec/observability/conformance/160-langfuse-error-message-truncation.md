@@ -87,7 +87,7 @@ counterparts (§8.4.5 to §8.4.7). This fixture gates three of the four.
 The Tool arm is not gated, and it is **not blocked**: it is simply unwritten. Inducing an oversized
 harvested message from a tool call needs `mock_tool: {raises: ...}`, which fixture 098 case 2 already uses
 to drive a failed Tool observation asserting `error_message`. `mock_tool` and the `calls_tool` block are
-undefined in conformance-adapter §5, which is tracked separately, but nine fixtures already rest on that
+undefined in conformance-adapter §5, which is tracked separately, but eight fixtures already rest on that
 vocabulary, so it cannot be the reason a tenth is not written.
 
 This is a **normative rule with no fixture**, not merely a thin spot, so it is also recorded in

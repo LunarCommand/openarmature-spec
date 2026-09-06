@@ -44,7 +44,7 @@
 # `mock_tool: {raises: ...}`, which fixture 098 case 2 already uses to drive a
 # failed Tool observation asserting error_message. `mock_tool` and `calls_tool`
 # are undefined in conformance-adapter §5 and that is tracked separately, but
-# nine fixtures rest on that vocabulary, so it does not block a tenth.
+# eight fixtures rest on that vocabulary, so it does not block a tenth.
 
 cases:
   # Embedding path (§8.4.5). error_type is asserted by its literal value: the
