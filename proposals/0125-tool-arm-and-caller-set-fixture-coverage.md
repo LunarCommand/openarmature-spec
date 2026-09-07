@@ -20,11 +20,12 @@
 
 ## Summary
 
-Two normative rules ship with no fixture able to fail them. §8.7's direct-application arm binds four
-observation types and fixture 160 gates three. §8.4.2 maps the caller-supplied metadata set onto every
-Langfuse Observation and no fixture asserts it on a Tool observation. This proposal adds **one new case**
-to fixture 160 and **extends one existing case** in fixture 098. It changes no spec text and adds no
-directive.
+Two normative rules are covered everywhere except the **Tool** observation. §8.7's direct-application arm
+binds four observation types and fixture 160 gates three, leaving Tool. §8.4.2 maps the caller-supplied
+metadata set onto every Langfuse Observation and fixture 027 pins that on Span and Generation, leaving Tool.
+Both gaps are the same shape: an observation type whose path no fixture exercises, in a rule the suite
+otherwise enforces. This proposal adds **one new case** to fixture 160 and **extends one existing case** in
+fixture 098. It changes no spec text and adds no directive.
 
 ## Motivation
 
