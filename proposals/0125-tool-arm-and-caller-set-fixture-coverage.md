@@ -22,8 +22,9 @@
 
 Two normative rules ship with no fixture able to fail them. §8.7's direct-application arm binds four
 observation types and fixture 160 gates three. §8.4.2 maps the caller-supplied metadata set onto every
-Langfuse Observation and no fixture asserts it on a Tool observation. This proposal adds one case to each
-fixture. It changes no spec text and adds no directive.
+Langfuse Observation and no fixture asserts it on a Tool observation. This proposal adds **one new case**
+to fixture 160 and **extends one existing case** in fixture 098. It changes no spec text and adds no
+directive.
 
 ## Motivation
 
@@ -65,9 +66,11 @@ A fourth failing-provider case on the tool path, matching the three that exist:
 mean documenting `mock_tool` itself, which is the undefined-family question this proposal deliberately does
 not open.
 
-Instead the case sets a **low cap** and supplies a short literal message. §5.5.5 states no minimum cap, so
-`payload_byte_cap: 256` is conforming, and 100 repetitions of a four-byte character is 400 bytes, which is
-writable inline and exceeds the cap. Every property the other arms test survives:
+Instead the case sets the cap to its **normative minimum** and supplies a short literal message. §5.5.5's
+*Minimum cap* paragraph requires implementations to reject cap configurations smaller than **256 bytes** at
+observer construction time, so `payload_byte_cap: 256` is the smallest conforming value and every
+implementation must accept it. 100 repetitions of a four-byte character is 400 bytes, writable inline and
+over the cap. Every property the other arms test survives:
 
 ```
 message = 100 x U+1F600 = 400 bytes, which exceeds the 256-byte cap
@@ -101,11 +104,13 @@ and does not entangle with §8.4.6's failure fields or §8.7's cap.
 
 ## Conformance test impact
 
-Two cases added, no case changed or removed.
+One case added, one existing case extended, none removed.
 
 - **160** gains a fourth case. Its sidecar's coverage note, which currently records the Tool arm as an
   uncovered gap, is rewritten to describe the case instead.
-- **098** gains `caller_metadata` and metadata assertions on an existing case, plus a sidecar note.
+- **098** gains `caller_metadata` and the corresponding `metadata` assertions on its **existing success
+  case**, plus a sidecar note. No case is added to 098; the assertion attaches where the Tool observation
+  is already exercised, which is what keeps it about §8.4.2's scope alone.
 
 **Both could newly fail an implementation that passes today**, which is why this needs a proposal at all
 under `GOVERNANCE.md`'s "changing conformance test expectations in a way that any implementation could
@@ -125,8 +130,11 @@ except the tool calls.
 documenting none: it would make the family look defined while five names stayed unrecognized vocabulary
 under 0120's definition-homes rule. The low-cap route needs no directive change.
 
-**Carry an oversized message inline without lowering the cap.** Rejected. That means roughly 64 KiB of
-literal text in a fixture, which is exactly what the synthesis primitives exist to avoid.
+**Carry an oversized message inline without lowering the cap.** Rejected. At the 65,536-byte default that
+means roughly 64 KiB of literal text in a fixture, which is exactly what the synthesis primitives exist to
+avoid. Sitting on §5.5.5's 256-byte minimum instead is a deliberate choice of the one cap value every
+conforming implementation is required to accept, which is why the case does not pick an arbitrary low
+number.
 
 **Bundle the `calls_tool` family documentation.** Rejected. It is a six-name vocabulary addition with its
 own design question about definition homes, and bundling it would make a two-case fixture proposal into a
