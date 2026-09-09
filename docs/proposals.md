@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0125](proposals/0125-tool-arm-and-caller-set-fixture-coverage.md) | Fixture coverage for the Tool arm and the caller-set scope | observability | Draft | —               | —          |
 | [0124](proposals/0124-orphan-provider-span-parent-resolution.md) | Resolve an orphan provider span's parent structurally | observability | Accepted | Pending         | —          |
 | [0123](proposals/0123-case-level-subgraph-declaration.md) | Scope a subgraph declaration to the graph specification it accompanies | conformance-adapter | Accepted | Pending         | —          |
 | [0122](proposals/0122-declared-field-collision-reachability.md) | Settle the shape of the extras surface | llm-provider | Accepted | Pending         | —          |
