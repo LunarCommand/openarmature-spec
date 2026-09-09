@@ -18,6 +18,14 @@ cases:
       # §5.5, observability §8.7). The `otel_observer` block above configures only
       # the OTel side, so the Langfuse assertions below need it set here explicitly.
       disable_provider_payload: false
+    # §8.4.2 maps each caller-supplied metadata entry to observation.metadata.<key>
+    # on EVERY Observation, unscoped where that table scopes its other rows
+    # explicitly. Fixture 027 pins that on Span and Generation observations;
+    # nothing pinned it on a Tool observation, and an implementation shipped with
+    # the set on its OTel tool span and absent from the Langfuse one.
+    caller_metadata:
+      tenantId: "acme-corp"
+      requestId: "req-98a"
     state:
       fields:
         out: {type: record, default: null}
@@ -48,11 +56,18 @@ cases:
                 metadata:
                   openarmature_tool_name: "get_weather"
                   openarmature_tool_call_id: "call_abc123"
+                  # §8.4.2: the caller set reaches a Tool observation like any
+                  # other. `metadata:` is a subset match, so listing these asserts
+                  # their presence and value without pinning the observation's
+                  # other cross-cutting keys.
+                  tenantId: "acme-corp"
+                  requestId: "req-98a"
                 children: []
       invariants:
         renders_as_dedicated_tool_observation_not_generation: true
         tool_name_and_call_id_in_metadata: true
         input_output_populated_with_payload_on: true
+        caller_metadata_reaches_tool_observation: true
 
   - name: failed_tool_execution_renders_error_level
     description: |

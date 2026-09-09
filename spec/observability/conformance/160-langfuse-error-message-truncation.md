@@ -79,20 +79,31 @@ matcher would assert less than the fixture knows; fixture 150 sets the same prec
 keeps the truncation assertions from passing against an observation that emitted nothing at all, which
 `metadata_truncation`'s presence requirement (conformance-adapter §5.5) independently enforces.
 
-## Coverage gap: the Tool arm
+## The Tool case, and why it differs from the other three
 
-§8.7's direct-application arm binds a failed Generation and its Embedding, **Tool** and Retriever
-counterparts (§8.4.5 to §8.4.7). This fixture gates three of the four.
+Case 6 closes §8.7's fourth arm, so all four of the Generation, Embedding, Tool and Retriever
+counterparts (§8.4.5 to §8.4.7) are now gated.
 
-The Tool arm is not gated, and it is **not blocked**: it is simply unwritten. Inducing an oversized
-harvested message from a tool call needs `mock_tool: {raises: ...}`, which fixture 098 case 2 already uses
-to drive a failed Tool observation asserting `error_message`. `mock_tool` and the `calls_tool` block are
-undefined in conformance-adapter §5, which is tracked separately, but eight fixtures already rest on that
-vocabulary, so it cannot be the reason a tenth is not written.
+The machinery it needs already existed: eight fixtures declare `calls_tool`, and fixture 098 case 2 drives
+`mock_tool: {raises: ...}` into a Langfuse Tool observation asserting `error_message`. An earlier version of
+this note called the arm **blocked** on that vocabulary being undefined in conformance-adapter §5, which was
+corrected in v0.118.1. The directives are undefined and that is tracked separately; they were never a
+blocker, only a reason nobody had written the case.
 
-This is a **normative rule with no fixture**, not merely a thin spot, so it is also recorded in
-`docs/open-questions.md` where an implementer building against §8.7 will look. The mappings are separate and
-an implementation can cap one and not another, which is the defect this fixture exists to detect.
+**It supplies its message literally where the other three synthesize.** `message_repeat` reaches `mock_llm`
+(§5.5) and the retrieval mocks (§5.15), not `mock_tool`, whose `raises` is `{error_type, message}`.
+Extending it would mean documenting `mock_tool` and pulling in the rest of the `calls_tool` family, so the
+case lowers the cap instead.
+
+**The cap is 256 because that is §5.5.5's normative minimum**, not because a low number was convenient.
+§5.5.5 requires implementations to reject caps below 256 bytes at observer construction, so it is the
+smallest value every conforming implementation is obliged to accept. The other cases use 1024; only a
+literal message makes the minimum necessary.
+
+**The cap reaches `tool.input` as well.** §5.5.5 bounds every payload-classified value, and a Tool
+observation's `input` (the arguments) is payload-bearing under the same flag this case sets to `false`. The
+arguments stay far under 256 bytes so the only value that truncates is the one under test. Enlarging them
+would silently truncate them too, and the case would assert something other than what it claims.
 
 ## Not JSON-encoded
 

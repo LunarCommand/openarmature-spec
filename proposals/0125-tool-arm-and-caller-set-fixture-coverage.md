@@ -1,9 +1,9 @@
 # 0125: Fixture Coverage for the Tool Arm and the Caller-Set Scope
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-09-06
-- **Accepted:**
+- **Accepted:** 2026-09-09
 - **Targets:**
   - spec/observability/conformance/160-langfuse-error-message-truncation.{yaml,md}: add a **Tool** case,
     closing the fourth arm of §8.7's direct-application rule. The fixture gates the Generation, Embedding

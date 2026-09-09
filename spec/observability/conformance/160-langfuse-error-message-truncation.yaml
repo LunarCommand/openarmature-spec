@@ -322,3 +322,90 @@ cases:
                 metadata:
                   error_type: "server_error"
                   error_message: "service unavailable"
+
+  # Tool path (§8.4.6). The fourth and final arm of §8.7's direct-application
+  # rule. An implementation that wired the cap into the Generation, Embedding and
+  # Retriever mappings but not this one passes cases 1, 2 and 4 and fails here.
+  #
+  # WHY THIS CASE SUPPLIES ITS MESSAGE LITERALLY.
+  # The other three arms synthesize with `message_repeat`, which conformance-adapter
+  # §5.15 gives the retrieval mocks and §5.5 gives `mock_llm`. It does NOT reach
+  # `mock_tool`, whose `raises` is {error_type, message}. Extending it would mean
+  # documenting `mock_tool` and the rest of the undefined `calls_tool` family, so
+  # this case lowers the cap instead and carries a short message inline.
+  #
+  # WHY THE CAP IS 256 AND NOT 1024.
+  # 256 is §5.5.5's NORMATIVE MINIMUM ("implementations MUST reject cap
+  # configurations smaller than 256 bytes at observer construction time"), so it is
+  # the smallest value every conforming implementation is required to accept. It is
+  # not an arbitrary low number, and it is deliberately different from the 1024 the
+  # other cases use, because only a literal message makes a low cap necessary.
+  #
+  #   message = 100 x U+1F600 = 400 bytes, over the 256-byte cap
+  #   marker  = "…[truncated, 400 bytes total]" = 31 bytes
+  #   N = 256 - 31 = 225;  225 mod 4 = 1, so the cut lands INSIDE a sequence
+  #   step 4 backtracks to 224;  emitted = 224 + 31 = 255 bytes <= 256
+  #
+  # The cut landing inside a sequence is what lets `utf8_valid` fail against an
+  # implementation that splits one. Do not round the cap or use an ASCII filler.
+  #
+  # THE CAP REACHES `tool.input` TOO. §5.5.5's cap is per payload-classified value,
+  # and a Tool observation's `input` (the arguments) is payload-bearing under the
+  # same flag this case sets false. The arguments are kept far under 256 bytes so
+  # the only value that truncates is the one under test. Enlarging them would
+  # silently truncate them as well and the case would assert something else.
+  - name: tool_failure_error_message_truncated_to_cap
+    description: |
+      One tool call fails with a harvested message over the observer's cap. The
+      Tool observation emits at ERROR with error_message truncated per §5.5.5
+      against the Langfuse observer's own cap, the same four properties as the
+      Embedding, Generation and Retriever cases. error_type is asserted by its
+      literal value, which the mock's `raises` pins.
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_trunc01"
+          arguments: {city: "Paris"}
+          mock_tool:
+            raises:
+              error_type: "TimeoutError"
+              message: "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    langfuse_observer:
+      disable_provider_payload: false
+      payload_byte_cap: 256
+    expected_error:
+      category: node_exception
+      raised_from: run_tool
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "run_tool"
+            children:
+              - type: tool
+                name: "openarmature.tool.call"
+                level: ERROR
+                metadata:
+                  openarmature_tool_name: "get_weather"
+                  openarmature_tool_call_id: "call_trunc01"
+                  error_type: "TimeoutError"
+                metadata_truncation:
+                  error_message:
+                    max_bytes: 256
+                    marker_pattern: "…\\[truncated, [0-9]+ bytes total\\]$"
+                    utf8_valid: true
+                    prefix_of_full_serialization: true
+                children: []
+      invariants:
+        tool_arm_of_direct_application_gated: true
+        error_type_asserted_literally_from_raises: true
+        cap_is_the_normative_minimum_not_arbitrary: true

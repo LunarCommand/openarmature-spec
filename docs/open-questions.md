@@ -518,6 +518,27 @@ response-side clause.
   binding and unpinned. It closes with the change that documents the
   `calls_tool` family, where the vocabulary and the case land together.
 
+### 0125 — Tool arm and caller-set fixture coverage
+
+- **Whether §8.4.2's caller set should be asserted on the Embedding and
+  Retriever observation types too.** [candidate-for-new-proposal] — the row says
+  the caller-supplied metadata set reaches EVERY Observation. Fixture 027 pins
+  that on Span and Generation, and 0125 added the Tool one. **Embedding** and
+  **Retriever** remain unpinned by any fixture. Neither has been observed to
+  fail, and asserting them is a broader sweep than 0125 took on, but the
+  asymmetry is now two types rather than three and is worth closing in one pass
+  rather than one type per defect report.
+- **Whether the low-cap route should become the house pattern for
+  oversized-message cases.** [candidate-for-new-proposal] — fixture 160's Tool
+  case sets the cap to §5.5.5's 256-byte minimum and carries a short literal
+  message, because `message_repeat` does not reach `mock_tool`. The other three
+  arms synthesize with `message_repeat` at a 1024-byte cap. The low-cap route
+  needs no synthesis primitive and is easier to read, but it makes the cap the
+  variable under test rather than the message, and fixture 160 now carries two
+  idioms for one behaviour. Settling it would likely mean either extending
+  `message_repeat` to `mock_tool` (which needs the `calls_tool` family
+  documented) or converting the other three.
+
 ### 0124 — orphan provider span parent resolution
 
 - **§6's synthesis trigger binds four event kinds and is fixture-gated on
