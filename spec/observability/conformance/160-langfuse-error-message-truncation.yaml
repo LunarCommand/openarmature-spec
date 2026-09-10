@@ -11,9 +11,13 @@
 # That rule is only testable when the two observers hold DIFFERENT caps. Leaving
 # both unset puts them both at §5.5.5's 65,536-byte default, where an
 # implementation reading the wrong observer's cap emits a byte-identical result
-# and passes. So each case sets the Langfuse cap to 1024 and leaves the OTel
-# observer at the default; an implementation sourcing the cap from the OTel side
-# truncates at 65,536 and fails both max_bytes and marker_pattern.
+# and passes. So each case sets the Langfuse cap to a NON-DEFAULT value and
+# leaves the OTel observer at the default; an implementation sourcing the cap
+# from the OTel side truncates at 65,536 and fails both max_bytes and
+# marker_pattern. The value differs by case and that difference is not
+# significant here: the three cases synthesizing with message_repeat use 1024,
+# and the Tool case uses §5.5.5's 256-byte minimum because it carries a literal
+# message. Each case's own note gives its reason.
 #
 # WHY THE FILLER IS A 4-BYTE CHARACTER AND THE NUMBERS ARE WHAT THEY ARE.
 # utf8_valid gates §5.5.5 step 4's code-point-boundary backtracking. With
@@ -38,13 +42,17 @@
 # §5.15 for the retrieval mocks, §5.5 for mock_llm) rather than carried inline.
 #
 # COVERAGE. §8.7's direct-application arm binds a failed Generation and its
-# Embedding, Tool and Retriever counterparts (§8.4.5 to §8.4.7). Cases 1, 2 and 4
-# gate Embedding, Generation and Retriever. The TOOL arm is NOT gated here, and
-# it is NOT blocked: it is unwritten. It needs an oversized message from
-# `mock_tool: {raises: ...}`, which fixture 098 case 2 already uses to drive a
-# failed Tool observation asserting error_message. `mock_tool` and `calls_tool`
-# are undefined in conformance-adapter §5 and that is tracked separately, but
-# eight fixtures rest on that vocabulary, so it does not block a tenth.
+# Embedding, Tool and Retriever counterparts (§8.4.5 to §8.4.7). All four are
+# gated: cases 1, 2 and 4 cover Embedding, Generation and Retriever, and case 6
+# covers Tool.
+#
+# `mock_tool` and `calls_tool` remain undefined in conformance-adapter §5, which
+# is tracked separately. That never blocked this case: eight fixtures rest on
+# that vocabulary, and fixture 098 case 2 already drives
+# `mock_tool: {raises: ...}` into a failed Tool observation asserting
+# error_message. What it does mean is that `message_repeat` never reached
+# `mock_tool`, which is why case 6 carries a literal message and lowers the cap
+# rather than synthesizing like the other three.
 
 cases:
   # Embedding path (§8.4.5). error_type is asserted by its literal value: the

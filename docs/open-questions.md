@@ -503,20 +503,23 @@ response-side clause.
   rendering for a truncated structured value (drop trailing elements, or emit a
   count, or something else) rather than a scope extension, plus a fixture.
 - **observability §8.7's Tool arm is normative but has no fixture.**
-  [candidate-for-new-proposal] — the direct-application arm binds a failed
-  Generation and its Embedding, Tool and Retriever counterparts (§8.4.5 to
-  §8.4.7). Fixture 160 gates three of the four. The Tool arm is simply **not
-  written yet**. An earlier revision of this entry called it blocked on
-  `calls_tool` and `mock_tool` being undefined in conformance-adapter §5. Those
-  directives are indeed undefined, and that is tracked separately, but it does
-  not block a fixture: **fixture 098 case 2 already drives
-  `mock_tool: {raises: ...}` into a Langfuse Tool observation and asserts
-  `error_message`**, and eight fixtures rest on the same vocabulary. This matters
-  more than an ordinary coverage gap: the mappings are
-  separate, an implementation can cap one and not another, and detecting exactly
-  that is why fixture 160 exists. An implementer should read the Tool arm as
-  binding and unpinned. It closes with the change that documents the
-  `calls_tool` family, where the vocabulary and the case land together.
+  [resolved-by-acceptance] — **closed by proposal 0125**, which added fixture
+  160's sixth case. The arm now has coverage and all four of §8.7's
+  counterparts are gated.
+
+  Kept rather than deleted because the entry records a claim that was wrong
+  twice. An earlier revision called the arm **blocked** on `calls_tool` and
+  `mock_tool` being undefined in conformance-adapter §5; that was corrected in
+  v0.118.1 after the Python implementation retracted its half. Those directives
+  are still undefined and still tracked separately, but eight fixtures rest on
+  the vocabulary and fixture 098 case 2 already drove `mock_tool: {raises: ...}`
+  into a Langfuse Tool observation, so it never blocked anything.
+
+  This entry then predicted the arm would close "with the change that documents
+  the `calls_tool` family". That was also wrong. 0125 closed it **without**
+  touching that family, by setting the cap to §5.5.5's 256-byte minimum and
+  carrying a literal message, precisely so the family could stay a separate
+  question.
 
 ### 0125 — Tool arm and caller-set fixture coverage
 

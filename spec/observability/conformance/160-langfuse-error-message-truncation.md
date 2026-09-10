@@ -17,9 +17,14 @@ when the two observers hold **different** caps.
 
 Leaving the cap unset does not achieve that: it puts **both** observers at §5.5.5's 65,536-byte default,
 where an implementation reading the wrong observer's cap produces a byte-identical result and passes. Each
-case therefore sets `langfuse_observer.payload_byte_cap` to 1024 and leaves the OTel observer at the
-default. An implementation sourcing the cap from the OTel side truncates at 65,536 and fails both
-`max_bytes` and `marker_pattern`.
+case therefore sets `langfuse_observer.payload_byte_cap` to a **non-default** value and leaves the OTel
+observer at the default. An implementation sourcing the cap from the OTel side truncates at 65,536 and
+fails both `max_bytes` and `marker_pattern`.
+
+The value differs by case and the difference is not significant to this argument: the three cases that
+synthesize with `message_repeat` use 1024, and the Tool case uses §5.5.5's 256-byte minimum because it
+carries a literal message instead. What matters here is only that the cap is non-default and the OTel side
+is not set to match it. Each case's own note gives its reason.
 
 Setting an `otel_observer` block is not the alternative and would not help. The directive carries a
 `payload_byte_cap` of its own, so setting both to the same value would restore exactly the ambiguity this

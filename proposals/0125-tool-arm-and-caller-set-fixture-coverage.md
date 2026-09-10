@@ -20,11 +20,13 @@
 
 ## Summary
 
-Two normative rules are covered everywhere except the **Tool** observation. §8.7's direct-application arm
-binds four observation types and fixture 160 gates three, leaving Tool. §8.4.2 maps the caller-supplied
-metadata set onto every Langfuse Observation and fixture 027 pins that on Span and Generation, leaving Tool.
-Both gaps are the same shape: an observation type whose path no fixture exercises, in a rule the suite
-otherwise enforces. This proposal adds **one new case** to fixture 160 and **extends one existing case** in
+Two normative rules have an untested **Tool** path, though the two rules are covered to different degrees.
+§8.7's direct-application arm binds four observation types and fixture 160 gates three, so closing Tool
+completes it. §8.4.2 maps the caller-supplied metadata set onto **every** Langfuse Observation, and fixture
+027 pins that on Span and Generation only, so closing Tool takes it from one of the four provider-call
+observation types to two, leaving **Embedding and Retriever still unpinned** (open question 1). Both gaps
+are the same shape, an observation type whose path no fixture exercises in a rule the suite otherwise
+enforces, but only the §8.7 one is completed here. This proposal adds **one new case** to fixture 160 and **extends one existing case** in
 fixture 098. It changes no spec text and adds no directive.
 
 ## Motivation
