@@ -17,9 +17,15 @@ when the two observers hold **different** caps.
 
 Leaving the cap unset does not achieve that: it puts **both** observers at §5.5.5's 65,536-byte default,
 where an implementation reading the wrong observer's cap produces a byte-identical result and passes. Each
-case therefore sets `langfuse_observer.payload_byte_cap` to 1024 and leaves the OTel observer at the
-default. An implementation sourcing the cap from the OTel side truncates at 65,536 and fails both
-`max_bytes` and `marker_pattern`.
+case therefore sets `langfuse_observer.payload_byte_cap` to a **non-default** value and leaves the OTel
+observer at the default. An implementation sourcing the cap from the OTel side truncates at 65,536 and
+fails both `max_bytes` and `marker_pattern`.
+
+The value differs by case and the difference is not significant to this argument: five cases sit at 1024,
+and the Tool case uses §5.5.5's 256-byte minimum because it is the only case that must carry an
+**oversized** message inline. Case 5 also carries a literal message and stays at 1024, since a below-cap
+message needs no headroom. What matters here is only that the cap is non-default and the OTel side is not
+set to match it. Each case's own note gives its reason.
 
 Setting an `otel_observer` block is not the alternative and would not help. The directive carries a
 `payload_byte_cap` of its own, so setting both to the same value would restore exactly the ambiguity this
@@ -48,8 +54,9 @@ the `utf8_valid` assertion while leaving the fixture green. The YAML header says
 ## How the cases discriminate
 
 Cases 1 to 4 fail a call whose mock supplies a 100 KiB harvested message, synthesized with `message_repeat`
-(conformance-adapter §5.15 for the retrieval mocks, §5.5 for `mock_llm`) rather than carried inline. Case 5
-supplies a short literal message instead, as the control.
+(conformance-adapter §5.15 for the retrieval mocks, §5.5 for `mock_llm`) rather than carried inline. Cases
+5 and 6 both supply a **literal** message: case 5 a short one, as the control, and case 6 an oversized one,
+because `message_repeat` does not reach `mock_tool`.
 
 1. **`embedding_failure_error_message_truncated_to_cap`** — the Embedding mapping (§8.4.5). Asserts all four
    `metadata_truncation` sub-keys: at most 1024 bytes, ends with the §5.5.5 marker, valid UTF-8 across the
@@ -68,31 +75,45 @@ supplies a short literal message instead, as the control.
 4. **`retriever_failure_error_message_truncated_to_cap`** — the Retriever mapping (§8.4.7). An
    implementation that wired the cap into the Generation and Embedding mappings but not this one passes
    cases 1 and 2 and fails here.
-5. **`error_message_below_cap_untouched`** — the control. Cases 1, 2 and 4 all assert an **oversized**
+5. **`error_message_below_cap_untouched`** — the control. Cases 1, 2, 4 and 6 all assert an **oversized**
    message comes back truncated; none of them asserts a message **under** the cap comes back whole. An
    implementation that truncated unconditionally, or appended the marker regardless of length, passes all
-   three. This case pins the other side of §5.5.5's threshold by asserting `error_message` literally, which
+   four. This case pins the other side of §5.5.5's threshold by asserting `error_message` literally, which
    no truncated form can satisfy: truncation both shortens the value and appends the marker.
+6. **`tool_failure_error_message_truncated_to_cap`** — the Tool mapping (§8.4.6), closing §8.7's fourth
+   and last arm. Asserts the same four sub-keys as cases 1, 2 and 4, against a cap of 256 rather than
+   1024; see *The Tool case* below for why it differs.
 
 `error_type` is asserted by its **literal** value in all four. The mock's `raises` pins it, so a format
 matcher would assert less than the fixture knows; fixture 150 sets the same precedent. Asserting it also
 keeps the truncation assertions from passing against an observation that emitted nothing at all, which
 `metadata_truncation`'s presence requirement (conformance-adapter §5.5) independently enforces.
 
-## Coverage gap: the Tool arm
+## The Tool case, and why it differs from the other three
 
-§8.7's direct-application arm binds a failed Generation and its Embedding, **Tool** and Retriever
-counterparts (§8.4.5 to §8.4.7). This fixture gates three of the four.
+Case 6 closes §8.7's fourth arm, so all four of the Generation, Embedding, Tool and Retriever
+counterparts (§8.4.5 to §8.4.7) are now gated.
 
-The Tool arm is not gated, and it is **not blocked**: it is simply unwritten. Inducing an oversized
-harvested message from a tool call needs `mock_tool: {raises: ...}`, which fixture 098 case 2 already uses
-to drive a failed Tool observation asserting `error_message`. `mock_tool` and the `calls_tool` block are
-undefined in conformance-adapter §5, which is tracked separately, but eight fixtures already rest on that
-vocabulary, so it cannot be the reason a tenth is not written.
+The machinery it needs already existed: eight other fixtures declare `calls_tool`, and fixture 098 case 2 drives
+`mock_tool: {raises: ...}` into a Langfuse Tool observation asserting `error_message`. An earlier version of
+this note called the arm **blocked** on that vocabulary being undefined in conformance-adapter §5, which was
+corrected in v0.118.1. The directives are undefined and that is tracked separately; they were never a
+blocker, only a reason nobody had written the case.
 
-This is a **normative rule with no fixture**, not merely a thin spot, so it is also recorded in
-`docs/open-questions.md` where an implementer building against §8.7 will look. The mappings are separate and
-an implementation can cap one and not another, which is the defect this fixture exists to detect.
+**It supplies its message literally where the other three synthesize.** `message_repeat` reaches `mock_llm`
+(§5.5) and the retrieval mocks (§5.15), not `mock_tool`, whose `raises` is `{error_type, message}`.
+Extending it would mean documenting `mock_tool` and pulling in the rest of the `calls_tool` family, so the
+case lowers the cap instead.
+
+**The cap is 256 because that is §5.5.5's normative minimum**, not because a low number was convenient.
+§5.5.5 requires implementations to reject caps below 256 bytes at observer construction, so it is the
+smallest value every conforming implementation is obliged to accept. The other cases use 1024; only a
+literal message makes the minimum necessary.
+
+**The cap reaches `tool.input` as well.** §5.5.5 bounds every payload-classified value, and a Tool
+observation's `input` (the arguments) is payload-bearing under the same flag this case sets to `false`. The
+arguments stay far under 256 bytes so the only value that truncates is the one under test. Enlarging them
+would silently truncate them too, and the case would assert something other than what it claims.
 
 ## Not JSON-encoded
 

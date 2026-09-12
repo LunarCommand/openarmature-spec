@@ -11,9 +11,15 @@
 # That rule is only testable when the two observers hold DIFFERENT caps. Leaving
 # both unset puts them both at §5.5.5's 65,536-byte default, where an
 # implementation reading the wrong observer's cap emits a byte-identical result
-# and passes. So each case sets the Langfuse cap to 1024 and leaves the OTel
-# observer at the default; an implementation sourcing the cap from the OTel side
-# truncates at 65,536 and fails both max_bytes and marker_pattern.
+# and passes. So each case sets the Langfuse cap to a NON-DEFAULT value and
+# leaves the OTel observer at the default; an implementation sourcing the cap
+# from the OTel side truncates at 65,536 and fails both max_bytes and
+# marker_pattern. The value differs by case and that difference is not
+# significant here: five cases sit at 1024, and the Tool case uses §5.5.5's
+# 256-byte minimum because it is the only case that must carry an OVERSIZED
+# message inline. Case 5 also carries a literal message and stays at 1024,
+# because a below-cap message needs no headroom. Each case's own note gives its
+# reason.
 #
 # WHY THE FILLER IS A 4-BYTE CHARACTER AND THE NUMBERS ARE WHAT THEY ARE.
 # utf8_valid gates §5.5.5 step 4's code-point-boundary backtracking. With
@@ -34,17 +40,23 @@
 # 1024-multiple of the character width or change the filler to ASCII: either
 # silently disables the utf8_valid assertion.
 #
-# The oversized message is synthesized with `message_repeat` (conformance-adapter
-# §5.15 for the retrieval mocks, §5.5 for mock_llm) rather than carried inline.
+# Cases 1 to 4 synthesize their oversized message with `message_repeat`
+# (conformance-adapter §5.15 for the retrieval mocks, §5.5 for mock_llm) rather
+# than carrying it inline. Case 6 carries a literal one, because message_repeat
+# does not reach mock_tool; see that case's own note.
 #
 # COVERAGE. §8.7's direct-application arm binds a failed Generation and its
-# Embedding, Tool and Retriever counterparts (§8.4.5 to §8.4.7). Cases 1, 2 and 4
-# gate Embedding, Generation and Retriever. The TOOL arm is NOT gated here, and
-# it is NOT blocked: it is unwritten. It needs an oversized message from
-# `mock_tool: {raises: ...}`, which fixture 098 case 2 already uses to drive a
-# failed Tool observation asserting error_message. `mock_tool` and `calls_tool`
-# are undefined in conformance-adapter §5 and that is tracked separately, but
-# eight fixtures rest on that vocabulary, so it does not block a tenth.
+# Embedding, Tool and Retriever counterparts (§8.4.5 to §8.4.7). All four are
+# gated: cases 1, 2 and 4 cover Embedding, Generation and Retriever, and case 6
+# covers Tool.
+#
+# `mock_tool` and `calls_tool` remain undefined in conformance-adapter §5, which
+# is tracked separately. That never blocked this case: eight OTHER fixtures rest on
+# that vocabulary, and fixture 098 case 2 already drives
+# `mock_tool: {raises: ...}` into a failed Tool observation asserting
+# error_message. What it does mean is that `message_repeat` never reached
+# `mock_tool`, which is why case 6 carries a literal message and lowers the cap
+# rather than synthesizing like the other three.
 
 cases:
   # Embedding path (§8.4.5). error_type is asserted by its literal value: the
@@ -322,3 +334,88 @@ cases:
                 metadata:
                   error_type: "server_error"
                   error_message: "service unavailable"
+
+  # Tool path (§8.4.6). The fourth and final arm of §8.7's direct-application
+  # rule. An implementation that wired the cap into the Generation, Embedding and
+  # Retriever mappings but not this one passes cases 1, 2 and 4 and fails here.
+  #
+  # WHY THIS CASE SUPPLIES ITS MESSAGE LITERALLY.
+  # The other three arms synthesize with `message_repeat`, which conformance-adapter
+  # §5.15 gives the retrieval mocks and §5.5 gives `mock_llm`. It does NOT reach
+  # `mock_tool`, whose `raises` is {error_type, message}. Extending it would mean
+  # documenting `mock_tool` and the rest of the undefined `calls_tool` family, so
+  # this case lowers the cap instead and carries a short message inline.
+  #
+  # WHY THE CAP IS 256 AND NOT 1024.
+  # 256 is §5.5.5's NORMATIVE MINIMUM ("implementations MUST reject cap
+  # configurations smaller than 256 bytes at observer construction time"), so it is
+  # the smallest value every conforming implementation is required to accept. It is
+  # not an arbitrary low number, and it is deliberately different from the 1024 the
+  # other cases use, because only a literal message makes a low cap necessary.
+  #
+  #   message = 100 x U+1F600 = 400 bytes, over the 256-byte cap
+  #   marker  = "…[truncated, 400 bytes total]" = 31 bytes
+  #   N = 256 - 31 = 225;  225 mod 4 = 1, so the cut lands INSIDE a sequence
+  #   step 4 backtracks to 224;  emitted = 224 + 31 = 255 bytes <= 256
+  #
+  # The cut landing inside a sequence is what lets `utf8_valid` fail against an
+  # implementation that splits one. Do not round the cap or use an ASCII filler.
+  #
+  # THE CAP REACHES `tool.input` TOO. §5.5.5's cap is per payload-classified value,
+  # and a Tool observation's `input` (the arguments) is payload-bearing under the
+  # same flag this case sets false. The arguments are kept far under 256 bytes so
+  # the only value that truncates is the one under test. Enlarging them would
+  # silently truncate them as well and the case would assert something else.
+  - name: tool_failure_error_message_truncated_to_cap
+    description: |
+      One tool call fails with a harvested message over the observer's cap. The
+      Tool observation emits at ERROR with error_message truncated per §5.5.5
+      against the Langfuse observer's own cap, the same four properties as the
+      Embedding, Generation and Retriever cases. error_type is asserted by its
+      literal value, which the mock's `raises` pins.
+    state:
+      fields:
+        out: {type: record, default: null}
+    entry: run_tool
+    nodes:
+      run_tool:
+        calls_tool:
+          tool_name: "get_weather"
+          tool_call_id: "call_trunc01"
+          arguments: {city: "Paris"}
+          mock_tool:
+            raises:
+              error_type: "TimeoutError"
+              message: "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+    edges:
+      - {from: run_tool, to: END}
+    initial_state: {}
+    langfuse_observer:
+      disable_provider_payload: false
+      payload_byte_cap: 256
+    expected_error:
+      category: node_exception
+      raised_from: run_tool
+    expected:
+      langfuse_trace:
+        id: "<uuid-hex>"
+        observations:
+          - type: span
+            name: "run_tool"
+            children:
+              - type: tool
+                name: "openarmature.tool.call"
+                level: ERROR
+                metadata:
+                  openarmature_tool_name: "get_weather"
+                  openarmature_tool_call_id: "call_trunc01"
+                  error_type: "TimeoutError"
+                metadata_truncation:
+                  error_message:
+                    max_bytes: 256
+                    marker_pattern: "…\\[truncated, [0-9]+ bytes total\\]$"
+                    utf8_valid: true
+                    prefix_of_full_serialization: true
+                children: []
+      invariants:
+        error_type_asserted_literally_from_raises: true
