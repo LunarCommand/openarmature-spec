@@ -15,9 +15,11 @@
 # leaves the OTel observer at the default; an implementation sourcing the cap
 # from the OTel side truncates at 65,536 and fails both max_bytes and
 # marker_pattern. The value differs by case and that difference is not
-# significant here: the three cases synthesizing with message_repeat use 1024,
-# and the Tool case uses §5.5.5's 256-byte minimum because it carries a literal
-# message. Each case's own note gives its reason.
+# significant here: five cases sit at 1024, and the Tool case uses §5.5.5's
+# 256-byte minimum because it is the only case that must carry an OVERSIZED
+# message inline. Case 5 also carries a literal message and stays at 1024,
+# because a below-cap message needs no headroom. Each case's own note gives its
+# reason.
 #
 # WHY THE FILLER IS A 4-BYTE CHARACTER AND THE NUMBERS ARE WHAT THEY ARE.
 # utf8_valid gates §5.5.5 step 4's code-point-boundary backtracking. With
@@ -38,8 +40,10 @@
 # 1024-multiple of the character width or change the filler to ASCII: either
 # silently disables the utf8_valid assertion.
 #
-# The oversized message is synthesized with `message_repeat` (conformance-adapter
-# §5.15 for the retrieval mocks, §5.5 for mock_llm) rather than carried inline.
+# Cases 1 to 4 synthesize their oversized message with `message_repeat`
+# (conformance-adapter §5.15 for the retrieval mocks, §5.5 for mock_llm) rather
+# than carrying it inline. Case 6 carries a literal one, because message_repeat
+# does not reach mock_tool; see that case's own note.
 #
 # COVERAGE. §8.7's direct-application arm binds a failed Generation and its
 # Embedding, Tool and Retriever counterparts (§8.4.5 to §8.4.7). All four are
@@ -47,7 +51,7 @@
 # covers Tool.
 #
 # `mock_tool` and `calls_tool` remain undefined in conformance-adapter §5, which
-# is tracked separately. That never blocked this case: eight fixtures rest on
+# is tracked separately. That never blocked this case: eight OTHER fixtures rest on
 # that vocabulary, and fixture 098 case 2 already drives
 # `mock_tool: {raises: ...}` into a failed Tool observation asserting
 # error_message. What it does mean is that `message_repeat` never reached
@@ -414,6 +418,4 @@ cases:
                     prefix_of_full_serialization: true
                 children: []
       invariants:
-        tool_arm_of_direct_application_gated: true
         error_type_asserted_literally_from_raises: true
-        cap_is_the_normative_minimum_not_arbitrary: true

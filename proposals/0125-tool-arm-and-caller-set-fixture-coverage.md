@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-09-06
-- **Accepted:** 2026-09-09
+- **Accepted:** 2026-09-12
 - **Targets:**
   - spec/observability/conformance/160-langfuse-error-message-truncation.{yaml,md}: add a **Tool** case,
     closing the fourth arm of §8.7's direct-application rule. The fixture gates the Generation, Embedding
@@ -12,8 +12,8 @@
     wire one and not another, which is the defect this fixture exists to detect.
   - spec/observability/conformance/098-langfuse-tool-observation.{yaml,md}: supply `caller_metadata` and
     assert those keys on the Tool observation, pinning §8.4.2's scope. The row maps each caller-metadata
-    entry to `observation.metadata.<key>` on **EVERY** Observation. Fixture 027 pins that on a Langfuse
-    **Generation** observation; nothing pins it on a **Tool** observation, and 098 supplies no caller
+    entry to `observation.metadata.<key>` on **EVERY** Observation. Fixture 027 pins that on Langfuse **Span
+    and Generation** observations; nothing pins it on a **Tool** observation, and 098 supplies no caller
     metadata at all.
 - **Related:** 0119 (made §8.7's Tool arm normative and left it unpinned), 0118 (classified the harvested
   message as payload), 0034 (introduced the caller-supplied metadata surface and its §8.4.2 mapping)
@@ -91,8 +91,8 @@ without it §5.5.4 withholds `error_message` entirely and there is nothing to tr
 **The low cap reaches every payload-classified value on that observation, not only `error_message`.**
 §5.5.5's cap is per value, and a Tool observation's `tool.input` (the tool's arguments) is payload-bearing
 under the same flag the case must set to `false`. At a 256-byte cap the arguments are subject to it too.
-The case therefore **MUST** keep its arguments comfortably under the cap, so the only value that truncates
-is the one under test. That is a real constraint on the case rather than an incidental detail: enlarging
+The case therefore keeps its arguments comfortably under the cap, so the only value that truncates is the
+one under test. That is a real constraint on the case rather than an incidental detail: enlarging
 the arguments later would silently truncate them as well, and the case would assert something other than
 what it claims. It is stated here so the accept writes it into the fixture's own prose.
 
@@ -109,7 +109,7 @@ and does not entangle with §8.4.6's failure fields or §8.7's cap.
 
 One case added, one existing case extended, none removed.
 
-- **160** gains a fourth case. Its sidecar's coverage note, which currently records the Tool arm as an
+- **160** gains a sixth case, its fourth on the §8.7 direct-application arm. Its sidecar's coverage note, which currently records the Tool arm as an
   uncovered gap, is rewritten to describe the case instead.
 - **098** gains `caller_metadata` and the corresponding `metadata` assertions on its **existing success
   case**, plus a sidecar note. No case is added to 098; the assertion attaches where the Tool observation
@@ -146,8 +146,8 @@ directive proposal. Both cases rest on vocabulary eight fixtures already use.
 ## Open questions
 
 1. **Whether §8.4.2's caller set should be asserted on the Embedding and Retriever types too.** The row says
-   EVERY Observation. Fixture 027 already pins it on a **Generation** observation, and this proposal adds the
-   **Tool** one. That leaves **Embedding** and **Retriever** unpinned by any fixture. Neither has been
+   EVERY Observation. Fixture 027 already pins it on **Span and Generation** observations, and this proposal
+   adds the **Tool** one. That leaves **Embedding** and **Retriever** unpinned by any fixture. Neither has been
    observed to fail, and asserting them is a broader sweep than this proposal takes on, but the asymmetry is
    now two types rather than three and worth closing in one pass rather than one type per defect report.
 2. **Whether the low-cap route should become the house pattern for oversized-message cases.** It needs no

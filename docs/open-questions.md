@@ -477,7 +477,7 @@ response-side clause.
   **where** a definition may live but deliberately left this population alone,
   since identifying which keys are genuinely directives needs the
   open-versus-closed vocabulary question it put out of scope. The node-level
-  `calls_tool` block remains the sharpest instance: eight fixtures declare it, and
+  `calls_tool` block remains the sharpest instance: nine fixtures declare it, and
   neither it nor any of its five sub-keys (`tool_name`, `tool_call_id`,
   `arguments`, `mock_tool`, `stores_result_in`) is defined anywhere, while two
   sections cite `mock_tool` as though one of them were.
@@ -503,7 +503,7 @@ response-side clause.
   rendering for a truncated structured value (drop trailing elements, or emit a
   count, or something else) rather than a scope extension, plus a fixture.
 - **observability §8.7's Tool arm is normative but has no fixture.**
-  [resolved-by-acceptance] — **closed by proposal 0125**, which added fixture
+  [resolved-by-0125] — **closed by proposal 0125**, which added fixture
   160's sixth case. The arm now has coverage and all four of §8.7's
   counterparts are gated.
 
@@ -511,7 +511,7 @@ response-side clause.
   twice. An earlier revision called the arm **blocked** on `calls_tool` and
   `mock_tool` being undefined in conformance-adapter §5; that was corrected in
   v0.118.1 after the Python implementation retracted its half. Those directives
-  are still undefined and still tracked separately, but eight fixtures rest on
+  are still undefined and still tracked separately, but nine fixtures rest on
   the vocabulary and fixture 098 case 2 already drove `mock_tool: {raises: ...}`
   into a Langfuse Tool observation, so it never blocked anything.
 
@@ -563,7 +563,7 @@ response-side clause.
   exists: `calls_llm_from_wrapper` has no embedding, rerank or tool counterpart.
   That is the real constraint. It is **not** blocked on `calls_tool` being
   undefined, which an earlier revision of this entry claimed; the tool-call
-  machinery is in use by eight fixtures.
+  machinery is in use by nine fixtures.
 
 - **Whether the structural-resolution rule should be stated once in §4.3**
   rather than appended to §5.5. [candidate-for-new-proposal] — §4.3 owns the

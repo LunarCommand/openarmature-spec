@@ -4,16 +4,16 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
-## [0.118.2] — 2026-09-09
+## [0.118.2] — 2026-09-12
 
 **Fixed**
 
 - **Conformance coverage — two Tool-shaped gaps closed (no spec change)** ([proposal 0125](proposals/0125-tool-arm-and-caller-set-fixture-coverage.md)). Both rules were already normative with an untested Tool path. Fixture **160** gains a sixth case closing §8.7's fourth direct-application arm, so the Generation, Embedding, Tool and Retriever counterparts are **all** gated; the four §8.4 failure mappings are separate paths, and an implementation wiring the cap into three of them passed the suite. Fixture **098**'s success case gains `caller_metadata` and asserts those keys on the Tool observation, pinning §8.4.2's scope there; fixture 027 pinned it on Span and Generation, nothing pinned it on Tool, and an implementation shipped with the set on its OTel tool span and absent from the Langfuse one. That takes §8.4.2 from one of the four provider-call observation types to two: **Embedding and Retriever remain unpinned**, recorded in `docs/open-questions.md`.
-- The Tool case supplies its oversized message **literally** rather than through `message_repeat`, which reaches `mock_llm` (§5.5) and the retrieval mocks (§5.15) but not `mock_tool`. It sets `payload_byte_cap` to **256**, which is §5.5.5's normative minimum and therefore the smallest value every conforming implementation must accept, rather than an arbitrary low number. Because §5.5.5's cap is per value, it also reaches the Tool observation's `input`, so the case keeps its arguments far under the cap and both sidecars record that constraint.
+- The Tool case supplies its oversized message **literally** rather than through `message_repeat`, which reaches `mock_llm` (§5.5) and the retrieval mocks (§5.15) but not `mock_tool`. It sets `payload_byte_cap` to **256**, which is §5.5.5's normative minimum and therefore the smallest value every conforming implementation must accept, rather than an arbitrary low number. Because §5.5.5's cap is per value, it also reaches the Tool observation's `input`, so the case keeps its arguments far under the cap, and both the fixture's sidecar and its YAML header record that constraint.
 
 **Notes**
 
-- **PATCH, non-behavioral.** No spec text changed and no directive was added. Both rules were already normative; what changes is that a non-conforming implementation is now detected. This follows v0.103.1, which closed three fixture gaps the same way. Capability `Latest` versions are unchanged.
+- **PATCH, non-behavioral.** No normative spec text changed and no directive was added. The one edit inside a capability spec is a correction to observability's `## History` entry for proposal 0119, which said the Tool arm was "recorded as a gap since `mock_tool` is undefined". That was false when written and v0.118.1's correction of the same claim elsewhere never reached it. Both rules were already normative; what changes is that a non-conforming implementation is now detected. This follows v0.103.1, which closed three fixture gaps the same way. Capability `Latest` versions are unchanged.
 
 ## [0.118.1] — 2026-09-06
 

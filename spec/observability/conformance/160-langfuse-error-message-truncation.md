@@ -21,10 +21,11 @@ case therefore sets `langfuse_observer.payload_byte_cap` to a **non-default** va
 observer at the default. An implementation sourcing the cap from the OTel side truncates at 65,536 and
 fails both `max_bytes` and `marker_pattern`.
 
-The value differs by case and the difference is not significant to this argument: the three cases that
-synthesize with `message_repeat` use 1024, and the Tool case uses §5.5.5's 256-byte minimum because it
-carries a literal message instead. What matters here is only that the cap is non-default and the OTel side
-is not set to match it. Each case's own note gives its reason.
+The value differs by case and the difference is not significant to this argument: five cases sit at 1024,
+and the Tool case uses §5.5.5's 256-byte minimum because it is the only case that must carry an
+**oversized** message inline. Case 5 also carries a literal message and stays at 1024, since a below-cap
+message needs no headroom. What matters here is only that the cap is non-default and the OTel side is not
+set to match it. Each case's own note gives its reason.
 
 Setting an `otel_observer` block is not the alternative and would not help. The directive carries a
 `payload_byte_cap` of its own, so setting both to the same value would restore exactly the ambiguity this
@@ -53,8 +54,9 @@ the `utf8_valid` assertion while leaving the fixture green. The YAML header says
 ## How the cases discriminate
 
 Cases 1 to 4 fail a call whose mock supplies a 100 KiB harvested message, synthesized with `message_repeat`
-(conformance-adapter §5.15 for the retrieval mocks, §5.5 for `mock_llm`) rather than carried inline. Case 5
-supplies a short literal message instead, as the control.
+(conformance-adapter §5.15 for the retrieval mocks, §5.5 for `mock_llm`) rather than carried inline. Cases
+5 and 6 both supply a **literal** message: case 5 a short one, as the control, and case 6 an oversized one,
+because `message_repeat` does not reach `mock_tool`.
 
 1. **`embedding_failure_error_message_truncated_to_cap`** — the Embedding mapping (§8.4.5). Asserts all four
    `metadata_truncation` sub-keys: at most 1024 bytes, ends with the §5.5.5 marker, valid UTF-8 across the
@@ -73,11 +75,14 @@ supplies a short literal message instead, as the control.
 4. **`retriever_failure_error_message_truncated_to_cap`** — the Retriever mapping (§8.4.7). An
    implementation that wired the cap into the Generation and Embedding mappings but not this one passes
    cases 1 and 2 and fails here.
-5. **`error_message_below_cap_untouched`** — the control. Cases 1, 2 and 4 all assert an **oversized**
+5. **`error_message_below_cap_untouched`** — the control. Cases 1, 2, 4 and 6 all assert an **oversized**
    message comes back truncated; none of them asserts a message **under** the cap comes back whole. An
    implementation that truncated unconditionally, or appended the marker regardless of length, passes all
-   three. This case pins the other side of §5.5.5's threshold by asserting `error_message` literally, which
+   four. This case pins the other side of §5.5.5's threshold by asserting `error_message` literally, which
    no truncated form can satisfy: truncation both shortens the value and appends the marker.
+6. **`tool_failure_error_message_truncated_to_cap`** — the Tool mapping (§8.4.6), closing §8.7's fourth
+   and last arm. Asserts the same four sub-keys as cases 1, 2 and 4, against a cap of 256 rather than
+   1024; see *The Tool case* below for why it differs.
 
 `error_type` is asserted by its **literal** value in all four. The mock's `raises` pins it, so a format
 matcher would assert less than the fixture knows; fixture 150 sets the same precedent. Asserting it also
@@ -89,7 +94,7 @@ keeps the truncation assertions from passing against an observation that emitted
 Case 6 closes §8.7's fourth arm, so all four of the Generation, Embedding, Tool and Retriever
 counterparts (§8.4.5 to §8.4.7) are now gated.
 
-The machinery it needs already existed: eight fixtures declare `calls_tool`, and fixture 098 case 2 drives
+The machinery it needs already existed: eight other fixtures declare `calls_tool`, and fixture 098 case 2 drives
 `mock_tool: {raises: ...}` into a Langfuse Tool observation asserting `error_message`. An earlier version of
 this note called the arm **blocked** on that vocabulary being undefined in conformance-adapter §5, which was
 corrected in v0.118.1. The directives are undefined and that is tracked separately; they were never a
