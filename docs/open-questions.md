@@ -477,7 +477,7 @@ response-side clause.
   **where** a definition may live but deliberately left this population alone,
   since identifying which keys are genuinely directives needs the
   open-versus-closed vocabulary question it put out of scope. The node-level
-  `calls_tool` block remains the sharpest instance: eight fixtures declare it, and
+  `calls_tool` block remains the sharpest instance: nine fixtures declare it, and
   neither it nor any of its five sub-keys (`tool_name`, `tool_call_id`,
   `arguments`, `mock_tool`, `stores_result_in`) is defined anywhere, while two
   sections cite `mock_tool` as though one of them were.
@@ -503,20 +503,44 @@ response-side clause.
   rendering for a truncated structured value (drop trailing elements, or emit a
   count, or something else) rather than a scope extension, plus a fixture.
 - **observability §8.7's Tool arm is normative but has no fixture.**
-  [candidate-for-new-proposal] — the direct-application arm binds a failed
-  Generation and its Embedding, Tool and Retriever counterparts (§8.4.5 to
-  §8.4.7). Fixture 160 gates three of the four. The Tool arm is simply **not
-  written yet**. An earlier revision of this entry called it blocked on
-  `calls_tool` and `mock_tool` being undefined in conformance-adapter §5. Those
-  directives are indeed undefined, and that is tracked separately, but it does
-  not block a fixture: **fixture 098 case 2 already drives
-  `mock_tool: {raises: ...}` into a Langfuse Tool observation and asserts
-  `error_message`**, and eight fixtures rest on the same vocabulary. This matters
-  more than an ordinary coverage gap: the mappings are
-  separate, an implementation can cap one and not another, and detecting exactly
-  that is why fixture 160 exists. An implementer should read the Tool arm as
-  binding and unpinned. It closes with the change that documents the
-  `calls_tool` family, where the vocabulary and the case land together.
+  [resolved-by-0125] — **closed by proposal 0125**, which added fixture
+  160's sixth case. The arm now has coverage and all four of §8.7's
+  counterparts are gated.
+
+  Kept rather than deleted because the entry records a claim that was wrong
+  twice. An earlier revision called the arm **blocked** on `calls_tool` and
+  `mock_tool` being undefined in conformance-adapter §5; that was corrected in
+  v0.118.1 after the Python implementation retracted its half. Those directives
+  are still undefined and still tracked separately, but nine fixtures rest on
+  the vocabulary and fixture 098 case 2 already drove `mock_tool: {raises: ...}`
+  into a Langfuse Tool observation, so it never blocked anything.
+
+  This entry then predicted the arm would close "with the change that documents
+  the `calls_tool` family". That was also wrong. 0125 closed it **without**
+  touching that family, by setting the cap to §5.5.5's 256-byte minimum and
+  carrying a literal message, precisely so the family could stay a separate
+  question.
+
+### 0125 — Tool arm and caller-set fixture coverage
+
+- **Whether §8.4.2's caller set should be asserted on the Embedding and
+  Retriever observation types too.** [candidate-for-new-proposal] — the row says
+  the caller-supplied metadata set reaches EVERY Observation. Fixture 027 pins
+  that on Span and Generation, and 0125 added the Tool one. **Embedding** and
+  **Retriever** remain unpinned by any fixture. Neither has been observed to
+  fail, and asserting them is a broader sweep than 0125 took on, but the
+  asymmetry is now two types rather than three and is worth closing in one pass
+  rather than one type per defect report.
+- **Whether the low-cap route should become the house pattern for
+  oversized-message cases.** [candidate-for-new-proposal] — fixture 160's Tool
+  case sets the cap to §5.5.5's 256-byte minimum and carries a short literal
+  message, because `message_repeat` does not reach `mock_tool`. The other three
+  arms synthesize with `message_repeat` at a 1024-byte cap. The low-cap route
+  needs no synthesis primitive and is easier to read, but it makes the cap the
+  variable under test rather than the message, and fixture 160 now carries two
+  idioms for one behaviour. Settling it would likely mean either extending
+  `message_repeat` to `mock_tool` (which needs the `calls_tool` family
+  documented) or converting the other three.
 
 ### 0124 — orphan provider span parent resolution
 
@@ -539,7 +563,7 @@ response-side clause.
   exists: `calls_llm_from_wrapper` has no embedding, rerank or tool counterpart.
   That is the real constraint. It is **not** blocked on `calls_tool` being
   undefined, which an earlier revision of this entry claimed; the tool-call
-  machinery is in use by eight fixtures.
+  machinery is in use by nine fixtures.
 
 - **Whether the structural-resolution rule should be stated once in §4.3**
   rather than appended to §5.5. [candidate-for-new-proposal] — §4.3 owns the

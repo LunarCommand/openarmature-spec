@@ -43,3 +43,23 @@ non-detection-capable adapters, since a detection-capable one raises before emit
 carries the clause's only coverage on detection-capable adapters. It also shows why `error_type` is not
 gated: a Tool failure has no error category, so without the type a failed Tool observation under the default
 posture would carry no failure discriminator at all.
+
+## The caller-metadata assertion on case 1
+
+§8.4.2 maps each caller-supplied metadata entry to `observation.metadata.<key>` on **EVERY** Observation,
+with the same propagation rationale as `correlation_id`. That row is unscoped where the table scopes its
+other rows explicitly, which makes the unscoped wording deliberate rather than loose.
+
+Fixture 027 pins it on Span and Generation observations. Nothing pinned it on a **Tool** observation, and an
+implementation shipped with the set present on its OTel tool span and absent from the Langfuse one: two
+bundled observers disagreeing about the same event, which no fixture caught.
+
+Case 1 now supplies `caller_metadata` and asserts those keys in the Tool observation's `metadata`. The
+`metadata:` block is a subset match (conformance-adapter §5.5), so listing a key asserts its presence and
+value without pinning the observation's other cross-cutting keys. An implementation that omits the caller
+set on the Tool observation fails on both keys.
+
+It sits on the **success** case rather than a failure case deliberately: the assertion is about §8.4.2's
+scope alone, and putting it on a failure case would entangle it with §8.4.6's error fields and §8.7's cap.
+The caller set is not payload-gated, so the case's existing `disable_provider_payload: false` is incidental
+to it rather than required by it.
