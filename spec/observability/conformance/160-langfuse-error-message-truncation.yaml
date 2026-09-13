@@ -282,17 +282,17 @@ cases:
                     utf8_valid: true
                     prefix_of_full_serialization: true
 
-  # The below-cap control. Cases 1, 2 and 4 all assert that an OVERSIZED message
-  # comes back truncated; none of them asserts that a message UNDER the cap comes
-  # back whole. Without this case an implementation that truncated every message
-  # unconditionally, or that appended the marker regardless of length, passes all
-  # of them. §5.5.5 truncates only when the value EXCEEDS the configured cap.
+  # The below-cap control. Cases 1, 2, 4 and 6 all assert that an OVERSIZED
+  # message comes back truncated; none of them asserts that a message UNDER the
+  # cap comes back whole. Without this case an implementation that truncated
+  # every message unconditionally, or that appended the marker regardless of
+  # length, passes all four. §5.5.5 truncates only when the value EXCEEDS the configured cap.
   - name: error_message_below_cap_untouched
     description: |
       A failed Generation whose harvested message is far shorter than the cap.
       error_message is asserted by its literal value, which no truncated form
       can satisfy: truncation would both shorten it and append the §5.5.5
-      marker. Keeps the three truncation cases honest by pinning the other side
+      marker. Keeps the four truncation cases honest by pinning the other side
       of §5.5.5's threshold.
     state:
       fields:

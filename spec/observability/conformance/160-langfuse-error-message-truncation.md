@@ -84,7 +84,7 @@ because `message_repeat` does not reach `mock_tool`.
    and last arm. Asserts the same four sub-keys as cases 1, 2 and 4, against a cap of 256 rather than
    1024; see *The Tool case* below for why it differs.
 
-`error_type` is asserted by its **literal** value in all four. The mock's `raises` pins it, so a format
+`error_type` is asserted by its **literal** value in every case. The mock's `raises` pins it, so a format
 matcher would assert less than the fixture knows; fixture 150 sets the same precedent. Asserting it also
 keeps the truncation assertions from passing against an observation that emitted nothing at all, which
 `metadata_truncation`'s presence requirement (conformance-adapter §5.5) independently enforces.
