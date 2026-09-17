@@ -11,6 +11,7 @@ on:
       - "CHANGELOG.md"
       - "mkdocs.yml"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/docs.yml"
   push:
     branches: [main]
@@ -22,6 +23,7 @@ on:
       - "CHANGELOG.md"
       - "mkdocs.yml"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/docs.yml"
 
 # Least-privilege: read code for the build; ``deployments: write`` lets
