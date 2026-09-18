@@ -61,9 +61,26 @@ EXCLUSIONS = {
     "prompt_name": (
         "named only as a key implementations MUST NOT write, so no mapping "
         "writes it",
-        lambda reserved, text: "MUST NOT" in text and "prompt_name" not in reserved,
+        lambda reserved, text: _only_prohibited(text, "prompt_name"),
     ),
 }
+
+
+def _only_prohibited(text: str, key: str) -> bool:
+    """True when `key` appears once, in a line forbidding it.
+
+    An exclusion resting on "the spec only mentions this to forbid it" has to
+    check both halves, or it exempts the key no matter what happens to it. A
+    predicate that merely confirmed the document contains the words MUST NOT
+    was true of every revision of the spec, and let a §8 mapping start writing
+    the key while the exclusion kept hiding it.
+
+    So: exactly one occurrence, and that one in a prohibition. A second
+    occurrence means something began writing it. A lone occurrence that is no
+    longer a prohibition means the reason for the exclusion is gone.
+    """
+    hits = [line for line in text.splitlines() if f"metadata.{key}" in line]
+    return len(hits) == 1 and "MUST NOT" in hits[0]
 
 
 def parse_reserved(text: str) -> tuple[set[str], list[str]]:
