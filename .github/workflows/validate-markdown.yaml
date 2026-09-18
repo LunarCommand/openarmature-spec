@@ -6,6 +6,7 @@ on:
       - "**/*.md"
       - "scripts/validate_markdown_links.py"
       - "scripts/validate_compatibility_dates.py"
+      - "scripts/validate_reserved_metadata_keys.py"
       - "scripts/regenerate_proposals_impl_tracking.py"
       - "scripts/regenerate_impl_dependencies.py"
       - "scripts/_impl_manifest.py"
@@ -16,6 +17,7 @@ on:
       - "**/*.md"
       - "scripts/validate_markdown_links.py"
       - "scripts/validate_compatibility_dates.py"
+      - "scripts/validate_reserved_metadata_keys.py"
       - "scripts/regenerate_proposals_impl_tracking.py"
       - "scripts/regenerate_impl_dependencies.py"
       - "scripts/_impl_manifest.py"
@@ -50,3 +52,5 @@ jobs:
         run: python scripts/regenerate_impl_dependencies.py --check
       - name: Check compatibility page dates do not contradict each other
         run: python scripts/validate_compatibility_dates.py
+      - name: Check every OA-emitted metadata key is reserved
+        run: python scripts/validate_reserved_metadata_keys.py
