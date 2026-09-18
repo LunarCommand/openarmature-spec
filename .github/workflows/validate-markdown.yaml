@@ -40,17 +40,18 @@ jobs:
         with:
           python-version: "3.12"
       - run: python scripts/validate_markdown_links.py
-      # The two generated-artifact checks run first, and the date check last.
-      # A step failure stops the job, and drift in a generated artifact is
-      # resolved by re-running a script, whereas a date contradiction needs a
-      # human edit. Reporting the mechanical failures first keeps an author
-      # from fixing dates, pushing, and only then learning the columns had
-      # drifted underneath them.
+      # The mechanical checks run first and the date check last. A step
+      # failure stops the job, and drift in a generated artifact is resolved by
+      # re-running a script, while a missing reserved key is closed by adding
+      # the name §3.4's own maintenance rule already requires. A date
+      # contradiction needs a human edit. Reporting the mechanical failures
+      # first keeps an author from fixing dates, pushing, and only then
+      # learning something else had drifted underneath them.
       - name: Check proposals impl-tracking columns are current
         run: python scripts/regenerate_proposals_impl_tracking.py --check
       - name: Check compatibility implementation-support block is current
         run: python scripts/regenerate_impl_dependencies.py --check
-      - name: Check compatibility page dates do not contradict each other
-        run: python scripts/validate_compatibility_dates.py
       - name: Check every OA-emitted metadata key is reserved
         run: python scripts/validate_reserved_metadata_keys.py
+      - name: Check compatibility page dates do not contradict each other
+        run: python scripts/validate_compatibility_dates.py

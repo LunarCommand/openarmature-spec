@@ -114,11 +114,17 @@ def main() -> int:
         sys.stderr.write("parsed an empty reserved set or namespace list; refusing to pass.\n")
         return 1
 
-    written = {m.split(".", 1)[0] for m in WRITTEN_RE.findall(text)}
+    # Keep the full match. Collapsing to the first segment is what stops a
+    # nested `prompt.version` masquerading as a top-level key, but a namespaced
+    # key is dotted by construction, so collapsing before the namespace test
+    # would destroy exactly what that test reads. Namespaces are matched first,
+    # against the whole key, and collapsing happens only for what is left.
+    written = set(WRITTEN_RE.findall(text))
 
+    top_level = {key.split(".", 1)[0] for key in written}
     stale_exclusions: list[str] = []
     for key, (_reason, predicate) in EXCLUSIONS.items():
-        if key not in written:
+        if key not in top_level:
             stale_exclusions.append(
                 f"{key}: excluded, but no mapping writes it any more; drop the exclusion"
             )
@@ -128,11 +134,13 @@ def main() -> int:
             )
 
     uncovered = sorted(
-        key
-        for key in written
-        if key not in reserved
-        and key not in EXCLUSIONS
-        and not any(key.startswith(ns) for ns in namespaces)
+        {
+            key.split(".", 1)[0]
+            for key in written
+            if not any(key.startswith(ns) for ns in namespaces)
+        }
+        - reserved
+        - set(EXCLUSIONS)
     )
 
     if uncovered or stale_exclusions:
