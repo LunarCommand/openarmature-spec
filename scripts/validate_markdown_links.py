@@ -25,6 +25,7 @@ Usage: python scripts/validate_markdown_links.py
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -92,8 +93,47 @@ def is_external(url: str) -> bool:
     return url.startswith(EXTERNAL_PREFIXES)
 
 
+def drop_ignored(paths: list[Path]) -> list[Path]:
+    """Filter out paths git ignores, most importantly a local ``site/`` build.
+
+    ``mkdocs build`` writes rendered copies of every page into ``site/``, where
+    the anchors a source file links to have moved into per-page ``index.md``
+    files. Walking those produces a wall of failures that say nothing about the
+    repository, and CI never sees them because a fresh checkout has no build
+    output. Anyone who builds the docs locally then gets a red run that a
+    reviewer cannot reproduce, which is worse than no check at all.
+
+    Untracked files are deliberately kept: validating a new page before staging
+    it is the normal way to use this script. Only ignored paths are dropped.
+
+    Falls back to keeping everything when git is unavailable, since a filter
+    that silently drops real files would be the more dangerous failure.
+    """
+    if not paths:
+        return paths
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "--stdin"],
+            input="\n".join(str(p) for p in paths),
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return paths
+    # Exit 0 means some path was ignored, 1 means none were; anything else is
+    # git failing, and a failed filter must not silently shrink the file set.
+    if result.returncode not in (0, 1):
+        return paths
+    ignored = {Path(line) for line in result.stdout.splitlines() if line}
+    return [p for p in paths if p not in ignored]
+
+
 def main() -> int:
-    md_files = [p for p in sorted(ROOT.rglob("*.md")) if ".git" not in p.parts]
+    md_files = drop_ignored(
+        [p for p in sorted(ROOT.rglob("*.md")) if ".git" not in p.parts]
+    )
     if not md_files:
         print(f"no markdown files found under {ROOT}", file=sys.stderr)
         return 1
