@@ -8,12 +8,12 @@ lifecycle and the proposal template.
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
 | [0125](proposals/0125-tool-arm-and-caller-set-fixture-coverage.md) | Fixture coverage for the Tool arm and the caller-set scope | observability | Accepted | Pending         | —          |
-| [0124](proposals/0124-orphan-provider-span-parent-resolution.md) | Resolve an orphan provider span's parent structurally | observability | Accepted | Pending         | —          |
-| [0123](proposals/0123-case-level-subgraph-declaration.md) | Scope a subgraph declaration to the graph specification it accompanies | conformance-adapter | Accepted | Pending         | —          |
-| [0122](proposals/0122-declared-field-collision-reachability.md) | Settle the shape of the extras surface | llm-provider | Accepted | Pending         | —          |
-| [0121](proposals/0121-diagnostic-event-names-and-otel-observer-directive.md) | Give openarmature's mandated diagnostics a stable identity | observability | Accepted | Pending         | —          |
-| [0120](proposals/0120-fixture-directive-definition-rule.md) | Reconcile where a fixture directive may be defined | conformance-adapter | Accepted | Pending         | —          |
-| [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Cap the harvested error message and close the reserved-key gaps | observability | Accepted | Pending         | —          |
+| [0124](proposals/0124-orphan-provider-span-parent-resolution.md) | Resolve an orphan provider span's parent structurally | observability | Accepted | Partial (0.17.0)| —          |
+| [0123](proposals/0123-case-level-subgraph-declaration.md) | Scope a subgraph declaration to the graph specification it accompanies | conformance-adapter | Accepted | Shipped (0.17.0)| —          |
+| [0122](proposals/0122-declared-field-collision-reachability.md) | Settle the shape of the extras surface | llm-provider | Accepted | Shipped (0.17.0)| —          |
+| [0121](proposals/0121-diagnostic-event-names-and-otel-observer-directive.md) | Give openarmature's mandated diagnostics a stable identity | observability | Accepted | Shipped (0.17.0)| —          |
+| [0120](proposals/0120-fixture-directive-definition-rule.md) | Reconcile where a fixture directive may be defined | conformance-adapter | Accepted | Shipped (0.17.0)| —          |
+| [0119](proposals/0119-error-message-cap-and-reserved-keys.md) | Cap the harvested error message and close the reserved-key gaps | observability | Accepted | Shipped (0.17.0)| —          |
 | [0118](proposals/0118-llm-error-message-channel.md) | Bring the harvested error message under the payload flag | observability | Accepted | Shipped (0.17.0)| —          |
 | [0117](proposals/0117-payload-leak-invariant-channels.md) | Broaden the Langfuse payload-leak invariant to all harvested-payload channels | observability | Accepted | Shipped (0.17.0)| —          |
 | [0116](proposals/0116-langfuse-isolation-fail-loud.md) | Fail-closed when Langfuse payloads would reach a shared provider | observability | Accepted | Shipped (0.17.0)| —          |
@@ -47,7 +47,7 @@ lifecycle and the proposal template.
 | [0088](proposals/0088-observability-langfuse-parallel-branches-parity.md) | Langfuse parallel-branches mapping parity | observability | Accepted | Shipped (0.17.0)| —          |
 | [0087](proposals/0087-conformance-adapter-directive-execution-order.md) | Within-node directive execution order | conformance-adapter | Accepted | Shipped (0.17.0)| —          |
 | [0086](proposals/0086-prompt-default-cache-ttl.md) | Service-wide default cache-TTL | prompt-management | Accepted | Shipped (0.17.0)| —          |
-| [0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) | Nested fan-out checkpoint lineage | pipeline-utilities | Accepted | Shipped (0.17.0)| —          |
+| [0085](proposals/0085-nested-fan-out-checkpoint-lineage.md) | Nested fan-out checkpoint lineage | pipeline-utilities | Accepted | Partial (0.17.0)| —          |
 | [0084](proposals/0084-nested-fan-out-span-lineage.md) | Nested-fan-out span lineage chain | observability | Accepted | Shipped (0.17.0)| —          |
 | [0083](proposals/0083-prompt-token-budget-observability.md) | Per-prompt token-budget observability | observability | Accepted | Shipped (0.17.0)| —          |
 | [0082](proposals/0082-structured-output-failure-diagnostics.md) | Structured-output failure diagnostics | graph-engine | Accepted | Shipped (0.17.0)| —          |

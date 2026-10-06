@@ -214,13 +214,13 @@ public equivalent.
 
 | Implementation | Dependency | Requires | Verified | Verified on | Internals |
 |---|---|---|---|---|---|
-| openarmature-python | Langfuse SDK | `>=4.6,<5` | `4.7.1` | 2026-08-13 | 10 |
+| openarmature-python | Langfuse SDK | `>=4.6,<5` | `4.7.1` | 2026-08-13 | 11 |
 
 Implementation notes:
 
 - **openarmature-python / Langfuse SDK:** The declared range currently resolves as far as 4.14.x, well past `verified`. Every listed internal still exists there and the suite passes against it, but 4.7.1 is the version this implementation deliberately tests against. Losing one of these internals does not raise to the caller: the graph observer isolates observer errors, so an observation simply stops being emitted and a leak assertion reads clean, which is why they are guarded rather than trusted.
 
-??? note "openarmature-python: Langfuse SDK private surface (10 paths)"
+??? note "openarmature-python: Langfuse SDK private surface (11 paths)"
 
     - `langfuse._client.client.Langfuse._resources`
     - `langfuse._client.client.Langfuse._tracing_enabled`
@@ -229,6 +229,7 @@ Implementation notes:
     - `langfuse._client.resource_manager.LangfuseResourceManager.tracer_provider`
     - `langfuse._client.resource_manager.LangfuseResourceManager._instances`
     - `langfuse._client.span.LangfuseGeneration`
+    - `langfuse._client.span.LangfuseSpan`
     - `langfuse._client.span.LangfuseTool`
     - `langfuse._client.span.LangfuseEmbedding`
     - `langfuse._client.span.LangfuseRetriever`
