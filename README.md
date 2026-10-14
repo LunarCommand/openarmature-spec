@@ -87,7 +87,9 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-Nothing open. Every proposal is Accepted.
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0126](proposals/0126-structured-output-failure-completeness.md) | Draft | llm-provider §7, §8.1.5.1, §8.2.5.1; graph-engine §6; observability §4.2, §5.5.1, §5.5.7, §7; conformance-adapter §5.1, §5.5, §5.11, §5.13 | A structured-output failure's `error_message` must describe every violation, each resolved to its location and constraint, so one correction can address them all. The typed LLM event records which structured-output path a call took, which lets an implementation report a native schema constraint that was not honoured. The OTel exception record is bounded by the per-value cap without becoming payload. |
 
 See [`proposals/`](proposals/) for the full history.
 
