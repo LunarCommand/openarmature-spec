@@ -556,3 +556,8 @@ repeat the message. OpenTelemetry's attribute value length limit bounds both, at
    caveat, and Gemini's support for a subset of JSON Schema. §8.1.2's refusal rule rests on the shape of an
    OpenAI Chat Completions refusal: the `refusal` field, the absent content, and the `finish_reason` OpenAI
    reports with it. Each should be checked against current vendor documentation before accept.
+6. **Forcing the fallback rests on a SHOULD.** Case 7 reaches prompt augmentation through §8.1.5.1's static
+   detection, which the spec states as a SHOULD, and llm-provider fixture 027 already treats it as
+   required ("the implementation MUST fall back per §8.1.5.1"). Whether static detection becomes a MUST is
+   left to the separate question of how the fallback should behave, since the fallback writes text into the
+   request on the implementation's own initiative.
