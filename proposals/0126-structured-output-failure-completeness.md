@@ -5,23 +5,24 @@
 - **Created:** 2026-10-11
 - **Targets:**
   - spec/llm-provider/spec.md: modifies §7 (the `structured_output_invalid` entry's exposure sentence is
-    rewritten, and a definition of what `error_message` describes is added); modifies §8.1.2 (an OpenAI
-    refusal maps to a `finish_reason` of `"content_filter"`); modifies §8.1.5 (`strict` decides the path a
-    call reports, and the sentence on what `strict` leaves unchanged is narrowed to validation); modifies
-    §8.2.5 and §8.3.5 (each states what its provider's constrained decoding guarantees, and names its
-    native path); modifies §8.1.5.1, §8.2.5.1 and §8.3.5.1 (each states that the path a call took is
-    reported on the typed event)
+    rewritten, and a definition of what `error_message` describes is added); modifies §7.1 (the
+    *Per-attempt span emission* paragraph points to the rule that each attempt's event describes its own
+    request); modifies §8.1.2 and §8.1.6 (an OpenAI refusal, atomic or streamed, maps to a `finish_reason`
+    of `"content_filter"`); modifies §8.1.5 (`strict` decides the path a call reports, and the sentence on
+    what `strict` leaves unchanged is narrowed to validation); modifies §8.2.5 and §8.3.5 (each states what
+    its provider's constrained decoding guarantees, and names its native path); modifies §8.1.5.1, §8.2.5.1
+    and §8.3.5.1 (each states that the path a call took is reported on the typed event)
   - spec/graph-engine/spec.md: modifies §6 (`LlmCompletionEvent` and `LlmFailedEvent` gain
-    `structured_output_path`; the `error_message` paragraph after the failure-event table points to
-    llm-provider §7)
+    `structured_output_path`; under call-level retry, each attempt's event describes the request that
+    attempt sent; the `error_message` paragraph after the failure-event table points to llm-provider §7)
   - spec/observability/spec.md: modifies §5.5 (a baseline attribute,
     `openarmature.llm.structured_output.path`); modifies §5.5.7 (the `schema_not_honored` diagnostic);
     modifies §7 (one row in *Diagnostic event names*)
-  - spec/conformance-adapter/spec.md: modifies §5.1 (defines `calls_llm`'s `response_schema` and `config`
-    keys, both already in use); modifies §5.5 (`mock_llm` gains a mapping form carrying `capabilities`;
-    `log_records` entries gain `count`; new `log_records_absent`); modifies §5.11 (documents
-    `mock_provider.capabilities`, already in use); modifies §5.12 and §5.13 (`error_message_mentions`, and
-    the `_mentions` flavor generally, accept a non-empty list)
+  - spec/conformance-adapter/spec.md: modifies §5.1 (defines `calls_llm`'s `response_schema`, `config` and
+    `retry` keys, all already in use); modifies §5.5 (`mock_llm` gains a mapping form carrying
+    `capabilities`; `log_records` entries gain `count`; new `log_records_absent`); modifies §5.11
+    (documents `mock_provider.capabilities` and its three flags, already in use); modifies §5.12 and §5.13
+    (`error_message_mentions`, and the `_mentions` flavor generally, accept a non-empty list)
   - spec/llm-provider/conformance/082-structured-output-error-message-completeness.{yaml,md} (new)
   - spec/llm-provider/conformance/083-openai-refusal-finish-reason.{yaml,md} (new)
   - spec/observability/conformance/161-structured-output-schema-not-honored.{yaml,md} (new)
@@ -38,8 +39,10 @@ it, so an implementation may report only the first violation, and a correction b
 field per round trip. This proposal requires every violation, each with its location as a JSON Pointer and
 the constraint that failed, and defines what a violation is inside a composite schema. It also records on
 the typed LLM event which structured-output path a call took. On a path whose provider constrains decoding,
-a response that is not even well-formed JSON, and was not cut short or refused, is then reported as a
-schema the provider did not apply, rather than passing as an ordinary model error.
+a response that is not even well-formed JSON, or whose top level is not an object, and that was not cut
+short or refused, is then reported as a schema the provider did not apply, rather than passing as an
+ordinary model error. Under call-level retry, each attempt's event describes the request that attempt
+actually sent.
 
 ## Motivation
 
@@ -83,8 +86,9 @@ in free prose cannot be told apart from one that reports the composite, or one t
 array element, so no fixture could check that a violation was resolved at all. JSON Pointer (RFC 6901) is
 the standard notation for a location in a JSON document, and the current §7 text already names it as an
 example. Its URI fragment form, `#/site/lat`, settles two details the plain form leaves open. The whole
-document is `#`, rather than an empty string that prints as nothing. And a location in the content never
-occurs inside a location in the schema, which validators write as `/properties/site/properties/lat`.
+document is `#`, rather than an empty string that prints as nothing. And a location in the content does
+not occur inside a location in the schema, which validators write as `/properties/site/properties/lat`,
+unless a property is named like a JSON Schema keyword.
 
 ### A fixture assertion cannot mean one thing today
 
@@ -116,33 +120,46 @@ silent case escapes the dynamic arm, since the call succeeds at the transport le
 catches it only when the capability metadata records the gap.
 
 When an intermediary drops the constraint, the model never sees the schema, because on the native path the
-schema is in no other part of the request. Its output is commonly prose, or JSON wrapped in a code block,
-and the call fails with `structured_output_invalid` as a parse failure. Today that is indistinguishable
-from a model that saw the schema and got it wrong. But a constrained response is malformed only when it was
-cut short or refused, and each of those already surfaces: a refusal or a `max_tokens` truncation as a
-`finish_reason` of `"content_filter"` or `"length"`, and a matched stop sequence on a request that carried
-one. So content that is not well-formed JSON, on an enforced native path, with a `finish_reason` of
-`"stop"` and no stop sequence on the request, is evidence that the constraint did not reach or did not
-bind the model.
+schema is in no other part of the request. Its output is commonly prose, JSON wrapped in a code block, or
+JSON of the wrong shape, such as a bare list when the prompt asked for a list. Today that is
+indistinguishable from a model that saw the schema and got it wrong. But a constrained response is
+malformed only when it was cut short or refused, and each of those already surfaces: a refusal or a
+`max_tokens` truncation as a `finish_reason` of `"content_filter"` or `"length"`, and a matched stop
+sequence on a request that carried one. A constrained response also always has an object at its top level,
+since llm-provider §5 requires every schema to. So content that is not well-formed JSON, or whose top
+level is not an object, on an enforced native path, with a `finish_reason` of `"stop"` and no stop
+sequence on the request, is evidence that the constraint did not reach or did not bind the model.
 
-Content that parses but fails the schema is not such evidence, because a provider that applied the schema
-can return it, as the capitalization and subset cases show. The diagnostic therefore keys on parse
-failures alone. A dropped constraint whose output happens to parse stays indistinguishable from a model
-error, as it is today.
+Content that parses to an object but fails the schema is not such evidence, because a provider that
+applied the schema can return it, as the capitalization and subset cases show. The diagnostic therefore
+keys on those two failures alone. A dropped constraint whose output happens to be a well-formed object
+stays indistinguishable from a model error, as it is today.
 
 One gap in the mappings stands in the way. Anthropic's refusal already maps to `"content_filter"`
-(§8.2.2). OpenAI returns a refusal in a separate `refusal` field rather than as the message's content, and
-§8.1.2 does not map it, so an OpenAI refusal reads as unparseable content on a normal finish. This
-proposal maps it to `"content_filter"` as well.
+(§8.2.2). OpenAI returns a refusal in a separate `refusal` field rather than as the message's content, or
+in a streamed response as `delta.refusal` pieces, and neither §8.1.2 nor §8.1.6 maps it, so an OpenAI
+refusal reads as unparseable content on a normal finish. This proposal maps it to `"content_filter"` as
+well.
 
 The evidence is already on the failure event except for one fact: which path the call took, and whether
 that path is enforced. Recording it lets an implementation report the condition once, as a diagnostic a
 caller can act on at the serving layer.
 
-The diagnostic reports; it does not act. Its condition is evidence, not proof (see the residual case in
+The diagnostic reports; it does not act. Its condition is evidence, not proof (see the residual cases in
 *Open questions*), and acting on it automatically would mean switching to a fallback that writes schema
 text into the request on the implementation's own initiative. So the condition is defined as distinct from
 §8.1.5.1's detection, and it never changes what is sent.
+
+### A retried attempt's event can describe another request
+
+Under call-level retry (llm-provider §7.1), each attempt has its own typed event and span, but the spec
+never says which request they describe. Two features change the request between attempts: a per-attempt
+override changes the attempt's configuration, and reask adds the model's failed output and the caller's
+correction to its messages. An implementation may show the first attempt's request on every attempt's
+event. A per-attempt span then reports a temperature that attempt was not sent with, which defeats the
+point of a span per attempt. The diagnostic above also needs to know whether an attempt's request carried
+a stop sequence, and an override can add one. This proposal requires each attempt's event to describe the
+request that attempt sent.
 
 ### What this does to the exception record
 
@@ -163,11 +180,13 @@ An operator who wants that record bounded already has OpenTelemetry's attribute 
 OpenTelemetry specification's *Attribute Limits* section applies it to span event attributes as well as
 span attributes, so it bounds the exception's message and its stack trace together, which a cap on the
 message alone would not. It is off by default, counts characters rather than bytes, and adds no marker.
-An SDK sets it per tracer provider, and the standard environment variables
-`OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT` and `OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` set it across the process.
-Because observability §6 requires openarmature's spans to go through a private tracer provider, the
-environment variables are the route that reaches them unless an implementation exposes its provider's
-limits. That trade is the operator's to make on their own backend, so this proposal adds no spec-level cap.
+An SDK sets it per tracer provider, and the standard environment variable
+`OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT` sets it across the process. The span-specific
+`OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` governs span attributes only and is not specified to reach span
+events, so it does not bound the exception record. Because observability §6 requires openarmature's spans
+to go through a private tracer provider, the general environment variable is the route that reaches them
+unless an implementation exposes its provider's limits. That trade is the operator's to make on their own
+backend, so this proposal adds no spec-level cap.
 
 ## Detailed design
 
@@ -189,14 +208,15 @@ Then add, as the last paragraph of the entry, after its closing sentence beginni
 explanation that follows it:
 
 > **What `error_message` describes.** `error_message` **MUST** describe **every violation** the content
-> commits against `response_schema`. A violation is a failing assertion that makes the content fail
-> validation, such as `type`, `required`, `enum` or `pattern`, not the applicator that contains it. An
-> assertion that does not decide the outcome, such as one in a member of an `anyOf` that another member
-> satisfies, or in the branch of an `if` that does not apply, is not a violation.
+> commits against `response_schema`. A violation is a failing assertion, such as `type`, `required`, `enum`
+> or `pattern`, not the applicator that contains it. Every failing assertion is a violation unless an
+> enclosing keyword discards its result: an `anyOf` or `oneOf` discards its other members' results once
+> one member is satisfied, and `if`, `not` and `contains` discard their subschemas' results.
 >
 > Each violation **MUST** state its **location** and the **constraint** that failed. The location is a
-> JSON Pointer into the content, written in its URI fragment form (RFC 6901 §6): `#` for the whole
-> content, `#/site/lat` for a property, `#/rows/2` for an array element.
+> JSON Pointer into the content, written in its URI fragment form (RFC 6901 §6), with the percent-encoding
+> that form requires: `#` for the whole content, `#/site/lat` for a property, `#/rows/2` for an array
+> element, and `#/first%20name` for a property named `first name`.
 >
 > - **Where a violation is located.** At the part of the content its failing assertion applies to, with one
 >   exception: a property the schema requires but the content lacks (`required`, `dependentRequired`) is
@@ -205,19 +225,19 @@ explanation that follows it:
 >   `additionalProperties: false`, is one violation at that property's own location. An array element the
 >   schema does not allow is one violation at that element. A count or uniqueness constraint on an object
 >   or array, such as `minItems` or `uniqueItems`, is one violation at the object or array.
-> - **An `anyOf` or `oneOf` that no member matches.** The violations are every failing assertion of every
->   member whose declared type matches the content at that location, after resolving references. A
->   member's declared type is its `type`, or, for a member that is itself an `anyOf` or `oneOf`, the types
->   its own members declare. A member that declares no type counts as matching. Where no member's type
->   matches, the composite's location and the members' types are reported as one violation.
+> - **An `anyOf` or `oneOf` that no member satisfies.** The violations are every failing assertion of every
+>   member whose own `type` admits the content's type at that location, after resolving references. A
+>   member without a `type` of its own, including one that is itself a composite, counts as matching.
+>   Where no member's type matches, the composite's location and the members' types are reported as one
+>   violation.
 > - **An `allOf`.** Every member applies, so the violations are every failing assertion of every member,
 >   including a member's `type` when the content's type does not match it.
-> - **A composite whose own constraint fails.** A `oneOf` that more than one member matches, whatever its
->   other members do, a `not` whose subschema matches, and a `contains` that no array element satisfies
->   are each one violation, located where the keyword applies.
-> - **Content that is not well-formed** in the requested encoding. That is the single violation reported.
->   It has no location, since no schema constraint could be evaluated, and in place of a constraint it
->   states what made the content malformed.
+> - **A composite whose own constraint fails.** A `oneOf` that more than one member satisfies, whatever its
+>   other members do, a `not` whose subschema is satisfied, and a `contains` that too few or too many array
+>   elements satisfy are each one violation, located where the keyword applies.
+> - **Content that is not well-formed JSON** (RFC 8259). That is the single violation reported. It has no
+>   location, since no schema constraint could be evaluated, and in place of a constraint it states what
+>   made the content malformed.
 >
 > Violations **SHOULD** appear in a stable order for a given content and schema. The wording around each
 > location and constraint is implementation-defined.
@@ -228,13 +248,25 @@ in the rule. Likewise, a validator that reports locations in another notation, o
 property at its parent object, has its report converted to the form above. `response_schema` stays a
 separately exposed field and is not folded into `error_message`.
 
-### llm-provider §8.1.2: an OpenAI refusal
+### llm-provider §7.1: per-attempt spans describe their own request
 
-In the `finish_reason` bullet, add after "Map any unknown `finish_reason` to `error`.":
+In the *Per-attempt span emission* paragraph, add after its first sentence:
 
-> When `choices[0].message.refusal` is a non-empty string, the `finish_reason` is `"content_filter"`,
-> whatever value OpenAI reports, as §8.2.2 maps Anthropic's `stop_reason: "refusal"`. The refusal text
-> stays in `raw`.
+> Each attempt's span and typed event describe the request that attempt sent (graph-engine §6).
+
+### llm-provider §8.1.2 and §8.1.6: an OpenAI refusal
+
+In §8.1.2's `finish_reason` bullet, add after "Map any unknown `finish_reason` to `error`.":
+
+> When `choices[0].message.refusal` is a non-empty string and the message carries no `tool_calls`, the
+> `finish_reason` is `"content_filter"`, whatever value OpenAI reports, as §8.2.2 maps Anthropic's
+> `stop_reason: "refusal"`. The refusal text stays in `raw`.
+
+In §8.1.6, add to the bullet beginning "**finish_reason / usage**":
+
+> When the chunks' `choices[].delta.refusal` pieces, concatenated, form a non-empty string and the stream
+> carried no tool-call deltas, the `finish_reason` is `"content_filter"`, whatever value the last chunk
+> reports, as for an atomic response (§8.1.2).
 
 ### llm-provider §8.1.5, §8.2.5 and §8.3.5: what each native path guarantees
 
@@ -243,10 +275,11 @@ validation happens post-receive against `response_schema`; failures raise `struc
 (§7)." with:
 
 > Validation is identical regardless of `strict`: it happens post-receive against `response_schema`, and
-> failures raise `structured_output_invalid` (§7). Enforcement is not, since only `strict: true`
-> constrains decoding. A call sent with `strict: true` reports the `"native"` path (graph-engine §6
-> `structured_output_path`), and one sent with `strict: false`, or without `strict`, reports
-> `"native_unenforced"`.
+> failures raise `structured_output_invalid` (§7). The path a call reports is not. OpenAI documents
+> schema-constrained decoding only for `strict: true`, so the mapping reports a call sent with
+> `strict: true` as the `"native"` path (graph-engine §6 `structured_output_path`), and one sent with
+> `strict: false`, or without `strict`, as `"native_unenforced"`, whatever a particular
+> OpenAI-compatible server does with the field.
 
 In §8.2.5, replace "Anthropic's constrained decoding guarantees the generated output conforms to the
 schema." with:
@@ -265,12 +298,15 @@ and replace the paragraph beginning "Two non-conformance cases are inherent to t
 > surfaces the non-conforming content and the mapped `finish_reason` (`content_filter`, `length` or
 > `stop`) per §6 / §7; implementations MUST NOT silently coerce these into a schema-conforming shape.
 
-In §8.3.5, replace "The behavioral contract matches §8.1.5's native path." with:
+In §8.3.5, replace "The response's text content is the JSON string conforming to the schema;" through
+"The behavioral contract matches §8.1.5's native path." with:
 
-> The behavioral contract matches §8.1.5's native path with `strict: true`, and a call on it reports the
-> `"native"` path (graph-engine §6 `structured_output_path`). Gemini's constrained decoding produces
-> well-formed JSON, but Gemini documents support for a subset of JSON Schema, so content can fail
-> validation on a call that finished normally.
+> The response's text content is a JSON string; the §8.3 mapping parses it into `Response.parsed` and
+> validates against `response_schema` per §6. On validation failure, raise `structured_output_invalid` per
+> §7. Gemini's constrained decoding produces well-formed JSON, but Gemini documents support for a subset of
+> JSON Schema, so content can fail validation on a call that finished normally. The behavioral contract
+> otherwise matches §8.1.5's native path with `strict: true`, and a call on it reports the `"native"` path
+> (graph-engine §6 `structured_output_path`).
 
 ### llm-provider §8.1.5.1, §8.2.5.1 and §8.3.5.1: the path is reported
 
@@ -282,9 +318,10 @@ Append to each, after its existing requirement that implementations document whi
 §8.1.5.1 additionally gains:
 
 > A server that silently ignores the native constraint is not detectable from the request. When such a
-> call on the `strict: true` path returns content that is not well-formed JSON, and was not cut short or
-> refused, observability §5.5.7's `schema_not_honored` diagnostic reports it. That diagnostic is not one
-> of the detection arms above, and its condition **MUST NOT** by itself trigger the fallback.
+> call on the `strict: true` path returns content that is not well-formed JSON, or whose top level is not
+> an object, and was not cut short or refused, observability §5.5.7's `schema_not_honored` diagnostic
+> reports it. That diagnostic is not one of the detection arms above, and its condition **MUST NOT** by
+> itself trigger the fallback.
 
 ### graph-engine §6: `structured_output_path`
 
@@ -303,6 +340,19 @@ wrapped exception's message or failing locator", with:
 > For a `structured_output_invalid` failure, `error_message` carries the failure description llm-provider
 > §7 defines. Implementations populate the exception message with that description, so observers read it
 > from `error_message` without a dedicated field.
+
+### graph-engine §6: each attempt's event describes its own request
+
+Add to the *Typed LLM completion event* paragraph, after its field table:
+
+> **Under call-level retry, each attempt's event describes that attempt's request.** Where llm-provider
+> §7.1 issues more than one attempt for a call, `input_messages`, `request_params` and `request_extras` on
+> each attempt's event describe the request that attempt sent: the working transcript as reask has
+> extended it, and the configuration after any per-attempt override is merged. For `request_params`,
+> "supplied on this call" means supplied for that attempt.
+
+`LlmFailedEvent` inherits the rule through its table's statement that it mirrors the completion event's
+request-side fields.
 
 ### observability §5.5: the path attribute
 
@@ -324,27 +374,28 @@ Add after the *Typed LLM failure event* paragraph:
 > record (§7) for an `LlmFailedEvent`, however many observers are attached, when all of the following
 > hold:
 >
-> - its `error_category` is `structured_output_invalid`, and its `output_content` is absent or does not
->   parse as JSON, the parse-failure case of llm-provider §7;
+> - its `error_category` is `structured_output_invalid`, and either the failure is llm-provider §7's
+>   parse failure, content that is not well-formed JSON, or the content is well-formed JSON whose top level
+>   is not an object;
 > - its `structured_output_path` is `"native"`;
 > - its `finish_reason` is `"stop"`; and
-> - the request the event reports carried no stop sequence: no `stop_sequences` in `request_params`, and
->   none under the mapping's stop key in `request_extras` (`stop` for llm-provider §8.1,
->   `stop_sequences` for §8.2, `stopSequences` for §8.3). An empty list carries none. A stop sequence
->   added by a per-attempt override (llm-provider §7.1) counts.
+> - the request the event describes carried no stop sequence: no `stop_sequences` in its `request_params`,
+>   and none under the stop key of the mapping that issued it in its `request_extras` (`stop` for
+>   llm-provider §8.1, `stop_sequences` for §8.2, `stopSequences` for §8.3). An empty list carries none.
 >
 > The record carries the event name `openarmature.structured_output.schema_not_honored` (§7 *Diagnostic
 > event names*) and the §7 correlation fields, and names the call's provider, model and `call_id`. It
 > reports that a call on a native path the provider constrains during decoding, which was not cut short or
-> refused, returned content that is not well-formed JSON. That is evidence the constraint did not reach or
-> did not bind the model. It does not establish why.
+> refused, returned content that is not well-formed JSON, or not a JSON object, which a constraint that
+> bound cannot produce, since llm-provider §5 requires an object at the schema's top level. That is
+> evidence the constraint did not reach or did not bind the model. It does not establish why.
 >
 > The implementation **MUST NOT** emit the record in any other case. In particular: not for content that
-> parses as JSON, whether or not it validates, since a provider that applied the schema can still return
-> content that fails validation (llm-provider §8.2.5, §8.3.5); not for a `finish_reason` of `"length"` or
-> `"content_filter"`, where the output was cut short or refused; not when the request carried a stop
-> sequence, since a matched sequence also reports `"stop"` while cutting the output short; and not for a
-> `structured_output_path` of `"native_unenforced"`, `"tool_coercion"` or `"prompt_augmentation"`.
+> parses to a JSON object, whether or not it validates, since a provider that applied the schema can still
+> return content that fails validation (llm-provider §8.2.5, §8.3.5); not for a `finish_reason` of
+> `"length"` or `"content_filter"`, where the output was cut short or refused; not when the request carried
+> a stop sequence, since a matched sequence also reports `"stop"` while cutting the output short; and not
+> for a `structured_output_path` of `"native_unenforced"`, `"tool_coercion"` or `"prompt_augmentation"`.
 >
 > The record is advisory. Its condition **MUST NOT** by itself cause the implementation to retry the
 > call, change its structured-output path, or alter any request. It is not one of llm-provider §8.1.5.1's
@@ -356,7 +407,7 @@ Add to the *Diagnostic event names* table:
 
 | Event name | Emitted when | Obligation |
 |---|---|---|
-| `openarmature.structured_output.schema_not_honored` | §5.5.7, a structured-output call on an enforced native path, not cut short or refused, returned content that is not well-formed JSON | MUST |
+| `openarmature.structured_output.schema_not_honored` | §5.5.7, a structured-output call on a native path that constrains decoding, not cut short or refused, returned content that is not well-formed JSON or not a JSON object | MUST |
 
 ### conformance-adapter §5.12 and §5.13: `_mentions` takes a list
 
@@ -369,24 +420,32 @@ Extend the `_mentions` flavor in §5.13:
 This widens one flavor's value domain. It adds no flavor, so the flavor set stays closed.
 
 In §5.12, the `error_message_mentions` entry is retyped to `<str | [str, ...]>` with the same non-empty
-rule, and fixture 082 joins the list of fixtures that use the block.
+rule, and fixtures 082 and 083 join the list of fixtures that use the block.
 
 ### conformance-adapter: keys already in use, path forcing, and log assertions
 
-- **`calls_llm.response_schema`** and **`calls_llm.config`** (§5.1). The schema the call passes to
-  `complete()`, and the `RuntimeConfig` it passes. Neither is new. `response_schema` is defined today only
-  by harness notes in the observability fixtures that use it (120, 121, 123, 124, 125, 131 and 155), and
-  `config`, used by fixtures 016, 017, 018, 021, 023, 025, 062, 063, 120, 123, 124, 125, 131 and 155, is
-  defined nowhere. §5.1 becomes their general definition, and where a harness note differs, §5 governs
-  (§5 *Definition homes*). This closes a small part of the vocabulary gap that 0119's first open question
-  records. Fixture 161 uses both.
-- **`mock_provider.capabilities`** (§5.11, beside `mock_provider.responses`). A mapping of boolean
-  capability flags for the llm-provider mock: `supports_native_response_format` for the OpenAI mapping,
-  and `supports_native_structured_output` for the Anthropic and Gemini mappings. When a flag is `false`,
-  the mock presents as lacking that native capability, so an implementation takes the mapping's fallback
-  through the static detection arm (§8.1.5.1, §8.2.5.1, §8.3.5.1). An absent flag means the capability is
-  present. Neither flag is new: llm-provider fixtures 026, 027 and 072 use the first, and 040, 041, 050
-  and 051 the second.
+- **`calls_llm.response_schema`**, **`calls_llm.config`** and **`calls_llm.retry`** (§5.1). The schema,
+  the `RuntimeConfig` and the retry configuration the call passes to `complete()`. None is new.
+  `response_schema` is defined today only by harness notes in the observability fixtures that use it (120,
+  121, 123, 124, 125, 131 and 155). `config`, used by fixtures 016, 017, 018, 021, 023, 025, 062, 063, 120,
+  123, 124, 125, 131 and 155, is defined nowhere. `retry`, used by fixture 116, has only that fixture's
+  harness note on the streamed mock it pairs with. `retry` takes the same mapping as §5.11's `call.retry`,
+  including its `per_attempt_override` and `reask` fields. §5.1 becomes the general definition of all
+  three, and where a harness note differs, §5 governs (§5 *Definition homes*). This closes a small part of
+  the vocabulary gap that 0119's first open question records. Fixture 161 uses all three.
+- **`mock_provider.capabilities`** (§5.11, beside `mock_provider.responses`; §5.11's opening sentence, which
+  describes the section as call-retry directives, gains the mock's capability flags). A mapping of boolean
+  capability flags for the llm-provider mock, each meaning the capability is present when absent:
+  - `supports_native_response_format`, for the OpenAI mapping, and `supports_native_structured_output`,
+    for the Anthropic and Gemini mappings. When `false`, the mock presents as lacking native structured
+    output, so an implementation takes the mapping's fallback through the static detection arm (§8.1.5.1,
+    §8.2.5.1, §8.3.5.1).
+  - `supports_image_input`. When `false`, the mock presents as a model without image input, so a request
+    carrying an image block fails with `provider_unsupported_content_block` (llm-provider §7), raised
+    before sending or mapped from the provider's rejection.
+
+  None is new: llm-provider fixtures 026, 027 and 072 use the first flag, 040, 041, 050 and 051 the
+  second, and 016, 035 and 039 the third.
 - **A mapping form for `mock_llm`** (§5.5). `mock_llm` also accepts
   `{capabilities: {...}, responses: [{status, body}, ...]}`, mirroring `mock_provider`. The list form
   stays, as shorthand for a mapping with only `responses`. Since the observability mock presents an
@@ -415,65 +474,85 @@ expected violation's location, in the URI fragment form:
 |---|---|---|
 | Flat object | two required properties missing, one of the wrong type | the three properties' locations, and the expected type's name |
 | Nested object | inside `site`: one property of the wrong type, one missing | both locations, under `#/site/`, and the expected type's name |
-| Nullable field, `anyOf` with `null` | the object member fails on one property | that property's location only |
-| Union of two object schemas | both members fail, each on a different property | both members' locations |
+| Nullable field, `anyOf` with `null` | the object member has one property of the wrong type | that property's location only, and the expected type's name |
+| Union of two object schemas | each member has a different property of the wrong type | both members' locations, and the expected type's name |
 | `allOf` of a referenced object schema and a `required` list | `site` is a string | `#/site`, and `object` |
-| `oneOf` of two object schemas and `null` | `pet` matches both object members | `#/pet` |
+| `oneOf` of two object schemas | `pet` satisfies both members | `#/pet` |
 | Object with `additionalProperties: false` | `site` carries an extra property, `zulu` | `#/site/zulu` |
-| Array of objects | the first and third elements fail, the second is valid | `#/rows/0/...` and `#/rows/2/...` |
+| A property name with a space | `first name` has the wrong type | `#/first%20name`, and the expected type's name |
+| Array of objects | the first and third elements each have a property of the wrong type, the second is valid | `#/rows/0/...` and `#/rows/2/...`, and the expected type's name |
 | Not valid JSON | | `error_message_present: true` only |
 
 **The assertions name fragment pointers, not property names**, which closes three ways a mention could pass
 wrongly. A composite-node message names only the composite's location, such as `#/site`, so it cannot
 contain `#/site/lat`. A message that quotes the schema, or echoes the content, contains property names but
 not instance locations. And a schema location, which validators write as `/properties/site/properties/lat`
-or `#/properties/site/properties/lat`, never contains an instance location such as `#/site/lat`. Choosing
-property names that cannot occur as substrings of one another keeps one location from matching another.
+or `#/properties/site/properties/lat`, does not contain an instance location such as `#/site/lat`, provided
+no property is named like a JSON Schema keyword, so the fixture's property names avoid `properties`,
+`required`, `items` and the like. Choosing property names that cannot occur as substrings of one another
+keeps one location from matching another.
 
-The `allOf` and `oneOf` rows are each answered by an empty set under a rule that filters `allOf` members by
-type, or reports a `oneOf` over-match only when no member fails, so a mention there separates the rule from
-those readings. The `additionalProperties` row separates it from validators that report the property at
-its parent object.
+The `allOf` row is answered by an empty set under a rule that filters `allOf` members by type, and the
+`oneOf` row by an empty set under a rule that reports only failing members' assertions, so a mention there
+separates the rule from those readings. The `additionalProperties` row separates it from validators that
+report the property at its parent object, and the space row from an implementation that skips the
+fragment form's percent-encoding.
 
 The sidecar records the limits. A mention proves a violation was reported, not that nothing extra was,
-because the closed flavor set has no negative form. So three rules are not pinned: that a nullable field's
-`null` member is omitted; that a `oneOf` over-match is reported alone when another member fails with a
-matching type, since that member's locations would share the composite's prefix; and the wording of a
-missing property's constraint. A root-level location, `#`, cannot be asserted by substring either, since
-every location contains it. `not` and `contains` are covered by the rule but not by a case.
+because the closed flavor set has no negative form. So four rules are not pinned: that a nullable field's
+`null` member is omitted; that a `oneOf` over-match is reported whatever its other members do, since every
+member's locations share the composite's prefix; the wording of a missing property's constraint; and that
+a type-name mention comes from the stated constraint, since a message that quotes the schema contains
+type names anyway. A root-level location, `#`, cannot be asserted by substring either, since every
+location contains it. `not` and `contains` are covered by the rule but not by a case.
 
 Existing fixtures 022, 023, 063 and 064 are unaffected: 022 asserts only that a description is present,
 and 023, 063 and 064 assert the property name `age`, which a fragment-form location still contains.
 
-**llm-provider 083, `openai-refusal-finish-reason`** (new). A mock OpenAI response whose message carries a
-non-empty `refusal` and no content, with OpenAI's own `finish_reason` set to `"stop"`. Without a
-`response_schema`, the `Response`'s `finish_reason` is `"content_filter"`. With one, the call raises
-`structured_output_invalid` whose `finish_reason` (§5.12 `carries`) is `"content_filter"`.
+**llm-provider 083, `openai-refusal-finish-reason`** (new). Mock OpenAI responses whose message carries a
+non-empty `refusal` and no content:
 
-**observability 161, `structured-output-schema-not-honored`** (new). Every case asserts the span's
-`openarmature.llm.structured_output.path`, or its absence, and the typed event's `structured_output_path`
-through a typed-event collector (`typed_observers`, `contains_event`). Every case asserts the diagnostic
-with `log_records` or `log_records_absent`:
+- OpenAI's own `finish_reason` is `"stop"`, with no `response_schema`. The `Response`'s `finish_reason` is
+  `"content_filter"`, its message has no content, and `raw` carries the refusal.
+- The same with OpenAI's `finish_reason` `"length"`, so the rule is seen to ignore OpenAI's value.
+- With a `response_schema`, the call raises `structured_output_invalid` whose `carries` show
+  `finish_reason` `"content_filter"`, `error_message_present: true` and `response_schema_present: true`.
+- Streamed, in the SSE wire shape fixture 059 uses: `delta.refusal` pieces and a last chunk reporting
+  `"stop"` give a `finish_reason` of `"content_filter"`.
+
+**observability 161, `structured-output-schema-not-honored`** (new). Every case attaches the OTel observer
+and a Langfuse observer. Every case asserts the span's `openarmature.llm.structured_output.path`, or its
+absence, and the typed event's `structured_output_path` through a typed-event collector (`typed_observers`,
+`contains_event`), and asserts the diagnostic with `log_records` or `log_records_absent`:
 
 | Case | Path | Outcome | Diagnostic |
 |---|---|---|---|
-| 1 | `native` | content not valid JSON, `finish_reason` `stop` | emitted once (`count: 1`), with an OTel and a Langfuse observer both attached |
-| 2 | `native` | valid JSON that fails the schema, `stop` | absent |
-| 3 | `native` | content not valid JSON, `length` | absent |
-| 4 | `native` | content not valid JSON, `content_filter` | absent |
-| 5 | `native` | content not valid JSON, `stop`, `stop_sequences` set on the call | absent |
-| 6 | `native` | content not valid JSON, `stop`, a stop list only in the call's extras | absent |
-| 7 | `prompt_augmentation`, forced with `supports_native_response_format: false` in `mock_llm`'s `capabilities` | content not valid JSON, `stop` | absent |
-| 8 | `native` | valid content, on `LlmCompletionEvent` | absent |
-| 9 | no `response_schema` | completion | absent; path null on the event and no path attribute (`attributes_absent`) |
-| 10 | a schema is supplied but the call is rejected before sending, by a conflicting extras `response_format` (llm-provider §8.1.5) | `provider_invalid_request` | absent; path null on the event and no path attribute |
+| 1 | `native` | content not valid JSON, `finish_reason` `stop` | emitted once (`count: 1`) |
+| 2 | `native` | a valid JSON object that fails the schema, `stop` | absent |
+| 3 | `native` | a valid JSON array, `stop` | emitted once |
+| 4 | `native` | content not valid JSON, `length` | absent |
+| 5 | `native` | content not valid JSON, `content_filter` | absent |
+| 6 | `native` | content not valid JSON, `stop`, `stop_sequences` set on the call | absent |
+| 7 | `native` | content not valid JSON, `stop`, a stop list only in the call's extras | absent |
+| 8 | `prompt_augmentation`, forced with `supports_native_response_format: false` in `mock_llm`'s `capabilities` | content not valid JSON, `stop` | absent |
+| 9 | `native` | valid content, on `LlmCompletionEvent` | absent |
+| 10 | no `response_schema` | completion | absent; path null on the event and no path attribute (`attributes_absent`) |
+| 11 | a schema is supplied but the call is rejected before sending, by a conflicting extras `response_format` (llm-provider §8.1.5) | `provider_invalid_request` | absent; path null on the event |
+| 12 | `native`, with reask | attempt 0 not valid JSON on `stop`, attempt 1 valid | emitted once, for attempt 0; attempt 1's event's `input_messages` end with attempt 0's output and the rendered correction |
+| 13 | `native`, with reask and a `per_attempt_override` that adds `stop_sequences` for attempt 1 | both attempts not valid JSON on `stop` | emitted once, for attempt 0 only; attempt 1's event's `request_params` carry the stop sequence |
 
-The absence cases are what make the emitted case mean anything. Without them an implementation that
+The absence cases are what make the emitted cases mean anything. Without them an implementation that
 emitted on every `structured_output_invalid`, or on every native call, would pass. Case 2 pins the
-narrowing to parse failures, and case 6 the stop sequence carried in extras. The schema in cases 1 to 6
-and 8 satisfies OpenAI's strict-mode rules, so the request carries `strict: true` and the path is
+narrowing to malformed and non-object content, case 3 the non-object arm, case 7 the stop sequence carried
+in extras, and cases 12 and 13 the rule that each attempt's event describes its own request. With both
+observers attached in every case, an absence case also covers a check placed in either observer, and the
+emitted cases' `count: 1` catches an implementation that emits once per observer. The schema in cases 1 to
+7, 9, 12 and 13 satisfies OpenAI's strict-mode rules, so the request carries `strict: true` and the path is
 `native`. That leans on §8.1.5's SHOULD to send `strict: true` for such a schema, which llm-provider
 fixture 026 already requires on the wire, so the case asks nothing the corpus does not.
+
+The sidecar records one limit: the harness always attaches exactly one OTel observer and cannot omit it,
+so an implementation that emits the record only from inside the OTel observer is not caught.
 
 No existing fixture changes.
 
@@ -500,24 +579,31 @@ contains it, or the first array element from the third, so the resolution rule w
 string, which prints as nothing and reads like the no-location form a parse failure uses, and a short
 pointer such as `/charlie` occurs inside a schema location such as `/properties/charlie/type`, so a fixture
 could not tell where a violation was found from where its rule sits in the schema. The URI fragment form
-avoids both, at the cost of a `#` prefix and percent-encoding for unusual property names.
+avoids both, at the cost of a `#` prefix and of percent-encoding for property names with spaces, non-ASCII
+characters, or other characters a URI fragment cannot carry.
 
 **A structured per-violation field alongside `error_message`.** More useful to a programmatic consumer, and
 out of scope here. It would be a new field rather than a change to this one, and nothing here prevents it.
 
 **Keep the diagnostic a SHOULD, as the token-budget warning is.** Rejected: a fixture could not require it,
-so its exclusions could not be tested either, and its condition is fully determined by fields the event
-carries once the path is added, so requiring it costs an implementation nothing it does not already have.
+so its exclusions could not be tested either, and its condition is determined by the failure's own
+classification and by fields the event carries once the path is added, so requiring it costs an
+implementation nothing it does not already have.
 
-**Key the diagnostic on any validation failure, not only a parse failure.** Rejected: a provider that
-applied the schema can still return well-formed content that fails validation, as Anthropic's
-capitalization caveat and Gemini's subset show, and a MUST that fired on those would report a healthy
-provider as one that ignored the schema. The cost is that a dropped constraint whose output happens to
-parse goes unreported, as it does today.
+**Key the diagnostic on any validation failure.** Rejected: a provider that applied the schema can still
+return a well-formed object that fails validation, as Anthropic's capitalization caveat and Gemini's subset
+show, and a MUST that fired on those would report a healthy provider as one that ignored the schema. The
+cost is that a dropped constraint whose output happens to be a well-formed object goes unreported, as it
+does today.
 
 **Count a call as native only when its schema stays inside the provider's enforced keyword subset.**
 Rejected: it would put each vendor's supported keyword list into the spec, a list that changes as vendors
-extend support, to recover a case the parse-failure rule already covers in its most common form.
+extend support, to recover a case the malformed-or-not-an-object rule already covers in its most common
+form.
+
+**Show the caller's original request on every attempt's event.** Rejected: an attempt's span would report
+settings and messages that attempt was not sent with, which defeats having a span per attempt, and the
+diagnostic could not see a stop sequence an override added.
 
 **Carry enforcement in a separate boolean field.** Rejected in favor of one field with four values, which
 reads more simply and keeps the path and its enforcement from disagreeing.
@@ -542,22 +628,28 @@ repeat the message. OpenTelemetry's attribute value length limit bounds both, at
    which graph-engine §6 says a `structured_output_invalid` failure never carries. Including the path waits
    on that being settled. No fixture asserts the `tool_coercion` value either, since the observability
    mock presents an OpenAI-compatible provider, which has no such path.
-2. **A residual false positive.** Anthropic's `pause_turn` also maps to a `finish_reason` of `"stop"`
+2. **Residual false positives.** Anthropic's `pause_turn` also maps to a `finish_reason` of `"stop"`
    (llm-provider §8.2.2), and the event does not carry the raw stop reason, so a paused turn whose content
    is incomplete JSON meets the condition without the constraint having been dropped. Whether the
-   Anthropic mapping should surface a paused turn differently is left open.
+   Anthropic mapping should surface a paused turn differently is left open. Forwarded stop settings the
+   exclusion does not name, such as a token-id stop list some OpenAI-compatible servers accept, are residual
+   cases of the same kind.
 3. **`native_unenforced` has no fixture.** Forcing it depends on §8.1.5's SHOULD to send `strict: false`
    for a schema outside strict mode, so a case could fail an implementation that conforms.
 4. **Langfuse rendering of the path.** The path attribute has no §8.4 mapping. It is a classification
    rather than harvested content, so the exhaustive-mapping rule does not require one, and a Langfuse user
    loses only the inspection surface. Mapping it to `generation.metadata` is cheap if wanted.
 5. **Verify before accept.** The diagnostic rests on vendor statements: that each native path constrains
-   decoding to well-formed JSON, that OpenAI's does so only with `strict: true`, Anthropic's capitalization
-   caveat, and Gemini's support for a subset of JSON Schema. §8.1.2's refusal rule rests on the shape of an
-   OpenAI Chat Completions refusal: the `refusal` field, the absent content, and the `finish_reason` OpenAI
-   reports with it. Each should be checked against current vendor documentation before accept.
-6. **Forcing the fallback rests on a SHOULD.** Case 7 reaches prompt augmentation through §8.1.5.1's static
-   detection, which the spec states as a SHOULD, and llm-provider fixture 027 already treats it as
-   required ("the implementation MUST fall back per §8.1.5.1"). Whether static detection becomes a MUST is
-   left to the separate question of how the fallback should behave, since the fallback writes text into the
-   request on the implementation's own initiative.
+   decoding to well-formed JSON with an object at the top level, that OpenAI's does so only with
+   `strict: true`, Anthropic's capitalization caveat, and Gemini's support for a subset of JSON Schema.
+   §8.1.2's and §8.1.6's refusal rule rests on the shape of an OpenAI Chat Completions refusal: the
+   `refusal` field and the `delta.refusal` pieces, the absent content, and the `finish_reason` OpenAI
+   reports with it. And the OpenTelemetry specification applies the attribute value length limit to span
+   events, which at least one SDK implements; coverage across the SDKs implementations use should be
+   checked. Each should be confirmed against current documentation before accept.
+6. **Forcing the fallback rests on a SHOULD.** Case 8 reaches prompt augmentation through §8.1.5.1's
+   static detection, which the spec states as a SHOULD, and llm-provider fixture 027 already treats it as
+   required ("the implementation MUST fall back per §8.1.5.1"). Whether static detection becomes a MUST
+   waits on a prior question. The fallback appends a schema directive the implementation writes, which sits
+   uneasily with the charter's principle 7, "No built-in prompts": every prompt the LLM sees is authored by
+   the developer. Making the fallback mandatory would harden that tension before it is settled.
