@@ -6,15 +6,17 @@
 - **Targets:**
   - spec/llm-provider/spec.md: modifies §7 (the `structured_output_invalid` entry's exposure sentence is
     rewritten, and a definition of what `error_message` describes is added); modifies §7.1 (the
-    *Per-attempt span emission* paragraph points to the rule that each attempt's event describes its own
-    request); modifies §8.1.2 and §8.1.6 (an OpenAI refusal, atomic or streamed, maps to a `finish_reason`
-    of `"content_filter"`); modifies §8.1.5 (`strict` decides the path a call reports, and the sentence on
-    what `strict` leaves unchanged is narrowed to validation); modifies §8.2.5 and §8.3.5 (each states what
-    its provider's constrained decoding guarantees, and names its native path); modifies §8.1.5.1, §8.2.5.1
-    and §8.3.5.1 (each states that the path a call took is reported on the typed event)
+    *Per-attempt span emission* paragraph states that each attempt's span, and the call's typed event,
+    describe the request actually sent); modifies §8.1.2 and §8.1.6 (an OpenAI refusal, atomic or
+    streamed, maps to a `finish_reason` of `"content_filter"`); modifies §8.1.5 (`strict` decides the path
+    a call reports, and the sentence on what `strict` leaves unchanged is narrowed to validation); modifies
+    §8.2.5 and §8.3.5 (each states what its provider's constrained decoding guarantees, and names its
+    native path); modifies §8.1.5.1, §8.2.5.1 and §8.3.5.1 (each states that the path a call took is
+    reported on the typed event)
   - spec/graph-engine/spec.md: modifies §6 (`LlmCompletionEvent` and `LlmFailedEvent` gain
-    `structured_output_path`; under call-level retry, each attempt's event describes the request that
-    attempt sent; the `error_message` paragraph after the failure-event table points to llm-provider §7)
+    `structured_output_path`; under call-level retry, the call's event describes the request of the
+    attempt whose outcome it reports; the `error_message` paragraph after the failure-event table points
+    to llm-provider §7)
   - spec/observability/spec.md: modifies §5.5 (a baseline attribute,
     `openarmature.llm.structured_output.path`); modifies §5.5.7 (the `schema_not_honored` diagnostic);
     modifies §7 (one row in *Diagnostic event names*)
@@ -41,8 +43,8 @@ the constraint that failed, and defines what a violation is inside a composite s
 the typed LLM event which structured-output path a call took. On a path whose provider constrains decoding,
 a response that is not even well-formed JSON, or whose top level is not an object, and that was not cut
 short or refused, is then reported as a schema the provider did not apply, rather than passing as an
-ordinary model error. Under call-level retry, each attempt's event describes the request that attempt
-actually sent.
+ordinary model error, and it is diagnosed for every attempt, including one a retry recovers from. Under
+call-level retry, the call's typed event and each attempt's span describe the request actually sent.
 
 ## Motivation
 
@@ -139,27 +141,29 @@ One gap in the mappings stands in the way. Anthropic's refusal already maps to `
 (§8.2.2). OpenAI returns a refusal in a separate `refusal` field rather than as the message's content, or
 in a streamed response as `delta.refusal` pieces, and neither §8.1.2 nor §8.1.6 maps it, so an OpenAI
 refusal reads as unparseable content on a normal finish. This proposal maps it to `"content_filter"` as
-well.
+well, and carries the refusal text as the message's content, the way an Anthropic refusal's text already
+arrives.
 
-The evidence is already on the failure event except for one fact: which path the call took, and whether
-that path is enforced. Recording it lets an implementation report the condition once, as a diagnostic a
-caller can act on at the serving layer.
+The evidence is already at hand for each attempt except for one fact: which path the request took, and
+whether that path is enforced. Recording it lets an implementation report the condition, as a diagnostic a
+caller can act on at the serving layer. It is reported for every attempt, because under reask a later
+attempt can recover, and diagnosing only the call's final failure would then hide the problem every time.
 
 The diagnostic reports; it does not act. Its condition is evidence, not proof (see the residual cases in
 *Open questions*), and acting on it automatically would mean switching to a fallback that writes schema
 text into the request on the implementation's own initiative. So the condition is defined as distinct from
 §8.1.5.1's detection, and it never changes what is sent.
 
-### A retried attempt's event can describe another request
+### A retried call's event and spans can describe another request
 
-Under call-level retry (llm-provider §7.1), each attempt has its own typed event and span, but the spec
-never says which request they describe. Two features change the request between attempts: a per-attempt
-override changes the attempt's configuration, and reask adds the model's failed output and the caller's
-correction to its messages. An implementation may show the first attempt's request on every attempt's
-event. A per-attempt span then reports a temperature that attempt was not sent with, which defeats the
-point of a span per attempt. The diagnostic above also needs to know whether an attempt's request carried
-a stop sequence, and an override can add one. This proposal requires each attempt's event to describe the
-request that attempt sent.
+Under call-level retry (llm-provider §7.1), each wire attempt has its own span, and the call has one typed
+event, which reports its last attempt's outcome (graph-engine §6; a caught attempt emits no typed event).
+The spec never says which request either describes. Two features change the request between attempts: a
+per-attempt override changes the attempt's configuration, and reask adds the model's failed output and the
+caller's correction to its messages. An implementation may describe the caller's original request
+everywhere. An attempt's span then reports a temperature that attempt was not sent with, which defeats the
+point of a span per attempt, and the call's event can describe a request its reported outcome did not come
+from. This proposal requires each to describe the request actually sent.
 
 ### What this does to the exception record
 
@@ -248,25 +252,28 @@ in the rule. Likewise, a validator that reports locations in another notation, o
 property at its parent object, has its report converted to the form above. `response_schema` stays a
 separately exposed field and is not folded into `error_message`.
 
-### llm-provider §7.1: per-attempt spans describe their own request
+### llm-provider §7.1: spans and the event describe the request actually sent
 
 In the *Per-attempt span emission* paragraph, add after its first sentence:
 
-> Each attempt's span and typed event describe the request that attempt sent (graph-engine §6).
+> Each attempt's span describes the request that attempt sent, and the call's typed event describes the
+> request of the attempt whose outcome it reports (graph-engine §6).
 
 ### llm-provider §8.1.2 and §8.1.6: an OpenAI refusal
 
 In §8.1.2's `finish_reason` bullet, add after "Map any unknown `finish_reason` to `error`.":
 
 > When `choices[0].message.refusal` is a non-empty string and the message carries no `tool_calls`, the
-> `finish_reason` is `"content_filter"`, whatever value OpenAI reports, as §8.2.2 maps Anthropic's
-> `stop_reason: "refusal"`. The refusal text stays in `raw`.
+> message's content is the refusal text and the `finish_reason` is `"content_filter"`, whatever value
+> OpenAI reports. This matches the Anthropic mapping, where a refusal's text arrives as content and its
+> `stop_reason: "refusal"` maps to `"content_filter"` (§8.2.2), and it keeps the message within §3. `raw`
+> keeps the response as received.
 
 In §8.1.6, add to the bullet beginning "**finish_reason / usage**":
 
 > When the chunks' `choices[].delta.refusal` pieces, concatenated, form a non-empty string and the stream
-> carried no tool-call deltas, the `finish_reason` is `"content_filter"`, whatever value the last chunk
-> reports, as for an atomic response (§8.1.2).
+> carried no tool-call deltas, that string is the message's content and the `finish_reason` is
+> `"content_filter"`, whatever value the last chunk reports, as for an atomic response (§8.1.2).
 
 ### llm-provider §8.1.5, §8.2.5 and §8.3.5: what each native path guarantees
 
@@ -317,10 +324,10 @@ Append to each, after its existing requirement that implementations document whi
 
 §8.1.5.1 additionally gains:
 
-> A server that silently ignores the native constraint is not detectable from the request. When such a
-> call on the `strict: true` path returns content that is not well-formed JSON, or whose top level is not
-> an object, and was not cut short or refused, observability §5.5.7's `schema_not_honored` diagnostic
-> reports it. That diagnostic is not one of the detection arms above, and its condition **MUST NOT** by
+> A server that silently ignores the native constraint is not detectable from the request. When an attempt
+> on the `strict: true` path returns content that is not well-formed JSON, or whose top level is not an
+> object, and was not cut short or refused, observability §5.5.7's `schema_not_honored` diagnostic reports
+> it. That diagnostic is not one of the detection arms above, and its condition **MUST NOT** by
 > itself trigger the fallback.
 
 ### graph-engine §6: `structured_output_path`
@@ -341,15 +348,15 @@ wrapped exception's message or failing locator", with:
 > §7 defines. Implementations populate the exception message with that description, so observers read it
 > from `error_message` without a dedicated field.
 
-### graph-engine §6: each attempt's event describes its own request
+### graph-engine §6: the event describes the request its outcome came from
 
 Add to the *Typed LLM completion event* paragraph, after its field table:
 
-> **Under call-level retry, each attempt's event describes that attempt's request.** Where llm-provider
-> §7.1 issues more than one attempt for a call, `input_messages`, `request_params` and `request_extras` on
-> each attempt's event describe the request that attempt sent: the working transcript as reask has
-> extended it, and the configuration after any per-attempt override is merged. For `request_params`,
-> "supplied on this call" means supplied for that attempt.
+> **Under call-level retry, the event describes the request its outcome came from.** Where llm-provider
+> §7.1 issues more than one attempt for a call, the call's single typed event reports its last attempt's
+> outcome, and its `input_messages`, `request_params` and `request_extras` describe that attempt's
+> request: the working transcript as reask extended it, and the configuration after any per-attempt
+> override is merged. For `request_params`, "supplied on this call" means supplied for that attempt.
 
 `LlmFailedEvent` inherits the rule through its table's statement that it mirrors the completion event's
 request-side fields.
@@ -370,23 +377,25 @@ payload flag, which is why the attribute belongs there rather than in §5.5.1.
 
 Add after the *Typed LLM failure event* paragraph:
 
-> **A schema the provider did not honor.** The implementation **MUST** emit exactly one `WARNING`-level log
-> record (§7) for an `LlmFailedEvent`, however many observers are attached, when all of the following
-> hold:
+> **A schema the provider did not honor.** For each wire attempt of a `complete()` call, including an
+> attempt whose failure call-level retry (llm-provider §7.1) catches, the implementation **MUST** emit
+> exactly one `WARNING`-level log record (§7), however many observers are attached, when all of the
+> following hold:
 >
-> - its `error_category` is `structured_output_invalid`, and either the failure is llm-provider §7's
+> - the attempt failed with `structured_output_invalid`, and either the failure is llm-provider §7's
 >   parse failure, content that is not well-formed JSON, or the content is well-formed JSON whose top level
 >   is not an object;
-> - its `structured_output_path` is `"native"`;
-> - its `finish_reason` is `"stop"`; and
-> - the request the event describes carried no stop sequence: no `stop_sequences` in its `request_params`,
->   and none under the stop key of the mapping that issued it in its `request_extras` (`stop` for
->   llm-provider §8.1, `stop_sequences` for §8.2, `stopSequences` for §8.3). An empty list carries none.
+> - the attempt's request took the `"native"` path (graph-engine §6 `structured_output_path`);
+> - the attempt's `finish_reason` is `"stop"`; and
+> - the attempt's request carried no stop sequence: no declared `stop_sequences`, and none under the stop
+>   key of the mapping that issued it in its extras (`stop` for llm-provider §8.1, `stop_sequences` for
+>   §8.2, `stopSequences` for §8.3). An empty list carries none.
 >
 > The record carries the event name `openarmature.structured_output.schema_not_honored` (§7 *Diagnostic
-> event names*) and the §7 correlation fields, and names the call's provider, model and `call_id`. It
-> reports that a call on a native path the provider constrains during decoding, which was not cut short or
-> refused, returned content that is not well-formed JSON, or not a JSON object, which a constraint that
+> event names*) and the §7 correlation fields, and names the call's provider, model and `call_id` and the
+> attempt's `openarmature.llm.attempt_index` (§5.5), the index on the attempt's own span. It
+> reports that an attempt on a native path the provider constrains during decoding, which was not cut short
+> or refused, returned content that is not well-formed JSON, or not a JSON object, which a constraint that
 > bound cannot produce, since llm-provider §5 requires an object at the schema's top level. That is
 > evidence the constraint did not reach or did not bind the model. It does not establish why.
 >
@@ -407,7 +416,7 @@ Add to the *Diagnostic event names* table:
 
 | Event name | Emitted when | Obligation |
 |---|---|---|
-| `openarmature.structured_output.schema_not_honored` | §5.5.7, a structured-output call on a native path that constrains decoding, not cut short or refused, returned content that is not well-formed JSON or not a JSON object | MUST |
+| `openarmature.structured_output.schema_not_honored` | §5.5.7, an attempt of a structured-output call on a native path that constrains decoding, not cut short or refused, returned content that is not well-formed JSON or not a JSON object | MUST |
 
 ### conformance-adapter §5.12 and §5.13: `_mentions` takes a list
 
@@ -513,12 +522,14 @@ and 023, 063 and 064 assert the property name `age`, which a fragment-form locat
 non-empty `refusal` and no content:
 
 - OpenAI's own `finish_reason` is `"stop"`, with no `response_schema`. The `Response`'s `finish_reason` is
-  `"content_filter"`, its message has no content, and `raw` carries the refusal.
+  `"content_filter"`, its message's content is the refusal text, and `raw` carries the response as
+  received.
 - The same with OpenAI's `finish_reason` `"length"`, so the rule is seen to ignore OpenAI's value.
 - With a `response_schema`, the call raises `structured_output_invalid` whose `carries` show
-  `finish_reason` `"content_filter"`, `error_message_present: true` and `response_schema_present: true`.
+  `finish_reason` `"content_filter"`, `output_content` equal to the refusal text,
+  `error_message_present: true` and `response_schema_present: true`.
 - Streamed, in the SSE wire shape fixture 059 uses: `delta.refusal` pieces and a last chunk reporting
-  `"stop"` give a `finish_reason` of `"content_filter"`.
+  `"stop"` give a `finish_reason` of `"content_filter"` and the concatenated pieces as the content.
 
 **observability 161, `structured-output-schema-not-honored`** (new). Every case attaches the OTel observer
 and a Langfuse observer. Every case asserts the span's `openarmature.llm.structured_output.path`, or its
@@ -538,13 +549,15 @@ absence, and the typed event's `structured_output_path` through a typed-event co
 | 9 | `native` | valid content, on `LlmCompletionEvent` | absent |
 | 10 | no `response_schema` | completion | absent; path null on the event and no path attribute (`attributes_absent`) |
 | 11 | a schema is supplied but the call is rejected before sending, by a conflicting extras `response_format` (llm-provider §8.1.5) | `provider_invalid_request` | absent; path null on the event |
-| 12 | `native`, with reask | attempt 0 not valid JSON on `stop`, attempt 1 valid | emitted once, for attempt 0; attempt 1's event's `input_messages` end with attempt 0's output and the rendered correction |
-| 13 | `native`, with reask and a `per_attempt_override` that adds `stop_sequences` for attempt 1 | both attempts not valid JSON on `stop` | emitted once, for attempt 0 only; attempt 1's event's `request_params` carry the stop sequence |
+| 12 | `native`, with reask | attempt 0 not valid JSON on `stop`, attempt 1 valid | emitted once, carrying `openarmature.llm.attempt_index` 0; the call's single `LlmCompletionEvent` reports attempt 1, and its `input_messages` end with attempt 0's output and the rendered correction |
+| 13 | `native`, with reask and a `per_attempt_override` that adds `stop_sequences` for attempt 1 | both attempts not valid JSON on `stop` | emitted once, carrying `openarmature.llm.attempt_index` 0; the call's single `LlmFailedEvent` reports attempt 1, and its `request_params` carry the stop sequence |
 
 The absence cases are what make the emitted cases mean anything. Without them an implementation that
 emitted on every `structured_output_invalid`, or on every native call, would pass. Case 2 pins the
 narrowing to malformed and non-object content, case 3 the non-object arm, case 7 the stop sequence carried
-in extras, and cases 12 and 13 the rule that each attempt's event describes its own request. With both
+in extras, and cases 12 and 13 the per-attempt diagnosis and the rule that the call's event describes the
+request its outcome came from. As in fixture 116, neither case sees a typed event for its caught attempt,
+so attempt 0's record is the only trace of that attempt's failure outside its span. With both
 observers attached in every case, an absence case also covers a check placed in either observer, and the
 emitted cases' `count: 1` catches an implementation that emits once per observer. The schema in cases 1 to
 7, 9, 12 and 13 satisfies OpenAI's strict-mode rules, so the request carries `strict: true` and the path is
@@ -586,8 +599,8 @@ characters, or other characters a URI fragment cannot carry.
 out of scope here. It would be a new field rather than a change to this one, and nothing here prevents it.
 
 **Keep the diagnostic a SHOULD, as the token-budget warning is.** Rejected: a fixture could not require it,
-so its exclusions could not be tested either, and its condition is determined by the failure's own
-classification and by fields the event carries once the path is added, so requiring it costs an
+so its exclusions could not be tested either, and its condition is determined by facts the implementation
+already holds for each attempt, its outcome, path, `finish_reason` and request, so requiring it costs an
 implementation nothing it does not already have.
 
 **Key the diagnostic on any validation failure.** Rejected: a provider that applied the schema can still
@@ -601,9 +614,17 @@ Rejected: it would put each vendor's supported keyword list into the spec, a lis
 extend support, to recover a case the malformed-or-not-an-object rule already covers in its most common
 form.
 
-**Show the caller's original request on every attempt's event.** Rejected: an attempt's span would report
-settings and messages that attempt was not sent with, which defeats having a span per attempt, and the
-diagnostic could not see a stop sequence an override added.
+**Describe the caller's original request on the event and every span.** Rejected: an attempt's span would
+report settings and messages that attempt was not sent with, which defeats having a span per attempt, and
+the call's event would describe a request its outcome did not come from.
+
+**Emit a typed event per wire attempt, and diagnose from those.** Rejected: graph-engine §6 makes the
+typed event terminal, one per `complete()` call, and fixture 116 asserts that a caught attempt emits none.
+Changing that is an event-model change for every consumer, the Langfuse mapping included. The
+implementation already knows each attempt's outcome, so it can diagnose per attempt without one.
+
+**Diagnose only the call's final failure.** Rejected: under reask, a later attempt that recovers would hide
+a dropped constraint every time, and that is the case the diagnostic exists to surface.
 
 **Carry enforcement in a separate boolean field.** Rejected in favor of one field with four values, which
 reads more simply and keeps the path and its enforcement from disagreeing.
@@ -643,10 +664,10 @@ repeat the message. OpenTelemetry's attribute value length limit bounds both, at
    decoding to well-formed JSON with an object at the top level, that OpenAI's does so only with
    `strict: true`, Anthropic's capitalization caveat, and Gemini's support for a subset of JSON Schema.
    §8.1.2's and §8.1.6's refusal rule rests on the shape of an OpenAI Chat Completions refusal: the
-   `refusal` field and the `delta.refusal` pieces, the absent content, and the `finish_reason` OpenAI
-   reports with it. And the OpenTelemetry specification applies the attribute value length limit to span
-   events, which at least one SDK implements; coverage across the SDKs implementations use should be
-   checked. Each should be confirmed against current documentation before accept.
+   `refusal` field and the `delta.refusal` pieces, whether content accompanies a refusal, and the
+   `finish_reason` OpenAI reports with it. And the OpenTelemetry specification applies the attribute value
+   length limit to span events, which at least one SDK implements; coverage across the SDKs implementations
+   use should be checked. Each should be confirmed against current documentation before accept.
 6. **Forcing the fallback rests on a SHOULD.** Case 8 reaches prompt augmentation through §8.1.5.1's
    static detection, which the spec states as a SHOULD, and llm-provider fixture 027 already treats it as
    required ("the implementation MUST fall back per §8.1.5.1"). Whether static detection becomes a MUST
