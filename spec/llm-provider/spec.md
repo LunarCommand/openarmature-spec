@@ -313,7 +313,9 @@ be called automatically by `complete()`; callers decide when (or whether) to inv
 ### `complete(messages, tools=None, config=None, response_schema=None, tool_choice=None, retry=None, stream=False)`
 
 Async. Performs a single completion call. When `response_schema` is supplied, the call
-additionally constrains the model's output to conform to the schema. When `tool_choice` is
+additionally requests output that conforms to the schema and validates the response against it (§6
+`parsed`, §7 `structured_output_invalid`); whether the provider constrains decoding to the schema
+depends on the path the mapping takes and on the vendor's own limits (§8). When `tool_choice` is
 supplied, the call additionally constrains the model's tool-calling behavior. When `retry` is
 supplied, the call additionally performs an in-call retry loop on transient failures per §7.1. When
 `stream` is set, the provider additionally consumes the model's streaming wire response and emits a
@@ -329,7 +331,9 @@ per-chunk `LlmTokenEvent` (graph-engine §6) as each chunk arrives — the retur
 - `config` — optional `RuntimeConfig` (§6). Per-call sampling parameters and budget hints.
 - `response_schema` — optional JSON Schema describing the expected output shape. When `None` /
   absent, the call behaves as in v0.4.0: free-form text content; no parsed value. When present,
-  MUST be a valid JSON Schema. The top-level schema MUST be an object schema (`type: "object"` at
+  MUST be a valid JSON Schema. A `response_schema` that declares no `$schema` **MUST** be interpreted as
+  JSON Schema draft 2020-12, so that validation, and the violations §7 reports, do not depend on which
+  validator an implementation uses. The top-level schema MUST be an object schema (`type: "object"` at
   the root) — this matches §4 `Tool.parameters` and OpenAI's strict-mode wire format. Non-object
   top-level schemas are out of scope for this version; a follow-on MAY relax this if cross-provider
   demand warrants. Implementations SHOULD validate at call time. The JSON Schema convention matches
@@ -663,14 +667,14 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
   when the provider itself rejects the request.
 - `structured_output_invalid` — `complete()` was called with a `response_schema` (§5), and the
   provider returned content that could not be parsed as JSON OR did not validate against the
-  supplied schema. The error MUST expose the requested `response_schema`, the raw response
-  content as **`output_content`** (the verbatim content the model produced), a description of the validation
-  or parse failure as **`error_message`** (the wrapped exception's message, the failing JSON
-  Pointer, or the language's idiomatic equivalent) — these two matching the graph-engine §6
-  failure-event field names (0082), which the call-level `reask` builder (§7.1) consumes — **and
-  the response's normalized `finish_reason` (§6) and token `usage`** — both
-  available from the received response, since the failure is a downstream parse/validation step on an
-  intact wire response, not a transport failure. The `finish_reason` lets callers distinguish a
+  supplied schema. The error **MUST** expose the requested `response_schema`; the response's message
+  content as **`output_content`**, verbatim as the mapping produced it (§6 `message.content`, which for an
+  OpenAI refusal is the refusal text, §8.1.2); a description of the failure as
+  **`error_message`**, defined below; and the response's normalized **`finish_reason`** (§6) and token
+  **`usage`**. The last two are available from the received response, since the failure is a downstream
+  parse or validation step on an intact wire response, not a transport failure. `output_content` and
+  `error_message` match the graph-engine §6 failure-event field names (0082), and the call-level `reask`
+  builder (§7.1) consumes them. The `finish_reason` lets callers distinguish a
   truncation (`"length"` — the model hit `max_tokens`) from a model that finished (`"stop"`) but
   emitted invalid or schema-violating content, and choose retry policy accordingly (this also
   reconciles §8.2.5's statement that the mapping surfaces the mapped `finish_reason`). Non-transient by default — a model that fails to produce schema-compliant output
@@ -682,6 +686,42 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
   NOT transient by default at the spec level.
   Distinct from `provider_invalid_response` (which covers wire-shape malformation, not content
   validation against the caller's schema).
+
+  **What `error_message` describes.** `error_message` **MUST** describe **every violation** the content
+  commits against `response_schema`. A violation is a failing assertion, such as `type`, `required`, `enum`
+  or `pattern`, not the applicator that contains it. Every failing assertion is a violation unless an
+  enclosing keyword discards its result: an `anyOf` or `oneOf` discards its other members' results once
+  one member is satisfied, and `if`, `not` and `contains` discard their subschemas' results.
+
+  Each violation **MUST** state its **location** and the **constraint** that failed, and a `type`
+  violation **MUST** also state the expected type. The location is a JSON Pointer into the content,
+  written in its URI fragment form (RFC 6901 §6), with the percent-encoding that form requires: `#` for
+  the whole content, `#/site/lat` for a property, `#/rows/2` for an array element, and `#/first%20name`
+  for a property named `first name`.
+
+  - **Where a violation is located.** At the part of the content its failing assertion applies to, with one
+    exception: a property the schema requires but the content lacks (`required`, `dependentRequired`) is
+    located at the pointer it would occupy, so a missing `lat` inside `site` is at `#/site/lat`, and each
+    missing property is its own violation. A property the schema does not allow, such as one excluded by
+    `additionalProperties: false`, is one violation at that property's own location. An array element the
+    schema does not allow is one violation at that element. A count or uniqueness constraint on an object
+    or array, such as `minItems` or `uniqueItems`, is one violation at the object or array.
+  - **An `anyOf` or `oneOf` that no member satisfies.** The violations are every failing assertion of every
+    member whose own `type` admits the content's type at that location, after resolving references. A
+    member without a `type` of its own, including one that is itself a composite, counts as matching.
+    Where no member's type matches, the composite's location and the members' types are reported as one
+    violation.
+  - **An `allOf`.** Every member applies, so the violations are every failing assertion of every member,
+    including a member's `type` when the content's type does not match it.
+  - **A composite whose own constraint fails.** A `oneOf` that more than one member satisfies, whatever its
+    other members do, a `not` whose subschema is satisfied, and a `contains` that too few or too many array
+    elements satisfy are each one violation, located where the keyword applies.
+  - **Content that is not well-formed JSON** (RFC 8259). That is the single violation reported. It has no
+    location, since no schema constraint could be evaluated, and in place of a constraint it states what
+    made the content malformed.
+
+  Violations **SHOULD** appear in a stable order for a given content and schema. The wording around each
+  location and constraint is implementation-defined.
 
 Each error MUST expose a `category` identifier (matching the strings above, as an error class, error
 code, or tagged discriminant per the language's idiom). Provider-originated errors SHOULD preserve
@@ -823,7 +863,9 @@ implementations MUST detect cancellation and re-raise it before consulting the c
 
 **Per-attempt span emission.** Each retry attempt produces its own `openarmature.llm.complete`
 span per observability §5.5 — N retry attempts emit N LLM spans, all parented under the
-calling node's span. The per-attempt span carries the `openarmature.llm.attempt_index`
+calling node's span. Each attempt's span describes the request that attempt sent, and the call's typed
+event describes the request of the attempt whose outcome it reports (graph-engine §6). The per-attempt
+span carries the `openarmature.llm.attempt_index`
 attribute (per observability §5.5), and on retry attempts (attempt index ≥ 1) an
 `openarmature.llm.retry_reason` attribute recording why **this attempt was scheduled** — the class of
 the *immediately prior* attempt's failure, `transient` (a transient-classified failure) or `reask` (a
@@ -1115,7 +1157,11 @@ A successful OpenAI response maps onto a §6 `Response` as follows:
   shape v1 supports).
 - `finish_reason` — `choices[0].finish_reason`. OpenAI's values are `stop`, `length`, `tool_calls`,
   `content_filter`, and `function_call` (legacy). Map `function_call` to `tool_calls`. Map any
-  unknown `finish_reason` to `error`.
+  unknown `finish_reason` to `error`. When `choices[0].message.refusal` is a non-empty string and the
+  message carries no `tool_calls`, the message's content is the refusal text and the `finish_reason` is
+  `"content_filter"`, whatever value OpenAI reports. This matches the Anthropic mapping, where a
+  refusal's text arrives as content and its `stop_reason: "refusal"` maps to `"content_filter"` (§8.2.2),
+  and it keeps the message within §3. `raw` keeps the response as received.
 - `usage` — built from the response's `usage` field. If `usage` is absent, the three baseline
   subfields (`prompt_tokens`, `completion_tokens`, `total_tokens`) MUST be `null`.
 - `usage.cached_tokens` — sourced from the response's `usage.prompt_tokens_details.cached_tokens`
@@ -1178,9 +1224,12 @@ SHOULD derive a stable identifier from the schema (e.g., a hash, or the schema's
 when present). The `strict: true` flag enables OpenAI's schema-constrained decoding path;
 implementations SHOULD pass `strict: true` when the supplied schema satisfies the strict-mode
 constraints (no `additionalProperties: true`, all properties listed in `required`, etc.), and
-SHOULD fall back to `strict: false` when the schema does not satisfy the constraints. The
-behavioral contract at the spec layer is identical regardless of `strict`: validation happens
-post-receive against `response_schema`; failures raise `structured_output_invalid` (§7).
+SHOULD fall back to `strict: false` when the schema does not satisfy the constraints. Validation is
+identical regardless of `strict`: it happens post-receive against `response_schema`, and failures raise
+`structured_output_invalid` (§7). The path a call reports is not. OpenAI documents schema-constrained
+decoding only for `strict: true`, so the mapping reports a call sent with `strict: true` as the `"native"`
+path (graph-engine §6 `structured_output_path`), and one sent with `strict: false`, or without `strict`,
+as `"native_unenforced"`, whatever a particular OpenAI-compatible server does with the field.
 
 When `complete()` is called without `response_schema` (or with `response_schema=None`), the
 mapping **MUST NOT construct** a `response_format` of its own; the v0.4.0 wire shape is preserved
@@ -1218,13 +1267,22 @@ strategy:
 
 Fallback behavior is implementation-defined. Implementations MUST document whether `complete()`
 with `response_schema` uses native `response_format` or prompt-augmentation, and SHOULD expose
-a way for callers to inspect or override the path chosen.
+a way for callers to inspect or override the path chosen. The path a call took is reported on the
+typed LLM event as `structured_output_path` (graph-engine §6), so a caller or observer can inspect it
+per call.
+
+A server that silently ignores the native constraint is not detectable from the request. When an attempt
+on the `strict: true` path returns content that is not well-formed JSON, or whose top level is not an
+object, and was not cut short or refused, observability §5.5.7's `schema_not_honored` diagnostic reports
+it. That diagnostic is not one of the detection arms above, and its condition **MUST NOT** by itself
+trigger the fallback.
 
 ##### 8.1.5.2 Response mapping
 
 When the response carries structured content (not tool calls):
 
-- `message.content` is the response body's content string, verbatim.
+- `message.content` is the response body's content string, verbatim, or the refusal text when the
+  response is a refusal (§8.1.2).
 - `parsed` is the deserialization of `message.content` against `response_schema`.
 - `finish_reason` is mapped per §8.1.2 (typically `"stop"`).
 
@@ -1252,16 +1310,22 @@ assembling the atomic `Response` per §6 *Streaming assembly*.
   break the mapping's streaming consumer) is **rejected pre-send** with `provider_invalid_request` (§7). The
   mapping **MUST NOT** silently drop it or let it override the mode the call fixed.
 - **Wire** — Server-Sent Events: each `data:` line is a chunk whose `choices[].delta` carries a
-  `content` delta, `tool_calls` deltas (each with an `index` and partial `id` / `function.name` /
-  `function.arguments` fields), and/or a reasoning delta (see below). The `data: [DONE]` sentinel
-  terminates the stream.
+  `content` delta, a `refusal` delta, `tool_calls` deltas (each with an `index` and partial `id` /
+  `function.name` / `function.arguments` fields), and/or a reasoning delta (see below). The
+  `data: [DONE]` sentinel terminates the stream.
 - **Content deltas** → `LlmTokenEvent(delta_kind="content")` (§5), concatenated into
-  `message.content` per §6.
+  `message.content` per §6. A `refusal` delta is a content delta: OpenAI streams a refusal's text
+  there in place of `content`, so each piece is emitted as a content token event as it arrives.
 - **Tool-call deltas** → reassembled into `message.tool_calls` per §6; NOT emitted as token events.
 - **finish_reason / usage** — `finish_reason` is set on the last content-bearing chunk's
   `choices[].finish_reason` (one of `stop`, `length`, `tool_calls`, `content_filter`). With
   `stream_options.include_usage` set, a final chunk with empty `choices` carries `usage`, followed by
-  the `[DONE]` sentinel.
+  the `[DONE]` sentinel. When the chunks' `choices[].delta.refusal` pieces, concatenated, form a
+  non-empty string and the stream carried no tool-call deltas, the `finish_reason` is
+  `"content_filter"`, whatever value the last chunk reports, as for an atomic response (§8.1.2). The
+  refusal pieces are content deltas, so the refusal's text becomes the message's content, as it does
+  for an atomic response that carries no tool calls. The pieces are content whether or not tool-call
+  deltas arrive, since each is emitted as it streams.
 
 **Reasoning deltas (OpenAI-compatible extension).** Base OpenAI Chat Completions does **not** stream
 raw reasoning — its reasoning models do not expose chain-of-thought over this API. Streamed reasoning
@@ -1274,7 +1338,8 @@ chunk, and reasoning tokens stream first, then content. A backend that emits nei
 streams no reasoning token events (the vanilla-OpenAI case). The streamed-chunk shapes above (the
 `stream_options` flag, `finish_reason` / `usage` chunk positioning, the `[DONE]` sentinel, tool-call
 delta fields, and the two reasoning-delta field names) are **verified against current OpenAI, vLLM,
-and DeepSeek streaming docs** (2026-06-20; tracked in `docs/compatibility.md`).
+and DeepSeek streaming docs** (2026-06-20; tracked in `docs/compatibility.md`). The `refusal` delta
+field is verified against OpenAI's SDK chunk type (2026-10-20).
 
 ### 8.2 Anthropic Messages mapping
 
@@ -1503,30 +1568,35 @@ mapping sets:
 ```
 
 The `type: "json_schema"` discriminator is required; the GA path requires no beta header.
-Anthropic's constrained decoding guarantees the generated output conforms to the schema. The
+Anthropic's constrained decoding guarantees well-formed JSON with the schema's field types and required
+properties. It does not guarantee the capitalization of string `enum` and `const` values: a response
+that differs from the schema only in that capitalization completes normally, with
+`stop_reason: "end_turn"`, and fails validation. A call on this path reports the `"native"` path
+(graph-engine §6 `structured_output_path`). The
 structured JSON is returned as the assistant message's text content; the mapping parses it into
 `Response.parsed` and validates against `response_schema` per §6. On validation failure raise
 `structured_output_invalid` (§7).
 
-Two non-conformance cases are inherent to the provider and are NOT validation bugs: a
-`stop_reason: "refusal"` (the refusal takes precedence, so output may not match the schema) and
-a `stop_reason: "max_tokens"` (truncation). In both cases the mapping surfaces the
-non-conforming content and the mapped `finish_reason` (`content_filter` / `length`) per §6 / §7;
-implementations MUST NOT silently coerce these into a schema-conforming shape.
+Three non-conformance cases are inherent to the provider and are NOT validation bugs: a
+`stop_reason: "refusal"` (the refusal takes precedence, so output might not match the schema), a
+`stop_reason: "max_tokens"` (truncation), and the capitalization case above. In each case the mapping
+surfaces the non-conforming content and the mapped `finish_reason` (`content_filter`, `length` or
+`stop`) per §6 / §7; implementations MUST NOT silently coerce these into a schema-conforming shape.
 
 When `complete()` is called without a `response_schema`, the request MUST NOT include
 `output_config`; the free-form wire shape is preserved.
 
 (Anthropic's complementary strict-tool-use feature — `strict: true` on a tool definition —
-guarantees tool-call *argument* conformance, not *response* shape; it is a tool-parameter
-feature reachable via the tool-definition extras path, not part of this structured-output
-mapping.)
+constrains tool-call *arguments* to the tool's input schema, with the same inherent exceptions as
+above, not the *response* shape; it is a tool-parameter feature reachable via the tool-definition
+extras path, not part of this structured-output mapping.)
 
 ##### 8.2.5.1 Fallback for models without native structured output
 
 Claude models predating native `output_config.format` support fall back to a pre-native pattern.
 Implementations SHOULD prefer tool-call coercion (stronger conformance) and MUST document which
-path a given call uses.
+path a given call uses. The path a call took is reported on the typed LLM event as
+`structured_output_path` (graph-engine §6), so a caller or observer can inspect it per call.
 
 **Tool-call coercion** (preferred fallback). When the caller's `tools` list is empty or absent,
 construct a synthetic tool whose `input_schema` is the `response_schema`, add it to `tools`, and
@@ -1856,11 +1926,15 @@ the §6 `response_schema` is a full JSON Schema, the §8.3 mapping
 targets `responseJsonSchema`, so the schema round-trips faithfully —
 `responseSchema` would silently drop JSON Schema constructs outside
 the OpenAPI subset. The `response_schema` passes through under
-`responseJsonSchema` unchanged. The response's text content is the
-JSON string conforming to the schema; the §8.3 mapping parses it into
-`Response.parsed` and validates against `response_schema` per §6. On
-validation failure, raise `structured_output_invalid` per §7. The
-behavioral contract matches §8.1.5's native path.
+`responseJsonSchema` unchanged. The response's text content is a JSON
+string; the §8.3 mapping parses it into `Response.parsed` and validates
+against `response_schema` per §6. On validation failure, raise
+`structured_output_invalid` per §7. Gemini's constrained decoding produces
+well-formed JSON, but Gemini documents support for a subset of JSON Schema,
+so content can fail validation on a call that finished normally. The
+behavioral contract otherwise matches §8.1.5's native path with
+`strict: true`, and a call on it reports the `"native"` path (graph-engine
+§6 `structured_output_path`).
 
 When `complete()` is called without `response_schema`, the request
 MUST NOT include `responseMimeType` / `responseJsonSchema`; the
@@ -1879,7 +1953,9 @@ decoding fall back to prompt-augmentation per §8.1.5.1's pattern
 (append a schema directive to `systemInstruction` or the message
 list, parse the text response, validate, raise
 `structured_output_invalid` on failure). Implementations MUST
-document which path a given call uses.
+document which path a given call uses. The path a call took is reported
+on the typed LLM event as `structured_output_path` (graph-engine §6), so a
+caller or observer can inspect it per call.
 
 ## 9. Determinism
 
@@ -1947,3 +2023,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §7.1 *reask* — the **assistant-prefill continuation** branch is removed. The clause that continued a trailing `assistant` message (a caller prefill) rather than appending a new one is deleted, along with its only fixture (067). §3 already requires the last message before the call to be `user` or `tool` (a MUST, validated pre-send), so the reask working transcript never ends in `assistant` and the branch was unreachable — a reask retry now always appends the model's output as a fresh `assistant` message, which never produces the consecutive-`assistant` sequence §8.2 forbids. Non-behavioral (dead-branch removal): fixture 067 was unsatisfiable against a §3-conforming implementation, and reachable reask behavior stays covered by fixtures 062–066. First-class caller prefill remains unsupported, deferred to a dedicated future proposal by [proposal 0110](../../proposals/0110-remove-reask-assistant-prefill-continuation.md)
 - §6 *Managed-field collision* — the **merge arm** gains a rule for a **malformed** caller value (the arm previously defined only the well-formed case): an extras value that is not the field's expected list shape, or a list with any element not of the expected element type/shape, is treated as **absent** — the mapping sends only the value(s) it would send with no such extra (all-or-nothing, the well-formed elements of a partially-malformed list are not salvaged), and MUST NOT raise or emit a diagnostic. Malformation is judged structurally (the mapping does not semantically validate element values against a provider vocabulary), and this is the request-side counterpart of §7's malformed-ancillary-is-not-reported rule. The **reject** arm is unaffected — a malformed value is already unequal to the managed value under the deep-equality test, so it is a rejected conflict. New fixture 081 (malformed extras `stop` → the declared value only); the retrieval `embedding_types` instance is retrieval fixture 053 by [proposal 0113](../../proposals/0113-malformed-merge-managed-extras.md)
 - §6 *Extras pass-through* gained an **Extras container** paragraph settling the shape of the extras surface: undeclared fields are carried in a container on the config record **distinct from and addressable separately from** the declared fields, so a caller MAY set a declared field and an extras key of the same name in one call, and a key in that container is undeclared by virtue of being there. The container's ergonomics stay implementation-defined; its **name is normative as `extras`**, on the observability §5.5.4 precedent for flag names. §6's existing "preserved on the config record" wording, which admitted a flat reading in which undeclared fields sit alongside declared ones, is amended rather than merely supplemented, and the four other sites stating that reading (§6's own example, the `None`-forwarding sentence, §8.1's request-body-root placement, and §8.3's Gemini `toolConfig` note) are reconciled to the container model by [proposal 0122](../../proposals/0122-declared-field-collision-reachability.md)
+- §7 `structured_output_invalid`: the exposure sentence is rewritten, and **What `error_message` describes** is added. `error_message` MUST describe every violation the content commits, each with its location as a JSON Pointer in RFC 6901's URI fragment form (`#`, `#/site/lat`) and the constraint that failed, and for a `type` violation the expected type. The definition says where a violation is located (a missing required property at the pointer it would occupy, an unexpected property at its own location), filters `anyOf` / `oneOf` members by their own `type`, applies every `allOf` member, makes a composite whose own constraint fails (a `oneOf` over-match, a satisfied `not`, a `contains` with too few or too many matches) one violation at the keyword, and makes content that is not well-formed JSON a single violation with no location. §7.1's per-attempt span paragraph states that each attempt's span, and the call's typed event, describe the request actually sent. §8.1.2 and §8.1.6 map an OpenAI refusal, atomic or streamed, to `finish_reason` `"content_filter"` with the refusal text as the message's content, matching the Anthropic mapping; a streamed refusal's `delta.refusal` pieces are content deltas, each emitted as a content token event whether or not tool-call deltas arrive, and §8.1.5.2 notes that content. §5 now says a `response_schema` call requests and validates conforming output, with decoding constrained only on some paths, and that a `response_schema` without `$schema` is interpreted as JSON Schema draft 2020-12; §7 defines `output_content` as the mapped message content, and §8.2.5's strict-tool-use note carries the same inherent exceptions as its JSON output. §8.1.5 narrows "identical regardless of `strict`" to validation, reporting `strict: true` as the `"native"` path and `strict: false` or no `strict` as `"native_unenforced"`. §8.2.5 corrects what Anthropic's constrained decoding guarantees (well-formed JSON with the schema's field types and required properties, but not the capitalization of string `enum` / `const` values) and adds that capitalization case as a third inherent non-conformance case. §8.3.5 states that Gemini produces well-formed JSON but supports a subset of JSON Schema. §8.1.5.1, §8.2.5.1 and §8.3.5.1 report the path a call took on the typed event, and §8.1.5.1 points at observability §5.5.7's `schema_not_honored` diagnostic, which is not a detection arm and MUST NOT by itself trigger the fallback by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)

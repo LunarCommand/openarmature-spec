@@ -1,0 +1,1361 @@
+# observability §5.5.7 "A schema the provider did not honor", the §5.5 path
+# attribute, and graph-engine §6 structured_output_path (proposal 0126).
+#
+# For each wire attempt, the implementation MUST emit exactly one WARNING log
+# record carrying openarmature.structured_output.schema_not_honored when the
+# attempt failed structured_output_invalid with content that is not well-formed
+# JSON or not a JSON object, on the "native" path, with finish_reason "stop" and
+# no stop sequence on its request. It MUST NOT emit in any other case.
+#
+# Harness notes for this fixture:
+#   - Every case except case 14 carries `otel_observer: {}` and
+#     `langfuse_observer: {}`, so both backend observers are composed
+#     (conformance-adapter §5.5). An absence case therefore covers a check placed
+#     in either observer, and each record count catches one that emits once per
+#     observer. Case 14 carries `otel_observer: {attached: false}` and no
+#     Langfuse key, so it composes neither, and a record that depends on an
+#     observer being attached is caught too.
+#   - Log records are captured for the whole case and asserted after observer
+#     delivery completes (conformance-adapter §5.5).
+#   - `<call_id_X>` is a first-occurrence-binding token (conformance-adapter
+#     §5.10) for a call's graph-engine §6 `call_id`. A record's
+#     `openarmature.llm.call_id` and the call's typed event bind the same token,
+#     so the record joins to its call.
+#   - The schema satisfies OpenAI's strict-mode rules, so the request carries
+#     `strict: true` and the path is "native" (llm-provider §8.1.5; llm-provider
+#     fixture 026 already pins strict: true on the wire for such a schema).
+#   - Under call-level retry each wire attempt takes the next `mock_llm` entry.
+#     A caught attempt emits no typed event (graph-engine §6, as in fixture
+#     116), so the retry cases assert the call's single terminal event, the
+#     per-attempt records, and each attempt's span through `llm_spans`.
+#   - Every case that expects the record sets `caller_correlation_id`, so the
+#     record's `openarmature.correlation_id` is asserted as that literal value.
+#   - Case 17 streams, using fixture 111's `calls_llm.stream`,
+#     `mock_llm_stream` and `contains_events_in_order` (the collected events of
+#     one type, in delivery order, matched positionally and length-exact). Its
+#     chunks carry `delta: {refusal: ...}`, OpenAI's refusal delta
+#     (llm-provider §8.1.6), a chunk shape fixture 111's list does not show.
+
+
+cases:
+  - name: native_not_json_on_stop_emits_once
+    description: |
+      The model finished on its own ("stop") with prose instead of JSON on the
+      native path, and the request carried no stop sequence. A constrained
+      response cannot be malformed, so exactly one record is emitted. The
+      response reports a dated model name, so the record must name the model
+      the provider is bound to, not the one the response reports.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-a"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161a
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test-2026-01-01
+          choices:
+            - {index: 0, message: {role: assistant, content: "Sure, the person is Alice, aged 30."}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: stop
+              model: gpt-test
+              response_model: gpt-test-2026-01-01
+              call_id: "<call_id_a>"
+      log_records:
+        - event_name: openarmature.structured_output.schema_not_honored
+          count: 1
+        - level: WARNING
+          event_name: openarmature.structured_output.schema_not_honored
+          attributes:
+            "openarmature.llm.provider": openai
+            "openarmature.llm.model": gpt-test
+            "openarmature.llm.call_id": "<call_id_a>"
+            "openarmature.llm.attempt_index": 0
+            "openarmature.correlation_id": "corr-161-a"
+
+  - name: native_valid_object_failing_schema_absent
+    description: |
+      Well-formed JSON object that fails the schema (missing "age"). A
+      provider that applied the schema can still return this, so no record is
+      emitted. This case pins the narrowing to malformed and non-object
+      content.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161b
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice"}'}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: stop
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_json_array_on_stop_emits_once
+    description: |
+      Well-formed JSON whose top level is an array. llm-provider §5 requires an
+      object at the schema's top level, so a constraint that bound cannot
+      produce this, and exactly one record is emitted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-c"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161c
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: '["Alice", 30]'}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: stop
+              call_id: "<call_id_a>"
+      log_records:
+        - event_name: openarmature.structured_output.schema_not_honored
+          count: 1
+        - level: WARNING
+          event_name: openarmature.structured_output.schema_not_honored
+          attributes:
+            "openarmature.llm.provider": openai
+            "openarmature.llm.model": gpt-test
+            "openarmature.llm.call_id": "<call_id_a>"
+            "openarmature.llm.attempt_index": 0
+            "openarmature.correlation_id": "corr-161-c"
+
+  - name: native_not_json_on_length_absent
+    description: |
+      JSON cut short by max_tokens ("length"). The output was truncated, which
+      a working constraint can produce, so no record is emitted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161d
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Ali'}, finish_reason: length}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: length
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_not_json_on_content_filter_absent
+    description: |
+      Content cut off by the provider's content filter ("content_filter"). The
+      output was refused, so no record is emitted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161e
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "I can"}, finish_reason: content_filter}
+          usage: {prompt_tokens: 20, completion_tokens: 2, total_tokens: 22}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: content_filter
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_not_json_with_declared_stop_sequences_absent
+    description: |
+      Prose on "stop", but the call declared stop_sequences. A matched stop
+      sequence also reports "stop" while cutting the output short, so no record
+      is emitted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          config:
+            stop_sequences: ["END"]
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161f
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: stop
+              request_params: {stop_sequences: ["END"]}
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_not_json_with_extras_stop_absent
+    description: |
+      Prose on "stop", with a stop list passed only through extras (`stop`, the
+      OpenAI mapping's stop key), the escape hatch llm-provider §8.1 sanctions
+      while stop_sequences is absent. The request carried a stop sequence, so
+      no record is emitted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          config:
+            extras:
+              stop: ["END"]
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161g
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: stop
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: prompt_augmentation_path_absent
+    description: |
+      The mock presents as lacking native structured output, so the
+      implementation takes the prompt-augmentation fallback. Prose on "stop"
+      there is not evidence of a dropped constraint, so no record is emitted.
+      The event's input_messages are the list as sent: the schema directive
+      as a leading system message, in the wire shape fixture 027 asserts, and
+      the caller's message.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      capabilities:
+        supports_native_response_format: false
+      responses:
+        - status: 200
+          body:
+            id: cc-161h
+            object: chat.completion
+            created: 1700000000
+            model: gpt-test
+            choices:
+              - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+            usage: {prompt_tokens: 40, completion_tokens: 4, total_tokens: 44}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": prompt_augmentation
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: prompt_augmentation
+              finish_reason: stop
+              input_messages:
+                - {role: system, content: "<any-string>"}
+                - {role: user, content: "Generate a person record."}
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_valid_content_completion_absent
+    description: |
+      Valid content on the native path. The call completes, the completion
+      event and the span report the native path, and no record is emitted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161i
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":30}'}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 9, total_tokens: 29}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: null
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              structured_output_path: native
+              finish_reason: stop
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: no_schema_no_path
+    description: |
+      A free-form call with no response_schema. The completion event's
+      structured_output_path is present and null, the span carries no path
+      attribute, and no record is emitted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Say hello."}]
+          model: gpt-test
+          stores_response_in: answer
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161j
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Hello."}, finish_reason: stop}
+          usage: {prompt_tokens: 8, completion_tokens: 2, total_tokens: 10}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes_absent:
+            - "openarmature.llm.structured_output.path"
+          error_category: null
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              structured_output_path: null
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: rejected_before_sending_path_null
+    description: |
+      A schema is supplied, but the call's extras carry a conflicting
+      response_format, which llm-provider §8.1.5 rejects before sending with
+      provider_invalid_request. No request was sent, so the failure event's
+      structured_output_path is present and null, and no record is emitted.
+      Whether a call rejected before sending gets an LLM span is not
+      specified, so this case asserts only the event.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          config:
+            extras:
+              response_format: {type: json_object}
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      # Never requested: the call is rejected before sending.
+      - status: 200
+        body:
+          id: cc-161k
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":30}'}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 9, total_tokens: 29}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: provider_invalid_request
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: provider_invalid_request
+              structured_output_path: null
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: reask_recovers_record_for_attempt_0
+    description: |
+      Call-level retry with reask. Attempt 0 returns prose on "stop" (no
+      typed event, since the retry loop catches it); attempt 1 returns valid
+      content and the call completes. The record is emitted once, for attempt
+      0, so a reask that recovers does not hide the dropped constraint. The
+      call's single completion event reports attempt 1, so its input_messages
+      end with attempt 0's output and the rendered correction.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          retry:
+            max_attempts: 2
+            backoff: {type: deterministic, seconds: 0}
+            reask: {template: "Return only the JSON object."}
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-l"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161l-0
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+      - status: 200
+        body:
+          id: cc-161l-1
+          object: chat.completion
+          created: 1700000001
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":30}'}, finish_reason: stop}
+          usage: {prompt_tokens: 40, completion_tokens: 9, total_tokens: 49}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+        - attempt_index: 1
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: null
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              structured_output_path: native
+              attempt_index: 0
+              call_id: "<call_id_a>"
+              input_messages:
+                - {role: user, content: "Generate a person record."}
+                - {role: assistant, content: "Alice is thirty"}
+                - {role: user, content: "Return only the JSON object."}
+          event_counts:
+            - {event_type: LlmCompletionEvent, count: 1}
+            - {event_type: LlmFailedEvent, count: 0}
+      log_records:
+        - event_name: openarmature.structured_output.schema_not_honored
+          count: 1
+        - level: WARNING
+          event_name: openarmature.structured_output.schema_not_honored
+          attributes:
+            "openarmature.llm.provider": openai
+            "openarmature.llm.model": gpt-test
+            "openarmature.llm.call_id": "<call_id_a>"
+            "openarmature.llm.attempt_index": 0
+            "openarmature.correlation_id": "corr-161-l"
+
+  - name: reask_with_override_stop_sequence_records_attempt_0_only
+    description: |
+      Call-level retry with reask and a per_attempt_override that adds
+      stop_sequences for attempt 1. Both attempts return prose on "stop".
+      Attempt 0's request carried no stop sequence, so it is diagnosed;
+      attempt 1's did, so it is not. The record is emitted once, for attempt
+      0. The call's single failure event reports attempt 1, so its
+      request_params carry the stop sequence the override added.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          retry:
+            max_attempts: 2
+            backoff: {type: deterministic, seconds: 0}
+            reask: {template: "Return only the JSON object."}
+            per_attempt_override:
+              - {stop_sequences: ["END"]}
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-m"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161m-0
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+      - status: 200
+        body:
+          id: cc-161m-1
+          object: chat.completion
+          created: 1700000001
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 40, completion_tokens: 4, total_tokens: 44}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          attributes_absent:
+            - "gen_ai.request.stop_sequences"
+          error_category: structured_output_invalid
+        - attempt_index: 1
+          attributes:
+            "openarmature.llm.structured_output.path": native
+            "gen_ai.request.stop_sequences": ["END"]
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              attempt_index: 0
+              call_id: "<call_id_a>"
+              request_params: {stop_sequences: ["END"]}
+          event_counts:
+            - {event_type: LlmFailedEvent, count: 1}
+            - {event_type: LlmCompletionEvent, count: 0}
+      log_records:
+        - event_name: openarmature.structured_output.schema_not_honored
+          count: 1
+        - level: WARNING
+          event_name: openarmature.structured_output.schema_not_honored
+          attributes:
+            "openarmature.llm.provider": openai
+            "openarmature.llm.model": gpt-test
+            "openarmature.llm.call_id": "<call_id_a>"
+            "openarmature.llm.attempt_index": 0
+            "openarmature.correlation_id": "corr-161-m"
+
+  - name: no_backend_observer_still_emits_once
+    description: |
+      The same failure as case 1, with no backend observer attached: the OTel
+      observer is detached and no Langfuse observer is configured. The record
+      is the implementation's, not an observer's, so it is still emitted
+      exactly once.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-n"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161n
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Sure, the person is Alice, aged 30."}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
+    otel_observer: {attached: false}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: stop
+              call_id: "<call_id_a>"
+      log_records:
+        - event_name: openarmature.structured_output.schema_not_honored
+          count: 1
+        - level: WARNING
+          event_name: openarmature.structured_output.schema_not_honored
+          attributes:
+            "openarmature.llm.provider": openai
+            "openarmature.llm.model": gpt-test
+            "openarmature.llm.call_id": "<call_id_a>"
+            "openarmature.llm.attempt_index": 0
+            "openarmature.correlation_id": "corr-161-n"
+
+  - name: native_not_json_with_empty_stop_list_emits_once
+    description: |
+      Prose on "stop" with stop_sequences declared as an empty list. An empty
+      list carries no stop sequence, so nothing could have cut the output
+      short, and exactly one record is emitted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          config:
+            stop_sequences: []
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-o"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161o
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: stop
+              call_id: "<call_id_a>"
+      log_records:
+        - event_name: openarmature.structured_output.schema_not_honored
+          count: 1
+        - level: WARNING
+          event_name: openarmature.structured_output.schema_not_honored
+          attributes:
+            "openarmature.llm.provider": openai
+            "openarmature.llm.model": gpt-test
+            "openarmature.llm.call_id": "<call_id_a>"
+            "openarmature.llm.attempt_index": 0
+            "openarmature.correlation_id": "corr-161-o"
+
+  - name: native_refusal_reported_as_stop_absent
+    description: |
+      An OpenAI refusal on the native path: the message carries the refusal
+      text in `refusal`, no content, and OpenAI reports "stop". llm-provider
+      §8.1.2 makes the refusal text the content and the finish_reason
+      "content_filter", so the failure is a refusal, not a malformed reply on a
+      normal finish, and no record is emitted. A check that read OpenAI's
+      reported finish_reason instead of the mapped one would emit here.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161p
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: null, refusal: "I can't help with that."}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 7, total_tokens: 27}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: content_filter
+              output_content: "I can't help with that."
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_streamed_refusal_streams_content_tokens_absent
+    description: |
+      A streamed OpenAI refusal on the native path: the chunks carry the
+      refusal in `delta.refusal` pieces and the last one reports "stop". Each
+      piece is a content delta, emitted as a content token event, and the
+      pieces form the content (llm-provider §8.1.6). The mapped finish_reason
+      is "content_filter", so no record is emitted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          stream: true
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm_stream:
+      - - {choices: [{index: 0, delta: {refusal: "I can't "}, finish_reason: null}]}
+        - {choices: [{index: 0, delta: {refusal: "help with that."}, finish_reason: stop}]}
+        - {choices: [], usage: {prompt_tokens: 20, completion_tokens: 7, total_tokens: 27}}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_events_in_order:
+            event_type: LlmTokenEvent
+            events:
+              - {chunk_index: 0, delta_kind: content, delta: "I can't "}
+              - {chunk_index: 1, delta_kind: content, delta: "help with that."}
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: content_filter
+              output_content: "I can't help with that."
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_not_json_with_empty_extras_stop_emits_once
+    description: |
+      Prose on "stop" with an empty stop list under the extras stop key
+      (`stop`, the OpenAI mapping's). An empty list carries no stop sequence
+      whether it is declared or in extras, so exactly one record is emitted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          config:
+            extras:
+              stop: []
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-r"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161r
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: stop
+              call_id: "<call_id_a>"
+      log_records:
+        - event_name: openarmature.structured_output.schema_not_honored
+          count: 1
+        - level: WARNING
+          event_name: openarmature.structured_output.schema_not_honored
+          attributes:
+            "openarmature.llm.provider": openai
+            "openarmature.llm.model": gpt-test
+            "openarmature.llm.call_id": "<call_id_a>"
+            "openarmature.llm.attempt_index": 0
+            "openarmature.correlation_id": "corr-161-r"
+
+  - name: reask_both_attempts_emit_one_record_each
+    description: |
+      Call-level retry with reask, and both attempts return prose on "stop"
+      with no stop sequence, so each attempt qualifies. Two records are
+      emitted, one per attempt, carrying attempt_index 0 and 1 and the same
+      call id. The call's single failure event reports attempt 1 and keeps
+      the node-level attempt_index 0.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          retry:
+            max_attempts: 2
+            backoff: {type: deterministic, seconds: 0}
+            reask: {template: "Return only the JSON object."}
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-s"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161s-0
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+      - status: 200
+        body:
+          id: cc-161s-1
+          object: chat.completion
+          created: 1700000001
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice, thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 40, completion_tokens: 4, total_tokens: 44}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+        - attempt_index: 1
+          attributes:
+            "openarmature.llm.structured_output.path": native
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native
+              finish_reason: stop
+              attempt_index: 0
+              call_id: "<call_id_a>"
+              output_content: "Alice, thirty"
+          event_counts:
+            - {event_type: LlmFailedEvent, count: 1}
+            - {event_type: LlmCompletionEvent, count: 0}
+      log_records:
+        - event_name: openarmature.structured_output.schema_not_honored
+          count: 2
+        - level: WARNING
+          event_name: openarmature.structured_output.schema_not_honored
+          attributes:
+            "openarmature.llm.provider": openai
+            "openarmature.llm.model": gpt-test
+            "openarmature.llm.call_id": "<call_id_a>"
+            "openarmature.llm.attempt_index": 0
+            "openarmature.correlation_id": "corr-161-s"
+        - level: WARNING
+          event_name: openarmature.structured_output.schema_not_honored
+          attributes:
+            "openarmature.llm.provider": openai
+            "openarmature.llm.model": gpt-test
+            "openarmature.llm.call_id": "<call_id_a>"
+            "openarmature.llm.attempt_index": 1
+            "openarmature.correlation_id": "corr-161-s"

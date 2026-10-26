@@ -12,7 +12,8 @@ carries `finish_reason: "length"`; see observability fixture 120). MUST raise
 - §7 `structured_output_invalid` — raised when the provider's content
   cannot be parsed as JSON.
 - §7 error payload — MUST expose the requested `response_schema`, the
-  verbatim content the model produced as `output_content`, a description
+  response's message content as the mapping produced it as
+  `output_content`, a description
   of the failure as `error_message`, and (per proposal 0082) the
   response's normalized `finish_reason` and token `usage`, sourced from
   the received (but unparseable) response.

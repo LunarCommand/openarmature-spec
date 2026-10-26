@@ -462,6 +462,65 @@ response-side clause.
 
 ## observability
 
+### 0126: structured-output failure completeness
+
+- **Whether `tool_coercion` should join the diagnostic.** [still-relevant]: a
+  synthetic tool's input schema is also a constraint, so a coerced call that
+  fails may also mean it was not honored. It is excluded because the failure
+  event's `finish_reason` for a coerced call is not defined: a coerced response
+  stops with `tool_calls`, which graph-engine §6 says a `structured_output_invalid`
+  failure never carries. No fixture asserts the `tool_coercion` path value
+  either, since the observability mock presents an OpenAI-compatible provider.
+- **Residual false positives.** [still-relevant]: Anthropic's `pause_turn` maps
+  to a `finish_reason` of `"stop"`, and the event does not carry the raw stop
+  reason, so a paused turn whose content is incomplete JSON meets the condition
+  without the constraint having been dropped. Forwarded stop settings the
+  exclusion does not name, such as a token-id stop list some OpenAI-compatible
+  servers accept, are residual cases of the same kind.
+- **`native_unenforced` has no fixture.** [still-relevant]: forcing it depends on
+  llm-provider §8.1.5's SHOULD to send `strict: false` for a schema outside strict
+  mode, so a case could fail an implementation that conforms.
+- **Langfuse rendering of the path.** [still-relevant]: the path attribute has no
+  §8.4 mapping. It is a classification rather than harvested content, so the
+  exhaustive-mapping rule does not require one, and a Langfuse user loses only
+  the inspection surface. Mapping it to `generation.metadata` is cheap if wanted.
+- **Verify the vendor facts before accept.** [resolved-by-acceptance]: checked at
+  accept against current documentation and SDK sources. OpenAI's SDK types define
+  an optional `refusal` on the message and `delta.refusal` on stream chunks, its
+  cookbook shows the Chat Completions `refusal` field in use, and its
+  `finish_reason` has no refusal value. A refusal's own `finish_reason` is
+  reported as `"stop"` by secondary sources only, which the rule does not depend
+  on, since it maps to `content_filter` whatever OpenAI reports. OpenAI ties
+  schema adherence to `strict: true`. Anthropic's capitalization caveat and
+  Gemini's JSON Schema subset are as stated. The OpenTelemetry check corrected one
+  claim: the span-specific `OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` reaches span
+  events in the JavaScript SDK but not in the Python SDK, while the general
+  `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT` bounds the exception record in both when
+  the span-specific variable is unset.
+- **Content or tool calls beside a refusal.** [still-relevant]: OpenAI's SDK
+  types make a message's `content`, `refusal` and `tool_calls` independent
+  optional fields, and no documentation checked at accept shows a refusal
+  beside either. If one occurred, the two paths would assemble it differently.
+  Beside content, the atomic rule keeps only the refusal text, while a stream
+  carries both as content deltas in arrival order. Beside tool calls, the
+  atomic rule does not fire, so the content stays null, while a stream still
+  assembles the refusal pieces as content. llm-provider §6's structural
+  identity rule forbids that difference. Aligning the two waits on evidence
+  that either case occurs.
+- **Whether static detection of a missing native capability should be a MUST.**
+  [candidate-for-new-proposal]: fixture 161's prompt-augmentation case reaches the
+  fallback through llm-provider §8.1.5.1's static detection, which the spec states
+  as a SHOULD, and llm-provider fixture 027 already treats it as required. It
+  waits on a prior question: the fallback appends a schema directive the
+  implementation writes, which sits uneasily with the charter's principle 7, *No
+  built-in prompts*. Making the fallback mandatory would harden that tension
+  before it is settled.
+- **Whether a call rejected before sending gets an LLM span.** [still-relevant]:
+  observability §5.5 requires "a span per LLM provider attempt", and a call
+  rejected before any request is sent may or may not count as one. Fixture 161's
+  pre-send case therefore asserts only the typed event's null path. Settling it
+  would let a fixture assert the path attribute's absence on that span too.
+
 ### 0119 — error-message cap and reserved keys
 
 - **The directive vocabulary has a systemic documentation gap, and 0119 patched

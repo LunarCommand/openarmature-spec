@@ -932,6 +932,10 @@ span unless the span itself is suppressed via `disable_llm_spans`:
   `openarmature.llm.*` namespace per the §5.5.2 framing precedent; if the OpenTelemetry GenAI
   semconv adds a stable `gen_ai.*` equivalent in a future release, a follow-on proposal MAY
   mirror this attribute to both namespaces per the §5.5.3 / §5.5.3.1 mirror pattern.
+- `openarmature.llm.structured_output.path` (string). The call's `structured_output_path` (graph-engine
+  §6). When a `response_schema` was supplied and a request was sent, it **MUST** be set on the LLM
+  provider span; otherwise it **MUST NOT** be set. A classification, not payload: not gated by
+  `disable_provider_payload`.
 
 The remainder of §5.5 extends the attribute set across several sub-subsections: input/output
 payload (§5.5.1, default-off), `RuntimeConfig` request parameters under the OpenTelemetry GenAI
@@ -1017,9 +1021,11 @@ semconv opt-out is enabled (per §5.5.4):
   request-body field is `stop` (translated by §8.1 of llm-provider). Implementations MUST emit
   the list verbatim, preserving order.
 
-When the corresponding `RuntimeConfig` field is not set (or `RuntimeConfig` is absent on the
-call), the implementation MUST NOT emit the attribute. The absence of an attribute means "the
-field was not supplied for this call," distinct from "the field was supplied with a zero value."
+When the corresponding `RuntimeConfig` field is not set (or no `RuntimeConfig` applies to the
+request this span describes), the implementation MUST NOT emit the attribute. The absence of an
+attribute means "the field was not supplied for the request this span describes," distinct from "the
+field was supplied with a zero value." Under call-level retry each attempt's span describes its own
+request, after any per-attempt override (llm-provider §7.1).
 
 These attributes use the GenAI semconv namespace directly (no `openarmature.llm.request.*`
 parallel). Rationale: `temperature`, `max_tokens`, `top_p`, and `seed` are cross-vendor LLM
@@ -1402,6 +1408,45 @@ With both `LlmCompletionEvent` and `LlmFailedEvent` defined, the impl-current se
 have spec-normative typed equivalents. The SHOULD-emit-both transition window's purpose is met
 across both outcome sides; implementations MAY conclude the transition once their backends filter
 both typed variants via type discrimination.
+
+**A schema the provider did not honor.** For each wire attempt of a `complete()` call, including an
+attempt whose failure call-level retry (llm-provider §7.1) catches, the implementation **MUST** emit
+exactly one `WARNING`-level log record (§7), however many observers are attached, when all of the
+following hold:
+
+- the attempt failed with `structured_output_invalid`, and either the failure is llm-provider §7's
+  parse failure, content that is not well-formed JSON, or the content is well-formed JSON whose top level
+  is not an object;
+- the attempt's request took the `"native"` path (graph-engine §6 `structured_output_path`);
+- the attempt's `finish_reason` is `"stop"`; and
+- the attempt's request carried no stop sequence: no declared `stop_sequences`, and none under the stop
+  key of the mapping that issued it in its extras (`stop` for llm-provider §8.1, `stop_sequences` for
+  §8.2, `stopSequences` for §8.3). An empty list carries none.
+
+The record carries the event name `openarmature.structured_output.schema_not_honored` (§7 *Diagnostic
+event names*), the §7 correlation fields, and four attributes:
+
+- `openarmature.llm.provider` (string): the call's provider identifier, graph-engine §6's `provider`.
+- `openarmature.llm.model` (string): the call's model, as the §5.5 baseline attribute of that name.
+- `openarmature.llm.call_id` (string): the call's graph-engine §6 `call_id`, which joins the record to the
+  call's typed event, including when no span records the attempt.
+- `openarmature.llm.attempt_index` (int): the attempt's index, the value on the attempt's own span (§5.5).
+
+It reports that an attempt on a native path the provider constrains during decoding, which was not cut
+short or refused, returned content that is not well-formed JSON, or not a JSON object, which a constraint
+that bound cannot produce, since llm-provider §5 requires an object at the schema's top level. That is
+evidence the constraint did not reach or did not bind the model. It does not establish why.
+
+The implementation **MUST NOT** emit the record in any other case. In particular: not for content that
+parses to a JSON object, whether or not it validates, since a provider that applied the schema can still
+return content that fails validation (llm-provider §8.2.5, §8.3.5); not for a `finish_reason` of
+`"length"` or `"content_filter"`, where the output was cut short or refused; not when the request carried
+a stop sequence, since a matched sequence also reports `"stop"` while cutting the output short; and not
+for a `structured_output_path` of `"native_unenforced"`, `"tool_coercion"` or `"prompt_augmentation"`.
+
+The record is advisory. Its condition **MUST NOT** by itself cause the implementation to retry the call,
+change its structured-output path, or alter any request. It is not one of llm-provider §8.1.5.1's
+detection arms.
 
 **Token events are not rendered (streaming, proposal 0062).** The bundled OTel observer does NOT
 render the graph-engine §6 `LlmTokenEvent` (the within-call streaming sub-event): no per-token spans.
@@ -2215,6 +2260,7 @@ The names openarmature currently defines:
 |---|---|---|
 | `openarmature.langfuse.shared_provider_accepted` | §6, the caller has opted in to a shared provider and openarmature's observations would (or might) reach one, so it proceeds | MUST |
 | `openarmature.langfuse.payload_suppressed` | §6, openarmature cannot establish the client's bound provider and suppresses every harvested-payload channel | MUST |
+| `openarmature.structured_output.schema_not_honored` | §5.5.7, an attempt of a structured-output call on a native path that constrains decoding, not cut short or refused, returned content that is not well-formed JSON or not a JSON object | MUST |
 | `openarmature.token_budget.exceeded` | §5.5.15, an active prompt's `token_budget` is exceeded | SHOULD |
 | `openarmature.langfuse.supplied_client_shared_provider` | §6 mode (a), a caller-supplied client is determined to be bound to a shared provider | MAY |
 | `openarmature.langfuse.shared_provider_no_payload` | §6, no harvested-payload channel is live and openarmature isolates rather than raising | MAY |
@@ -3259,8 +3305,11 @@ OpenTelemetry **metrics** signal: aggregatable histograms over provider calls, c
 per-call spans. Metric observations are a projection of the same §6 observer event stream — the typed
 LLM completion event (§5.5.7), typed embedding event (§5.5.9), and typed rerank event (§5.5.14) for
 successful calls, and the typed `LlmFailedEvent` / `EmbeddingFailedEvent` / `RerankFailedEvent`
-(graph-engine §6, per proposals 0058 / 0059 / 0060) for errored attempts (the source of an errored
-attempt's duration sample and its `error.type` dimension, §11.3) — and introduce no new data source.
+(graph-engine §6, per proposals 0058 / 0059 / 0060) for failed calls (the source of a failed call's
+duration sample and its `error.type` dimension, §11.3). An LLM attempt that call-level retry catches
+has no typed event of its own (graph-engine §6), so its duration sample, its `error.type` and any
+token-usage samples come from the implementation's record of that attempt, the same data its §5.5 span
+carries. Metrics introduce no other data source.
 
 ### 11.1 Emission and the Meter
 
@@ -3276,8 +3325,9 @@ global / no-op meter); it MUST NOT raise.
 
 Metric emission is **independent of span emission**. The `disable_llm_spans` /
 `disable_provider_payload` / `disable_genai_semconv` flags (§5.5.4) govern spans only; metrics MAY be
-enabled with spans disabled, and vice versa. (Both draw from the §6 event stream, which exists
-regardless of span emission.) The implementation MAY package metric emission in the same observer that
+enabled with spans disabled, and vice versa. (Both draw from the §6 event stream and, for an attempt
+call-level retry catches, the implementation's record of that attempt, and neither depends on span
+emission.) The implementation MAY package metric emission in the same observer that
 emits spans or in a dedicated metrics observer; the behavioral contract below is on which measurements
 are recorded, not on observer packaging.
 
@@ -3315,8 +3365,9 @@ prefix). Recording cadence under call-level retry is covered in *Call-level retr
 the duration histogram records **once per attempt** — each attempt is a real latency sample, and a
 failed attempt carries `error.type` (§11.3) — matching the per-attempt span model. The token-usage
 histogram records **only for an attempt that returned a usage record** — failed attempts that received
-no response contribute nothing, **but a `structured_output_invalid` failure carries a usage record (the
-graph-engine §6 `LlmFailedEvent.usage` surface, per §5.5.7) and records token usage like a completion**
+no response contribute nothing, **but a `structured_output_invalid` failure carries a usage record (on
+the call's `LlmFailedEvent.usage` when it is the call's last attempt, per §5.5.7, and in the
+implementation's record of the attempt when retry catches it) and records token usage like a completion**
 (the response was received; tokens were consumed; the duration histogram and its `error.type` dimension
 per §11.3 are unchanged). The attempt index is deliberately NOT a dimension (it would create
 unbounded cardinality); attempts are disambiguated on the spans, not the metrics.
@@ -3367,7 +3418,7 @@ free-form per-request values).
 | `gen_ai.request.model` | both | §5.5.3 / §5.5.8 request model | Adopted directly as a **recognized-core** de-facto-standard name (§5.5 carve-out) — the model key the LLM (§5.5.3), embedding (§5.5.8), and rerank (§5.5.13) spans already emit. Cardinality is bounded by the set of models in use. |
 | `gen_ai.system` | both | §5.5.3 / §5.5.8 system identifier | Adopted directly as a recognized-core name and **retained** per the *post-adoption retention* rule (upstream removed it in favor of `gen_ai.provider.name`; §5.5.3). The provider identifier all three spans already emit. |
 | `openarmature.gen_ai.token.type` | token.usage only | `"input"` / `"output"` | Mirrors the **peripheral** Development `gen_ai.token.type`. |
-| `error.type` | duration only, when the call errored | the llm-provider §7 error category (per retrieval-provider §7 for embedding and rerank), carried as `error_category` on the graph-engine §6 typed `LlmFailedEvent` / `EmbeddingFailedEvent` / `RerankFailedEvent` | **Stable** core semantic-conventions attribute (not GenAI-scoped), used directly. Absent on a successful call. |
+| `error.type` | duration only, when the attempt errored | the llm-provider §7 error category (per retrieval-provider §7 for embedding and rerank), carried as `error_category` on the graph-engine §6 typed `LlmFailedEvent` / `EmbeddingFailedEvent` / `RerankFailedEvent`, or, for an LLM attempt that call-level retry catches, the category that attempt failed with | **Stable** core semantic-conventions attribute (not GenAI-scoped), used directly. Absent on an attempt that succeeded. |
 | `openarmature.gen_ai.token_budget.kind` | the token-budget instruments only | `"input"` / `"total"` | The budgeted bound a `token_budget.exceeded` / `.utilization` observation pertains to (proposal 0083). Low-cardinality (two values). |
 
 The two `openarmature.*`-mirrored dimensions track the peripheral Development `gen_ai.operation.name` /
@@ -3472,3 +3523,4 @@ spec:
 values are stated to be strings so the rule does not silently reach a structured payload, and the §8.7 inheritance arm now says why it sources the cap differently from the direct-application arm. New fixture 160 (five cases, gating the Embedding, Generation and Retriever arms plus a below-cap control; the Tool arm left unwritten at the time, and closed later by proposal 0125); fixture 028 gained five rejection cases by [proposal 0119](../../proposals/0119-error-message-cap-and-reserved-keys.md)
 - §5.5.1's `openarmature.llm.request.extras` description dropped a language-specific configuration idiom (`extra="allow"`) that the language-agnostic rule forbids, and that stated the flat extras model llm-provider §6 now settles against. It reads "the `RuntimeConfig` extras container (the undeclared pass-through keys llm-provider §6 permits)" by [proposal 0122](../../proposals/0122-declared-field-collision-reachability.md)
 - §5.5 *Lineage-resolved parent* gained **Resolution is structural**: the enclosing wrapper is determined by the call's position in the graph, not by which spans an observer has materialized when it resolves. An implementation MUST NOT select a different parent because a wrapper span does not yet exist, and MUST NOT let the parent depend on event ordering. The six span-openness conditionals that made the temporal reading available are reworded to key on structural enclosure: two inside §5.5 and one each in the §5.5.8 / §5.5.11 / §5.5.13 cross-references, plus §5.5's own retry-sibling clause. §6's synthesis trigger changes from the **first inner `started` event** to the **first event that needs the span**, stated over any event whose span resolves under §5.5 rather than over provider events, so the LLM, embedding, tool-execution and rerank spans are covered without enumeration; the start time re-anchors to the triggering event, and a fifth statement of the trigger three paragraphs below is widened to match rather than left to be read as still confining synthesis. §5.4 gains the instance-span synthesis statement the per-branch dispatch span already had, so the two kinds are governed symmetrically. §5.7's `branch_name` sourcing re-anchors to the triggering event. On the Langfuse side §8.4.8's trigger defers to §6, and the four counterparts in §8.4.3 / §8.4.5 / §8.4.6 / §8.4.7 stop routing to the nearest **open** ancestor; §8.4.3's parity promise and its temporal routing were one sentence and moved together, since rewording only the routing would have left the promise asserting a parity the two trees no longer had by [proposal 0124](../../proposals/0124-orphan-provider-span-parent-resolution.md)
+- §5.5's baseline attributes gain **`openarmature.llm.structured_output.path`**, set on an LLM provider span when the call supplied a `response_schema` and sent a request, and never otherwise; a classification, not payload-gated. §5.5.7 gains **A schema the provider did not honor**: for each wire attempt of a `complete()` call, including an attempt call-level retry catches, an implementation MUST emit exactly one `WARNING` log record, however many observers are attached, when the attempt failed `structured_output_invalid` with content that is not well-formed JSON or not a JSON object, on the `"native"` path, with `finish_reason` `"stop"` and no stop sequence on its request, declared or under the mapping's stop key in its extras. It keys on malformed or non-object content alone, because vendors document schema non-conformance on a normal finish but promise well-formed JSON, and it is evaluated per attempt so that a reask that recovers cannot hide it. The record is advisory and MUST NOT by itself cause a retry, a path change or an altered request, and it carries `openarmature.llm.provider`, `openarmature.llm.model`, `openarmature.llm.call_id` and `openarmature.llm.attempt_index`. §5.5.2's absence rule reads per request, so each attempt's span reports its own request parameters. §11 takes a caught attempt's duration, `error.type` and token-usage samples from the implementation's record of that attempt, since it has no typed event, and §11.3's `error.type` applies per attempt. §7's *Diagnostic event names* table gains `openarmature.structured_output.schema_not_honored` (MUST) by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)

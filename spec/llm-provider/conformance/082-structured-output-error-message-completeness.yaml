@@ -1,0 +1,663 @@
+# Structured output: error_message describes every violation (llm-provider §7,
+# "What error_message describes"; proposal 0126).
+#
+# Each case returns content that fails the schema in a known set of ways and
+# asserts error_message_mentions as a LIST naming every expected violation's
+# location, written as a JSON Pointer in RFC 6901's URI fragment form. Rows that
+# include a wrong-type failure also assert the expected type's name.
+#
+# The schemas declare no $schema, so llm-provider §5 has them read as JSON
+# Schema draft 2020-12. Cases 12 and 13 depend on that: `dependentRequired` and
+# `prefixItems` are not defined by earlier drafts.
+#
+# Property names are chosen so that none is a substring of another and none is a
+# JSON Schema keyword, so one location cannot match another and a schema path
+# such as "#/properties/site/properties/delta" never contains an instance
+# location such as "#/site/delta".
+
+cases:
+  - name: flat_object_reports_every_violation
+    description: |
+      Two required properties are missing and one has the wrong type. A
+      validator that stops at the first violation reports one of the three;
+      the rule requires all three, each at its own location.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          alpha: {type: string}
+          bravo: {type: integer}
+          charlie: {type: number}
+        required: [alpha, bravo, charlie]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082a
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"charlie":"x"}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"charlie":"x"}'
+          error_message_mentions: ["#/alpha", "#/bravo", "#/charlie", "number"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+
+  - name: nested_object_reports_both_violations
+    description: |
+      Inside `site`, one property has the wrong type and one is missing. Both
+      are reported under `#/site/`, the missing one at the pointer it would
+      occupy.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          site:
+            type: object
+            properties:
+              delta: {type: number}
+              echo: {type: string}
+            required: [delta, echo]
+            additionalProperties: false
+        required: [site]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082b
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"site":{"delta":"north"}}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 8, total_tokens: 28}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"site":{"delta":"north"}}'
+          error_message_mentions: ["#/site/delta", "#/site/echo", "number"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 8, total_tokens: 28}
+
+  - name: nullable_anyof_resolves_to_the_object_member
+    description: |
+      `site` is an anyOf of an object schema and null, the shape schema
+      generators use for a nullable field. The content is an object whose
+      `foxtrot` has the wrong type. No member is satisfied; only the object
+      member's type admits the content, so its failing assertion is the
+      violation, not a composite-level report.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          site:
+            anyOf:
+              - type: object
+                properties:
+                  foxtrot: {type: number}
+                required: [foxtrot]
+                additionalProperties: false
+              - type: "null"
+        required: [site]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082c
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"site":{"foxtrot":"x"}}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 8, total_tokens: 28}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"site":{"foxtrot":"x"}}'
+          error_message_mentions: ["#/site/foxtrot", "number"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 8, total_tokens: 28}
+
+  - name: union_of_two_objects_reports_both_members
+    description: |
+      `site` is an anyOf of two object schemas. Each member fails on a
+      different property of the wrong type. Both members' types admit the
+      content, so both members' failing assertions are reported.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          site:
+            anyOf:
+              - type: object
+                properties:
+                  golf: {type: number}
+                required: [golf]
+              - type: object
+                properties:
+                  hotel: {type: boolean}
+                required: [hotel]
+        required: [site]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082d
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"site":{"golf":"x","hotel":"y"}}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 9, total_tokens: 29}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"site":{"golf":"x","hotel":"y"}}'
+          error_message_mentions: ["#/site/golf", "#/site/hotel", "number", "boolean"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 9, total_tokens: 29}
+
+  - name: allof_reports_a_type_mismatched_member
+    description: |
+      `site` is an allOf of a referenced object schema and a bare `required`
+      list, the common inheritance pattern. The content gives `site` as a
+      string. Every allOf member applies, so the referenced member's type
+      failure is reported at `#/site`. A rule that filtered allOf members by
+      type would report nothing here, since the untyped member's `required`
+      does not apply to a string.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        $defs:
+          Site:
+            type: object
+            properties:
+              india: {type: string}
+        properties:
+          site:
+            allOf:
+              - {$ref: "#/$defs/Site"}
+              - {required: [juliet]}
+        required: [site]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082e
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"site":"x"}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"site":"x"}'
+          error_message_mentions: ["#/site", "object"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+
+  - name: oneof_over_match_reported_at_the_composite
+    description: |
+      `pet` is a oneOf of two object schemas, and the content satisfies both.
+      No member fails, so a rule that reports only failing members' assertions
+      reports nothing. The over-match is one violation at `#/pet`.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          pet:
+            oneOf:
+              - type: object
+                properties:
+                  kilo: {type: string}
+              - type: object
+                properties:
+                  lima: {type: string}
+        required: [pet]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082f
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"pet":{"kilo":"a","lima":"b"}}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 9, total_tokens: 29}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"pet":{"kilo":"a","lima":"b"}}'
+          error_message_mentions: ["#/pet"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 9, total_tokens: 29}
+
+  - name: unexpected_property_located_at_its_own_pointer
+    description: |
+      `site` forbids additional properties and the content carries an extra
+      property `zulu`. The violation is located at `#/site/zulu`, not at the
+      parent object where many validators report it.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          site:
+            type: object
+            properties:
+              mike: {type: string}
+            required: [mike]
+            additionalProperties: false
+        required: [site]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082g
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"site":{"mike":"ok","zulu":true}}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 9, total_tokens: 29}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"site":{"mike":"ok","zulu":true}}'
+          error_message_mentions: ["#/site/zulu"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 9, total_tokens: 29}
+
+  - name: property_name_with_a_space_is_percent_encoded
+    description: |
+      The property `first name` has the wrong type. In the URI fragment form
+      the space is percent-encoded, so the location is `#/first%20name`.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          "first name": {type: string}
+        required: ["first name"]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082h
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"first name":7}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"first name":7}'
+          error_message_mentions: ["#/first%20name", "string"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+
+  - name: array_elements_reported_by_index
+    description: |
+      `rows` holds three objects; the first and third have a property of the
+      wrong type and the second is valid. Both failing elements are reported
+      at their own indices, which a report of only the first failure misses.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the rows."}
+      response_schema:
+        type: object
+        properties:
+          rows:
+            type: array
+            items:
+              type: object
+              properties:
+                november: {type: number}
+              required: [november]
+              additionalProperties: false
+        required: [rows]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082i
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"rows":[{"november":"a"},{"november":2},{"november":"c"}]}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 14, total_tokens: 34}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"rows":[{"november":"a"},{"november":2},{"november":"c"}]}'
+          error_message_mentions: ["#/rows/0/november", "#/rows/2/november", "number"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 14, total_tokens: 34}
+
+  - name: content_that_is_not_json_is_one_violation
+    description: |
+      The content is not well-formed JSON. That is the single violation, with
+      no location; the description states what made the content malformed,
+      in implementation-defined wording.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          oscar: {type: string}
+        required: [oscar]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082j
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: "Here is the record: oscar is papa"}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 8, total_tokens: 28}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: "Here is the record: oscar is papa"
+          error_message_present: true
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 8, total_tokens: 28}
+
+  - name: union_with_no_type_match_reported_at_the_composite
+    description: |
+      `site` is an anyOf of an object schema and null, and the content gives
+      `site` as a string. No member's type admits a string, so the composite's
+      location and the members' types are reported as one violation. A rule
+      that filters members by type and then reports their failures finds no
+      member left and reports nothing.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          site:
+            anyOf:
+              - type: object
+                properties:
+                  quebec: {type: number}
+                required: [quebec]
+                additionalProperties: false
+              - type: "null"
+        required: [site]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082k
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"site":"x"}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"site":"x"}'
+          error_message_mentions: ["#/site", "object", "null"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+
+  - name: dependent_required_located_at_the_missing_property
+    description: |
+      `romeo` is present and `dependentRequired` makes `sierra` required when
+      it is. The missing `sierra` is located at the pointer it would occupy,
+      `#/sierra`, as a missing `required` property is, not at the object
+      where many validators report it.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          romeo: {type: string}
+          sierra: {type: string}
+        dependentRequired:
+          romeo: [sierra]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082l
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"romeo":"a"}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"romeo":"a"}'
+          error_message_mentions: ["#/sierra"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+
+  - name: disallowed_array_element_located_at_the_element
+    description: |
+      `tango` allows one string (`prefixItems`) and no further element
+      (`items: false`). The content has two, so the second element is one
+      violation at `#/tango/1`, not at the array where many validators report
+      it.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          tango:
+            type: array
+            prefixItems:
+              - {type: string}
+            items: false
+        required: [tango]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082m
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"tango":["a","b"]}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"tango":["a","b"]}'
+          error_message_mentions: ["#/tango/1"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+
+  - name: min_items_located_at_the_array
+    description: |
+      `uniform` needs at least two items and the content has one. A count
+      constraint is one violation at the array, `#/uniform`.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          uniform:
+            type: array
+            items: {type: string}
+            minItems: 2
+        required: [uniform]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082n
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"uniform":["a"]}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"uniform":["a"]}'
+          error_message_mentions: ["#/uniform"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 5, total_tokens: 25}
+
+  - name: unique_items_located_at_the_array
+    description: |
+      `victor` requires unique items and the content repeats one. A uniqueness
+      constraint is one violation at the array, `#/victor`.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          victor:
+            type: array
+            items: {type: string}
+            uniqueItems: true
+        required: [victor]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-082o
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"victor":["a","a"]}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: '{"victor":["a","a"]}'
+          error_message_mentions: ["#/victor"]
+          finish_reason: stop
+          usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}

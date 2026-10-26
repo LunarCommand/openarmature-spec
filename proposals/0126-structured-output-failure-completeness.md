@@ -1,30 +1,48 @@
 # 0126: Complete Structured-Output Failure Reports and a Schema-Not-Honored Diagnostic
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-10-11
+- **Accepted:** 2026-10-24
 - **Targets:**
-  - spec/llm-provider/spec.md: modifies §7 (the `structured_output_invalid` entry's exposure sentence is
-    rewritten, and a definition of what `error_message` describes is added); modifies §7.1 (the
+  - spec/llm-provider/spec.md: modifies §5 (a `response_schema` call requests and validates conforming
+    output, whether decoding is constrained depends on the path, and a `response_schema` that declares no
+    `$schema` is read as JSON Schema draft 2020-12); modifies §7 (the
+    `structured_output_invalid` entry's exposure sentence is rewritten, and a definition of what
+    `error_message` describes is added); modifies §7.1 (the
     *Per-attempt span emission* paragraph states that each attempt's span, and the call's typed event,
     describe the request actually sent); modifies §8.1.2 and §8.1.6 (an OpenAI refusal, atomic or
-    streamed, maps to a `finish_reason` of `"content_filter"`); modifies §8.1.5 (`strict` decides the path
-    a call reports, and the sentence on what `strict` leaves unchanged is narrowed to validation); modifies
-    §8.2.5 and §8.3.5 (each states what its provider's constrained decoding guarantees, and names its
-    native path); modifies §8.1.5.1, §8.2.5.1 and §8.3.5.1 (each states that the path a call took is
-    reported on the typed event)
+    streamed, maps to a `finish_reason` of `"content_filter"`, and a streamed refusal's pieces are content
+    deltas); modifies §8.1.5.2 (`message.content` is the refusal text for a refusal); modifies §8.1.5
+    (`strict` decides the path a call reports, and the sentence on what `strict`
+    leaves unchanged is narrowed to validation); modifies §8.2.5 and §8.3.5 (each states what its
+    provider's constrained decoding guarantees, and names its native path); modifies §8.1.5.1, §8.2.5.1
+    and §8.3.5.1 (each states that the path a call took is reported on the typed event)
   - spec/graph-engine/spec.md: modifies §6 (`LlmCompletionEvent` and `LlmFailedEvent` gain
     `structured_output_path`; under call-level retry, the call's event describes the request of the
-    attempt whose outcome it reports; the `error_message` paragraph after the failure-event table points
-    to llm-provider §7)
+    attempt whose outcome it reports and keeps the node-level `attempt_index`; `input_messages` is the
+    list as sent, including a prompt-augmentation directive, or the caller's list for a call rejected
+    before sending; the failure event's `output_content` row and the `error_message` paragraph after its
+    table point to llm-provider §7)
   - spec/observability/spec.md: modifies §5.5 (a baseline attribute,
-    `openarmature.llm.structured_output.path`); modifies §5.5.7 (the `schema_not_honored` diagnostic);
-    modifies §7 (one row in *Diagnostic event names*)
-  - spec/conformance-adapter/spec.md: modifies §5.1 (defines `calls_llm`'s `response_schema`, `config` and
-    `retry` keys, all already in use); modifies §5.5 (`mock_llm` gains a mapping form carrying
-    `capabilities`; `log_records` entries gain `count`; new `log_records_absent`); modifies §5.11
-    (documents `mock_provider.capabilities` and its three flags, already in use); modifies §5.12 and §5.13
-    (`error_message_mentions`, and the `_mentions` flavor generally, accept a non-empty list)
+    `openarmature.llm.structured_output.path`); modifies §5.5.2 (an absent request attribute means the
+    field was not supplied for the request the span describes); modifies §5.5.7 (the `schema_not_honored`
+    diagnostic and its record's attributes); modifies §7 (one row in *Diagnostic event names*); modifies
+    §11 (a caught attempt's duration, `error.type` and token-usage samples come from the implementation's
+    record of that attempt, and `error.type` applies per attempt)
+  - spec/conformance-adapter/spec.md: modifies §5.10 (the observability suite's binding tokens gain
+    `<call_id_X>`); modifies §5.1 (defines `calls_llm`'s `model`, `response_schema`, `config` and `retry`
+    keys, all already in use); modifies §5.5 (`mock_llm` gains a mapping form carrying `capabilities`;
+    `log_records` entries gain `count`; new `log_records_absent`; `otel_observer` gains `attached`; when a
+    case composes a Langfuse observer); modifies §5.11 (documents `mock_provider.capabilities` and its
+    three flags, and the per-attempt `expected.llm_spans` assertion, all already in use); modifies §5.12
+    and §5.13 (`error_message_mentions`, and the `_mentions` flavor generally, accept a non-empty list, and
+    §5.12's `output_content` entry follows llm-provider §7's definition)
+  - docs/compatibility.md: rows for RFC 6901 and RFC 8259; the JSON Schema row notes that llm-provider §5
+    now names draft 2020-12; the OpenAI, Anthropic, Gemini and OpenAI streaming rows re-verified, with drift
+    in Gemini's structured-output guide logged
+  - spec/llm-provider/conformance/021-structured-output-success.md and
+    022-structured-output-parse-failure.md (sidecar wording only, where they paraphrase §5 and §7)
   - spec/llm-provider/conformance/082-structured-output-error-message-completeness.{yaml,md} (new)
   - spec/llm-provider/conformance/083-openai-refusal-finish-reason.{yaml,md} (new)
   - spec/observability/conformance/161-structured-output-schema-not-honored.{yaml,md} (new)
@@ -185,23 +203,47 @@ OpenTelemetry specification's *Attribute Limits* section applies it to span even
 span attributes, so it bounds the exception's message and its stack trace together, which a cap on the
 message alone would not. It is off by default, counts characters rather than bytes, and adds no marker.
 An SDK sets it per tracer provider, and the standard environment variable
-`OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT` sets it across the process. The span-specific
-`OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` governs span attributes only and is not specified to reach span
-events, so it does not bound the exception record. Because observability §6 requires openarmature's spans
-to go through a private tracer provider, the general environment variable is the route that reaches them
-unless an implementation exposes its provider's limits. That trade is the operator's to make on their own
-backend, so this proposal adds no spec-level cap.
+`OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT` sets it across the process. Whether the span-specific
+`OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` reaches span events differs by SDK: at least one bounds event
+attributes with the general limit only, and at least one bounds them with the span limit, read from the
+span-specific variable and then the general one. The general variable bounds the exception record in
+both when the span-specific variable is unset. Because observability §6 requires openarmature's spans to go through a private tracer provider, the
+environment variable is the route that reaches them unless an implementation exposes its provider's limits.
+That trade is the operator's to make on their own backend, so this proposal adds no spec-level cap.
 
 ## Detailed design
+
+### llm-provider §5: what supplying a schema does
+
+In the `complete()` description, replace "When `response_schema` is supplied, the call additionally
+constrains the model's output to conform to the schema." with:
+
+> When `response_schema` is supplied, the call additionally requests output that conforms to the schema
+> and validates the response against it (§6 `parsed`, §7 `structured_output_invalid`); whether the provider
+> constrains decoding to the schema depends on the path the mapping takes and on the vendor's own limits
+> (§8).
+
+The old sentence promised conformance on every path, which the paths below do not give.
+
+In the `response_schema` parameter's description, add after "When present, MUST be a valid JSON Schema.":
+
+> A `response_schema` that declares no `$schema` **MUST** be interpreted as JSON Schema draft 2020-12, so
+> that validation, and the violations §7 reports, do not depend on which validator an implementation uses.
+
+A violation is defined by the schema's keywords, and drafts disagree about some of them: `items` means
+something different in 2020-12 than in earlier drafts, `dependentRequired` first appears in 2019-09, and
+`prefixItems` in 2020-12. So "every violation" has one answer only once the draft is fixed.
+`docs/compatibility.md` already records 2020-12 as the version the spec is written against. A tool's
+`parameters` (§4) is left for a later change, since no fixture here covers it.
 
 ### llm-provider §7: what the error exposes, and what `error_message` describes
 
 In the `structured_output_invalid` entry, replace the sentence beginning "The error MUST expose the requested
 `response_schema`" and ending "not a transport failure." with:
 
-> The error **MUST** expose the requested `response_schema`; the raw response content as
-> **`output_content`**, the verbatim content the model produced; a description of the failure as
-> **`error_message`**, defined below; and the response's normalized **`finish_reason`** (§6) and token
+> The error **MUST** expose the requested `response_schema`; the response's message content as
+> **`output_content`**, verbatim as the mapping produced it (§6 `message.content`, which for an OpenAI
+> refusal is the refusal text, §8.1.2); a description of the failure as **`error_message`**, defined below; and the response's normalized **`finish_reason`** (§6) and token
 > **`usage`**. The last two are available from the received response, since the failure is a downstream
 > parse or validation step on an intact wire response, not a transport failure. `output_content` and
 > `error_message` match the graph-engine §6 failure-event field names (0082), and the call-level `reask`
@@ -217,10 +259,11 @@ explanation that follows it:
 > enclosing keyword discards its result: an `anyOf` or `oneOf` discards its other members' results once
 > one member is satisfied, and `if`, `not` and `contains` discard their subschemas' results.
 >
-> Each violation **MUST** state its **location** and the **constraint** that failed. The location is a
-> JSON Pointer into the content, written in its URI fragment form (RFC 6901 §6), with the percent-encoding
-> that form requires: `#` for the whole content, `#/site/lat` for a property, `#/rows/2` for an array
-> element, and `#/first%20name` for a property named `first name`.
+> Each violation **MUST** state its **location** and the **constraint** that failed, and a `type`
+> violation **MUST** also state the expected type. The location is a JSON Pointer into the content,
+> written in its URI fragment form (RFC 6901 §6), with the percent-encoding that form requires: `#` for
+> the whole content, `#/site/lat` for a property, `#/rows/2` for an array element, and `#/first%20name`
+> for a property named `first name`.
 >
 > - **Where a violation is located.** At the part of the content its failing assertion applies to, with one
 >   exception: a property the schema requires but the content lacks (`required`, `dependentRequired`) is
@@ -269,11 +312,30 @@ In §8.1.2's `finish_reason` bullet, add after "Map any unknown `finish_reason` 
 > `stop_reason: "refusal"` maps to `"content_filter"` (§8.2.2), and it keeps the message within §3. `raw`
 > keeps the response as received.
 
-In §8.1.6, add to the bullet beginning "**finish_reason / usage**":
+In §8.1.6, add a `refusal` delta to the **Wire** bullet's list of what a chunk's `choices[].delta`
+carries, and add to the **Content deltas** bullet:
+
+> A `refusal` delta is a content delta: OpenAI streams a refusal's text there in place of `content`, so
+> each piece is emitted as a content token event as it arrives.
+
+Add to the bullet beginning "**finish_reason / usage**":
 
 > When the chunks' `choices[].delta.refusal` pieces, concatenated, form a non-empty string and the stream
-> carried no tool-call deltas, that string is the message's content and the `finish_reason` is
-> `"content_filter"`, whatever value the last chunk reports, as for an atomic response (§8.1.2).
+> carried no tool-call deltas, the `finish_reason` is `"content_filter"`, whatever value the last chunk
+> reports, as for an atomic response (§8.1.2). The refusal pieces are content deltas, so the refusal's
+> text becomes the message's content, as it does for an atomic response that carries no tool calls. The
+> pieces are content whether or not tool-call deltas arrive, since each is emitted as it streams.
+
+Treating the pieces as content deltas keeps §6 *Streaming assembly* and §5's conformance proxy true as
+written: the content is still the ordered concatenation of the content deltas, each emitted as a token
+event. The section's verified-shapes sentence gains the `refusal` delta field. A refusal beside content or
+beside tool calls would assemble differently on the two paths; OpenAI documents neither, and
+`docs/open-questions.md` records the case.
+
+In §8.1.5.2, the `message.content` bullet becomes:
+
+> `message.content` is the response body's content string, verbatim, or the refusal text when the
+> response is a refusal (§8.1.2).
 
 ### llm-provider §8.1.5, §8.2.5 and §8.3.5: what each native path guarantees
 
@@ -304,6 +366,10 @@ and replace the paragraph beginning "Two non-conformance cases are inherent to t
 > `stop_reason: "max_tokens"` (truncation), and the capitalization case above. In each case the mapping
 > surfaces the non-conforming content and the mapped `finish_reason` (`content_filter`, `length` or
 > `stop`) per §6 / §7; implementations MUST NOT silently coerce these into a schema-conforming shape.
+
+In the closing note on Anthropic's strict tool use, replace "guarantees tool-call *argument* conformance"
+with "constrains tool-call *arguments* to the tool's input schema, with the same inherent exceptions as
+above". Anthropic's guide says the capitalization caveat applies to strict tool use too.
 
 In §8.3.5, replace "The response's text content is the JSON string conforming to the schema;" through
 "The behavioral contract matches §8.1.5's native path." with:
@@ -355,11 +421,25 @@ Add to the *Typed LLM completion event* paragraph, after its field table:
 > **Under call-level retry, the event describes the request its outcome came from.** Where llm-provider
 > §7.1 issues more than one attempt for a call, the call's single typed event reports its last attempt's
 > outcome, and its `input_messages`, `request_params` and `request_extras` describe that attempt's
-> request: the working transcript as reask extended it, and the configuration after any per-attempt
-> override is merged. For `request_params`, "supplied on this call" means supplied for that attempt.
+> request: the messages it sent, as reask extended them, and the configuration after any per-attempt
+> override is merged. For `request_params`, "supplied on this call" means supplied for that attempt. The
+> event's `attempt_index` stays the node-level index; the wire attempt's index is on that attempt's span
+> (observability §5.5).
+>
+> `input_messages` is the message list as sent, so on the prompt-augmentation path it includes the schema
+> directive the mapping added (llm-provider §8.1.5.1, §8.2.5.1, §8.3.5.1), as the span's
+> `openarmature.llm.input.messages` does (observability §5.5.1). For a call rejected before any request was
+> sent, it is the caller's message list.
+
+The `attempt_index` sentence keeps "reports its last attempt's outcome" from being read as moving the
+event onto the wire attempt's index, which `LlmTokenEvent` already rules out for its own field. The
+`input_messages` paragraph settles a reading the old row left open ("the message list the call was made
+with"): the span renders from the event and reports what was sent, so the event has to carry the same
+list.
 
 `LlmFailedEvent` inherits the rule through its table's statement that it mirrors the completion event's
-request-side fields.
+request-side fields. Its `output_content` row, which referred to §7's "raw response content" attribute, now
+refers to §7's `output_content`, the response's message content as the mapping produced it.
 
 ### observability §5.5: the path attribute
 
@@ -373,9 +453,20 @@ Add a bullet to the *Baseline attributes* list, in that list's existing format, 
 That list is emitted on every LLM provider span unless the span itself is suppressed, independent of the
 payload flag, which is why the attribute belongs there rather than in §5.5.1.
 
+### observability §5.5.2: request attributes describe the span's own request
+
+Replace "(or `RuntimeConfig` is absent on the call)" with "(or no `RuntimeConfig` applies to the request
+this span describes)", replace "The absence of an attribute means "the field was not supplied for this
+call,"" with "The absence of an attribute means "the field was not supplied for the request this span
+describes,"", and add:
+
+> Under call-level retry each attempt's span describes its own request, after any per-attempt override
+> (llm-provider §7.1).
+
 ### observability §5.5.7: the `schema_not_honored` diagnostic
 
-Add after the *Typed LLM failure event* paragraph:
+Add after the paragraph beginning "With both `LlmCompletionEvent` and `LlmFailedEvent` defined", so the
+paragraphs about the typed failure event stay together:
 
 > **A schema the provider did not honor.** For each wire attempt of a `complete()` call, including an
 > attempt whose failure call-level retry (llm-provider §7.1) catches, the implementation **MUST** emit
@@ -392,12 +483,18 @@ Add after the *Typed LLM failure event* paragraph:
 >   §8.2, `stopSequences` for §8.3). An empty list carries none.
 >
 > The record carries the event name `openarmature.structured_output.schema_not_honored` (§7 *Diagnostic
-> event names*) and the §7 correlation fields, and names the call's provider, model and `call_id` and the
-> attempt's `openarmature.llm.attempt_index` (§5.5), the index on the attempt's own span. It
-> reports that an attempt on a native path the provider constrains during decoding, which was not cut short
-> or refused, returned content that is not well-formed JSON, or not a JSON object, which a constraint that
-> bound cannot produce, since llm-provider §5 requires an object at the schema's top level. That is
-> evidence the constraint did not reach or did not bind the model. It does not establish why.
+> event names*), the §7 correlation fields, and four attributes:
+>
+> - `openarmature.llm.provider` (string): the call's provider identifier, graph-engine §6's `provider`.
+> - `openarmature.llm.model` (string): the call's model, as the §5.5 baseline attribute of that name.
+> - `openarmature.llm.call_id` (string): the call's graph-engine §6 `call_id`, which joins the record to
+>   the call's typed event, including when no span records the attempt.
+> - `openarmature.llm.attempt_index` (int): the attempt's index, the value on the attempt's own span (§5.5).
+>
+> It reports that an attempt on a native path the provider constrains during decoding, which was not cut
+> short or refused, returned content that is not well-formed JSON, or not a JSON object, which a
+> constraint that bound cannot produce, since llm-provider §5 requires an object at the schema's top level.
+> That is evidence the constraint did not reach or did not bind the model. It does not establish why.
 >
 > The implementation **MUST NOT** emit the record in any other case. In particular: not for content that
 > parses to a JSON object, whether or not it validates, since a provider that applied the schema can still
@@ -409,6 +506,29 @@ Add after the *Typed LLM failure event* paragraph:
 > The record is advisory. Its condition **MUST NOT** by itself cause the implementation to retry the
 > call, change its structured-output path, or alter any request. It is not one of llm-provider §8.1.5.1's
 > detection arms.
+
+The attributes are keyed so that two implementations write the same record. `openarmature.llm.provider`
+mirrors graph-engine §6's `provider` in the `openarmature.llm.*` namespace rather than reusing
+`gen_ai.system`, which upstream has removed and which observability keeps on spans only for the installed
+base. `openarmature.llm.call_id` is the record's join key to the call: the record is emitted whether or not
+an OTel observer is attached, so its trace context cannot be relied on to reach the attempt's span.
+
+### observability §11: a caught attempt's metric samples
+
+In §11's opening paragraph, replace "for errored attempts (the source of an errored attempt's duration
+sample and its `error.type` dimension, §11.3) — and introduce no new data source." with:
+
+> for failed calls (the source of a failed call's duration sample and its `error.type` dimension, §11.3).
+> An LLM attempt that call-level retry catches has no typed event of its own (graph-engine §6), so its
+> duration sample, its `error.type` and any token-usage samples come from the implementation's record of
+> that attempt, the same data its §5.5 span carries. Metrics introduce no other data source.
+
+The rest of §11 follows. §11.1's "(Both draw from the §6 event stream, which exists regardless of span
+emission.)" names the attempt's record as the second source. §11.2's *Call-level retry* paragraph takes a
+`structured_output_invalid` attempt's usage from the call's `LlmFailedEvent.usage` when it is the call's
+last attempt and from the attempt's record when retry catches it. §11.3's `error.type` row applies "when
+the attempt errored", names the caught attempt's category as a source beside the typed failure events,
+and is "Absent on an attempt that succeeded".
 
 ### observability §7: one row
 
@@ -429,19 +549,24 @@ Extend the `_mentions` flavor in §5.13:
 This widens one flavor's value domain. It adds no flavor, so the flavor set stays closed.
 
 In §5.12, the `error_message_mentions` entry is retyped to `<str | [str, ...]>` with the same non-empty
-rule, and fixtures 082 and 083 join the list of fixtures that use the block.
+rule, and fixtures 082 and 083 join the list of fixtures that use the block. Its `output_content` entry,
+which described the value as "the verbatim content the model produced", now follows §7: the response's
+message content as the mapping produced it.
 
 ### conformance-adapter: keys already in use, path forcing, and log assertions
 
-- **`calls_llm.response_schema`**, **`calls_llm.config`** and **`calls_llm.retry`** (§5.1). The schema,
-  the `RuntimeConfig` and the retry configuration the call passes to `complete()`. None is new.
+- **`calls_llm.model`**, **`calls_llm.response_schema`**, **`calls_llm.config`** and **`calls_llm.retry`**
+  (§5.1). The model the call's provider is bound to, which the typed events report as `model` and the
+  span as `openarmature.llm.model`, and the schema, the `RuntimeConfig` and the retry configuration the
+  call passes to `complete()`. None is new. `model`, used by 23 observability fixtures, is defined nowhere.
   `response_schema` is defined today only by harness notes in the observability fixtures that use it (120,
   121, 123, 124, 125, 131 and 155). `config`, used by fixtures 016, 017, 018, 021, 023, 025, 062, 063, 120,
   123, 124, 125, 131 and 155, is defined nowhere. `retry`, used by fixture 116, has only that fixture's
   harness note on the streamed mock it pairs with. `retry` takes the same mapping as §5.11's `call.retry`,
   including its `per_attempt_override` and `reask` fields. §5.1 becomes the general definition of all
-  three, and where a harness note differs, §5 governs (§5 *Definition homes*). This closes a small part of
-  the vocabulary gap that 0119's first open question records. Fixture 161 uses all three.
+  four, and where a harness note differs, §5 governs (§5 *Definition homes*). The definitions carry no list
+  of the fixtures that use them, which would go stale. This closes a small part of the vocabulary gap that
+  0119's first open question records. Fixture 161 uses all four.
 - **`mock_provider.capabilities`** (§5.11, beside `mock_provider.responses`; §5.11's opening sentence, which
   describes the section as call-retry directives, gains the mock's capability flags). A mapping of boolean
   capability flags for the llm-provider mock, each meaning the capability is present when absent:
@@ -460,7 +585,9 @@ rule, and fixtures 082 and 083 join the list of fixtures that use the block.
   stays, as shorthand for a mapping with only `responses`. Since the observability mock presents an
   OpenAI-compatible provider, `capabilities` takes `supports_native_response_format`, with the meaning
   above, so an observability fixture can force the fallback the way the llm-provider fixtures already do.
-  An absent flag means the capability is present.
+  An absent flag means the capability is present. Each wire request takes the next entry, so under
+  call-level retry each attempt does, as with `mock_provider.responses`; §5.5's existing "successive
+  `complete()` calls" becomes "successive wire requests" to match.
 - **`count: <int>`** on an `expected.log_records` entry (§5.5). The number of captured records the entry
   matches **MUST** equal it. Without `count`, an entry asserts at least one match, as today.
 - **`log_records_absent: [<entry>, ...]`** under `expected` (§5.5). Asserts that no captured log record
@@ -468,6 +595,25 @@ rule, and fixtures 082 and 083 join the list of fixtures that use the block.
   naming only `event_name` matches any record with that event name). The log-record analogue of
   `attributes_absent` and `metadata_absent`, which exist because a subset match can pin a value but never
   an absence.
+- **`otel_observer: {attached: false}`** (§5.5). Composes no OTel observer for the case; log records and
+  typed events are still captured. Without it every observability case runs with one, so no case could show
+  that the diagnostic does not depend on an observer being attached.
+- **When a case composes a Langfuse observer** (§5.5). Today nothing says. A case composes one when it
+  carries a `langfuse_observer` or `langfuse_client` block, an empty `langfuse_observer: {}` included, or an
+  expected-outcome assertion on Langfuse output; otherwise it composes none. That matches every existing
+  observability case: the only case in a Langfuse-named fixture without such a key is fixture 117's
+  OTel-only case. Without the rule, one adapter could compose Langfuse only for cases that assert its
+  output and another for every case, and fixture 161's absence and count assertions would mean different
+  things under each.
+- **`expected.llm_spans`** (§5.11). The per-attempt span assertion llm-provider fixtures 056, 057, 058 and
+  061 to 066 already use, with `attempt_index`, `attributes`, `attributes_absent` and `error_category`,
+  which §5.11 refers to as existing but nowhere defines. The list is exhaustive and positional, one entry
+  per span in attempt order, as every existing use already is, and an entry asserts only the keys it
+  carries, so an entry without `error_category` asserts neither failure nor success. Fixture 161 uses it
+  for every span it asserts.
+- **`<call_id_X>`** (§5.10). A first-occurrence-binding token for a call's graph-engine §6 `call_id`, added to
+  the observability suite's set and defined in fixture 161's header, so a case can assert that the
+  diagnostic record and the call's typed event name the same call.
 
 For any case carrying `log_records_absent`, or a `log_records` entry with `count`, the adapter **MUST**
 capture log records for the whole case and **MUST** wait until observer delivery has completed before
@@ -491,6 +637,11 @@ expected violation's location, in the URI fragment form:
 | A property name with a space | `first name` has the wrong type | `#/first%20name`, and the expected type's name |
 | Array of objects | the first and third elements each have a property of the wrong type, the second is valid | `#/rows/0/...` and `#/rows/2/...`, and the expected type's name |
 | Not valid JSON | | `error_message_present: true` only |
+| Nullable field, `anyOf` with `null` | `site` is a string, which no member's type admits | `#/site`, and both members' types |
+| `dependentRequired` | a property it makes required is missing | the missing property's location |
+| Array with `prefixItems` and `items: false` | one element more than allowed | that element's location |
+| Array with `minItems` | too few items | the array's location |
+| Array with `uniqueItems` | a repeated item | the array's location |
 
 **The assertions name fragment pointers, not property names**, which closes three ways a mention could pass
 wrongly. A composite-node message names only the composite's location, such as `#/site`, so it cannot
@@ -501,11 +652,15 @@ no property is named like a JSON Schema keyword, so the fixture's property names
 `required`, `items` and the like. Choosing property names that cannot occur as substrings of one another
 keeps one location from matching another.
 
-The `allOf` row is answered by an empty set under a rule that filters `allOf` members by type, and the
-`oneOf` row by an empty set under a rule that reports only failing members' assertions, so a mention there
-separates the rule from those readings. The `additionalProperties` row separates it from validators that
-report the property at its parent object, and the space row from an implementation that skips the
-fragment form's percent-encoding.
+The `allOf` row is answered by an empty set under a rule that filters `allOf` members by type, the
+`oneOf` row by an empty set under a rule that reports only failing members' assertions, and the string
+`site` row by an empty set under a rule that filters union members by type and reports only the survivors'
+failures, so a mention there separates the rule from those readings. The `additionalProperties`,
+`dependentRequired` and `items: false` rows separate it from validators that report the property or
+element at its parent, and the space row from an implementation that skips the fragment form's
+percent-encoding. The rows that assert a wrong type also assert the expected type's name, which the rule
+requires a `type` violation to state. The `dependentRequired` and `prefixItems` rows rely on §5's draft
+2020-12 default, since earlier drafts do not define those keywords.
 
 The sidecar records the limits. A mention proves a violation was reported, not that nothing extra was,
 because the closed flavor set has no negative form. So four rules are not pinned: that a nullable field's
@@ -513,7 +668,9 @@ because the closed flavor set has no negative form. So four rules are not pinned
 member's locations share the composite's prefix; the wording of a missing property's constraint; and that
 a type-name mention comes from the stated constraint, since a message that quotes the schema contains
 type names anyway. A root-level location, `#`, cannot be asserted by substring either, since every
-location contains it. `not` and `contains` are covered by the rule but not by a case.
+location contains it, and a location asserted by substring also matches a deeper one under it, so the
+union, `minItems` and `uniqueItems` rows do not pin that the violation sits at the composite or array
+rather than inside it. `not` and `contains` are covered by the rule but not by a case.
 
 Existing fixtures 022, 023, 063 and 064 are unaffected: 022 asserts only that a description is present,
 and 023, 063 and 064 assert the property name `age`, which a fragment-form location still contains.
@@ -530,11 +687,23 @@ non-empty `refusal` and no content:
   `error_message_present: true` and `response_schema_present: true`.
 - Streamed, in the SSE wire shape fixture 059 uses: `delta.refusal` pieces and a last chunk reporting
   `"stop"` give a `finish_reason` of `"content_filter"` and the concatenated pieces as the content.
+- Three cases on the other side of the rule, since OpenAI sends `refusal: null` on ordinary messages: an
+  atomic message with content and `refusal: null`, the same with `refusal: ""`, and a stream whose first
+  chunk carries `refusal: null`. Each keeps its content and `"stop"`, so a mapping that fires on the key's
+  presence fails.
 
-**observability 161, `structured-output-schema-not-honored`** (new). Every case attaches the OTel observer
-and a Langfuse observer. Every case asserts the span's `openarmature.llm.structured_output.path`, or its
-absence, and the typed event's `structured_output_path` through a typed-event collector (`typed_observers`,
-`contains_event`), and asserts the diagnostic with `log_records` or `log_records_absent`:
+**observability 161, `structured-output-schema-not-honored`** (new). Every case asserts the typed event's
+`structured_output_path` through a typed-event collector (`typed_observers`, `contains_event`) and the
+diagnostic with `log_records` or `log_records_absent`. Every case except 14 attaches the OTel observer and
+a Langfuse observer; case 14 attaches neither. Every case that expects the record sets a literal
+`caller_correlation_id` and asserts, on a `WARNING` record, its four attributes and that correlation id,
+with its `openarmature.llm.call_id` bound to the call's typed event; a separate entry counts the records
+with the event name at any level. Case 1's response reports a dated model name, so the record must name the
+bound model.
+Every case but 11 and 14 asserts each attempt's span through `llm_spans`, with its
+`openarmature.llm.structured_output.path`, or its absence, and its error category. Case 11 asserts no span,
+since whether a call rejected before sending gets one is not specified, and case 14 attaches no OTel
+observer:
 
 | Case | Path | Outcome | Diagnostic |
 |---|---|---|---|
@@ -551,23 +720,34 @@ absence, and the typed event's `structured_output_path` through a typed-event co
 | 11 | a schema is supplied but the call is rejected before sending, by a conflicting extras `response_format` (llm-provider §8.1.5) | `provider_invalid_request` | absent; path null on the event |
 | 12 | `native`, with reask | attempt 0 not valid JSON on `stop`, attempt 1 valid | emitted once, carrying `openarmature.llm.attempt_index` 0; the call's single `LlmCompletionEvent` reports attempt 1, and its `input_messages` end with attempt 0's output and the rendered correction |
 | 13 | `native`, with reask and a `per_attempt_override` that adds `stop_sequences` for attempt 1 | both attempts not valid JSON on `stop` | emitted once, carrying `openarmature.llm.attempt_index` 0; the call's single `LlmFailedEvent` reports attempt 1, and its `request_params` carry the stop sequence |
+| 14 | `native`, with no backend observer attached (`otel_observer: {attached: false}`) | content not valid JSON, `stop` | emitted once |
+| 15 | `native`, `stop_sequences: []` | content not valid JSON, `stop` | emitted once |
+| 16 | `native` | an OpenAI refusal, which OpenAI reports as `stop` | absent; `content_filter` and the refusal text on the event |
+| 17 | `native`, streamed | an OpenAI refusal in `delta.refusal` pieces, last chunk `stop` | absent; the pieces as content token events, and `content_filter` on the event |
+| 18 | `native`, `stop: []` in extras | content not valid JSON, `stop` | emitted once |
+| 19 | `native`, with reask | both attempts not valid JSON on `stop`, no stop sequence | emitted twice, carrying `attempt_index` 0 and 1 and the same call id; the call's single `LlmFailedEvent` keeps `attempt_index` 0 |
 
 The absence cases are what make the emitted cases mean anything. Without them an implementation that
 emitted on every `structured_output_invalid`, or on every native call, would pass. Case 2 pins the
 narrowing to malformed and non-object content, case 3 the non-object arm, case 7 the stop sequence carried
-in extras, and cases 12 and 13 the per-attempt diagnosis and the rule that the call's event describes the
-request its outcome came from. As in fixture 116, neither case sees a typed event for its caught attempt,
-so attempt 0's record is the only trace of that attempt's failure outside its span. With both
-observers attached in every case, an absence case also covers a check placed in either observer, and the
-emitted cases' `count: 1` catches an implementation that emits once per observer. The schema in cases 1 to
-7, 9, 12 and 13 satisfies OpenAI's strict-mode rules, so the request carries `strict: true` and the path is
+in extras, cases 12 and 13 the per-attempt diagnosis and the rule that the call's event describes the
+request its outcome came from, cases 15 and 18 that an empty stop list, declared or in extras, suppresses
+nothing, cases 16 and 17 that the check reads the mapped `finish_reason` rather than the one OpenAI
+reports, and case 19 one record per qualifying attempt. Cases 12, 13 and 19 also count the call's typed
+events and assert the event's node-level `attempt_index`, and case 13 asserts the stop sequence on attempt
+1's span and its absence on attempt 0's. As in fixture 116, none of them sees a typed event for its caught
+attempt, so that attempt's record is the only trace of its failure outside its span. Case 8 asserts the
+event's `input_messages` as the list sent: the schema directive as a leading system message, its wording
+left to the implementation, then the caller's message. With both
+observers attached in every case but 14, an absence case also covers a check placed in either observer, and the
+emitted cases' record counts catch an implementation that emits once per observer; case 14, with no
+observer attached, catches one that emits only from inside an observer. The schema in cases 1 to 7, 9 and
+12 to 19 satisfies OpenAI's strict-mode rules, so the request carries `strict: true` and the path is
 `native`. That leans on §8.1.5's SHOULD to send `strict: true` for such a schema, which llm-provider
 fixture 026 already requires on the wire, so the case asks nothing the corpus does not.
 
-The sidecar records one limit: the harness always attaches exactly one OTel observer and cannot omit it,
-so an implementation that emits the record only from inside the OTel observer is not caught.
-
-No existing fixture changes.
+No existing fixture's cases change. The sidecars of llm-provider fixtures 021 and 022 are reworded where
+they paraphrase the §5 and §7 text this proposal changes.
 
 ## Alternatives considered
 
