@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-10-11
-- **Accepted:** 2026-10-24
+- **Accepted:** 2026-10-28
 - **Targets:**
   - spec/llm-provider/spec.md: modifies §5 (a `response_schema` call requests and validates conforming
     output, whether decoding is constrained depends on the path, and a `response_schema` that declares no
