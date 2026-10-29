@@ -406,6 +406,19 @@ These directives appear under `nodes.<node_name>:` and define what the node does
   response content in `<state_field>`. Used by the observability LLM-span fixtures. Exercises
   observability §5.5 (LLM provider span).
 
+  The call **MAY** also carry four keys, defined here in general; where a per-directory harness note
+  differs, this section governs (§5 *Definition homes*):
+
+  - **`model: <string>`**: the model identifier the call's provider is bound to, which the typed LLM
+    events report as `model` and the LLM span as `openarmature.llm.model` (observability §5.5).
+  - **`response_schema: <JSON Schema>`**: the schema the call passes to `complete()` (llm-provider §5).
+  - **`config: <RuntimeConfig>`**: the `RuntimeConfig` the call passes (llm-provider §6), written as its
+    declared fields plus an optional `extras` mapping, as in `{temperature: 0.7, extras:
+    {repetition_penalty: 1.05}}`.
+  - **`retry: <retry config>`**: the call-level retry configuration the call passes (llm-provider §7.1),
+    taking the same mapping as §5.11's `call.retry`, including its `per_attempt_override` and `reask`
+    fields.
+
   Two **synthesis primitives** may stand in for literal content inside a `messages:` entry, so a fixture can
   induce an oversized or shaped payload without carrying one inline:
 
@@ -720,8 +733,14 @@ fixture.
 - **Case-level observability harness keys** — per-directory extensions (per §3.2) appearing at the case
   top level (siblings of `nodes:` / `expected:`, not under `observers:`): `mock_llm: [{status: <int>,
   body: {...}}, ...]` supplies the canned OpenAI-compatible chat-completion responses (llm-provider §8
-  wire shape) the mock provider returns to successive `complete()` calls (paired with `calls_llm` /
-  `calls_llm_from_wrapper`). A **non-2xx** `mock_llm` entry MAY carry a
+  wire shape) the mock provider returns to successive wire requests (paired with `calls_llm` /
+  `calls_llm_from_wrapper`). `mock_llm` also accepts a mapping form, `{capabilities: {...}, responses:
+  [{status, body}, ...]}`, mirroring `mock_provider` (§5.11); the list form is shorthand for a mapping with
+  only `responses`. Since the mock presents an OpenAI-compatible provider, `capabilities` takes
+  `supports_native_response_format` with §5.11's meaning, so a fixture can force the structured-output
+  fallback; an absent flag means the capability is present. Under call-level retry (llm-provider §7.1)
+  each wire attempt takes the next entry, as `mock_provider.responses` does (§5.11). A **non-2xx**
+  `mock_llm` entry MAY carry a
   **`raises: {error_type, message | message_repeat}`** sub-directive, the LLM-side counterpart of §5.15's
   retrieval form and of the tool path's `mock_tool: {raises: ...}` (fixtures 093 / 098): it overrides
   only the exception's literal `error_type` / `error_message` while the `status` still fixes the
@@ -767,7 +786,11 @@ fixture.
 
 - **Observer payload control + diagnostic assertion** (observability §5.5.4 / §7, [proposal 0121](../../proposals/0121-diagnostic-event-names-and-otel-observer-directive.md)). These are general observer-configuration and log-assertion directives, not part of the `langfuse_client` isolation family above:
   - `expected.log_records` entries **MAY** carry **`event_name: <string>`** alongside `level`, `body` and `attributes`, asserting the record's OTel `LogRecord` `EventName` field equals the given value (observability §7 *Diagnostic event names*). Severity alone cannot distinguish one mandated diagnostic from another, or from an unrelated `WARNING`; the event name can. Matching remains a subset over the fields an entry specifies and the list remains non-exhaustive.
+  - `expected.log_records` entries **MAY** carry **`count: <int>`**, asserting that the number of captured records the entry matches equals it ([proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)). Without `count`, an entry asserts at least one match, as before. A count is what lets a fixture assert a diagnostic is emitted exactly once, which a non-exhaustive subset match cannot.
+  - **`expected.log_records_absent: [<entry>, ...]`** asserts that no captured log record matches any listed entry, where an entry matches by the same subset rule as `log_records` (an entry naming only `event_name` matches any record with that event name) ([proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)). It is the log-record analogue of `attributes_absent` and `metadata_absent`, which exist because a subset match can pin a value but never an absence. For any case carrying `log_records_absent`, or a `log_records` entry with `count`, the adapter **MUST** capture log records for the whole case and **MUST** wait until observer delivery has completed before asserting; an adapter that cannot capture log records **MUST** fail the case rather than pass it.
   - **`otel_observer: {disable_provider_payload: <bool>, disable_genai_semconv: <bool>}`** configures the composed OTel observer's flags for the case, the OTel-side counterpart of `langfuse_observer`. Both keys are optional; omitted, the observer keeps that flag's observability §5.5.4 default. An adapter **MUST** honor the directive when present: a case that sets a flag and an adapter that ignores it produce the same observable result as a case that does not set it, so silently dropping it makes the case vacuous rather than failing it.
+  - **`otel_observer: {attached: false}`** composes **no** OTel observer for the case (default `true`) ([proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)). Spans then have nothing to record them, while log records and typed events are still captured. It is how a case asserts that a diagnostic the implementation MUST emit does not depend on an OTel observer being attached; without it every observability case runs with one (§6.3). An adapter **MUST** honor the directive when present.
+  - **Langfuse observer composition.** A case composes a Langfuse observer when it carries a `langfuse_observer` or `langfuse_client` block, an empty `langfuse_observer: {}` included, or an expected-outcome assertion on Langfuse output, such as `expected.langfuse_trace` or the Langfuse-observation assertions above. Otherwise it composes none ([proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)). Unlike the OTel observer, a Langfuse observer is not composed by default, so a case shows that a diagnostic does not depend on one by leaving these keys out. An adapter **MUST** compose exactly as this rule says: composing one where the rule says none, or none where it says one, can turn an absence or count assertion vacuous.
 
   - **`langfuse_observer: {payload_byte_cap: <int>}`** / **`otel_observer: {payload_byte_cap: <int>}`** configure that observer's truncation cap, the byte bound observability §5.5.5 applies to each payload-classified value the observer writes. Omitted, the observer keeps §5.5.5's default of **65,536 bytes**. The cap is **per observer**, so a case MAY set it on one observer and leave the other at the default; that asymmetry is the only way a fixture can separate an implementation applying the correct observer's cap from one reading its sibling's, which observability §8.7 makes a **MUST NOT**. Setting neither leaves both at the same default and no such fixture can discriminate. An adapter **MUST** honor the directive when present. Fixture 023 sets the Langfuse cap alone; fixture 160 does the same to gate §8.7's direct-application arm.
 
@@ -1072,8 +1095,8 @@ literal. They are of two kinds — **format matchers** (match any value of a giv
   same token string** MUST equal that bound value, and distinct token strings bind independently.
   Used for id consistency within one case. The concrete `<name>` set is **suite-defined**, documented
   in the suite's fixture-header notes (the §3.2 per-directory mechanism): the observability suite uses
-  `<trace_id_X>` (`<trace_id_parent>`, `<trace_id_instance_0>`, …), `<corr_id_N>`, `<span_id_X>`, and
-  `<invocation_id_X>`.
+  `<trace_id_X>` (`<trace_id_parent>`, `<trace_id_instance_0>`, …), `<corr_id_N>`, `<span_id_X>`,
+  `<invocation_id_X>`, and `<call_id_X>` (fixture 161).
 
 **Assertion sub-keys** — appear as *keys inside a field's assertion mapping*, not as a bare value
 (used where a field's expected value is a mapping of assertions rather than a scalar):
@@ -1104,7 +1127,24 @@ the two `call.retry` adaptive fields (`per_attempt_override`, `reask`) plus the 
 `attributes_absent` assertion surfaces. It also carries **`attribute_truncation`**, which asserts
 observability §5.5.5's per-value byte cap on a span attribute. That directive is not a retry directive; it
 sits here because it is a span-entry assertion and belongs beside `attributes_absent`, its nearest
-structural sibling.
+structural sibling. The section also defines **`mock_provider.capabilities`**, the mock's capability
+flags, which are not retry directives either; they sit beside `mock_provider.responses`, the other half
+of the mock. And it defines **`expected.llm_spans`**, the per-attempt span assertion the retry fixtures
+use.
+
+**Mock capabilities.** `mock_provider.capabilities` is a mapping of boolean capability flags for the
+llm-provider mock, each meaning the capability is present when absent:
+
+- **`supports_native_response_format`**, for the OpenAI mapping, and **`supports_native_structured_output`**,
+  for the Anthropic and Gemini mappings. When `false`, the mock presents as lacking native structured output,
+  so an implementation takes the mapping's fallback through the static detection arm (llm-provider §8.1.5.1,
+  §8.2.5.1, §8.3.5.1).
+- **`supports_image_input`**. When `false`, the mock presents as a model without image input, so a request
+  carrying an image block fails with `provider_unsupported_content_block` (llm-provider §7), raised before
+  sending or mapped from the provider's rejection.
+
+None of the three is new: llm-provider fixtures 026, 027 and 072 use the first, 040, 041, 050 and 051 the
+second, and 016, 035 and 039 the third.
 
 **Call configuration.** Beyond the pipeline-utilities §6.1 four-field record, the `call.retry`
 mapping accepts the two llm-provider adaptive fields (llm-provider §7.1):
@@ -1142,9 +1182,16 @@ pair; a transient retry appends nothing), so `appended_messages` expresses every
 the single-request `expected_wire_request` convention (provider wire-mapping fixtures) to the per-attempt
 retry-loop case.
 
+**Per-attempt span assertion.** Under `expected:`, **`llm_spans: [<span entry>, ...]`** asserts the LLM
+provider spans a call produced. The list is exhaustive and positional: it has exactly one entry per LLM
+provider span the call produced, in attempt order, so its length is the number of attempts. Each entry
+**MAY** carry `attempt_index` (the span's `openarmature.llm.attempt_index`), `attributes` (a subset match
+on the span's attributes), `attributes_absent` (below), and `error_category`: the llm-provider §7
+category that attempt failed with, or null for an attempt that succeeded. An entry asserts only the keys
+it carries, so an entry without `error_category` asserts neither failure nor success.
+
 **Span attribute assertions.** The per-attempt `openarmature.llm.retry_reason` span attribute
-(llm-provider §7.1) is asserted via the existing `expected.llm_spans[*].attributes` shape on retry
-attempts. Because those attribute assertions are a subset match, asserting an attribute is **absent**
+(llm-provider §7.1) is asserted via `expected.llm_spans[*].attributes` on retry attempts. Because those attribute assertions are a subset match, asserting an attribute is **absent**
 — e.g. that attempt 0 carries no `retry_reason` — needs its own directive: a span entry MAY carry
 **`attributes_absent: [<key>, ...]`**, asserting none of the listed attribute keys are present on
 that span.
@@ -1177,8 +1224,8 @@ result as a case that never carried it, which makes the case vacuous rather than
 llm-provider call fixtures assert a raised `structured_output_invalid` error (llm-provider §7, its
 diagnostics surface per 0082) via an `expected.raises` block with `category: structured_output_invalid`
 and a `carries` mapping. The `carries` block asserts the error's exposed fields. The 0016 structured-output
-fixtures (022 / 023) and the 0095 reask fixtures (063 / 064) use them — the other 0095 fixtures are
-success-path and raise nothing.
+fixtures (022 / 023), the 0095 reask fixtures (063 / 064) and the 0126 fixtures (082 / 083) use them; the
+other 0095 fixtures are success-path and raise nothing.
 
 **Key naming.** These keys follow the general raised-error `carries` convention (§5.13); this block is the
 llm-provider `structured_output_invalid` **instance** of it. Each key names an llm-provider §7 error field,
@@ -1187,12 +1234,12 @@ with the flavor suffixes (`_present` / `_mentions`) and the mapping-valued subse
 
 - **`response_schema_present: <bool>`** — the error exposes the requested `response_schema` (llm-provider §5 / §7).
 - **`output_content: <str>`** — exact-equality on the error's `output_content` (llm-provider §7): the
-  verbatim content the model produced that failed to parse or validate.
+  response's message content as the mapping produced it, which failed to parse or validate.
 - **`error_message_present: <bool>`** — the error's `error_message` (llm-provider §7) is present. Used when
   the wording is not asserted (e.g. a parse failure with no specific field to name).
-- **`error_message_mentions: <str>`** — a substring the error's `error_message` MUST contain (e.g. the
-  failing field name). A contains-check, since the exact wording is implementation-defined
-  (llm-provider §7).
+- **`error_message_mentions: <str | [str, ...]>`**: a substring, or a non-empty list of substrings, the
+  error's `error_message` MUST contain (e.g. a violation's location). A contains-check, since the exact
+  wording is implementation-defined (llm-provider §7); an empty list is `fixture_schema_invalid` (§9).
 - **`finish_reason: <str>`** — the error's normalized `finish_reason` (llm-provider §6), mandated on
   `structured_output_invalid` by 0082.
 - **`usage: { ... }`** — the error's token `usage`: the llm-provider §6 usage record (the baseline counters
@@ -1218,8 +1265,9 @@ exposes, plus an optional suffix naming the assertion flavor:
   §5.11 applies to span `attributes`.
 - the **`_present`** suffix — asserts the field's **presence**, not its value: `true` asserts the field is
   present (non-null); `false` asserts it is absent (null).
-- the **`_mentions`** suffix — the field's value **contains** the given substring (used where the exact wording
-  is implementation-defined).
+- the **`_mentions`** suffix: the field's value **contains** the given substring (used where the exact wording
+  is implementation-defined). The value **MAY** be a non-empty list of substrings, asserting the field
+  contains **every** one. An empty list is `fixture_schema_invalid` (§9).
 
 The suffix, when present, **MUST** be one of `_present` / `_mentions` — the flavor set is **closed**, and a new
 flavor requires a proposal.
@@ -1724,3 +1772,4 @@ rule rather than an independent sanction: both are homes in the recognized vocab
 - §5.5 *Observer / observability directives* gained **`event_name`** on an `expected.log_records` entry, asserting the record's OTel `EventName` field so a fixture can pin which mandated diagnostic fired rather than only a severity, and **`otel_observer: {disable_provider_payload: <bool>}`**, the OTel-side counterpart of `langfuse_observer` which an adapter MUST honor. The `langfuse_client` paragraph is reconciled to the new directive, and twelve cases across eleven fixtures migrated off the undocumented bare case-level form, covering both `disable_provider_payload` and `disable_genai_semconv`, by [proposal 0121](../../proposals/0121-diagnostic-event-names-and-otel-observer-directive.md)
 - §5.11 documented the existing **`attribute_truncation`** directive and all four of its sub-keys beside `attributes_absent`; §5.5 gained **`metadata_truncation`** on a Langfuse observation entry and a **`raises: {error_type, message | message_repeat}`** form on `mock_llm`; §5.15 gained **`message_repeat`** on the retrieval mocks' `raises`; and §5.1 documented the existing **`content_repeat`** and **`base64_data_synthetic`** synthesis primitives beside `calls_llm`. §5.5 also documented the existing **`payload_byte_cap`** on both observer directives, the per-observer cap a fixture must set asymmetrically to gate observability §8.7's MUST NOT. Both truncation assertions gained an adapter **MUST**-honor rule, a key-presence requirement and an at-least-one-sub-key requirement, so a silently-skipping adapter fails rather than passing vacuously; `utf8_valid` gained the multi-byte-filler requirement without which it cannot fail. §5.11's scope sentence and §5.1's `base64_data_synthetic` field name (`source.base64_data`, not `source.data`) were corrected in the same pass by [proposal 0119](../../proposals/0119-error-message-cap-and-reserved-keys.md)
 - §5.1 *Node behavior directives* gained **`await_event_delivery`** on `calls_llm_from_wrapper` (named for the contract rather than 0124's prescribed `yield_after_call`, since §5.1 states a scheduler yield is insufficient and a yield-shaped name invites the implementation the prose forbids): when `true` the adapter MUST ensure observer delivery **through this call's provider event** has completed **before the wrapper proceeds past the call site**, which for `phase: pre` is before invoking `next()` rather than before the wrapper returns; a deadline at the wrapper's return would sit after the node body had run and let its `started` event synthesize the span first, satisfying the rule while producing the interleaving it forbids. Delivery is complete when every registered observer has finished receiving the event, graph-engine §6's own unit, rather than at handoff to the queue; work an observer callback detaches is excluded, the callback itself is not. An adapter MUST honor the directive or fail the case. Stated as a barrier rather than as the yield 0124 prescribed, because graph-engine §6's strictly serial delivery queue means conceding one turn hands the queue one event with nothing binding it to this call. Without it no fixture can distinguish an implementation that resolves an orphan's parent structurally (observability §5.5) from one that passes because the wrapper span happened to be materialized already, which is a difference of observer architecture rather than of conformance. Set on all five directive blocks across observability fixtures 133, 134, 152 and 153, every fixture carrying the primitive; no assertion changed by [proposal 0124](../../proposals/0124-orphan-provider-span-parent-resolution.md)
+- §5.1 `calls_llm` gains general definitions of four keys fixtures already used: `model`, `response_schema`, `config` (declared fields plus an optional `extras` mapping) and `retry` (§5.11's `call.retry` mapping, including `per_attempt_override` and `reask`). §5.5: `mock_llm` gains a mapping form `{capabilities, responses}` mirroring `mock_provider`, with each wire request taking the next entry; `expected.log_records` entries gain `count`; `expected.log_records_absent` asserts that no captured record matches, with the adapter required to capture the whole case, wait for observer delivery, and fail a case it cannot capture; `otel_observer: {attached: false}` composes no OTel observer for a case; and a case composes a Langfuse observer only when it carries a `langfuse_observer` or `langfuse_client` block or asserts Langfuse output. §5.10 adds `<call_id_X>` to the observability suite's binding tokens. §5.11 defines `mock_provider.capabilities` and the three flags already in use (`supports_native_response_format`, `supports_native_structured_output`, `supports_image_input`), with what `false` means for each, and `expected.llm_spans`, the per-attempt span assertion, as an exhaustive list in attempt order whose entries assert only the keys they carry. §5.12 retypes `error_message_mentions` to a string or a non-empty list and describes `output_content` as the message content as the mapping produced it, and §5.13's `_mentions` flavor accepts a non-empty list asserting every substring, an empty list being `fixture_schema_invalid` by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)

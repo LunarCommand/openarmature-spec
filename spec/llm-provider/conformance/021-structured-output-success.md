@@ -7,8 +7,9 @@ provider bytes verbatim, and `finish_reason` is `"stop"`.
 
 **Spec sections exercised:**
 
-- §5 `complete()` with `response_schema` parameter — the call constrains
-  the model's output to conform to the schema.
+- §5 `complete()` with `response_schema` parameter — the call requests
+  output that conforms to the schema and validates the response against
+  it.
 - §6 `parsed` field — populated when the call supplied `response_schema`
   and the model returned structured content.
 - §6 `message.content` preservation — carries the provider's content

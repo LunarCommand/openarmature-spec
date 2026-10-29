@@ -1,0 +1,225 @@
+# OpenAI refusal: llm-provider §8.1.2 and §8.1.6 (proposal 0126).
+#
+# When the response message carries a non-empty `refusal` and no tool calls,
+# the message's content is the refusal text and the finish_reason is
+# "content_filter", whatever value OpenAI reports. This matches the Anthropic
+# mapping, where a refusal's text arrives as content and maps to
+# "content_filter" (§8.2.2), and it keeps the message within §3, which requires
+# content when tool calls are absent. A streamed refusal arrives as
+# delta.refusal pieces, which are content deltas, so they form the content;
+# the finish_reason override applies when the stream carried no tool-call
+# deltas.
+#
+# The rule fires only on a non-empty refusal. OpenAI sends `refusal: null` on
+# ordinary messages, so cases 5 to 7 pin that a null or empty refusal leaves the
+# content and finish_reason as OpenAI sent them.
+#
+# raw_check compares the listed top-level keys' values literally (the suite's
+# harness note, fixture 001), so the cases that carry it also pin that
+# `raw.choices` keeps the message, refusal included, as received.
+
+cases:
+  - name: refusal_on_stop_maps_to_content_filter
+    description: |
+      A refusal with OpenAI's finish_reason "stop" and no response_schema. The
+      Response carries the refusal text as content and finish_reason
+      "content_filter".
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-083a
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: null, refusal: "I can't help with that."}
+                finish_reason: stop
+            usage: {prompt_tokens: 12, completion_tokens: 7, total_tokens: 19}
+    expected:
+      response:
+        message: {role: assistant, content: "I can't help with that.", tool_calls: null}
+        finish_reason: content_filter
+        usage: {prompt_tokens: 12, completion_tokens: 7, total_tokens: 19}
+        raw_check:
+          required_keys: [id, object, model, choices, usage]
+
+  - name: refusal_on_length_still_maps_to_content_filter
+    description: |
+      The same refusal with OpenAI's finish_reason "length". The rule ignores
+      OpenAI's value, so the finish_reason is still "content_filter".
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-083b
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: null, refusal: "I can't help with that."}
+                finish_reason: length
+            usage: {prompt_tokens: 12, completion_tokens: 7, total_tokens: 19}
+    expected:
+      response:
+        message: {role: assistant, content: "I can't help with that.", tool_calls: null}
+        finish_reason: content_filter
+        usage: {prompt_tokens: 12, completion_tokens: 7, total_tokens: 19}
+        raw_check:
+          required_keys: [id, object, model, choices, usage]
+
+  - name: refusal_with_schema_raises_with_content_filter
+    description: |
+      A refusal on a structured-output call. The refusal text is the content,
+      which does not parse as JSON, so the call raises
+      structured_output_invalid with finish_reason "content_filter" and the
+      refusal text as output_content.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          name: {type: string}
+        required: [name]
+        additionalProperties: false
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-083c
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: null, refusal: "I can't help with that."}
+                finish_reason: stop
+            usage: {prompt_tokens: 12, completion_tokens: 7, total_tokens: 19}
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: "I can't help with that."
+          error_message_present: true
+          finish_reason: content_filter
+          usage: {prompt_tokens: 12, completion_tokens: 7, total_tokens: 19}
+
+  - name: streamed_refusal_maps_to_content_filter
+    description: |
+      A streamed refusal: delta.refusal pieces, a last chunk reporting "stop",
+      then the usage chunk and [DONE]. The concatenated pieces are the content
+      and the finish_reason is "content_filter", as for the atomic response.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Generate the record."}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - {id: cc-083d, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {role: assistant, refusal: "I can't "}, finish_reason: null}]}
+            - {id: cc-083d, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {refusal: "help with that."}, finish_reason: stop}]}
+            - {id: cc-083d, object: chat.completion.chunk, model: test-model, choices: [], usage: {prompt_tokens: 12, completion_tokens: 7, total_tokens: 19}}
+            - "[DONE]"
+    expected:
+      response:
+        message: {role: assistant, content: "I can't help with that.", tool_calls: null}
+        finish_reason: content_filter
+        usage: {prompt_tokens: 12, completion_tokens: 7, total_tokens: 19}
+
+  - name: null_refusal_leaves_content_and_stop
+    description: |
+      An ordinary message: content, `refusal: null`, and OpenAI's
+      finish_reason "stop". The rule does not fire, so the content and
+      finish_reason come through unchanged.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Say hello."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-083e
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: "Hello.", refusal: null}
+                finish_reason: stop
+            usage: {prompt_tokens: 8, completion_tokens: 2, total_tokens: 10}
+    expected:
+      response:
+        message: {role: assistant, content: "Hello.", tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 8, completion_tokens: 2, total_tokens: 10}
+        raw_check:
+          required_keys: [id, object, model, choices, usage]
+
+  - name: empty_refusal_leaves_content_and_stop
+    description: |
+      The same message with `refusal: ""`. An empty refusal is not a refusal,
+      so the content and finish_reason come through unchanged.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Say hello."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-083f
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: "Hello.", refusal: ""}
+                finish_reason: stop
+            usage: {prompt_tokens: 8, completion_tokens: 2, total_tokens: 10}
+    expected:
+      response:
+        message: {role: assistant, content: "Hello.", tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 8, completion_tokens: 2, total_tokens: 10}
+        raw_check:
+          required_keys: [id, object, model, choices, usage]
+
+  - name: streamed_null_refusal_leaves_content_and_stop
+    description: |
+      An ordinary stream whose first chunk carries `refusal: null` beside its
+      content, as OpenAI's first chunk does. The rule does not fire, so the
+      content deltas form the content and the finish_reason stays "stop".
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Say hello."}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - {id: cc-083g, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {role: assistant, content: "Hel", refusal: null}, finish_reason: null}]}
+            - {id: cc-083g, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {content: "lo."}, finish_reason: stop}]}
+            - {id: cc-083g, object: chat.completion.chunk, model: test-model, choices: [], usage: {prompt_tokens: 8, completion_tokens: 2, total_tokens: 10}}
+            - "[DONE]"
+    expected:
+      response:
+        message: {role: assistant, content: "Hello.", tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 8, completion_tokens: 2, total_tokens: 10}
