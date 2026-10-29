@@ -91,7 +91,7 @@ Not everything OpenArmature writes is developer-controllable, and the reasons di
 |---|---|---|
 | Provider payload | yes | `disable_provider_payload`. Also drives the invariant's construction-time raise or suppress. |
 | Trace state payload | yes | `disable_state_payload`, or a supplied hook. Suppression forces the minimal stub. |
-| A failed call's `error_message` | yes | The Langfuse observer's `disable_provider_payload` covers the harvested exception text, so the default posture withholds it. Full exception detail still reaches your OpenTelemetry backend through `record_exception`. When the flag permits it, the message is also subject to the observer's payload byte cap (§5.5.5 / §8.7), and the Langfuse observer's own cap governs. A `structured_output_invalid` message lists every violation the content commits (llm-provider §7), so it can be long and can quote values from the content. On the OpenTelemetry side, the process-wide `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT` bounds the recorded exception text when the span-specific `OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` is unset. |
+| A failed call's `error_message` | yes | The Langfuse observer's `disable_provider_payload` covers the harvested exception text, so the default posture withholds it. Full exception detail still reaches your OpenTelemetry backend through `record_exception` (see *Exception text on the OpenTelemetry side* below). When the flag permits it, the message is also subject to the observer's payload byte cap (§5.5.5 / §8.7), and the Langfuse observer's own cap governs. A `structured_output_invalid` message lists every violation the content commits (llm-provider §7), so it can be long and can quote values from the content. On the OpenTelemetry side, the process-wide `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT` bounds the recorded exception text when the span-specific `OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` is unset. |
 | A failed call's `error_type` | no, by design | A classification token (a vendor code or exception class name), not harvested text, so no flag withholds it. It is an optional field: where the provider supplies no type it may legitimately be absent. Where it is present it is the only failure discriminator on a Tool observation, which has no error category. |
 | The error **category** (`level` / `statusMessage`) | not applicable | Not payload. Retained even where the message beside it is omitted. |
 | Caller-attached dimensions: `correlation_id`, `session_id`, the promoted `userId`, trace name, caller metadata | not applicable | Exempt by design. The caller attached these deliberately as observability dimensions and owns their content; they are cross-backend join keys, so the framework must not suppress or refuse on account of them. |
@@ -108,8 +108,34 @@ of the harvested content OpenArmature renders to Langfuse. Harvested content no 
 non-conforming over-emission rather than a further gated channel. A field is either mapped, and
 therefore governed by the knobs and the invariant, or it is not written.
 
+## Exception text on the OpenTelemetry side
+
+The OpenTelemetry observer's `disable_provider_payload` removes payload *attributes* from spans. It
+does not touch the exception OpenArmature records on a failed span
+([§5.5.4](capabilities/observability.md#554-opt-out-flags)).
+[§4.2](capabilities/observability.md#42-status-mapping) requires that record to carry the
+exception's message, and the spec treats the OpenTelemetry span as the place full exception detail
+goes.
+
+That matters when payload is split between backends: on in Langfuse, and off on the OpenTelemetry
+observer so that no model text reaches the application's backend. A failed provider call can still
+put model text there, in two places:
+
+- **The provider span's exception message.** For a `structured_output_invalid` failure it lists the
+  violations, and it can quote values from the model's output.
+- **The node span's recorded exception**, when the failure propagates. Its stack trace can include
+  the error that carried the model's output.
+
+If that backend must not receive model text, strip the exception's message and stack trace before
+export. Use a span processor on the tracer provider OpenArmature's spans go through, where your
+implementation lets you add one, or a processor in an OpenTelemetry Collector in front of the
+backend. The exception type and the span's error status remain, so failures stay countable and
+searchable.
+
 ## Where the normative text lives
 
+- [§4.2 *Status mapping*](capabilities/observability.md#42-status-mapping): the exception a failed
+  span records.
 - [§5.5.4 *Opt-out flags*](capabilities/observability.md#554-opt-out-flags): the OpenTelemetry
   observer flags, their defaults, and the exact attribute set each suppresses.
 - [§6 *Driving span lifecycle*](capabilities/observability.md#6-driving-span-lifecycle): the
