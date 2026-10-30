@@ -10,8 +10,8 @@
 # Orphan-call primitive `calls_llm_from_wrapper` (phase: pre|post) is defined
 # in fixture 133's header: the adapter wraps the node in a middleware issuing
 # exactly one real complete() against the mock provider in the named phase, so
-# the calling node's span is NOT open when the provider span is emitted. The
-# call's response is not written to state (models a wrapper-issued side call).
+# the call comes from middleware rather than the node body. The call's
+# response is not written to state (models a wrapper-issued side call).
 #
 # Topology: a parallel-branches node `dispatcher` over two branches
 # (`branch_a` / `branch_b`), each a subgraph whose `guard` node issues one
