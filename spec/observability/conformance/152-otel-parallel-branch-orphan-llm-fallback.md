@@ -6,7 +6,7 @@ normative for the **per-branch dispatch span** — so an implementation could mi
 call and still pass every 0084 fixture. This is the parallel-branches analogue of 133 (v0.103.1 PATCH, pins
 already-normative behavior).
 
-A wrapper-issued LLM call (via `calls_llm_from_wrapper`, defined in 133's header) has no open calling-node span,
+A wrapper-issued LLM call (via `calls_llm_from_wrapper`, defined in 133's header) does not come from the node body,
 so its provider span falls back to the nearest enclosing wrapper — here the synthesized per-branch dispatch span
 — routed to the correct branch by `branch_name` (the parallel-branches counterpart of 133's fan-out-index chain).
 

@@ -32,14 +32,14 @@ calls_llm_from_wrapper:
 The adapter wraps the node in a middleware that issues exactly one real `complete()` call against the
 mock provider in the named phase:
 
-- `pre` — before `next()`; the node's span is not yet open.
-- `post` — after `next()` returns; the node's span has already closed.
+- `pre`: before `next()`, while the node's span is not yet open.
+- `post`: after `next()` returns, while the node's span is still open, since its `completed` event
+  follows the reducer merge.
 
-Either way the calling node's span is **not open** when the provider span / `LlmCompletionEvent` is
-emitted, exercising the §5.5 orphan fallback. The call's response is **not** written to state (it
-models a wrapper-issued side call such as a guardrail or classifier). The node's own body still runs
-inside `next()` — here a trivial `update: {marker: 1}` so the fan-out `collect_field` has a value.
-This fixture uses `phase: pre`.
+Either way the call comes from middleware rather than the node body, which is what exercises the §5.5
+orphan fallback. The call's response is **not** written to state (it models a wrapper-issued side call
+such as a guardrail or classifier). The node's own body still runs inside `next()` — here a trivial
+`update: {marker: 1}` so the fan-out `collect_field` has a value. This fixture uses `phase: pre`.
 
 This primitive is reported for normative addition to conformance-adapter §5.1.
 

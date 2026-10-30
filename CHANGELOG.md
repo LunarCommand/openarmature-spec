@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.119.1] - 2026-10-29
+
+**Fixed**
+
+- **conformance-adapter §5.1 described `calls_llm_from_wrapper`'s `post` phase wrongly.** It said a post-phase call runs after the calling node's span has closed, and that in either phase the span is not open when the provider event is emitted. Neither holds for `post`. graph-engine §6 dispatches a node's `completed` event after the reducer merge, and the merge takes the partial update the middleware chain returns (pipeline-utilities §2), so post-phase middleware runs while the node's span is still open. §5.1 now says so, and states what the two phases share: the call is issued from middleware rather than the node body. That is what observability §5.5's structural rule keys on, so a provider span takes the same parent in both phases. Surfaced by the Python implementation.
+- The same claim is corrected where it was repeated: the 0084 entry in conformance-adapter's `## History`, the header comment and sidecar of observability fixture 133, which summarize the primitive, and those of fixture 152.
+
+**Notes**
+
+- **PATCH, non-behavioral.** No adapter obligation and no fixture assertion changed. The corrected text described when the call runs; the parent its provider span takes was already fixed by observability §5.5 for both phases. No fixture uses `phase: post`. conformance-adapter `Latest` advances to 0.119.1.
+
 ## [0.119.0] - 2026-10-28
 
 **Changed**

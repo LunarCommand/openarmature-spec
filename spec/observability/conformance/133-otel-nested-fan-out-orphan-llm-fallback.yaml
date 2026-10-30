@@ -20,13 +20,14 @@
 # The adapter wraps the node in a middleware that issues exactly one real
 # complete() call against the mock provider in the named phase:
 #   - pre:  before next() -- the node's span is not yet open;
-#   - post: after next() returns -- the node's span has already closed.
-# Either way the calling node's span is NOT open when the provider span /
-# LlmCompletionEvent is emitted, exercising the §5.5 orphan fallback. The
-# call's response is NOT written to state (it models a wrapper-issued side
-# call such as a guardrail / classifier). The node's own body still runs
-# inside next() (here a trivial `update` so the fan-out collect_field has a
-# value). This fixture uses phase: pre.
+#   - post: after next() returns -- the node's span is still open, since its
+#     completed event follows the reducer merge.
+# Either way the call comes from middleware rather than the node body, which
+# is what exercises the §5.5 orphan fallback. The call's response is NOT
+# written to state (it models a wrapper-issued side call such as a guardrail /
+# classifier). The node's own body still runs inside next() (here a trivial
+# `update` so the fan-out collect_field has a value). This fixture uses
+# phase: pre.
 #
 # Topology (standard fan_out form; 2 outer x 1 inner each):
 #   outer_fan_out  -- fan-out over outer_seeds (2 single-element lists),
