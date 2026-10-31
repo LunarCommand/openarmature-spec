@@ -87,7 +87,9 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-Nothing open. Every proposal is Accepted.
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0127](proposals/0127-assertion-matching-rules.md) | Draft | conformance-adapter §2, §3.2, §4.5, §5, §5.1, §5.5, §5.6, §5.8, §5.10 to §5.13, §5.15 to §5.17, §6.1 to §6.3, §6.9, §8.4; observability §11.5; the harness notes of eight conformance directories and fixtures in every other capability's conformance directory | States once how every fixture assertion compares with what happened: lists of observed items are complete, mappings assert the keys they name with a few exact positions, `null` means not set, and an error assertion reads the category of the error a node raised, through the carriers the engine adds. Defines every assertion directive in use that had no definition, apart from the named claims a following proposal settles, and corrects the fixtures a conforming implementation would fail under the rules. |
 
 See [`proposals/`](proposals/) for the full history.
 
