@@ -121,11 +121,11 @@ carriers, and a migration list ordered only within each chain.
 - **A list inside data compares as a value:** complete and in order. A vector, an attribute array and a list held
   in state are examples.
 
-The lists declared unordered are named in their definitions: span and observation `children`, the top-level span
-and trace lists, `metrics`, `traces` and `langfuse_traces`, and the instance lists of a resume. The spec fixes
-which span is whose parent but not the order of siblings, and §7 forbids an adapter from imposing an order the
-spec does not fix. Where order matters, a fixture asserts it through attributes such as the step or attempt
-index. `expected_compile_warning` is declared a set.
+The lists declared unordered are named in their definitions: span and observation `children`, a span's `links`,
+the top-level span and trace lists, `metrics`, `traces` and `langfuse_traces`, and the instance lists of a resume.
+The spec fixes which span is whose parent, and which traces a span links to, but not the order of siblings or of
+links, and §7 forbids an adapter from imposing an order the spec does not fix. Where order matters, a fixture
+asserts it through attributes such as the step or attempt index. `expected_compile_warning` is declared a set.
 
 #### 1.3 Mappings
 
@@ -200,9 +200,10 @@ This replaces §5.5's rule that a `null` in `contains_event.fields` matches only
 
 - **One binding scope covers a whole case,** every assertion block included: `expected:`, `first_run_expected:`,
   `resume.expected:` and `invariants:`.
-- **A token asserts equality** with every other occurrence of the same token. It never asserts that two different
-  tokens hold different values.
-- **A token that occurs once in a case asserts only that a non-null value is present.**
+- **A token matches only a present, non-null value,** at every occurrence. A token that occurs once in a case
+  asserts no more than that.
+- **A repeated token also asserts equality** with every other occurrence of the same token. It never asserts
+  that two different tokens hold different values.
 - **The case passes if some assignment of values to its tokens makes every assertion hold.** First occurrence in
   document order is ambiguous inside an existence list or an unordered list, where the first candidate need not
   be the one the rest of the case needs.
@@ -519,7 +520,7 @@ A span entry's sub-keys each assert only when present:
 | `attribute_parses_as_messages` | The attribute parses as JSON to a message list. The list is complete and ordered, and each message matches by named keys. |
 | `attribute_parses_as_object` | The attribute parses as a JSON object equal to the written mapping. Exact, since the object is the caller's extras. |
 | `attribute_does_not_contain` | `{<key>: {forbidden_substring_kind: synthetic_base64_prefix}}`: the attribute does not contain the first 64 characters of the base64 data the case synthesized. |
-| `links` | Every OTel link on the span (complete), each entry matched on `target_trace_id`. |
+| `links` | Every OTel link on the span (complete, unordered), each entry matched on `target_trace_id`. |
 | `link_count` | The number of OTel links on the span. |
 | `children` | Every child span (complete, unordered). |
 | `absent_keys` | Span fields that must be absent. |
@@ -912,11 +913,11 @@ either way is also made by an ungated case or by a case gated on the capability'
 | Fixture | Change |
 |---|---|
 | llm-provider 021, 026 | Split. A case gated on `llm_strict_native_schema` keeps the exact body with `strict: true`. The ungated case asserts the native `response_format` with `expected_wire_request_includes`, its schema copy exact and `strict` left out, and keeps 021's parsed value. |
-| llm-provider 027 | Gated on `llm_prompt_augmentation_fallback`, and its header's "MUST fall back" becomes SHOULD. Its call asserts `model` with `expected_wire_request_includes` and the missing `response_format` with `expected_wire_request_absent_keys: [response_format]`. It leaves the messages unasserted, since §8.1.5.1 lets the directive be appended or merged into an existing system message. |
+| llm-provider 027 | Split into two cases on the same inputs. The fallback case is gated on `llm_prompt_augmentation_fallback`, and its header's "MUST fall back" becomes SHOULD. Its call asserts `model` with `expected_wire_request_includes` and the missing `response_format` with `expected_wire_request_absent_keys: [response_format]`. It leaves the messages unasserted, since §8.1.5.1 lets the directive be appended or merged into an existing system message. Without the fallback, §8.1.5's native request is the default and the mock's response is the same, so an ungated case asserts what holds either way: the response, its parsed value, and that the caller's messages are unmodified. |
 | llm-provider 051 | The fallback directive's placement is left open the same way: `expected_wire_request_includes` asserts the native structured-output fields absent. |
 | llm-provider 041 | Gated on `anthropic_fallback_tool_coercion`. `expected_wire_request_includes` asserts the synthetic tool's input schema, exact, and the forcing `tool_choice`, with a `<tool_name_X>` token tying the two names. `expected_wire_request_absent_keys: [output_config]` asserts that the native field is missing. It leaves the description, which §8.2.5.1 does not require, unasserted. Its mock answers through `<request_tool_choice_name>`. |
 | llm-provider 059 (three cases), 071 | `raw_check` removed from streamed calls. 071's claim that the terminal usage block survives verbatim stays with its named claim, which the following proposal settles. |
-| observability 161 | The eight cases that expect the `schema_not_honored` record (1, 3, 12, 13, 14, 15, 18 and 19) are gated on `llm_strict_native_schema: true`. Each gains a twin gated on `false`, appended as cases 20 to 27. A twin keeps its case's other assertions, and asserts the `native_unenforced` path and no record, which observability §5.5.7 forbids off the native path. The eight native cases that expect no record (2, 4, 5, 6, 7, 9, 16 and 17) hold on either path, so they stay ungated. Each asserts the event's `structured_output_path` and the span's path attribute with one shared `<path_X>` token, since either value can be right but the two must agree. `prompt_augmentation_path_absent` is gated on `llm_prompt_augmentation_fallback` and drops its `input_messages` assertion, whose directive position §8.1.5.1 leaves open. |
+| observability 161 | The eight cases that expect the `schema_not_honored` record (1, 3, 12, 13, 14, 15, 18 and 19) are gated on `llm_strict_native_schema: true`. Each gains a twin gated on `false`, appended as cases 20 to 27. A twin keeps its case's other assertions, and asserts the `native_unenforced` path and no record, which observability §5.5.7 forbids off the native path. The eight native cases that expect no record (2, 4, 5, 6, 7, 9, 16 and 17) hold on either path, so they stay ungated. Each asserts the event's `structured_output_path` and the span's path attribute with one shared `<path_X>` token, since either value can be right but the two must agree. `prompt_augmentation_path_absent` is gated on `llm_prompt_augmentation_fallback` and drops its `input_messages` assertion, whose directive position §8.1.5.1 leaves open. An ungated companion on the same inputs, appended as case 28, asserts what holds without the fallback too: the `structured_output_invalid` error, its category on the span and the failed event, the event's `finish_reason`, and the path through a shared `<path_X>` token. Whether the record is emitted there depends on `llm_strict_native_schema`, so it stays unasserted. |
 | observability 022, 031, 032, 033, 134, 136 | The trace name, whose default observability §8.6 only RECOMMENDS, becomes `"<any-string>"`. |
 | observability 130 | Split. A case gated on `langfuse_token_budget_warning_level` asserts the `WARNING` level and a `statusMessage` of `"<any-string>"`; §8.4.3 gives the message's text only as an example. The MUST token-budget metadata stays ungated. |
 | observability 039 | Its third case sets `concurrency: 1`, so the last writer it asserts is fixed. |
@@ -996,8 +997,8 @@ These are corrected with no change to any assertion:
   - 130's header, case description and sidecar, which say `statusMessage` MUST name the exceeded bound;
   - 161's header, which says every request carries `strict: true`, and the `prompt_augmentation_path_absent`
     description;
-  - 161's sidecar: its case table and failure list, which the twins and the shared path token change; the line on
-    case 8's `input_messages`; and the claim that fixture 027 asserts the directive references the schema.
+  - 161's sidecar: its case table and failure list, which the new cases and the shared path token change; the
+    line on case 8's `input_messages`; and the claim that fixture 027 asserts the directive references the schema.
 - **pipeline-utilities:**
   - the comments allowing an assertion to be skipped: the YAML comments in 018 and 020 and the sidecars of 007,
     016 and 021;
@@ -1033,7 +1034,8 @@ checks:
   stay until the following proposal settles named claims. An implementation that emitted extra spans, events,
   requests, wire members or metric recordings, or reported an error's category inconsistently, can now be caught.
 - **Fixtures** change as listed in §6, about 180 files. No fixture is added or retired, though some cases are
-  split so that only their SHOULD part is gated, and observability 161 gains eight cases for the non-strict path.
+  split so that only their SHOULD part is gated. observability 161 gains nine cases: eight for the non-strict path
+  and an ungated companion to its prompt-augmentation case.
 
 The change is MINOR: it changes conformance expectations, which GOVERNANCE.md routes through a proposal, and
 pre-1.0 MINOR bumps may carry such changes. conformance-adapter's `Latest` advances, and so does observability's,
