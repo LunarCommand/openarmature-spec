@@ -34,8 +34,9 @@
 #
 # WHAT 043 ADDS over 037 / 038. OpenAI /v1/embeddings REPORTS usage
 # (`usage: {prompt_tokens, total_tokens}`), so this is the FIRST §8.3 fixture
-# to exercise §8 step 4's SUM-input_tokens branch (037 and 042 sum Cohere's
-# billed_units; 038 is the usage=null branch): per-chunk prompt_tokens
+# to exercise §8 step 4's SUM-input_tokens branch (037 sums Cohere's
+# billed_units, and 042 shows a malformed chunk figure nulling that sum; 038
+# is the usage=null branch): per-chunk prompt_tokens
 # 10 + 20 + 5 sum to input_tokens 35. And the
 # chunk-and-stitch `raw` here is a LIST of per-chunk response OBJECTS (the
 # {object, data, model, usage} dicts) — distinct from 038's list of bare
@@ -58,19 +59,20 @@
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 015's header (the chunk-and-stitch
-# path — expected_wire_request as a LIST of request bodies one per chunk in
-# arrival order, expected_wire_request_count pinning the request count,
-# mock_* entries dispatched one per request in arrival order) and 023's
+# path, mock_* entries dispatched one per request in chunk order) and 023's
 # header (mapping: openai, openai_embedding_provider construction block, the
 # OpenAI /v1/embeddings request `{"model", "input": [str]}` + `{object,
 # data: [{object, index, embedding}], model, usage}` response shapes,
-# Authorization: Bearer header, expected_wire_request_absent_keys). This
-# fixture adds the openai_embedding_provider `chunk_size` TEST-ONLY cap
-# override documented above. The harness MUST capture every outbound
-# /v1/embeddings request, assert the count matches the list length, and
-# compare each captured body key-by-key against the corresponding list
-# entry; mock_embedding entries are dispatched one per request in arrival
-# order, each the OpenAI response object for that chunk.
+# Authorization: Bearer header). The wire-request assertions are defined in
+# conformance-adapter §5.16. Here expected_wire_request is a LIST of request
+# bodies, one per chunk in chunk order, and expected_wire_request_count pins
+# the request count. This fixture adds the openai_embedding_provider
+# `chunk_size` TEST-ONLY cap override documented above. The harness MUST
+# capture every outbound /v1/embeddings request, assert the count matches
+# the list length, and compare each captured body with its list entry as
+# conformance-adapter §5.16 defines; mock_embedding entries are dispatched
+# one per request in chunk order, each the OpenAI response object for that
+# chunk.
 
 mapping: openai
 
@@ -123,7 +125,7 @@ cases:
     edges:
       - {from: embed_node, to: END}
     initial_state: {}
-    # One /v1/embeddings body per chunk, in arrival order. `input` sizes
+    # One /v1/embeddings body per chunk, in chunk order. `input` sizes
     # 2, 2, 1; identical per-call params on each (model present; dimensions,
     # encoding_format, input_type absent on every chunk).
     expected_wire_request:
@@ -137,7 +139,7 @@ cases:
     expected_wire_request_absent_keys: [dimensions, encoding_format, input_type, task]
     expected_wire_headers:
       Authorization: "Bearer test-openai-key"
-    # One OpenAI response object per chunk, in arrival order. `data` emitted
+    # One OpenAI response object per chunk, in chunk order. `data` emitted
     # out of within-chunk order (index 1 before 0) to make the input-order
     # mapping load-bearing; first embedding component == absolute input
     # index / 10. Each chunk reports usage.prompt_tokens so the stitch sums;
@@ -190,9 +192,7 @@ cases:
             - [0.2, 0.5]
             - [0.3, 0.5]
             - [0.4, 0.5]
-          vectors_length: 5
           dimensions: 2
-          inner_vector_lengths_all_equal: 2
           model: text-embedding-test
           # OpenAI embeddings carry no top-level id; the §8 "first chunk's
           # id" over a stream of no-ids is null (like TEI 038, unlike Cohere
@@ -301,7 +301,7 @@ cases:
     expected_wire_request_count: 2
     expected_wire_request_absent_keys: [dimensions, encoding_format, input_type, task]
     # Chunk A succeeds; chunk B 400s on the token ceiling. Dispatched one per
-    # request in arrival order.
+    # request in chunk order.
     mock_embedding:
       - status: 200
         body:

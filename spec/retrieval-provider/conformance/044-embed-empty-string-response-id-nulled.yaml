@@ -30,11 +30,13 @@
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 001's header (calls_embed /
-# mock_embedding), 032's header (mapping: cohere, cohere_embedding_provider,
-# the Cohere /v2/embed request + keyed-by-type response shapes), and 040's
-# header (typed_observers: [{name, kind: typed_event_collector}] +
-# expected.observers.<name>.contains_event asserting an EmbeddingEvent's
-# fields). This fixture reuses that vocabulary for the empty-string-id edge.
+# mock_embedding) and 032's header (cohere_embedding_provider, the Cohere
+# /v2/embed request + keyed-by-type response shapes). `mapping:` is defined in
+# conformance-adapter §5.15 and the wire-request assertions in §5.16. The
+# typed-event collector directives (typed_observers: [{name, kind:
+# typed_event_collector}] + expected.observers.<name>.contains_event asserting
+# an EmbeddingEvent's fields) are defined in conformance-adapter §5.5. This
+# fixture reuses that vocabulary for the empty-string-id edge.
 
 mapping: cohere
 
@@ -101,9 +103,7 @@ cases:
           vectors:
             - [0.01, 0.02, 0.03, 0.04]
             - [0.11, 0.12, 0.13, 0.14]
-          vectors_length: 2
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: cohere-embed-test
           # Empty-string id => not present => null. NOT surfaced as "".
           response_id: null

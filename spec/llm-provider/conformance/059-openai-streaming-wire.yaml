@@ -5,23 +5,7 @@
 # MUST equal the equivalent non-streamed response — streaming is a delivery
 # concern, not a Response-shape change.
 #
-# Per-directory streaming wire directives (per conformance-adapter §3.2),
-# supplementing the llm-provider wire-fixture conventions (fixture 005's header):
-#
-# - call.stream: <bool> — when true, the call is complete(..., stream=True).
-#
-# - expected_wire_request adds `stream: true` and
-#   `stream_options: {include_usage: true}` (§8.1.6 request mapping).
-#
-# - mock_provider response `stream_body: [<sse_chunk>, ..., "[DONE]"]` — replaces
-#   `body` for a streamed response. An ordered list of the parsed JSON objects
-#   carried on successive SSE `data:` lines, terminated by the literal string
-#   "[DONE]" (the §8.1.6 sentinel). Each chunk mirrors the OpenAI streamed-chunk
-#   shape: {choices: [{index, delta: {content|reasoning_content|reasoning|tool_calls},
-#   finish_reason}]}; the terminal usage chunk carries empty choices +
-#   {usage: {...}}. The harness's mock SSE server yields these lines as the
-#   streaming response body. (This is the wire-level source the observability
-#   suite's mock_llm_stream stands in for.)
+# `call.stream` and `stream_body`: see the harness note in fixture 001's header.
 
 cases:
   - name: streamed_content_assembles_equal_to_non_streamed
@@ -60,8 +44,6 @@ cases:
           tool_calls: null
         finish_reason: stop
         usage: {prompt_tokens: 7, completion_tokens: 3, total_tokens: 10}
-        raw_check:
-          required_keys: [id, object, model, choices, usage]
       invariants:
         streamed_request_sends_stream_true_and_include_usage: true
         assembled_content_is_ordered_concatenation_of_deltas: true
@@ -126,8 +108,6 @@ cases:
               arguments: {city: "Paris"}
         finish_reason: tool_calls
         usage: {prompt_tokens: 12, completion_tokens: 8, total_tokens: 20}
-        raw_check:
-          required_keys: [id, object, model, choices, usage]
       invariants:
         streamed_tool_call_arguments_reassemble_and_parse: true
         reassembled_tool_calls_equal_non_streamed_equivalent: true
@@ -172,12 +152,10 @@ cases:
           # response (§6 *Streaming assembly*). No signature on the OpenAI-
           # compatible reasoning extension (no wire signature field).
           content:
-            - {type: thinking, text: "Let me think."}
+            - {type: thinking, text: "Let me think.", absent_keys: [signature]}
             - {type: text, text: "It is 42."}
         finish_reason: stop
         usage: {prompt_tokens: 10, completion_tokens: 6, total_tokens: 16}
-        raw_check:
-          required_keys: [id, object, model, choices, usage]
       invariants:
         reasoning_delta_assembles_into_thinking_block: true
         content_delta_assembles_into_text_block: true

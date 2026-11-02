@@ -2,9 +2,10 @@
 # vendor-specific error type or code. The field contract is permissive:
 # either a vendor error code or an upstream exception class name
 # satisfies it, and null is valid when no impl-side type is available.
-# These cases assert the PERMISSIVE contract — error_type is a non-empty
-# string (populated) or null — not a verbatim per-style value, so an impl
-# that picks either sourcing style conforms.
+# Cases 1 and 2 assert the PERMISSIVE contract: error_type is a non-empty
+# string, not a verbatim per-style value, so an impl that picks either
+# sourcing style conforms. Case 3 does not assert error_type, because the
+# two styles give different results when the body carries no type.
 
 cases:
   - name: error_type_populated_with_vendor_code_style
@@ -92,11 +93,13 @@ cases:
 
   - name: error_type_null_when_no_impl_side_type_available
     description: |
-      Provider raises a §7 category exception with no impl-side type
-      to surface. The typed event carries error_category populated
-      (always required) and error_type=null. Spec text mandates
-      error_type is OPTIONAL — null is valid when no vendor or
-      class-level detail is available.
+      Provider raises a §7 category exception and the mocked body
+      carries no vendor error type. The typed event carries the
+      always-required error_category. The case does not assert
+      error_type: an implementation that sources it from the vendor
+      body has nothing to report and leaves it null, while one that
+      sources it from the exception class name has a value. Both
+      sourcing styles are allowed (graph-engine §6).
     state:
       fields:
         answer:
@@ -114,7 +117,7 @@ cases:
     mock_llm:
       - status: 503
         body:
-          # No `error.type` field — the impl surfaces error_type=null.
+          # No `error.type` field in the vendor body.
           error: {message: "service unavailable"}
     typed_observers:
       - name: collector
@@ -129,4 +132,3 @@ cases:
             event_type: LlmFailedEvent
             fields:
               error_category: provider_unavailable
-              error_type: null

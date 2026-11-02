@@ -17,6 +17,11 @@ manager:
 
 calls:
   - target: manager
+    operation: fetch
+    name: minimal
+    label: production
+    capture_as: prompt
+  - target: manager
     operation: get
     name: minimal
     label: production
@@ -24,9 +29,14 @@ calls:
     capture_as: rendered
 
 expected:
+  # sampling MUST be absent (null or missing) on the fetched Prompt and on
+  # the rendered PromptResult; the manager MUST NOT synthesize a default
+  # sampling config at either layer.
+  prompt:
+    name: minimal
+    label: production
+  prompt_absent_keys: [sampling]
   rendered:
     name: minimal
     label: production
-    # sampling MUST be absent / null / None per language idiom; manager
-    # MUST NOT synthesize a default sampling config.
-    sampling_absent: true
+  rendered_absent_keys: [sampling]

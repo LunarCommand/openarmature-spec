@@ -55,13 +55,15 @@ expected:
       - {step: 0, phase: started,   node_name: target, attempt_index: 0, namespace: [target],
          pre_state: {v: 0, trace: []}, parent_states: []}
       - {step: 0, phase: completed, node_name: target, attempt_index: 0, namespace: [target],
-         pre_state: {v: 0, trace: []}, error: node_exception, parent_states: []}
+         pre_state: {v: 0, trace: []}, error: {category: node_exception}, parent_states: [],
+         absent_keys: [post_state]}
       - {step: 0, phase: started,   node_name: target, attempt_index: 1, namespace: [target],
          pre_state: {v: 0, trace: []}, parent_states: []}
       - {step: 0, phase: completed, node_name: target, attempt_index: 1, namespace: [target],
-         pre_state: {v: 0, trace: []}, error: node_exception, parent_states: []}
+         pre_state: {v: 0, trace: []}, error: {category: node_exception}, parent_states: [],
+         absent_keys: [post_state]}
       - {step: 0, phase: started,   node_name: target, attempt_index: 2, namespace: [target],
          pre_state: {v: 0, trace: []}, parent_states: []}
       - {step: 0, phase: completed, node_name: target, attempt_index: 2, namespace: [target],
          pre_state: {v: 0, trace: []},
-         post_state: {v: 7, trace: ["target"]}, parent_states: []}
+         post_state: {v: 7, trace: ["target"]}, parent_states: [], absent_keys: [error]}

@@ -31,4 +31,6 @@ expected_error:
   # (b raised before returning any update) and not c's (c never ran).
   recoverable_state:
     log: ["a"]
+
+expected:
   execution_order: [a, b]

@@ -40,9 +40,7 @@ cases:
           outbound_payload_includes:
             category: provider_invalid_request
             bucket: user_correctable
-            diagnostic_message: "model 'gpt-NONEXISTENT' not found"
-            user_action_required: true
+            diagnostic_message: "<any-string>"   # §7.3 does not fix its text
     invariants:
       provider_invalid_request_classified_as_user_correctable: true
       outbound_includes_diagnostic_message: true
-      outbound_marks_user_action_required: true

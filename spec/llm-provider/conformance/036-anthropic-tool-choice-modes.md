@@ -11,7 +11,7 @@ Verifies the §8.2.1 `tool_choice` mapping across all five shapes.
 **Cases:**
 
 1. `tool_choice_default_omits_wire_field` — no `tool_choice` supplied; the wire body omits the
-   field entirely (asserted via `tool_choice_absent`).
+   field entirely (asserted via `expected_wire_request_absent_keys: [tool_choice]`).
 2. `tool_choice_auto` — `{type: auto}`.
 3. `tool_choice_required_maps_to_any` — spec `"required"` becomes Anthropic `{type: any}`; mock
    returns a `tool_use` response → `finish_reason: "tool_calls"`.

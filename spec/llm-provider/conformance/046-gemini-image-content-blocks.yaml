@@ -40,5 +40,5 @@ calls:
         maxOutputTokens: 128
     expected:
       response:
-        message: {role: assistant, content: "Two images received.", tool_calls: null}
+        message: {role: assistant, content: [{type: text, text: "Two images received."}], tool_calls: null}
         finish_reason: stop

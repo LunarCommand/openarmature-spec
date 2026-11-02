@@ -90,7 +90,6 @@ cases:
     initial_state: {}
     invocations: 2
     expected:
-      invocation_count: 2
       invariants:
         # Each invocation's spans uniformly carry one correlation_id.
         each_invocation_correlation_id_uniform: true

@@ -5,10 +5,36 @@
 #
 #   - The harness instantiates an in-memory OTel SpanExporter and a private
 #     TracerProvider for openarmature spans (per spec §6 TracerProvider
-#     isolation). For fixture 010, the harness also installs an in-memory
-#     LogRecordExporter wired through the OTel Logs Bridge.
+#     isolation). For a case that asserts `log_records`, the harness also
+#     captures log records through an in-memory LogRecordExporter wired
+#     through the OTel Logs Bridge (conformance-adapter §6.3).
 #   - Graph definition follows the pipeline-utilities/graph-engine fixture
 #     conventions (state, entry, nodes, edges, initial_state).
+#   - Default bound model: a `calls_llm` that names no `model`, and every
+#     `calls_llm_from_wrapper` call, is bound to `test-model`. A case that
+#     asserts another request model MUST name it on `calls_llm`.
+#   - Streaming inputs, for the streaming fixtures (111, 113 to 118 and
+#     161; 112 checks the path without them). They are harness stand-ins for
+#     wire streaming: the spec tests the assembled content against the
+#     concatenated deltas, not wire-incremental delivery (llm-provider §5).
+#     * `calls_llm.stream: <bool>`: when true, the node calls complete() with
+#       `stream` set, so the provider emits per-chunk LlmTokenEvents
+#       (graph-engine §6). False or absent keeps the atomic path, which
+#       emits no token events.
+#     * `mock_llm_stream: [[<chunk>, ...], ...]`: replaces `mock_llm` for
+#       streamed calls. It holds one entry per complete() call, in the order
+#       the calls are made; each entry is the ordered list of SSE chunks the
+#       mock provider yields for that call. A chunk has the OpenAI
+#       streamed-chunk shape, {choices: [{index, delta: {content: "..."} |
+#       {reasoning_content: "..."} | {reasoning: "..."} | {tool_calls:
+#       [{index, id?, function: {name?, arguments?}}]}, finish_reason:
+#       <reason|null>}]}, and the terminal usage chunk carries empty choices
+#       and {usage: {prompt_tokens, completion_tokens, total_tokens}}. A chunk
+#       entry MAY instead be the mid-stream failure marker {error: {status:
+#       <int>}}, defined in fixture 114's header. A call under call-level
+#       retry wraps its entry in `wire_attempts:`, one chunk list per wire
+#       attempt, defined in fixture 116's header. llm-provider §8.1.6 pins the
+#       real SSE source, which llm-provider fixture 059 exercises.
 #   - Optional config blocks:
 #     * `caller_correlation_id` — string passed to invoke(); when omitted, the
 #       framework auto-generates a UUIDv4 (spec §3.1).
@@ -33,13 +59,13 @@
 #       same-credential client before the impl constructs, defeating isolation via
 #       the SDK singleton) and `accept_shared_provider` (bool — the single caller
 #       opt-out).
-#     * `adapter_capabilities` — {langfuse_bound_provider_detection: bool}, declared
-#       by the adapter (proposal 0116): whether its SDK surface lets it establish the
-#       Langfuse client's bound provider. Non-portable, so per-adapter.
-#     * `requires_capability` — {langfuse_bound_provider_detection: bool}, per case
-#       (proposal 0116): the case is asserted only against adapters whose declaration
-#       matches (raise cases require detection; the suppress case requires its
-#       absence; a case without it applies to all).
+#     * `adapter_capabilities` / `requires_capability`: the capability gates,
+#       defined in conformance-adapter §5.17. The adapter declares its
+#       capabilities and a case states the ones it requires. §5.17 defines
+#       `langfuse_bound_provider_detection` (fixture 158),
+#       `llm_strict_native_schema` and `llm_prompt_augmentation_fallback`
+#       (fixture 161). Fixture 022's header defines
+#       `langfuse_token_budget_warning_level`.
 #   - Expected output:
 #     * `expected_construction_error` — {category}, a TOP-LEVEL case key (sibling of
 #       `expected:`, like `expected_compile_error`; proposal 0116, fixture 158):
@@ -49,12 +75,34 @@
 #       `expected.payload_bearing_langfuse_observations_on_global` — for fixture 158,
 #       payload-scoped variants of the leak assertions (the §6.4 fake distinguishes a
 #       payload-bearing observation from a payload-free one).
-#     * `expected.log_records[].level` — asserts the log record's OTel severity (e.g.
-#       WARNING); proposal 0116, fixture 158.
-#     * `expected.span_tree` — hierarchical span structure with name,
-#       attributes (subset assertions), status, optional links, and children.
-#     * `expected.log_records` — for fixture 010, list of expected log
-#       records with attribute assertions.
+#     * `expected.span_tree` and `expected.traces`: defined in
+#       conformance-adapter §5.8.
+#     * `expected.span_tree_private` / `expected.span_tree_global`: a
+#       `span_tree` over openarmature's private exporter, or over the exporter
+#       the harness installs on the global TracerProvider when
+#       `caller_global_otel_active` is set. A span whose parent is on the
+#       other provider is a root.
+#     * `expected.detached_trace_count`: the number of OTel traces, other than
+#       the invocation's own, that hold spans from the call.
+#     * `expected.invocation_id`: the `openarmature.invocation_id` attribute of
+#       the call's invocation span.
+#     * `expected.response_usage`: the usage record of the case's single
+#       `complete()` response, matched by the keys it names
+#       (conformance-adapter §8.4). It asserts the case made exactly one call.
+#     * `expected.direct_call_result`: `{value, type, exception}` for a
+#       `direct_call:` made outside any invocation. `value` is exact.
+#       `type: immutable_mapping` classifies the returned mapping as one the
+#       caller cannot mutate. `exception: null` asserts nothing was raised.
+#     * `expected.determinism_check`: `{compare_runs, ignore_attributes,
+#       compare, require_equal}`. With `require_equal: true`, the
+#       private-exporter spans of the two runs that `compare_runs` names are
+#       equal in each facet `compare` lists, with sibling spans compared
+#       unordered. Attributes that `ignore_attributes` lists are left out,
+#       and a trailing `*` in an entry matches any suffix.
+#     * `expected.per_invocation`: a container that scopes each inner block to
+#       the named invocation of the case. Its inner keys are named claims,
+#       which an adapter implements as conformance-adapter §5.9 requires.
+#     * `expected.log_records`: defined in conformance-adapter §5.5.
 #     * `expected.no_openarmature_spans_on_global` — for fixture 005, asserts
 #       openarmature didn't emit through the global provider.
 #     * `expected.no_langfuse_observations_on_global` — for fixture 157, asserts
@@ -64,14 +112,20 @@
 #       provider (the other forbidden shared-provider spelling).
 #     * `expected.langfuse_observations_on_global` — for fixture 157, asserts a
 #       Langfuse observation DID reach the global provider (mode-a non-mutation).
+#     * `expected.langfuse_trace` / `expected.langfuse_traces` and their
+#       observation entries: defined in fixture 022's header.
 #
-# Attribute placeholder strings:
+# Attribute placeholder strings (conformance-adapter §5.10):
 #   - `<uuid>` matches any canonical UUIDv4 (36 chars, hyphenated).
 #   - `<any-string>` matches any non-empty string.
-#   - `<trace_id_X>` matches an opaque trace_id used for parent-link
-#     correlation across the fixture's spans (the harness binds X to the
-#     actual trace_id on first occurrence and asserts equality on later
-#     occurrences).
+#   - A binding token `<name_X>` matches any present, non-null value, and
+#     every occurrence of the same token in a case must hold the same value.
+#     Two different tokens may hold equal values. This suite's tokens are
+#     listed in conformance-adapter §5.10, among them:
+#     * `<trace_id_X>`: an opaque trace_id, used for parent-link correlation
+#       across the fixture's spans and traces.
+#     * `<path_X>` (fixture 161): a call's `structured_output_path`, which its
+#       typed event and its span's path attribute must share.
 
 state:
   fields:

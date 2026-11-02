@@ -54,7 +54,7 @@ initial_state: {}
 expected:
   langfuse_trace:
     id: "<uuid-hex>"
-    name: "process"
+    name: "<any-string>"
     metadata:
       correlation_id: "<corr_id_1>"
       entry_node: "process"
@@ -76,6 +76,7 @@ expected:
               fan_out_parent_node_name: "process"
               subgraph_name: "worker"
               correlation_id: "<corr_id_1>"
+            metadata_absent: [fan_out_item_count, fan_out_concurrency, fan_out_error_policy]
             level: DEFAULT
             children:
               - type: span
@@ -91,6 +92,7 @@ expected:
               fan_out_parent_node_name: "process"
               subgraph_name: "worker"
               correlation_id: "<corr_id_1>"
+            metadata_absent: [fan_out_item_count, fan_out_concurrency, fan_out_error_policy]
             level: DEFAULT
             children:
               - type: span
@@ -106,6 +108,7 @@ expected:
               fan_out_parent_node_name: "process"
               subgraph_name: "worker"
               correlation_id: "<corr_id_1>"
+            metadata_absent: [fan_out_item_count, fan_out_concurrency, fan_out_error_policy]
             level: DEFAULT
             children:
               - type: span

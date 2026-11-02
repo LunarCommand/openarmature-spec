@@ -1,14 +1,17 @@
 # Checkpoint record shape (§10.2): the saved record carries invocation_id,
-# correlation_id, state, completed_positions, parent_states, last_saved_at,
-# and schema_version. fan_out_progress is reserved (absent in v1 since this
-# fixture has no fan-out).
+# correlation_id, state, completed_positions, parent_states and
+# last_saved_at. Its schema_version is not asserted: the state declares no
+# version, so the record holds an implementation-defined sentinel.
+# fan_out_progress is reserved (absent in v1 since this fixture has no
+# fan-out).
 
 cases:
   - name: record_carries_required_fields
     description: |
       Two-node linear graph; in-memory Checkpointer; caller-supplied
       correlation_id. Run to completion. Inspect the latest saved record;
-      assert all §10.2 required fields are present and well-formed.
+      assert the §10.2 required fields other than schema_version are
+      present and well-formed.
     state:
       fields:
         x:
@@ -44,8 +47,6 @@ cases:
         fan_out_progress: null
         # last_saved_at: present, monotonic across saves.
         last_saved_at: "<timestamp>"
-        # schema_version: implementation-defined string.
-        schema_version: "<any-string>"
       invariants:
         invocation_id_is_uuidv4: true
         last_saved_at_monotonic_across_saves: true

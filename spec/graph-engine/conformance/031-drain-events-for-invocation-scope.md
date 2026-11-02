@@ -2,10 +2,10 @@
 
 The drain primitive scopes strictly to the supplied `invocation_id`.
 Events tagged with a different `invocation_id` do not affect the
-drain's completion or appear in the per-invocation accumulator bucket.
-Two serial invocations of the same compiled graph demonstrate the
-scoping: each invocation gets a fresh `invocation_id` (per §5.1) and
-each terminal-node drain sees only its own invocation's events.
+drain's completion. The accumulator keeps one bucket per `invoke()`
+call. Two serial invocations of the same compiled graph demonstrate
+the scoping: each invocation gets a fresh `invocation_id` (per §5.1)
+and each terminal-node drain sees only its own invocation's events.
 
 **Spec sections exercised:**
 
@@ -27,14 +27,15 @@ each terminal-node drain sees only its own invocation's events.
 - The terminal-node drain in invocation `first` returns with the
   accumulator bucket containing only `first`'s events.
 - The terminal-node drain in invocation `second` returns with the
-  accumulator bucket containing only `second`'s events — `first`'s
-  events do NOT bleed into `second`'s bucket.
+  accumulator bucket containing only `second`'s events.
 
 **What fails:**
 
-- The accumulator bucket for either invocation contains events from
-  the OTHER invocation — would mean the scoping is global rather than
-  per-`invocation_id`.
+- The drain's scoping is global rather than per-`invocation_id`. The
+  per-call buckets cannot show this, since an event is attributed to
+  the call that dispatched it; the
+  `drain_scopes_strictly_to_supplied_invocation_id` named claim states
+  it.
 - Both invocations share the same `invocation_id` — would mean the
   per-invocation identity isn't being minted afresh per `invoke()`
   (a §5.1 violation, surfaced via this drain test).

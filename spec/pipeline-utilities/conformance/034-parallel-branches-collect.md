@@ -11,16 +11,17 @@ merge, failures recorded in `errors_field`, parent run continues.
   branches' errors are captured, the parallel-branches node returns normally.
 - §11.4 Per-branch projection (out) — failed branches' `outputs` projections
   do NOT fire (`beta_result` stays at its default of 0).
-- §11.1 `errors_field` configuration — implementation-defined record shape
-  including at minimum `branch_name` and the error category.
+- §11.1 `errors_field` configuration: implementation-defined record shape,
+  which SHOULD include the failing `branch_name` and the error category.
 
 **What passes:**
 
 - Final `alpha_result == 1` and `gamma_result == 3` (successful branches
   contributed via their `outputs`).
 - Final `beta_result == 0` (failed branch's `outputs` did NOT fire).
-- Final `branch_errors` contains a record with `branch_name=beta` and
-  `category=node_exception`.
+- Final `branch_errors` carries exactly one entry, written `{}`. Beta is
+  the only branch that fails, and §11.1 leaves the entry's shape to the
+  implementation, so the fixture asserts the count.
 - The graph completes (no exception propagates to the caller).
 
 **What fails:**

@@ -16,7 +16,7 @@ nodes, both of which the spec forbids.
 
 **What passes:**
 
-- All three node events have `attempt_index == 0`.
+- All six node events, a `started` and a `completed` event per node, have `attempt_index == 0`.
 - Step counter increments per node (0, 1, 2) — same as before the §6 modification.
 - All other event fields match the linear-graph baseline (matches fixture 012's events
   except for the new `attempt_index` field).

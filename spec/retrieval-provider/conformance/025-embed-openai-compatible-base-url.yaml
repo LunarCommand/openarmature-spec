@@ -21,15 +21,10 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 023's header (mapping: openai,
 # openai_embedding_provider, the OpenAI /v1/embeddings request + response
-# shapes, expected_wire_request / expected_wire_headers). New directive:
+# shapes).
 #
-# - expected_wire_url (case-level): the fully-resolved request URL the
-#   mapping MUST POST to (origin from openai_embedding_provider.base_url +
-#   the mapping's fixed /v1/embeddings route). The harness captures the
-#   outbound request URL and asserts an exact match. Introduced here
-#   because §8.3's base_url is the first construction param whose override
-#   must be observed on the wire route (TEI's base_url in 013-017 is host
-#   placeholder only; this fixture makes the route load-bearing).
+# - expected_wire_url and the other wire-request assertions: defined in
+#   conformance-adapter §5.16.
 
 mapping: openai
 
@@ -90,9 +85,7 @@ cases:
           vectors:
             - [0.01, 0.02, 0.03, 0.04]
             - [0.11, 0.12, 0.13, 0.14]
-          vectors_length: 2
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: bge-base-en-test
           response_id: null
           usage:

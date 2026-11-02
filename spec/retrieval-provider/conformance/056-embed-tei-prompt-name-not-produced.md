@@ -25,16 +25,16 @@ fixture with a differently-configured provider.
 **Cases:**
 
 1. `extras_prompt_name_rides_untouched_on_client_side_prefix_path` — `input_type: query` with extras
-   `prompt_name: "passage"`, against a provider with prefixes and no prompt map. The mapping prefixes the
-   input and sends no `prompt_name`, so the key is unmanaged and the extras value rides untouched.
+   `prompt_name: "passage"`, against a provider with prefixes and no prompt map. The mapping sends no
+   `prompt_name` of its own, so the key is unmanaged and the extras value rides untouched.
 2. `no_extras_prompt_name_absent_on_client_side_prefix_path` — the control. The same call without extras,
    asserting the mapping genuinely produces no `prompt_name`. Without it, case 1 could pass against an
    implementation that produced `prompt_name` and happened to agree with the extras value.
 
 **What passes:**
 
-- Both cases prefix the input client-side. Case 1's wire carries the caller's `prompt_name`; case 2's
-  carries none.
+- Case 1's wire carries the caller's `prompt_name`; case 2's carries none. Neither case asserts the
+  input, because §8.1 lets the mapping prepend the client-side prefix (a MAY) on this path.
 
 **What fails:**
 

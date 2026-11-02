@@ -73,5 +73,5 @@ calls:
         - {role: user, content: "Are you sure?"}
     expected:
       response:
-        message: {role: assistant, content: "Yes, I'm sure.", tool_calls: null}
+        message: {role: assistant, content: [{type: text, text: "Yes, I'm sure."}], tool_calls: null}
         finish_reason: stop

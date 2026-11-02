@@ -20,13 +20,13 @@ mutated state.
    runs again, stage_b runs again, succeeds this time). Final `results == [7, 9]`.
 2. `instance_middleware_retry_exhausts_then_fail_fast` — `max_attempts: 1` (no retry budget).
    First instance's first attempt fails, retry exhausts immediately, fail_fast cancels the other
-   instance, fan-out raises `node_exception`.
+   instance, and the fan-out raises. The raised error's category is the instance's
+   `provider_rate_limit`.
 
 **What passes:**
 
-- Case 1: final state has both items processed; the inner subgraph re-ran from scratch on retry
-  (the harness MAY assert stage_a fired twice per instance via observer events).
-- Case 2: engine raises `node_exception`; sibling instance was cancelled.
+- Case 1: final state has both items processed, so each instance's retry succeeded.
+- Case 2: the raised error's category is `provider_rate_limit`; sibling instance was cancelled.
 
 **What fails:**
 

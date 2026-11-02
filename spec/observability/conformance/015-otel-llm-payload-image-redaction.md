@@ -33,6 +33,7 @@ base64 bytes appear in the emitted attribute.
 - `openarmature.llm.input.messages` parses to a message list with the image block carrying
   `source: {type: "inline_redacted", byte_count: 4096}`, `media_type: "image/png"`, and
   `detail: "auto"`.
+- The redacted `source` carries no `media_type` (`source_absent_keys`).
 - The synthesized base64 data does not appear anywhere in the attribute string.
 
 **What fails:**

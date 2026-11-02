@@ -30,6 +30,7 @@ implementation-defined; the behavioral contract is that the override is availabl
 - `gen_ai.system: "vllm"` is present on the LLM span (not `"openai"`).
 - `gen_ai.request.model: "test-model"` is unchanged — the override applies only to
   `gen_ai.system`.
+- `openarmature.llm.system` is absent from the span (`attributes_absent`).
 
 **What fails:**
 

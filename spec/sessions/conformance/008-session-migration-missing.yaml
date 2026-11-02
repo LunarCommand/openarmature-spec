@@ -37,8 +37,8 @@ cases:
     expected:
       # The store's record is unchanged (load surfaced the error; no save attempted).
       store_after:
-        load_returns_for_session_id: "s8"
-        loaded_schema_version: "v1"
-        loaded_state: {value: 7}
+        "s8":
+          schema_version: "v1"
+          state: {value: 7}
     invariants:
       node_never_invoked: true

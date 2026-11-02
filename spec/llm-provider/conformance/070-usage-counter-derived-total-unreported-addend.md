@@ -16,7 +16,7 @@ The mock (`mapping: anthropic`) returns `usage: {input_tokens: "abc", output_tok
 - `Response.usage.prompt_tokens` is `null` (malformed `input_tokens`).
 - `Response.usage.completion_tokens` is `7` (sound `output_tokens` stands).
 - `Response.usage.total_tokens` is `null` — the derived total, because its `prompt_tokens` addend is not reported.
-- `complete()` does not raise; `raw.usage` preserves `input_tokens: "abc"` verbatim. `raw_check.required_keys` asserts only that `usage` is **present** on `raw`; the verbatim value is pinned by the adapter-enforced invariant `raw_usage_input_tokens_verbatim_malformed`.
+- `complete()` does not raise; `raw.usage` preserves `input_tokens: "abc"` verbatim. `raw_check.required_keys` lists `usage`, so `raw.usage` must equal the mock body's `usage` exactly; the invariant `raw_usage_input_tokens_verbatim_malformed` states the same claim.
 
 **What fails:**
 

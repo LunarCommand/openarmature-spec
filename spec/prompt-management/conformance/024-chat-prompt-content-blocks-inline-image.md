@@ -38,8 +38,5 @@ the media type as variables at render time.
 - Variable substitution didn't apply to `media_type` — same issue. The §3.1 spec lists
   `media_type` as a template for inline-source blocks (distinct from URL-source where
   `media_type` is literal).
-- The `detail` field (omitted in the fixture, default per llm-provider §3.1.2 / §3.1.3)
-  was synthesized into something other than the spec default — implementations MUST NOT
-  invent values for omitted optional fields.
 - The image block was downgraded to a text block carrying the base64 string as its `text`
   field — implementations MUST preserve the image block type from the template.

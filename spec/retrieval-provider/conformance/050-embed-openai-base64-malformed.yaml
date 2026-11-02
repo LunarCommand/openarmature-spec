@@ -19,8 +19,8 @@
 # Both issue the request (a 200 response with a bad body) and raise on
 # decode, so — unlike a pre-send reject (046/047) — the request IS issued;
 # the error is raised out of the embed call. `mapping: openai` /
-# openai_embedding_provider / expected_error vocabulary per fixture 023 /
-# 003 headers.
+# openai_embedding_provider vocabulary per fixture 023's header; expected_error
+# is defined in conformance-adapter §5.8.
 
 mapping: openai
 

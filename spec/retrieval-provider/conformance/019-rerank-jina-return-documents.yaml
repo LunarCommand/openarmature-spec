@@ -36,10 +36,10 @@
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 006's header (calls_rerank /
-# mock_rerank), 013's / 014's headers (mapping: <name>,
-# expected_wire_request), and 018's header (mapping: jina, the
-# jina_rerank_provider construction block, expected_wire_headers, and
-# Jina's /v1/rerank request + response shapes). No new directive.
+# mock_rerank) and 018's header (mapping: jina, the jina_rerank_provider
+# construction block, and Jina's /v1/rerank request + response shapes).
+# `mapping:` is defined in conformance-adapter §5.15 and the wire-request
+# assertions in §5.16. No new directive.
 
 mapping: jina
 

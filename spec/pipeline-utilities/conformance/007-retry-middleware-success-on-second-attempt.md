@@ -19,9 +19,8 @@ reproducible.
 - Final state is the `success_update`: `{v: 42, trace: ["target"]}`.
 - `execution_order` shows `target` once (one composite "successful execution" from the engine's
   perspective, even though there were 2 attempts).
-- The retry middleware is exercised — the harness MAY assert internal state if it wants, but the
-  externally observable outcome is what matters here. Per-attempt observer events are exercised
-  in fixture 015.
+- The retry middleware is exercised through the externally observable outcome. Per-attempt
+  observer events are exercised in fixture 015.
 
 **What fails:**
 

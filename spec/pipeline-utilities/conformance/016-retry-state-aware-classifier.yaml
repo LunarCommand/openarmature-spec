@@ -77,9 +77,11 @@ cases:
             backoff: {type: deterministic, seconds: 0}
     expected_error:
       # State forbids retry (max_retries_remaining=0). Classifier returns
-      # false on the first failure; node_exception propagates immediately.
-      category: node_exception
+      # false on the first failure, so the node's provider_invalid_request
+      # error propagates immediately.
+      category: provider_invalid_request
       raised_from: target
       message: "boom"
       recoverable_state: {max_retries_remaining: 0, v: 0, trace: []}
+    expected:
       flaky_call_count: 1

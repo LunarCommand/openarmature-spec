@@ -34,11 +34,13 @@ middleware:
         backoff: {type: deterministic, seconds: 0}
 
 expected_error:
-  category: node_exception
+  category: provider_authentication
   raised_from: target
   message: "bad key"
   recoverable_state: {v: 1, trace: []}
-  # The retry middleware MUST not have retried — the engine sees one attempt's
+
+expected:
+  # The retry middleware MUST not have retried: the engine sees one attempt's
   # worth of execution. The harness asserts the flaky_node was invoked exactly
   # once via its internal call counter.
   flaky_call_count: 1

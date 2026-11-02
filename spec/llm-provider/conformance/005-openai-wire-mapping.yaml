@@ -5,15 +5,7 @@
 #   - Response: OpenAI response body → spec Response (with `raw` carrying the
 #     original verbatim).
 #
-# Each case provides:
-#   - The spec-level inputs (`call`)
-#   - The wire JSON the implementation MUST send (`expected_wire_request`)
-#   - The mock response body the harness returns (`mock_provider.responses`)
-#   - The spec Response the implementation MUST return (`expected.response`)
-#
-# The harness MUST capture the implementation's outbound request body and
-# compare to `expected_wire_request` literally (key-by-key; ordering of keys
-# in mappings is not significant).
+# Format and wire assertions: see the harness note in fixture 001's header.
 
 cases:
   - name: simple_text_completion
@@ -202,7 +194,6 @@ cases:
         usage: {prompt_tokens: 5, completion_tokens: 2, total_tokens: 7}
         raw_check:
           # logprobs is a provider-specific extension; MUST appear in raw verbatim.
+          # Listing `choices` asserts that raw.choices equals the mock's
+          # exactly, so raw.choices[0].logprobs is checked.
           required_keys: [id, object, created, model, choices, usage]
-          # Implementations MAY assert raw.choices[0].logprobs is preserved
-          # if they support deep raw assertions. The harness asserts only
-          # top-level key presence by default per the §6 raw contract.

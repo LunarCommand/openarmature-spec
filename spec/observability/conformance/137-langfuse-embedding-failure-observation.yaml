@@ -76,7 +76,9 @@ cases:
                 # error_message is harvested exception text gated by
                 # disable_provider_payload (§5.5.4, proposal 0118), which is true
                 # here; error_type is a classification token and is NOT gated.
-                metadata_absent: [error_message]
+                # openarmature_dimensions and openarmature_response_id come from
+                # a response, and the failed call received none.
+                metadata_absent: [error_message, openarmature_dimensions, openarmature_response_id]
                 children: []
       invariants:
         embedding_failure_renders_error_level: true
@@ -136,6 +138,8 @@ cases:
                   openarmature_input_count: 2
                   error_type: "<any-string>"
                   error_message: "<any-string>"
+                # Response-derived metadata stays absent: no response was received.
+                metadata_absent: [openarmature_dimensions, openarmature_response_id]
                 children: []
       invariants:
         no_output_even_with_payload_flag_off: true

@@ -16,9 +16,8 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 023's header (mapping: openai,
 # openai_embedding_provider construction block, the OpenAI /v1/embeddings
-# request + {object, data, model, usage} response shapes, the
-# expected_wire_request / expected_wire_headers vocabulary cross-ref'd to
-# 013 / 018).
+# request + {object, data, model, usage} response shapes). The
+# wire-request assertions are defined in conformance-adapter §5.16.
 
 mapping: openai
 
@@ -75,9 +74,7 @@ cases:
         embedding_response:
           vectors:
             - [0.01, 0.02, 0.03, 0.04]
-          vectors_length: 1
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: text-embedding-test
           response_id: null
           usage:

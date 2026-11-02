@@ -31,8 +31,7 @@ cases:
             type: object
             properties: {location: {type: string}}
             required: [location]
-    expected_wire_request_checks:
-      tool_choice_absent: true
+    expected_wire_request_absent_keys: [tool_choice]
     mock_provider:
       responses:
         - status: 200

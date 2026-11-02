@@ -12,8 +12,10 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives (per conformance-adapter §3.2). The
 # base calls_embed / mock_embedding directives are defined in 001's
-# header; THIS fixture introduces the §8.X wire-mapping vocabulary that
-# the TEI fixtures (013-017) share. New directives:
+# header; THIS fixture introduces the TEI wire-mapping directives that
+# the TEI fixtures (013 to 017, 038, 047, 055 and 056) share. `mapping:` is
+# defined in conformance-adapter §5.15 and the wire-request assertions in
+# §5.16. New directives:
 #
 # - mapping: tei — selects the §8.1 TEI wire mapping for the fixture
 #   (mirrors llm-provider fixture 033's `mapping: anthropic`). Absent =>
@@ -29,13 +31,9 @@
 #   are the client-side fallback. base_url is a generic placeholder
 #   (no real host).
 #
-# - expected_wire_request (case-level): the request body the mapping
-#   MUST POST to TEI's /embed. The harness captures the outbound request
-#   body and compares key-by-key (mapping key order is not significant),
-#   mirroring the llm-provider wire-fixture convention
-#   (005-openai-wire-mapping). The TEI /embed body is
-#   {"inputs": [str], "prompt_name"?: str, "dimensions"?: int}; a field
-#   absent from expected_wire_request MUST be absent on the wire.
+# - expected_wire_request and the other wire-request assertions are
+#   defined in conformance-adapter §5.16. Under `mapping: tei` the /embed
+#   body is {"inputs": [str], "prompt_name"?: str, "dimensions"?: int}.
 #
 # - mock_embedding entries under `mapping: tei` use TEI's real /embed
 #   response shape: a bare JSON array of vector arrays in input order
@@ -90,9 +88,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.10, 0.20, 0.30, 0.40]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
       observers:
         collector:
           contains_event:
@@ -141,9 +139,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.50, 0.60, 0.70, 0.80]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
       observers:
         collector:
           contains_event:
@@ -195,9 +193,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.50, 0.60, 0.70, 0.80]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
       observers:
         collector:
           contains_event:

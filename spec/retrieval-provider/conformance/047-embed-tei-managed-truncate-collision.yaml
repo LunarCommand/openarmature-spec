@@ -32,7 +32,8 @@
 # client-side; no_embed_request_issued invariant), and 039's header
 # (calls_embed.config.extras — the §2 extras-pass-through bag; where an extras
 # key collides with a mapping-managed wire field, the §6 collision rule
-# governs).
+# governs). The wire-request assertions are defined in conformance-adapter
+# §5.16.
 
 mapping: tei
 
@@ -125,9 +126,7 @@ cases:
         embedding_response:
           vectors:
             - [0.01, 0.02, 0.03, 0.04]
-          vectors_length: 1
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: tei-embed-test
           response_id: null
           usage: null

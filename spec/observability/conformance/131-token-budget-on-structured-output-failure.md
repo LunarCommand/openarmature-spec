@@ -30,7 +30,9 @@ prompt-context binding, surfacing on the graph-engine §6 `LlmFailedEvent.token_
    `{input_max_tokens: 10, total_max_tokens: null}`; `prompt_tokens` 20 > 10, so the ERROR span carries
    `openarmature.llm.token_budget.exceeded = true`, the exceeded counter records once (`kind =
    "input"`), and a utilization observation is recorded at `20 / 10 = 2.0` (`kind = "input"`) — all on
-   the failure event. The exception propagates.
+   the failure event. The exception propagates. The failure's token-usage (20 / `"input"`, 16 /
+   `"output"`) and `error.type` duration observations record too, as in fixture 125, and the `metrics:`
+   list names every recorded measurement.
 2. `provider_unavailable_failure_populates_budget_but_no_evaluation` — The same budgeted prompt, but the
    mock returns a 503 → `provider_unavailable`, which carries **no** usage (fixture 122). The
    `LlmFailedEvent.token_budget` is populated (the active prompt's budget) but `usage` is null, so **no**
@@ -42,22 +44,22 @@ prompt-context binding, surfacing on the graph-engine §6 `LlmFailedEvent.token_
 the `metrics:` assertion shape, and the `expected_error:` + `exception_propagates_alongside_typed_event`
 dispatch pattern (fixtures 069 / 120).
 
-**Harness note (absence assertion, case 2):** as in fixtures 128 / 129, "neither token-budget instrument
-recorded" is expressed as the fixture-specific invariant
-`no_token_budget_instrument_observations_without_usage` (§5.9) — the `metrics:` directive asserts
-recorded observations and cannot express per-instrument absence short of `metrics: []`. Case 2 declares
-no `metrics:` block (no token-budget observations are expected and metrics are otherwise out of this
-case's scope); the invariant carries the absence assertion.
+**Harness note (absence assertion, case 2):** a `metrics:` list names every measurement the capture
+recorded, as case 1's does. Case 2's list holds only the failed attempt's duration recording, with
+`error.type: provider_unavailable`, so it asserts that neither token usage nor either token-budget
+instrument recorded anything.
 
 **What passes:**
 
 - Case 1: `LlmFailedEvent.token_budget == {input_max_tokens: 10, total_max_tokens: null}` with
   `error_category = "structured_output_invalid"`; `openarmature.llm.token_budget.exceeded = true` on the
-  ERROR span; the exceeded counter (`kind = "input"`) and a `2.0` utilization observation
-  (`kind = "input"`) recorded; exception propagates.
+  ERROR span; the exceeded counter (`kind = "input"`), a `2.0` utilization observation
+  (`kind = "input"`), the token-usage observations (20 / 16) and one duration observation carrying
+  `error.type = "structured_output_invalid"` recorded, and no other measurement; exception propagates.
 - Case 2: `LlmFailedEvent.token_budget` populated with `usage == null` and
   `error_category = "provider_unavailable"`; no `openarmature.llm.token_budget.exceeded` attribute;
-  neither token-budget instrument records; exception propagates.
+  one duration observation carrying `error.type = "provider_unavailable"` recorded, and no other
+  measurement; exception propagates.
 
 **What fails:**
 

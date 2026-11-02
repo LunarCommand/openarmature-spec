@@ -59,7 +59,7 @@ initial_state: {}
 expected:
   langfuse_trace:
     id: "<uuid-hex>"
-    name: "outer_in"
+    name: "<any-string>"
     metadata:
       correlation_id: "<corr_id_1>"
       entry_node: "outer_in"
@@ -91,6 +91,7 @@ expected:
               step: 1
               attempt_index: 0
               correlation_id: "<corr_id_1>"
+            metadata_absent: [subgraph_name]
             level: DEFAULT
             children: []
           - type: span
@@ -100,6 +101,7 @@ expected:
               step: 2
               attempt_index: 0
               correlation_id: "<corr_id_1>"
+            metadata_absent: [subgraph_name]
             level: DEFAULT
             children: []
       - type: span

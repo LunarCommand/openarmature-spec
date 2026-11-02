@@ -27,12 +27,13 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 006's header (calls_rerank /
 # mock_rerank), 028's header (mapping: cohere, cohere_rerank_provider, the
-# Cohere /v2/rerank request + response shapes, expected_wire_request /
-# expected_wire_request_absent_keys / expected_wire_headers), 014's header (the
-# rerank `raw` assertion — the verbatim deserialized response on
-# RerankResponse.raw), and 033's header (typed_observers: [{name, kind:
+# Cohere /v2/rerank request + response shapes), and 014's cases (the rerank
+# `raw` assertion: the verbatim deserialized response on RerankResponse.raw).
+# The typed-event collector directives (typed_observers: [{name, kind:
 # typed_event_collector}] + expected.observers.<name>.contains_event asserting
-# a typed event's fields — reused here for RerankEvent).
+# a typed event's fields) are defined in conformance-adapter §5.5. They are
+# reused here for RerankEvent. The wire-request assertions are defined in
+# conformance-adapter §5.16.
 
 mapping: cohere
 

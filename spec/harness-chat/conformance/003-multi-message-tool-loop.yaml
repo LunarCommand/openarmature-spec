@@ -58,8 +58,20 @@ cases:
               content: "Sunny, 22°C"
             - role: assistant
               content: "The weather in Paris is sunny, 22°C."
+              absent_keys: [tool_calls]
           final_state:
-            messages_count: 4
+            messages:
+              - {role: user, content: "What's the weather in Paris?"}
+              - role: assistant
+                tool_calls:
+                  - id: "call_abc"
+                    name: "get_weather"
+                    arguments: {location: "Paris"}
+              - role: tool
+                tool_call_id: "call_abc"
+                content: "Sunny, 22°C"
+              - role: assistant
+                content: "The weather in Paris is sunny, 22°C."
     invariants:
       replies_list_preserves_graph_execution_order: true
       tool_calls_lives_on_assistant_message_not_in_content_blocks: true

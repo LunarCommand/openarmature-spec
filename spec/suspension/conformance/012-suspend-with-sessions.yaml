@@ -1,17 +1,69 @@
 # §8.6: session state SHOULD save at suspend time alongside the
 # paused-invocation record. A fresh worker resuming the suspension
-# sees consistent session state.
+# sees consistent session state. The first case asserts what holds
+# either way; the second asserts the suspend-time save and is gated on
+# `session_save_at_suspend` (this directory's note, fixture 001).
 
 cases:
-  - name: session_saves_at_suspend_and_resume_sees_consistent_state
+  - name: resume_sees_consistent_session_state
     description: |
-      Session-bound invocation: the gate node modifies session-scoped
-      state (here represented via the typical pattern of state being
-      sourced from a registered SessionStore on invoke entry and
-      saved on invoke exit). Suspend triggers a session save alongside
-      the paused-invocation record write. Resume loads the saved
-      session record and the paused-invocation record together; the
-      post-resume node sees consistent state.
+      Session-bound invocation: the pre_gate node sets session-scoped
+      state and the gate node suspends. Resume continues from the
+      paused-invocation record; the post-resume node sees consistent
+      state, and the session record holds the final state once the
+      resumed call completes. These assertions hold whether or not the
+      session also saves at suspend time.
+    state:
+      fields:
+        session_counter:
+          type: int
+          default: 0
+        completed_flag:
+          type: bool
+          default: false
+    entry: pre_gate
+    nodes:
+      pre_gate:
+        update: {session_counter: 5}
+      gate:
+        suspend_with_descriptor:
+          signal_id: "session-suspend-test"
+      post_resume:
+        update: {completed_flag: true}
+    edges:
+      - {from: pre_gate,    to: gate}
+      - {from: gate,        to: post_resume}
+      - {from: post_resume, to: END}
+    session_store: in_memory
+    invocations:
+      - name: initial_invoke
+        session_id: "session-suspend-1"
+        initial_state: {}
+        expected:
+          outcome: suspended
+      - name: resume_invoke
+        session_id: "session-suspend-1"
+        resume_invocation: "<from previous suspended outcome>"
+        signal_payload: {}
+        expected:
+          outcome: completed
+          final_state: {session_counter: 5, completed_flag: true}
+          # After resume completes, session record is updated.
+          saved_session_assertions:
+            state: {session_counter: 5, completed_flag: true}
+    invariants:
+      resume_sees_session_state_consistent_with_paused_record: true
+
+  - name: session_saves_at_suspend_time
+    description: |
+      Same graph and store as the case above. Suspend triggers a session
+      save alongside the paused-invocation record write, so the store
+      holds the pre-suspend session state once the suspended call
+      returns. suspension §8.6 makes the suspend-time save a SHOULD, so
+      the case applies only to an adapter that declares
+      session_save_at_suspend.
+    requires_capability:
+      session_save_at_suspend: true
     state:
       fields:
         session_counter:
@@ -44,16 +96,5 @@ cases:
           # paused-invocation record.
           saved_session_assertions:
             state: {session_counter: 5, completed_flag: false}
-      - name: resume_invoke
-        session_id: "session-suspend-1"
-        resume_invocation: "<from previous suspended outcome>"
-        signal_payload: {}
-        expected:
-          outcome: completed
-          final_state: {session_counter: 5, completed_flag: true}
-          # After resume completes, session record is updated.
-          saved_session_assertions:
-            state: {session_counter: 5, completed_flag: true}
     invariants:
       session_saves_at_suspend_time: true
-      resume_sees_session_state_consistent_with_paused_record: true

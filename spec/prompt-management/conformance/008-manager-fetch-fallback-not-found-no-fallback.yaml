@@ -28,4 +28,5 @@ calls:
         category: prompt_not_found
       # Critical: the secondary backend's fetch MUST NOT have been
       # called. The primary's prompt_not_found stops the chain.
-      secondary_backend_call_count: 0
+      backend_call_counts:
+        secondary: 0

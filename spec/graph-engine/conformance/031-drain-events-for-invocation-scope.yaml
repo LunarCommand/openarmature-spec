@@ -35,9 +35,9 @@ edges:
   - {from: b, to: END}
 
 observers:
-  # Accumulator keys per-invocation_id buckets. The harness's read API
-  # returns the bucket for a specified invocation_id (defaulting to
-  # the current invocation's id when called from inside a node).
+  # Accumulator keeps one bucket per invoke() call. The harness's read
+  # API returns the current call's bucket when called from inside a
+  # node.
   - name: accumulator
     attach: graph
     target: outer
@@ -78,9 +78,10 @@ invocations:
           timeout_reached: false
           undelivered_count: 0
       # Per-invocation accumulator bucket for invocation `second`
-      # contains only `second`'s events — events from invocation
-      # `first` do not bleed into `second`'s bucket, demonstrating
-      # the scope-by-invocation_id contract.
+      # contains only `second`'s events. Buckets are kept per call, so
+      # this snapshot cannot show `first`'s events bleeding in; the
+      # scoping contract is the
+      # drain_scopes_strictly_to_supplied_invocation_id claim below.
       node_accumulator_snapshots:
         b:
           accumulator:
@@ -89,8 +90,7 @@ invocations:
             - {step: 1, phase: started,   node_name: b, namespace: [b]}
 
 invariants:
-  # Each invocation gets a fresh invocation_id; the accumulator's
-  # per-invocation buckets are distinct.
+  # Each invocation gets a fresh invocation_id.
   each_invocation_has_unique_invocation_id: true
   # The scoping rule: drain_events_for(inv_id) covers only events
   # tagged with inv_id. This is what makes the resume-id composition

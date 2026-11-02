@@ -109,6 +109,13 @@ cases:
                   attributes_absent:
                     - "openarmature.implementation.name"
                     - "openarmature.implementation.version"
+                  links:
+                    - target_trace_id: "<trace_id_detached_child>"
+                - name: "after"
+                  status: OK
+                  attributes_absent:
+                    - "openarmature.implementation.name"
+                    - "openarmature.implementation.version"
         - trace_id: "<trace_id_detached_child>"
           span_tree:
             - name: "openarmature.invocation"

@@ -35,8 +35,8 @@ out — the implementation's pre-send validation catches them.
   would surface this as a "no canned response available" error
   rather than the expected `provider_invalid_request`.
 - The implementation raises a different category (e.g.,
-  `provider_invalid_response`, a language-native `ValueError`) — the
-  spec mandates `provider_invalid_request` specifically.
+  `provider_invalid_response`) or a host-language error. The spec
+  mandates `provider_invalid_request` specifically.
 - The implementation accepts the malformed inputs and somehow returns
   a successful `Response` — would mean validation isn't being
   performed at all.

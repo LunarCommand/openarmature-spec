@@ -38,6 +38,8 @@ cases:
       - openarmature.llm.token_budget.exceeded = true on the ERROR span
       - the token_budget.exceeded counter records once, kind "input"
       - a token_budget.utilization observation at 2.0 (20 / 10), kind "input"
+      - the token.usage (20 input, 16 output) and duration (error.type
+        structured_output_invalid) observations, and no other measurement
       - the exception still propagates (expected_error)
     state:
       fields:
@@ -151,6 +153,29 @@ cases:
             openarmature.gen_ai.token_budget.kind: "input"
             gen_ai.request.model: "gpt-test"
             gen_ai.system: "openai"
+        # The failure's token-usage and duration recordings (§11.2), as fixture
+        # 125 records them for the same failure and usage. The list names every
+        # recorded measurement.
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 20
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "input"
+            gen_ai.request.model: "gpt-test"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 16
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "gpt-test"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "gpt-test"
+            gen_ai.system: "openai"
+            error.type: "structured_output_invalid"
       invariants:
         exception_propagates_alongside_typed_event: true
 
@@ -165,7 +190,8 @@ cases:
       - LlmFailedEvent.token_budget populated {input_max_tokens 10,
         total_max_tokens null}, usage null, error_category provider_unavailable
       - NO openarmature.llm.token_budget.exceeded span attribute
-      - neither token-budget instrument records any observation
+      - neither token-budget instrument records any observation: the
+        complete metrics list holds only the duration recording
       - the exception still propagates
     state:
       fields:
@@ -243,10 +269,19 @@ cases:
                     # the signal, requires usage).
                     - "openarmature.llm.token_budget.exceeded"
                   children: []
+      # The complete set of recordings: the failed attempt's duration only.
+      # No usage was reported, so neither token usage nor either
+      # token-budget instrument records anything (§11.2, §5.5.15).
+      metrics:
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "gpt-test"
+            gen_ai.system: "openai"
+            error.type: "provider_unavailable"
       invariants:
         # No usage -> no evaluation -> neither token-budget instrument records
-        # (§5.5.15). Absence predicate over the captured measurement set; see
-        # the .md §3.2 note.
+        # (§5.5.15). The complete `metrics` list above asserts the absence.
         no_token_budget_instrument_observations_without_usage: true
         token_budget_populated_but_not_evaluated_without_usage: true
         exception_propagates_alongside_typed_event: true

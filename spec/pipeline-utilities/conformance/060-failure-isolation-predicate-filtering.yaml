@@ -1,6 +1,7 @@
 # §6.3 Failure isolation — predicate filtering. Two sub-runs:
 # (a) predicate matches → middleware catches and returns degraded;
-# (b) predicate does not match → exception propagates as node_exception.
+# (b) predicate does not match → exception propagates, and the raised error's
+#     category is the node's own provider_invalid_request.
 
 cases:
   - name: predicate_matches_catches_and_returns_degraded
@@ -40,11 +41,12 @@ cases:
       invariants:
         matching_exception_caught: true
 
-  - name: predicate_does_not_match_propagates_node_exception
+  - name: predicate_does_not_match_propagates_raised_error
     description: |
       Node raises provider_invalid_request (predicate does NOT match —
       predicate accepts only provider_invalid_response). The exception
-      propagates as node_exception per graph-engine §4.
+      propagates per graph-engine §4, and the raised error's category is
+      the node's own provider_invalid_request.
     state:
       fields:
         result:
@@ -68,7 +70,7 @@ cases:
             predicate:
               matches_category: provider_invalid_response
     expected_error:
-      category: node_exception
+      category: provider_invalid_request
       raised_from: failing
       message: "missing field"
     expected:

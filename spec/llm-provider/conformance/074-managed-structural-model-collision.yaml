@@ -18,10 +18,10 @@
 # the managed-internal structural rule this fixture covers.)
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 005's header (mapping: openai default,
-# the bound model becomes the wire `model` field), 032's header (config.extras
+# Per-directory harness directives: see 001's header (mapping: openai default;
+# §8.1.1 makes the bound model the `model` field), 032's header (config.extras
 # — the §6 undeclared-field pass-through bag, which lands keys at the
-# request-body root), and 060's header (the pre-send reject convention:
+# request-body root), and 001's header (the pre-send reject convention:
 # mock_provider.responses: [] so a sent request fails the test; expected.raises:
 # {category}).
 

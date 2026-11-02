@@ -19,10 +19,10 @@
 # carries NO `stream` key (the matching extras is absorbed, not forwarded).
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 005's header (mapping: openai default),
-# 032's header (config.extras pass-through bag), 013's header
-# (expected_wire_request + expected_wire_request_absent_keys), 059's header
-# (complete(stream=true) call form), and 074's header (the pre-send-reject
+# Per-directory harness directives: see 001's header (mapping: openai default,
+# the complete(stream=true) call form), 032's header (config.extras
+# pass-through bag), conformance-adapter §5.16 (expected_wire_request +
+# expected_wire_request_absent_keys), and 001's header (the pre-send-reject
 # convention: mock_provider.responses: [] + expected.raises: {category}).
 
 cases:

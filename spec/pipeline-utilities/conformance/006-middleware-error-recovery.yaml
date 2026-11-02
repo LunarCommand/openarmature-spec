@@ -48,4 +48,4 @@ expected:
   expected_observer_event:
     node_name: failing
     post_state: {v: 99, trace: ["recovered"]}
-    error_absent: true
+  expected_observer_event_absent_keys: [error]

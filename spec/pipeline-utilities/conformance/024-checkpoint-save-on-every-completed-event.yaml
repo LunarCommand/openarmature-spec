@@ -1,7 +1,6 @@
 # Checkpoint save granularity (§10.3): the engine fires Checkpointer.save
 # at every §6 completed event for outermost-graph nodes and subgraph-internal
-# nodes. Fan-out instance internals do NOT fire saves in v1 (§10.7 atomic-
-# restart) — verified separately in fixture 028.
+# nodes.
 
 cases:
   - name: linear_three_node_graph_three_saves

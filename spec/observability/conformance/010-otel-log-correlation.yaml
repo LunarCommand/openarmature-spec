@@ -36,13 +36,13 @@ cases:
         - body: "node a executing"
           attributes:
             openarmature.correlation_id: "log-test-corr-1"
-            trace_id: "<trace_id_main>"
-            span_id: "<span_id_node_a>"   # active span at log time
+          trace_id: "<trace_id_main>"
+          span_id: "<span_id_node_a>"   # active span at log time
         - body: "node b executing"
           attributes:
             openarmature.correlation_id: "log-test-corr-1"
-            trace_id: "<trace_id_main>"
-            span_id: "<span_id_node_b>"
+          trace_id: "<trace_id_main>"
+          span_id: "<span_id_node_b>"
       invariants:
         # Both records share the SAME trace_id (single trace) but DIFFERENT
         # span_ids (each log was emitted under its own node's active span).
@@ -94,11 +94,11 @@ cases:
         - body: "before subgraph dispatch"
           attributes:
             openarmature.correlation_id: "detached-corr-1"
-            trace_id: "<trace_id_parent>"
+          trace_id: "<trace_id_parent>"
         - body: "inside detached subgraph"
           attributes:
             openarmature.correlation_id: "detached-corr-1"
-            trace_id: "<trace_id_detached>"   # different trace
+          trace_id: "<trace_id_detached>"   # different trace
       invariants:
         # The two log records have DIFFERENT trace_ids (one in parent
         # trace, one in detached trace) but the SAME correlation_id.

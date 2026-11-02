@@ -8,9 +8,10 @@
 # score. Two cases cover both documented over-length status codes.
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 013's header (mapping: tei,
-# expected_wire_request, the TEI /rerank request shape) and 014's header
-# (tei_rerank_provider construction block). Error-assertion shape:
+# Per-directory harness directives: see 014's header (tei_rerank_provider
+# construction block, the TEI /rerank request shape). `mapping:` is
+# defined in conformance-adapter §5.15 and the wire-request assertions in
+# §5.16. Error-assertion shape:
 #
 # - expected_error: {category, raised_from} — the conformance-adapter
 #   §5.8 compact error-assertion shape (as used by retrieval fixtures

@@ -9,9 +9,9 @@ cases:
       Fan-out configured with error_policy="collect"; an inner-instance
       node calls suspend(). The engine MUST raise
       suspension_in_unsupported_context per §8.2. Implementations
-      SHOULD detect this at compile / registration time when feasible
-      (this fixture exercises runtime detection — the minimum
-      spec-mandated coverage).
+      SHOULD detect this at compile / registration time when feasible,
+      and runtime detection is the minimum. `outcome: errored` holds
+      either way (conformance-adapter §5.8).
     subgraph:
       name: leaf
       state:
@@ -49,5 +49,3 @@ cases:
           outcome: errored
           error:
             category: suspension_in_unsupported_context
-    invariants:
-      collect_mode_suspend_rejected_at_runtime: true

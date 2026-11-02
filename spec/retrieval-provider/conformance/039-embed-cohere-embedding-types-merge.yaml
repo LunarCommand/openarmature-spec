@@ -31,10 +31,10 @@
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 001's header (calls_embed /
-# mock_embedding) and 032's header (mapping: cohere,
-# cohere_embedding_provider, the Cohere /v2/embed request + keyed-by-type
-# response shapes, expected_wire_request / expected_wire_request_absent_keys
-# / expected_wire_headers). New directive:
+# mock_embedding) and 032's header (cohere_embedding_provider, the Cohere
+# /v2/embed request + keyed-by-type response shapes). `mapping:` is defined in
+# conformance-adapter §5.15 and the wire-request assertions in §5.16.
+# New directive:
 #
 # - calls_embed.config.extras: {<key>: <value>, ...} — the §2
 #   extras-pass-through bag on the embedding runtime config (the
@@ -117,9 +117,7 @@ cases:
           # NOT what the mapping consumes.
           vectors:
             - [0.01, 0.02, 0.03, 0.04]
-          vectors_length: 1
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: cohere-embed-test
           response_id: cohere-embed-039m-id
           usage:
@@ -212,9 +210,7 @@ cases:
           vectors:
             - [0.01, 0.02, 0.03, 0.04]
             - [0.11, 0.12, 0.13, 0.14]
-          vectors_length: 2
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: cohere-embed-test
           response_id: cohere-embed-039p-id
           usage:
@@ -303,9 +299,7 @@ cases:
         embedding_response:
           vectors:
             - [0.21, 0.22, 0.23, 0.24]
-          vectors_length: 1
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: cohere-embed-test
           response_id: cohere-embed-039d-id
           usage:

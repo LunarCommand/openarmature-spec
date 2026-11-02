@@ -12,11 +12,12 @@
 # and 079 (Anthropic, root) do not exercise.
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 051's header (mapping: gemini, the bound
-# model `gemini-test`, contents/generationConfig request shape, the
-# {candidates, usageMetadata} response), 032's header (config declared fields +
-# config.extras pass-through bag, nested under generationConfig for §8.3), and
-# 013's header (mock 200 + expected_wire_request).
+# Per-directory harness directives: see 001's header (mapping: gemini, here with
+# the bound model `gemini-test`, the §8.3 contents/generationConfig request and
+# the {candidates, usageMetadata} response, and the mock provider), 032's
+# header (config declared fields + config.extras pass-through bag, nested
+# under generationConfig for §8.3), and conformance-adapter §5.16
+# (expected_wire_request).
 
 mapping: gemini
 

@@ -3,7 +3,8 @@
 Verifies that observer events fire across a subgraph boundary with the correct `namespace` chain,
 monotonic `step` counter, and per-event delivery order from outermost graph down to innermost.
 
-The fixture format used here is documented in fixture 012's `.md`.
+The observer fixture format is defined in conformance-adapter §5.5 (`observers:`) and §5.8
+(`observer_events`, `delivery_order`).
 
 **Spec sections exercised:**
 
@@ -23,9 +24,11 @@ The fixture format used here is documented in fixture 012's `.md`.
 
 **What passes:**
 
-- `obs_outer` (attached to the outer graph) receives all four events:
-  `outer_in` (step 0), `inner_x` (step 1), `inner_y` (step 2), `outer_out` (step 3).
-- `obs_inner` (attached to the subgraph) receives only the two subgraph-internal events (steps 1 and 2).
+- `obs_outer` (attached to the outer graph) receives eight events, a `started` and a `completed`
+  event for each of `outer_in` (step 0), `inner_x` (step 1), `inner_y` (step 2) and `outer_out`
+  (step 3).
+- `obs_inner` (attached to the subgraph) receives only the four events of the two subgraph-internal
+  nodes (steps 1 and 2).
 - Inner events have `namespace: [outer_sub, inner_x]` and `[outer_sub, inner_y]` respectively. Outer
   events have single-element namespaces.
 - For each subgraph-internal event, `obs_outer` is delivered before `obs_inner` per the §6 ordering rule

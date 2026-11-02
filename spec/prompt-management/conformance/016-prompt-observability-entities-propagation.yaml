@@ -57,7 +57,7 @@ cases:
   - name: observability_entities_absent
     description: |
       Filesystem-style backend supplies no observability_entities;
-      the field is None on both Prompt and PromptResult.
+      the field is absent on both Prompt and PromptResult.
     manager:
       backends: [filesystem]
     calls:
@@ -74,7 +74,7 @@ cases:
     expected:
       prompt:
         name: greet
-        observability_entities_absent: true
+      prompt_absent_keys: [observability_entities]
       rendered:
         name: greet
-        observability_entities_absent: true
+      rendered_absent_keys: [observability_entities]

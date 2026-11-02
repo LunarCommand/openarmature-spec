@@ -27,8 +27,9 @@
 # would produce the wrong mapping.
 #
 # Per-directory harness directives per conformance-adapter §3.2; the
-# `mapping: openai` / openai_embedding_provider / expected_wire_request
-# vocabulary is defined in fixture 023's header.
+# openai_embedding_provider construction block is defined in fixture
+# 023's header. `mapping: openai` is defined in conformance-adapter §5.15
+# and the wire-request assertions in §5.16.
 
 mapping: openai
 
@@ -91,9 +92,7 @@ cases:
             - [0.5, 0.25, 0.125, 0.75]
             - [1.0, 0.0, -0.5, 2.0]
             - [0.375, -0.125, 0.625, -1.5]
-          vectors_length: 3
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: text-embedding-test
           response_id: null
           usage:

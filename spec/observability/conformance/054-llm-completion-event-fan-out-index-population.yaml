@@ -13,6 +13,9 @@ cases:
       distinct fan_out_index values (set covers {0, 1}).
     state:
       fields:
+        products:
+          type: list<dict>
+          default: []
         results:
           type: list<dict>
           reducer: append
@@ -64,7 +67,7 @@ cases:
       observers:
         collector:
           # Exactly two events captured, one per fan-out instance.
-          contains_exactly_n_events_of_type:
+          event_count:
             event_type: LlmCompletionEvent
             count: 2
           # Across captured events, fan_out_index values cover {0, 1}.

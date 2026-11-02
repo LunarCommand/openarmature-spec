@@ -29,7 +29,8 @@ in YAML):
 **What passes:**
 
 - Each case's `final_state` matches the expected pattern.
-- Case 4: the harness's `max_in_flight` measurement is exactly 2.
+- Case 4: at no point are more than 2 instances in flight. `max_in_flight` is an upper bound, so
+  fewer in flight at every moment also passes.
 - `item_field` is correctly absent in count modes.
 - `fan_out_index` values run `0..count-1` on observer events.
 

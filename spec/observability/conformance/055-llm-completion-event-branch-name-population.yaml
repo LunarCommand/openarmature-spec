@@ -71,7 +71,7 @@ cases:
     expected:
       observers:
         collector:
-          contains_exactly_n_events_of_type:
+          event_count:
             event_type: LlmCompletionEvent
             count: 2
           captured_event_field_values_cover:

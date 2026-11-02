@@ -41,7 +41,9 @@ cases:
     expected:
       observers:
         collector:
-          does_not_contain_event_of_type: LlmCompletionEvent
+          event_count:
+            event_type: LlmCompletionEvent
+            count: 0
       node_completed_event_carries_error:
         node_name: ask
         error_category: provider_unavailable

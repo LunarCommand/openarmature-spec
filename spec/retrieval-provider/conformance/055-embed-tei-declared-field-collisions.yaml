@@ -15,13 +15,14 @@
 # leaves the rest of the body unchanged.
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 017's header (mapping: tei,
-# tei_embedding_provider, the /embed {inputs[, prompt_name][, dimensions]}
-# request and bare-vector-array response, expected_wire_request_absent_keys),
-# 034's header (the pre-send-reject convention: NO mock_embedding + NO
-# expected_wire_request, the no_embed_request_issued invariant), 016's header
-# (expected_error: {category, raised_from}), and 039's header
-# (calls_embed.config.extras).
+# Per-directory harness directives: see 013's header (the /embed
+# {inputs[, prompt_name][, dimensions]} request), 017's header (the
+# bare-vector-array response), 034's header (the pre-send-reject convention: NO
+# mock_embedding + NO expected_wire_request, the no_embed_request_issued
+# invariant), 016's header (expected_error: {category, raised_from}), and 039's
+# header (calls_embed.config.extras). `mapping:` and the tei_embedding_provider
+# construction block are defined in conformance-adapter §5.15 and the
+# wire-request assertions in §5.16.
 
 mapping: tei
 
@@ -103,9 +104,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: tei-embed-test
       invariants:
         matching_extras_dimensions_no_op: true
@@ -187,7 +188,8 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
           dimensions: 4
           model: tei-embed-test
       invariants:

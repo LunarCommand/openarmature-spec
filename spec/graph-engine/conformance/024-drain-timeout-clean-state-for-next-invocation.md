@@ -22,8 +22,7 @@ drains cleanly.
 - Invocation 2 runs cleanly; drain returns with all 4 events delivered
   and `{timeout_reached: false, undelivered_count: 0}`.
 - The observer's second-invocation event list matches expectations
-  exactly — no leftover events from invocation 1's undelivered queue,
-  no missing events from invocation 2's actual run.
+  exactly, with no missing events from invocation 2's actual run.
 
 **What fails:**
 
@@ -31,7 +30,12 @@ drains cleanly.
   the cancelled worker from invocation 1 left the queue in an unusable
   state.
 - Invocation 2's `timeline_obs` receives events from invocation 1's
-  undelivered queue — would mean cross-invocation leak.
+  undelivered queue, which would mean a cross-invocation leak. The
+  second invocation's `observer_events` cannot show this: it reads
+  only the events the second call dispatched (conformance-adapter
+  §8.4), so invocation 1's late events are left out by construction.
+  The `second_invocation_drain_independent_of_first` named claim
+  states the leak check.
 - Invocation 2's `timeline_obs` is missing events — would mean the
   worker state was reset incorrectly.
 

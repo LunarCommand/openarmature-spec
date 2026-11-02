@@ -18,20 +18,22 @@ only events matching its subscription.
 - `obs_both` (default — both phases) receives 6 events (3 nodes × 2 phases).
 - `obs_completed` (`phases: [completed]`) receives 3 events, all `phase: "completed"`.
 - `obs_started` (`phases: [started]`) receives 3 events, all `phase: "started"`.
-- Empty phases set raises an error at registration time.
+- Empty phases set raises an error at registration time (graph-engine §6 makes this a SHOULD; the
+  named claim `empty_phases_raises_at_registration` asserts it).
 
 **What fails:**
 
 - `obs_completed` receives `started` events (filter not honored).
 - `obs_started` receives `completed` events (filter not honored).
 - `obs_both` doesn't receive both phases (default subscription wrong).
-- Empty phases registration is silently accepted instead of raising.
+- Empty phases registration is silently accepted instead of raising, which the named claim
+  catches.
 - Observers with different subscriptions receive duplicate copies of the same event (filtering
   applied incorrectly across observers).
 
 ## Note on the harness
 
-The harness's `phases` parameter parsing is implementation-defined — YAML lists, sets, or
+The harness's `phases` parameter parsing is implementation-defined: YAML lists, sets, or
 language-native sets are all acceptable as long as the resulting subscription matches the
 behavioral contract. The phase strings are case-sensitive: `"started"` and `"completed"` are the
-only valid values; any other string MUST cause a registration-time error.
+values graph-engine §6 accepts.

@@ -29,6 +29,8 @@ evaluated as over budget. The budget reaches the call via the `renders_prompt:` 
    span carries `openarmature.prompt.token_budget.input_max_tokens = 10` and
    `openarmature.llm.token_budget.exceeded = true`; the exceeded counter records once with
    `kind = "input"`; and a utilization observation is recorded at `20 / 10 = 2.0` with `kind = "input"`.
+   The completion's ordinary token-usage (20 / `"input"`, 1 / `"output"`) and duration observations
+   record too, and the `metrics:` list names every recorded measurement.
 
 **Harness extensions:** uses the established `renders_prompt:`, `prompt_backend:`, and
 `render_variables:` directives (fixtures 024 / 064) and `enable_metrics:` + the `metrics:` assertion
@@ -45,6 +47,8 @@ fixture is the first to populate it.
   == 10`; `openarmature.prompt.token_budget.total_max_tokens` absent (the bound was not declared).
 - The exceeded counter records exactly once, `kind = "input"`; the utilization histogram records `2.0`,
   `kind = "input"`.
+- The token-usage observations (20 / `"input"`, 1 / `"output"`) and one duration observation record,
+  and no other measurement does.
 
 **What fails:**
 

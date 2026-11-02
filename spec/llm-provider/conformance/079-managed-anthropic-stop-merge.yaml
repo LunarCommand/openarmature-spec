@@ -10,11 +10,11 @@
 # fixture deliberately exercises only array-valued extras.
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 037's header (mapping: anthropic, the
-# bound model `claude-test`, the Anthropic {type: message, ...} response +
-# max_tokens-required rule), 032's header (config declared fields +
-# config.extras pass-through bag), and 013's header (mock 200 +
-# expected_wire_request).
+# Per-directory harness directives: see 001's header (mapping: anthropic, here
+# with the bound model `claude-test` and the §8.2 {type: message, ...}
+# response, and the mock provider), 038's header (the max_tokens-required
+# rule), 032's header (config declared fields + config.extras pass-through
+# bag), and conformance-adapter §5.16 (expected_wire_request).
 
 mapping: anthropic
 

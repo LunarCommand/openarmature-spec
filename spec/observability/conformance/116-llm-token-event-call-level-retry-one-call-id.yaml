@@ -44,6 +44,7 @@ cases:
         calls_llm:
           stream: true
           messages: [{role: user, content: "retry me"}]
+          model: gpt-test
           retry:
             max_attempts: 2
             backoff: {type: deterministic, seconds: 0}
