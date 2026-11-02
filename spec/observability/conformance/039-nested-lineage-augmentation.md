@@ -128,7 +128,7 @@ single-level rule).
   single shared mapping reference instead of copy-on-write), OR walked across the sibling
   boundary when applying lineage updates.
 - The lineage identifier is tracked as a single scalar (e.g., a lone `fan_out_index`
-  ContextVar that gets overwritten at each nested descent) — implementation cannot identify
+  context-primitive value that gets overwritten at each nested descent): implementation cannot identify
   the full ancestor chain at augmentation time, so deeper ancestors get missed or wrong
   ones get updated. The §3.4 *Per-depth lineage tracking* paragraph requires the chain to
   be stored as a list (one entry per dispatch depth).

@@ -1,7 +1,7 @@
 # 044 — `get_invocation_metadata()` per-async-context scoping under fan-out
 
 Verifies §3.4's *Read access* sibling-instance isolation rule. A fan-out's per-instance writes
-are isolated to each instance's contextvar copy; sibling instances' writes are invisible to each
+are isolated to each instance's context-primitive copy; sibling instances' writes are invisible to each
 other's reads, and the outermost serial context after the fan-out joins sees neither instance's
 write (the per-instance contexts do NOT propagate back across the join).
 
@@ -26,7 +26,7 @@ write (the per-instance contexts do NOT propagate back across the join).
 
 **What passes:**
 
-- Each instance reads only its own `item_id` (per-instance contextvar copy isolated).
+- Each instance reads only its own `item_id` (per-instance context-primitive copy isolated).
 - The outermost-serial node sees neither instance's `item_id` (per-instance copies do not flow
   back across the join).
 - The caller baseline (`tenantId`) is visible everywhere.

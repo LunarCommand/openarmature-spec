@@ -14,8 +14,8 @@ when composition stacks.
 
 A middleware is an async callable with the shape:
 
-```
-async def middleware(state, next) -> partial_update
+```text
+middleware(state, next) -> partial_update
 ```
 
 - `state` — the input state the wrapped node would have received.
@@ -87,7 +87,7 @@ The outer-to-inner order is **not interchangeable**:
 - **Retry MUST be inner.** It sees raw transients from the node body and retries them per its
   policy. On exhaustion, it propagates the exception.
 - **Failure isolation MUST be outer.** It sees what escapes retry (exhaustion-propagated
-  exceptions or any non-transient that re-raised through the node body's `except`) and
+  exceptions or any non-transient that re-raised through the node body's error handler) and
   returns the degraded update.
 
 Reversing the order would let the inner isolation catch transients before retry sees them,

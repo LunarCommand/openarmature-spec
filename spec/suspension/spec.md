@@ -142,8 +142,8 @@ implementation choice. Implementations MUST document the exact mechanism. In eit
 user-visible contract is identical: control returns to `invoke()`'s caller via the `suspended` outcome,
 and **user code (including middleware) MUST NOT attempt to catch or suppress the suspension**.
 Implementations using the control-flow-exception mechanism SHOULD use an internal exception type that
-is not part of the public API; well-formed user code MUST NOT wrap `suspend()` in a bare `try / except`
-clause that would intercept such a type.
+is not part of the public API; well-formed user code MUST NOT wrap `suspend()` in a catch-all error
+handler that would intercept such a type.
 
 Persistence failure at suspend time is a separate concern: the engine raises
 `suspension_persistence_failed` (§9) as a normal, catchable exception that user code MAY handle. The
@@ -511,3 +511,4 @@ resume events carry timestamps from the resume time, not the suspend time.
 
 - created by [proposal 0021](../../proposals/0021-graph-suspension.md)
 - §8.7 *Deployment runtime / harness contract* paragraph tightened from a forward-looking placeholder ("formalized by the harness capability when its spec lands") to a concrete cross-reference into the now-existing harness capability spec — points at its §6 *Signal coordinator*, §3.3 *Signal-resume inbound dispatch path*, §5.3 *Suspended outcome handling* (harness MUST NOT block on suspended turns), and §7 *Error categorization at the turn boundary*. Suspension itself stays runtime-neutral; this is a documentary tightening of the cross-spec touchpoint by [proposal 0022](../../proposals/0022-harness-contract.md)
+- §3's rule against intercepting the suspension says "a catch-all error handler" in place of Python's bare `try / except`. No behavior change; spec v0.120.1 (clarification, no proposal)

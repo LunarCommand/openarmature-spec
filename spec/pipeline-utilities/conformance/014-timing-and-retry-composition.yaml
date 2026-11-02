@@ -6,7 +6,7 @@
 # Case B: [retry, timing, node] — retry wraps timing. on_complete fires three
 #   times, each measuring a single attempt's duration.
 #
-# The deterministic-clock stub advances 5 ms per `monotonic()` call. backoff
+# The deterministic-clock stub advances 5 ms per monotonic-clock read. backoff
 # is `seconds: 0` so retry doesn't add real time, but the timing middleware
 # still sees clock-stub advances per its monotonic reads.
 
