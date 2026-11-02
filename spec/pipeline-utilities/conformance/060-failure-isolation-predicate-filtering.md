@@ -1,7 +1,7 @@
 # 060 — Failure-isolation middleware: predicate filtering
 
-Verifies §6.3's `predicate` field — only exceptions where `predicate(exc) is True` are caught;
-others propagate.
+Verifies §6.3's `predicate` field: only exceptions for which the predicate returns `true` are
+caught; others propagate.
 
 **Spec sections exercised:**
 

@@ -5,9 +5,9 @@
 # than max_len keep only the LAST max_len items.
 #
 # Uses the `reducer:` directive's factory form per conformance-adapter
-# §5.2: a single-key mapping {factory_name: {kwargs}} (e.g.,
+# §5.2: a single-key mapping {factory_name: {arguments}} (e.g.,
 # {bounded_append: {max_len: 3}}) instantiates the named factory
-# with the kwargs at field-registration time.
+# with those arguments at field-registration time.
 
 cases:
   - name: bounded_append_basic_truncates_when_concat_exceeds_bound

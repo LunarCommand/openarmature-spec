@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.120.1] - 2026-11-01
+
+**Changed**
+
+- **Spec notation is language-agnostic.** In places the capability specs used Python syntax as their own notation. The 11 Python code blocks in pipeline-utilities, observability and harness-chat are now language-neutral pseudo-code or prose. The `isinstance(...)` examples in graph-engine and observability now name the event type an observer filters on. Python's exception hierarchy, `kwargs`, builder method names, `random.uniform` and other single-language idioms are replaced by plain words, among them pipeline-utilities §6.3's catch rule, its `predicate` test, its `on_caught` signature and its "bare `ValueError`" example, §6.1's backoff formula, conformance-adapter's `augment_metadata` and factory-reducer entries, llm-provider §7.1's and §8.1.1's `try/except` and keyword-argument wording, and suspension §3's "bare `try / except`".
+- Asides that name two or more languages side by side, such as "`__cause__` in Python, `cause` in TypeScript", are kept: they are mapping guidance for implementers rather than notation. pipeline-utilities §6 states once that its pseudo-code's `on error` lets cancellation, interrupt and exit signals pass uncaught, as the Python blocks did. `## History` entries that used this notation are reworded the same way, while History lines that record a past removal still name what was removed.
+
+**Notes**
+
+- **PATCH, non-behavioral.** No normative rule, adapter obligation or fixture assertion changes; fixture notes that quoted the old notation are reworded. conformance-adapter, graph-engine, harness-chat, llm-provider, observability, pipeline-utilities and suspension `Latest` move to 0.120.1.
+
 ## [0.120.0] - 2026-11-01
 
 **Changed**

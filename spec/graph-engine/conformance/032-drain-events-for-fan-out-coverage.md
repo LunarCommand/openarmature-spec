@@ -11,7 +11,7 @@ drain scope.
 **Spec sections exercised:**
 
 - §6 *Per-invocation drain* — events scoped via the `invocation_id`
-  propagated through the observability §3.4 contextvar mechanism.
+  propagated through the observability §3.4 context-primitive mechanism.
   Fan-out inner instances inherit the parent's `invocation_id`.
 - §6 *Per-invocation drain* — the per-invocation scope correctly
   handles fan-out without requiring the consumer to enumerate inner

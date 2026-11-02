@@ -3,7 +3,7 @@
 # binding pattern (user supplies node_name explicitly at registration).
 #
 # The harness's deterministic-clock stub returns monotonic times that
-# advance by exactly 5 ms per `monotonic()` call so durations are
+# advance by exactly 5 ms per monotonic-clock read so durations are
 # reproducible. The configured node_name ("worker") matches the registered
 # node and MUST appear in the captured TimingRecord.
 

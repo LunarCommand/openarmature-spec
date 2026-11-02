@@ -24,8 +24,8 @@ dropped first) when the post-merge length exceeds `max_len`.
    established `concat_flatten` / `merge_all` empty-update pattern.
 
 Uses the `reducer:` directive's factory form per conformance-adapter §5.2: a single-key
-mapping `{<factory_name>: <kwargs>}` (e.g., `{bounded_append: {max_len: 3}}`) instantiates
-the named factory with the kwargs at field-registration time.
+mapping `{<factory_name>: <arguments>}` (e.g., `{bounded_append: {max_len: 3}}`) instantiates
+the named factory with those arguments at field-registration time.
 
 **What passes:**
 
