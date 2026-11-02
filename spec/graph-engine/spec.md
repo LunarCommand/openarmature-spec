@@ -427,7 +427,7 @@ behavior). If a timeout is supplied:
   before any drain work begins. The error surface is per-language idiomatic (e.g., a Python
   `ValueError`, a TypeScript `RangeError`, a Go error return value); the spec mandates the
   rejection, not the error type. Non-numeric input is rejected per the language's type-error idiom
-  (e.g., a Python `TypeError` from the underlying comparison or validation);
+  (e.g., a `TypeError` in Python or TypeScript from the underlying comparison or validation);
 
 drain MUST return a summary of the drain's outcome, in a form appropriate to the host language. The
 summary MUST include at least: the count of undelivered events, and a boolean or equivalent flag
@@ -562,7 +562,7 @@ this section, which carry no `phase` — carries the following fields:
   layers MAY expose outer-retry context via span attributes on synthesized spans for containing
   subgraph / branch / fan-out instance constructs per observability §4's mapping; that is an
   observability-layer concern outside the §6 event shape.) This matches the natural semantics
-  of ContextVar-style propagation (innermost set shadows outer); implementations using
+  of context-primitive-style propagation (innermost set shadows outer); implementations using
   explicit-threading mechanisms SHOULD preserve the same precedence. `attempt_index` is part of
   the **event-source identification tuple** alongside `namespace`, `branch_name`, `fan_out_index`,
   and `phase` — see the `branch_name` and `fan_out_index` entries below for how this tuple
@@ -762,8 +762,8 @@ invariants and §5 determinism intact regardless of observer mix.
 
 **State immutability.** `pre_state`, `post_state`, and every entry of `parent_states` MUST present the
 same immutability contract as state instances flowing through the graph (§2 Node). Attempts by an
-observer to mutate any of them MUST fail per the implementation's state-immutability strategy (e.g.,
-Python: frozen-instance error).
+observer to mutate any of them MUST fail per the implementation's state-immutability strategy (e.g., a
+frozen-instance error in Python, or a `TypeError` from writing to a frozen object in TypeScript).
 
 **Determinism.** Given the same initial state, same node implementations, same edge functions, and same
 registered observers, the sequence of events passed to observers MUST be identical across runs. This
@@ -789,9 +789,9 @@ this representation and its delivery ordering; the semantics live in observabili
 **Typed LLM completion event.** The observer delivery queue also carries a typed `LlmCompletionEvent`
 on every LLM call completion that produces a structured response (per llm-provider §6's `Response`
 shape). This is the first spec-normatively-typed event variant on the observer event union — observers
-filter via type discrimination (`isinstance(event, LlmCompletionEvent)` or per-language idiomatic
-equivalent) rather than via a sentinel-namespace string match on `NodeEvent.node_name`. The class name
-`LlmCompletionEvent` is normative as an identifier shape; implementations MAY use a per-language
+filter via type discrimination on `LlmCompletionEvent` rather than via a sentinel-namespace string match on
+`NodeEvent.node_name`. The class name `LlmCompletionEvent` is normative as an identifier shape; implementations MAY
+use a per-language
 idiomatic name (e.g., adjusted casing or symbol conventions per the language's naming idioms) provided
 the field set + dispatch contract are preserved.
 
@@ -882,9 +882,8 @@ emitting inline image bytes applies to the typed event field identically.
 **Typed LLM failure event.** The observer delivery queue also carries a typed `LlmFailedEvent`
 on every LLM provider call that raises one of the llm-provider §7 error categories. A second
 spec-normatively-typed event variant on the observer event union, alongside `LlmCompletionEvent` —
-observers filter via type discrimination (`isinstance(event, LlmFailedEvent)` or per-language
-idiomatic equivalent) rather than via a sentinel-namespace string match. The class name
-`LlmFailedEvent` is normative as an identifier shape; implementations MAY use a per-language
+observers filter via type discrimination on `LlmFailedEvent` rather than via a sentinel-namespace string match. The
+class name `LlmFailedEvent` is normative as an identifier shape; implementations MAY use a per-language
 idiomatic name provided the field set + dispatch contract are preserved.
 
 The event mirrors `LlmCompletionEvent`'s identity / scoping / request-side field set 1:1, carries the
@@ -962,8 +961,8 @@ observers consuming typed events see the failure event on the observer delivery 
 surfaces compose without conflict.
 
 Like the other typed event variants, `LlmFailedEvent` carries no `phase` discriminator and is NOT
-subject to the `phases` subscription filter. Observers filter via type discrimination
-(`isinstance` or per-language idiomatic equivalent).
+subject to the `phases` subscription filter. Observers filter via type discrimination on
+`LlmFailedEvent`.
 
 The privacy posture for `input_messages` / `request_extras` / `output_content` is identical to
 `LlmCompletionEvent`'s — observer-side gating at the rendering boundary per observability §5.5.4
@@ -983,7 +982,7 @@ therefore **unpaired**: there is no `LlmTokenFailedEvent`. A streamed call that 
 the partial token events it produced, then the terminal `LlmFailedEvent` (the pair above) fires when
 the §7 category exception raises; the call's outcome is carried by the terminal `LlmCompletionEvent` /
 `LlmFailedEvent`, never by the token events. Observers filter via type discrimination
-(`isinstance(event, LlmTokenEvent)` or per-language idiomatic equivalent); the class name
+on `LlmTokenEvent`; the class name
 `LlmTokenEvent` is normative as an identifier shape.
 
 The field set mirrors `LlmCompletionEvent`'s identity / scoping baseline plus the per-chunk delta.
@@ -1025,9 +1024,8 @@ bundled observers; streaming changes nothing there.
 
 **Typed embedding event.** The observer delivery queue also carries a typed `EmbeddingEvent` on
 every successful `EmbeddingProvider.embed()` call per the retrieval-provider §3 contract. A third spec-normatively-typed event variant on the observer event union — observers
-filter via type discrimination (`isinstance(event, EmbeddingEvent)` or per-language idiomatic
-equivalent) rather than via a sentinel-namespace string match. The class name `EmbeddingEvent` is
-normative as an identifier shape; implementations MAY use a per-language idiomatic name provided
+filter via type discrimination on `EmbeddingEvent` rather than via a sentinel-namespace string match. The class name
+`EmbeddingEvent` is normative as an identifier shape; implementations MAY use a per-language idiomatic name provided
 the field set + dispatch contract are preserved.
 
 The event mirrors `LlmCompletionEvent`'s identity / scoping / request-side field set with
@@ -1074,7 +1072,7 @@ discriminator and is NOT subject to the `phases` subscription filter.
 categories (per retrieval-provider §7's embedding-applicable subset). A fourth spec-normatively-
 typed event variant on the observer event union, paired with `EmbeddingEvent` per the 0049 → 0058
 success+failure pairing precedent — observers filter via type discrimination
-(`isinstance(event, EmbeddingFailedEvent)` or per-language idiomatic equivalent) rather than via
+on `EmbeddingFailedEvent` rather than via
 a sentinel-namespace string match.
 
 The event mirrors `EmbeddingEvent`'s identity / scoping / request-side field set 1:1, carries
@@ -1122,7 +1120,7 @@ either embedding-variant are responsible for their own redaction posture, identi
 **Typed rerank event.** The observer delivery queue also carries a typed `RerankEvent` on every
 successful `RerankProvider.rerank()` call per the retrieval-provider §5 contract — a spec-normatively-
 typed variant on the observer event union, filtered via type discrimination
-(`isinstance(event, RerankEvent)` or per-language idiomatic equivalent) rather than via a
+on `RerankEvent` rather than via a
 sentinel-namespace string match. The class name `RerankEvent` is normative as an identifier shape;
 implementations MAY use a per-language idiomatic name provided the field set + dispatch contract are
 preserved. It mirrors `EmbeddingEvent`'s identity / scoping / request-side field set with
@@ -1169,7 +1167,7 @@ subject to the `phases` subscription filter.
 on every `rerank()` call that raises one of the llm-provider §7 error categories (per
 retrieval-provider §7's rerank-applicable subset). Paired with `RerankEvent` per the 0049 → 0058
 success+failure pairing precedent — filtered via type discrimination
-(`isinstance(event, RerankFailedEvent)` or per-language idiomatic equivalent) rather than via a
+on `RerankFailedEvent` rather than via a
 sentinel-namespace string match.
 
 The event mirrors `RerankEvent`'s identity / scoping / request-side field set 1:1, carries
@@ -1274,7 +1272,7 @@ instrument as a tool).
 
 **Typed tool-call event.** On a tool execution returning a result, the observer delivery queue carries
 a typed `ToolCallEvent` — a spec-normatively-typed variant on the observer event union, filtered via
-type discrimination (`isinstance(event, ToolCallEvent)` or per-language idiomatic equivalent) rather
+type discrimination on `ToolCallEvent` rather
 than via a sentinel-namespace string match. The class name `ToolCallEvent` is normative as an
 identifier shape; implementations MAY use a per-language idiomatic name provided the field set +
 dispatch contract are preserved. It mirrors `LlmCompletionEvent`'s identity / scoping baseline plus
@@ -1308,7 +1306,7 @@ success-only `result` absent and two failure-specific fields:
 | Field | Type | Description |
 |---|---|---|
 | (identity / scoping / `tool_name` / `tool_call_id` / `arguments` / `latency_ms` / `call_id`) | | Same definitions as on `ToolCallEvent`. |
-| `error_type` | string \| null | The impl-level / language-level exception type — the exception class name (e.g. `"TimeoutError"`, `"ValueError"`) or a tool-defined error code. Null when no type is available. |
+| `error_type` | string \| null | The impl-level / language-level exception type: the exception class name (e.g. `"ValueError"` in Python, `"RangeError"` in TypeScript) or a tool-defined error code. Null when no type is available. |
 | `error_message` | string | The human-readable message from the raised exception. Always present (empty string when the exception carried no message). |
 
 **No `error_category`.** This is the deliberate departure from `LlmFailedEvent` / `EmbeddingFailedEvent`.
@@ -1376,3 +1374,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §2 subgraph projection gained a **declared same-name boundary** (in-set / out-set of field names, a complete declaration with no field-name-matching fallback, per-field semantics = the explicit maps restricted to same-name pairs), mutually exclusive with the explicit `inputs`/`outputs` maps (new compile category `conflicting_projection_forms`; `mapping_references_undeclared_field` extended to the declared sets), plus a **reducer round-trip warning** `projection_reducer_round_trip` (MUST for a round-trip into a non-round-trip-idempotent canonical reducer — `append`/`concat_flatten`/`bounded_append`/`merge_all`; SHOULD for custom) by [proposal 0094](../../proposals/0094-subgraph-projection-declared-boundary.md)
 - §6 `LlmCompletionEvent.usage` **mirrors the response** for a malformed usage counter (llm-provider §7 *Malformed usage counter*): a partially-malformed record surfaces as a present record with the malformed counter(s) `null`, an all-malformed record as a present record of null counters (§6 null-together), **not** as a null `usage` — pinning which shape a malformed-counter response takes so the event and the response agree, and closing a divergence 0093 could leave dormant (no completion mapping reported "no usage" then; a malformed all-counter response reaches that state now). The `record | null` type is unchanged. Companion to the retrieval-side `EmbeddingEvent` / `RerankEvent` mirror (0100) by [proposal 0101](../../proposals/0101-malformed-usage-counter-llm-observability.md)
 - §6 `LlmCompletionEvent` and `LlmFailedEvent` gain **`structured_output_path`**: `"native"`, `"native_unenforced"`, `"tool_coercion"` or `"prompt_augmentation"`, or null when no `response_schema` was supplied or no request was sent; a classification, never gated by `disable_provider_payload`. Under call-level retry the call's single typed event describes the request its outcome came from: its `input_messages`, `request_params` and `request_extras` reflect the messages the last attempt sent and its configuration after any per-attempt override, while its `attempt_index` stays node-level. `input_messages` is the list as sent, including the schema directive on the prompt-augmentation path, or the caller's list for a call rejected before sending, and the failure event's `output_content` row points to §7's definition. The failure-event `error_message` paragraph now points to llm-provider §7's definition of the failure description rather than restating it by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)
+- §6's typed-event paragraphs name the event type an observer filters on in place of an `isinstance(...)` example, its drain-input rule's example names a `TypeError` in Python or TypeScript, its attempt-index precedence note says "context-primitive-style" in place of Python's `ContextVar`, and its state-immutability and `error_type` examples pair Python with TypeScript. No behavior change; spec v0.120.1 (clarification, no proposal)

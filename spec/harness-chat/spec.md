@@ -149,7 +149,7 @@ correctly-shaped field; the construction mechanism is per-language.
 
 The chat harness exposes a higher-level callable surface above raw `invoke()`:
 
-```python
+```text
 send(session_id: <string>, message: ChatMessage) -> ChatTurnOutcome
 ```
 
@@ -359,7 +359,7 @@ for); it fires only on the post-resume completion.
 The chat sub-spec defines the API-surface contract for a streaming variant of `send()` without
 prescribing the engine-side hook implementation:
 
-```python
+```text
 send_streaming(session_id: <string>, message: ChatMessage) -> <streaming-return-shape>
 ```
 
@@ -505,3 +505,4 @@ non-deterministic message-interleaving in history.
 ## History
 
 - created by [proposal 0056](../../proposals/0056-harness-chat.md)
+- §5's `send()` and §9's `send_streaming()` signatures are fenced as plain text rather than Python. No behavior change; spec v0.120.1 (clarification, no proposal)

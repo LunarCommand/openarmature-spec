@@ -6,8 +6,8 @@ Verifies the `count` mode (no `items_field`) and the int-or-callable shape for b
 The harness exposes named callable factories for use in YAML (literal closures aren't expressible
 in YAML):
 
-- `state_field_read` — `lambda state: getattr(state, field)`
-- `queue_chunk` — `lambda state: max(1, len(getattr(state, field)) // chunk_size)`
+- `state_field_read`: a callable returning the value of the state field `field`
+- `queue_chunk`: a callable returning `max(1, length of field // chunk_size)` for the state field `field`
 
 **Spec sections exercised:**
 
