@@ -73,6 +73,8 @@ cases:
                 name: "openarmature.llm.complete"
                 # Normal success — nothing exceeded, so NO WARNING level and no
                 # statusMessage (contrast fixture 130's over-budget WARNING).
+                level: DEFAULT
+                statusMessage: null
                 metadata:
                   token_budget:
                     input_max_tokens: 40

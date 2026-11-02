@@ -49,9 +49,9 @@ calls:
           completion_tokens: 50     # stands
           total_tokens: 150         # stands
         raw_check:
-          # required_keys asserts raw.usage is PRESENT (key presence only — it
-          # does NOT pin the value). The verbatim malformed value is asserted by
-          # the adapter-enforced invariant below.
+          # Listing `usage` asserts that raw.usage equals the mock's usage
+          # exactly, so the malformed "abc" is pinned here too. The invariant
+          # below states the same claim.
           required_keys: [id, object, created, model, choices, usage]
       invariants:
         # raw.usage.prompt_tokens preserves the mock's malformed "abc"

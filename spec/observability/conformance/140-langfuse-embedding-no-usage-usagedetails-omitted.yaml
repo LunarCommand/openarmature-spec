@@ -10,9 +10,10 @@
 # the real-world archetype of a no-usage embedding provider, though its actual
 # wire is a bare vector array — a different shape than this mock.) This is the
 # no-usage counterpart to 083 (which populates usageDetails: {input: N} when
-# the provider reports usage). The omitted key is expressed as an empty
-# usageDetails map, matching 108's idiom of populating usageDetails with only
-# the keys the provider reported (none here).
+# the provider reports usage). The omitted key is asserted with
+# usageDetails_absent_keys. usageDetails matches by the keys it names, so the
+# empty map beside it asserts only that usageDetails is present (§8.4.5: an
+# empty map when the provider reports no figure).
 
 cases:
   - name: embedding_observation_omits_usagedetails_input_when_no_usage_record
@@ -65,9 +66,10 @@ cases:
                 name: "openarmature.embedding.complete"
                 model: "text-embedding-test"
                 # No usage record => no `input` key in usageDetails (§8.4.5).
-                # Empty map mirrors 108's idiom: usageDetails carries only the
-                # keys the provider reported (none here).
+                # The empty map asserts only that usageDetails is present; the
+                # absent key is asserted by usageDetails_absent_keys.
                 usageDetails: {}
+                usageDetails_absent_keys: [input]
                 metadata:
                   openarmature_input_count: 2
                   openarmature_dimensions: 3

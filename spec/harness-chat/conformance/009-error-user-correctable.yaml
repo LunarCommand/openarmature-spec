@@ -8,7 +8,7 @@ cases:
       Sessioned chat harness; graph node simulates a
       provider_invalid_request raise (e.g., context-window-exceeded) with a
       diagnostic message. The chat harness MUST surface the error as
-      ChatTurnOutcome.errored with error_category=user_correctable and a
+      ChatTurnOutcome.errored with error_bucket=user_correctable and a
       system-shaped reply incorporating the diagnostic.
     harness:
       mode: sessioned
@@ -36,7 +36,6 @@ cases:
         expected:
           outcome: errored
           error_bucket: user_correctable
-          error_category: provider_invalid_request
           reply:
             role: system
             content_includes:

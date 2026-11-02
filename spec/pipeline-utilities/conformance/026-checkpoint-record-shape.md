@@ -1,9 +1,11 @@
 # 026 — Checkpoint Record Shape
 
-Verifies §10.2: the saved `CheckpointRecord` carries every required field with well-formed
-values. `fan_out_progress` is reserved for the v2 per-instance fan-out resume follow-on; in
-v1 it is absent (this fixture's graph has no fan-out, so the field's reserved status is
-verified directly).
+Verifies §10.2: the saved `CheckpointRecord` carries every required field other than
+`schema_version` with well-formed values. `schema_version` is not asserted: the state
+declares no version, so the record holds an implementation-defined sentinel, typically `""`,
+which `<any-string>` rejects. `fan_out_progress` is reserved for the v2 per-instance fan-out
+resume follow-on; in v1 it is absent (this fixture's graph has no fan-out, so the field's
+reserved status is verified directly).
 
 **Spec sections exercised:**
 
@@ -16,8 +18,8 @@ verified directly).
 **Cases:**
 
 1. `record_carries_required_fields` — two-node linear graph with a caller-supplied
-   `correlation_id`; assert the latest saved record carries all required fields with valid
-   values.
+   `correlation_id`; assert the latest saved record carries all required fields other than
+   `schema_version` with valid values.
 
 **What passes:**
 
@@ -28,11 +30,10 @@ verified directly).
 - `parent_states` is an empty list (no subgraph or fan-out nesting).
 - `fan_out_progress` is absent or null (reserved field, no fan-out in this case).
 - `last_saved_at` is present and monotonic across the run's saves.
-- `schema_version` is present (any string).
 
 **What fails:**
 
-- Any required field missing or malformed.
+- Any asserted field missing or malformed.
 - `invocation_id` is a counter or non-UUIDv4.
 - `correlation_id` is transformed (prefixed, hashed, truncated) instead of used verbatim.
 - `parent_states` is null instead of empty list at the outermost graph (the field is always

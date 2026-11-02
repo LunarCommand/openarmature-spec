@@ -15,8 +15,8 @@ fetch succeeds: an advisory `token_budget` config never breaks the call (§3).
 **Case:**
 
 1. `fetch` of a prompt whose sourced `token_budget` config is `{input_max_tokens: 10, unknown: 5}` → the returned
-   `Prompt.token_budget` is exactly `{input_max_tokens: 10}` (the `unknown` key dropped), and the fetch completes
-   normally.
+   `Prompt.token_budget` carries `input_max_tokens: 10` and no `unknown` key (the key is dropped), and the fetch
+   completes normally.
 
 **What fails:**
 

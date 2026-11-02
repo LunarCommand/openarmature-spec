@@ -16,9 +16,10 @@
 # four-sequence cap) and assert the wire `stop`.
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 005's header (mapping: openai default),
+# Per-directory harness directives: see 001's header (mapping: openai default),
 # 032's header (config declared fields + config.extras pass-through bag), and
-# 013's header (mock_provider 200 response + expected_wire_request).
+# 001's header (mock_provider) and conformance-adapter §5.16
+# (expected_wire_request).
 
 cases:
   - name: extras_stop_merges_with_declared_stop_sequences

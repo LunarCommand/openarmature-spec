@@ -30,7 +30,9 @@ Langfuse-side projection of the same data.
    dispatches a subgraph in detached mode (per §4.4). Asserts both the parent invocation span
    AND the detached child trace's invocation span carry the attribution attributes. Verifies
    the attributes propagate to detached invocation spans (every invocation span emits them
-   regardless of whether the invocation is the outermost graph or a detached child).
+   regardless of whether the invocation is the outermost graph or a detached child). The
+   parent trace lists both node spans the graph runs, `dispatch` and `after`, and the
+   `dispatch` span links to the detached child trace.
 
 **What passes:**
 

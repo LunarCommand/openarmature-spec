@@ -35,17 +35,22 @@ fixtures (002–008) reuse the same shape.
 
 ## Fixture format
 
-This and all subsequent llm-provider fixtures use the format documented at the top of this
-fixture's YAML. The high points:
+This and all subsequent llm-provider fixtures use the format that the harness note at the top of
+this fixture's YAML defines. The high points:
 
-- `mock_provider.responses` — ordered list of canned responses; each `complete()` consumes one.
-- `calls` — ordered list of operations to invoke. Each entry has `operation` (`complete` or
-  `ready`), the operation's inputs, and an `expected` block.
-- `expected.response` — assertions over the returned `Response`. Mutually exclusive with
-  `expected.raises`.
-- `expected.response.raw_check.required_keys` — subset assertion: these top-level keys MUST appear
-  in `raw` with the same values as the mock body. Other keys MAY be present.
-- `expected.raises` — assertion that the operation raised an error of the stated category.
-- The conformance harness in each implementation supplies a mock OpenAI-compatible provider that
-  consumes the YAML and exercises the implementation's normalized API. Live LLM calls are out of
-  scope for this suite (per spec §9).
+- `mock_provider.responses`: ordered list of canned responses. Each request the implementation
+  sends consumes one.
+- `mapping`: selects the wire mapping under test (`anthropic`, `gemini` or
+  `streaming_unsupported_stub`). Without it, a fixture targets the §8.1 OpenAI-compatible mapping.
+- `calls`, `cases` or a single `call`: the operations to invoke. A call has `operation`
+  (`complete` or `ready`), the operation's inputs, and an `expected` block. The wire assertions,
+  defined in conformance-adapter §5.16, sit beside `expected`.
+- `expected.response`: the returned `Response`, matched by the keys the fixture names. Mutually
+  exclusive with `expected.raises`.
+- `expected.response.raw_check.required_keys`: each listed top-level key of `raw` holds exactly
+  the mock body's value for that key. Other keys MAY be present. Defined only for an atomic call.
+- `expected.raises`: the operation raised an error of the stated category (conformance-adapter
+  §5.8).
+- The conformance harness in each implementation supplies a mock provider that consumes the YAML
+  and exercises the implementation's normalized API. Live LLM calls are out of scope for this
+  suite (per spec §9).

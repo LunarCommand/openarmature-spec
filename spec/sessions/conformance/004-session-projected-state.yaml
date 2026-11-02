@@ -32,18 +32,20 @@ cases:
     invocations:
       - session_id: "s1"
         initial_state: {}
-        expected_final_state: {summary: "done", scratch: "tmp"}
-        saved_session_assertions:
-          # Only the projected field is in the record.
-          state: {summary: "done"}
-          excludes_fields: [scratch]
+        expected:
+          final_state: {summary: "done", scratch: "tmp"}
+          saved_session_assertions:
+            # Only the projected field is in the record. `state` is exact,
+            # so a stored `scratch` fails it.
+            state: {summary: "done"}
       - session_id: "s1"
         initial_state: {}
-        # Loads `summary` from the saved record; `scratch` is NOT loaded
-        # (defaults to "").
-        loaded_session_state: {summary: "done"}
-        loaded_invoke_state_for_scratch: ""
-        expected_final_state: {summary: "done", scratch: "tmp"}
+        expected:
+          # Loads `summary` from the saved record; `scratch` is NOT loaded
+          # (defaults to "").
+          loaded_session_state: {summary: "done"}
+          entry_state: {summary: "done", scratch: ""}
+          final_state: {summary: "done", scratch: "tmp"}
     invariants:
       scratch_field_never_persisted: true
       projected_field_persists_across_invokes: true

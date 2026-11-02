@@ -4,6 +4,40 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.120.0] - 2026-11-01
+
+**Changed**
+
+- **Every fixture assertion compares by one set of written rules** ([proposal 0127](proposals/0127-assertion-matching-rules.md)). conformance-adapter §8.4 states them. A list of observed items is complete where the spec fixes the whole set, and the existence lists and unordered lists are named in their definitions. A mapping asserts the keys it names at every depth, and is exact only where an extra key would be a defect: state snapshots, values copied from the case's inputs, wire request bodies and metric dimensions. Absence is written with `<key>_absent_keys` or `absent_keys`. A written `null` means not set: on a language record it matches null or missing, and in a JSON document the two stay distinct. Binding tokens match only present, non-null values. A block reads the `invoke()` call it belongs to, and every written assertion is checked.
+- **An error assertion reads the category of the error a node raised.** Every raised-error assertion takes pipeline-utilities §6.4's classification, falling back to the outermost carrier's own category, so a categorized provider error raised from a node reads as its own category rather than `node_exception`. Nine fixtures change.
+- **A fixture asserts only what the spec requires** (conformance-adapter §4.5). Behavior the spec only recommends is asserted through an adapter-declared capability (§5.17, generalized from §5.5), and gating never takes a check away from an adapter. The recommended-only pins that shipped fixtures write as assertion directives are gated or removed. Pins written as named claims, such as harness 008's claims that the harness did not auto-retry, stay until a following proposal settles the named claims.
+- **The `accumulate` observer keeps one bucket per call** (conformance-adapter §6.1), since a suspension resume reuses its invocation id, and so does §6.7's middleware log. The metric capture records each measurement individually (§6.9, observability §11.5), so the complete `metrics` list counts repeats.
+
+**Added**
+
+- conformance-adapter: a definition for every assertion directive in use, in §5 or in the directory notes, apart from the named claims. §5.16 gathers the wire-request assertions, moved out of §5.15, and adds the named-keys form `expected_wire_request_includes`. §5.10 adds `<timestamp>` and states the binding-token rules. §5.8 adds `final_state_bounds`, `delivery_order`, `middleware_log_captured` and `traces`, and moves `span_tree` in from observability's note. §5.6 adds `session_store_load_calls` and `session_store_save_calls`.
+- Five capabilities: `llm_strict_native_schema` and `llm_prompt_augmentation_fallback` in conformance-adapter §5.17, and `langfuse_token_budget_warning_level`, `anthropic_fallback_tool_coercion` and `session_save_at_suspend` in their directories' notes. The existing `langfuse_bound_provider_detection` moves from §5.5 to §5.17.
+- conformance-adapter §5.7 defines `run_count`, which runs a case's graph several times and checks its `expected:` block against each run.
+- conformance-adapter §5.1: `flaky_per_index` takes an optional `category` for the failures it raises, so retry middleware can retry them. pipeline-utilities 053 uses it to exhaust an instance's retries before resume.
+- conformance-adapter §6.3 composes span and log capture for any case that asserts them. A case asserting `span_tree`, `traces` or `llm_spans` MUST NOT set `otel_observer: {attached: false}`, and an adapter rejects the combination with `fixture_schema_invalid`.
+- conformance-adapter §5's preamble requires every key at an assertion position to be a defined directive, apart from `capture_as` labels and named claims, which an adapter implements, and reserves the `absent_keys` spellings.
+
+**Removed**
+
+- `otel_spans`, observability's `parent_trace`, `contains_exactly_n_events_of_type`, `does_not_contain_event_of_type` and the `"*"` wildcard, each re-expressed in defined vocabulary.
+- harness-chat's `messages_count` and `messages_history_contains`, replaced by the `messages` list, and `content_matches_template`, since harness-chat §10.1 and §10.2 let the text be customized.
+- `LlmTokenFailedEvent` from conformance-adapter §5.5's list of captured event families, since graph-engine §6 defines no such event.
+
+**Fixed**
+
+- pipeline-utilities §10.11.3 said every instance re-runs on resume after an instance's retry middleware exhausted in `fail_fast` mode. Instances that completed before the failure are skipped, as §10.7 and §10.11.2 state and fixtures 051 and 053 assert, and §10.11.3 now says so. A clarification with no behavior change.
+- conformance-adapter §5.1: the `fail_when_idx` form of `flaky_by_index` raises uncategorized errors, and so does `flaky_per_index` without its new `category`. `flaky_by_index`'s optional `category` applies only to the `fail_count_per_idx` form.
+
+**Notes**
+
+- **MINOR.** Conformance expectations change: about 300 fixture files change, and no fixture is added or retired. No capability behavior changes beyond observability §11.5's metric-capture sentence. conformance-adapter, observability and pipeline-utilities `Latest` move to 0.120.0, pipeline-utilities for the §10.11.3 clarification. The other capabilities whose fixtures change keep their `Latest`, since their spec text is unchanged.
+- The Langfuse defaults the null rule relies on were checked against Langfuse's documentation and published API types before accept: an observation without a level is stored as `DEFAULT`, and the other top-level fields the rule names are nullable.
+
 ## [0.119.1] - 2026-10-29
 
 **Fixed**

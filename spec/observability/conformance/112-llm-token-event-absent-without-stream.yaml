@@ -1,8 +1,8 @@
 # graph-engine §6 + llm-provider §5 — backward-compat / opt-in lockdown.
 # A complete() call WITHOUT `stream` set emits ZERO LlmTokenEvents and exactly
 # one LlmCompletionEvent. Token events fire ONLY when stream is set; the atomic
-# path is byte-for-byte the pre-streaming behavior. (Streaming directives in
-# fixture 111's header; this fixture deliberately uses the plain atomic mock_llm
+# path is byte-for-byte the pre-streaming behavior. (Streaming inputs in
+# fixture 001's header; this fixture deliberately uses the plain atomic mock_llm
 # to contrast with the streamed path.)
 
 cases:
@@ -23,6 +23,7 @@ cases:
       ask:
         calls_llm:
           messages: [{role: user, content: "say hello"}]
+          model: gpt-test
           stores_response_in: answer
     edges:
       - {from: ask, to: END}

@@ -15,15 +15,15 @@
 #
 # - mock_embedding: [{status, body}, ...] — mock provider responses
 #   matching the OpenAI-compatible /v1/embeddings shape. Each entry
-#   is dispatched for one embed() call in arrival order.
+#   is dispatched for one request, in call order, and chunk order
+#   within a chunked call.
 #
 # Mock-shape note: this fixture's body uses a top-level `id` field
 # as the source for `EmbeddingResponse.response_id`. The mock shape
-# is harness-internal — the v1 retrieval-provider spec does not pin
-# the wire path that produces `response_id`. A forthcoming per-vendor
-# wire-format mapping proposal (analogous to llm-provider §8.1 /
-# §8.2 / §8.3) will pin the actual wire-source per provider; this
-# fixture's `id` field is a stand-in pending that work.
+# is the harness-internal stand-in used without a `mapping:`
+# (conformance-adapter §5.15). The per-vendor wire mappings in
+# retrieval-provider §8.1 to §8.4 pin each provider's real source for
+# `response_id`, and fixtures 013 onward exercise them.
 
 cases:
   - name: embed_response_shape_invariants_satisfied
@@ -32,8 +32,7 @@ cases:
       returning 3 vectors for 3 input strings, dimensions=4, with
       a provider-returned response id and usage.prompt_tokens. The
       harness asserts the response carries:
-      - vectors length = 3
-      - all inner vectors of length 4
+      - vectors = the mock's 3 vectors in input order, each of length 4
       - dimensions field = 4
       - usage.input_tokens = 6
       - response_id = "emb-001-id"
@@ -67,9 +66,11 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 3
+          vectors:
+            - [0.1, 0.2, 0.3, 0.4]
+            - [0.5, 0.6, 0.7, 0.8]
+            - [0.9, 1.0, 1.1, 1.2]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: text-embedding-test
           response_id: emb-001-id
           usage:

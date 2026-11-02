@@ -84,8 +84,7 @@ calls:
         usage: {prompt_tokens: 50, completion_tokens: 30, total_tokens: 80}
         raw_check:
           # The original truncated arguments string MUST be present in raw
-          # so application code can repair it. The harness MAY assert on the
-          # nested path raw.choices[0].message.tool_calls[2].function.arguments
-          # if it supports deep raw assertions; the top-level keys check
-          # below is the minimum.
+          # so application code can repair it. Listing `choices` asserts that
+          # raw.choices equals the mock's exactly, so the string at
+          # raw.choices[0].message.tool_calls[2].function.arguments is checked.
           required_keys: [id, object, created, model, choices, usage]

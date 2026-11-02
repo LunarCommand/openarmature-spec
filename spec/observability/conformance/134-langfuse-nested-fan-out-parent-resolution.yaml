@@ -125,7 +125,7 @@ cases:
     expected:
       langfuse_trace:
         id: "<uuid-hex>"
-        name: "outer_fan_out"
+        name: "<any-string>"                    # §8.6 only RECOMMENDS the entry-node default
         observations:
           - type: span
             name: "outer_fan_out"               # outer fan-out NODE (dispatch container)
@@ -310,7 +310,7 @@ cases:
     expected:
       langfuse_trace:
         id: "<uuid-hex>"
-        name: "outer_fan_out"
+        name: "<any-string>"                    # §8.6 only RECOMMENDS the entry-node default
         observations:
           - type: span
             name: "outer_fan_out"               # outer fan-out NODE

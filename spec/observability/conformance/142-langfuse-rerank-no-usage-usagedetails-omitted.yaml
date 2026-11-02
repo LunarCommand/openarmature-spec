@@ -1,17 +1,17 @@
 # observability §8.4.7 — Langfuse rerank observation, record-null usage path.
 # Exercises §8.4.7's record-null branch: when the rerank call reports no usage
 # record at all (RerankResponse.usage = null), the Retriever observation's
-# usageDetails MUST carry NO keys — an empty map, per the open-map convention
-# §8.4.7 documents (usageDetails carries only the usage figures the provider
-# reported, none here). The mock body omits the meta.billed_units block
-# entirely ({id, model, results}) so usage is null. This is the no-usage
-# counterpart to 108 (whose default case populates usageDetails.searchUnits
-# from a present record). The mock is a harness stand-in for a no-usage
-# reranker (TEI /rerank is the real-world archetype), NOT a claim that this is
-# any vendor's exact wire. Runs under default observer config
-# (disable_provider_payload=True) so input / output stay null. (calls_rerank /
-# mock_rerank directives in retrieval-provider fixture 006's header; the suite
-# provider identifier is "cohere".)
+# usageDetails MUST carry neither usage figure (no input and no searchUnits
+# key), per the open-map convention §8.4.7 documents (usageDetails carries
+# only the usage figures the provider reported, none here). The mock body
+# omits the meta.billed_units block entirely ({id, model, results}) so usage
+# is null. This is the no-usage counterpart to 108 (whose default case
+# populates usageDetails.searchUnits from a present record). The mock is a
+# harness stand-in for a no-usage reranker (TEI /rerank is the real-world
+# archetype), NOT a claim that this is any vendor's exact wire. Runs under
+# default observer config (disable_provider_payload=True) so input / output
+# stay null. (calls_rerank / mock_rerank directives in retrieval-provider
+# fixture 006's header; the suite provider identifier is "cohere".)
 
 cases:
   - name: rerank_observation_usagedetails_empty_when_no_usage_record
@@ -22,8 +22,8 @@ cases:
       archetype), NOT a claim that this is any vendor's exact wire. Default
       Langfuse observer config (disable_provider_payload=True). The Retriever
       observation MUST emit model + identity metadata, but its usageDetails
-      MUST carry NO keys (empty map — no usage figures reported). input /
-      output stay null under the default payload posture.
+      MUST carry neither usage figure (no input and no searchUnits key). input
+      / output stay null under the default payload posture.
     state:
       fields:
         rerank_response:
@@ -63,10 +63,12 @@ cases:
               - type: retriever
                 name: "openarmature.rerank.complete"
                 model: "rerank-test"
-                # No usage record => no keys in usageDetails (§8.4.7). Empty
-                # map per the open-map convention: usageDetails carries only
-                # the usage figures the provider reported (none here).
+                # No usage record => neither usage figure in usageDetails
+                # (§8.4.7). The empty map asserts only that usageDetails is
+                # present (an empty map when the provider reports no figure);
+                # the absent keys are asserted by usageDetails_absent_keys.
                 usageDetails: {}
+                usageDetails_absent_keys: [input, searchUnits]
                 metadata:
                   openarmature_query_length: 5
                   openarmature_document_count: 2

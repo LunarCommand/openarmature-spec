@@ -28,17 +28,15 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives (per conformance-adapter §3.2). Base
 # calls_rerank / mock_rerank directives are defined in 006's header; the
-# §8.X wire-mapping vocabulary (mapping: <name>, expected_wire_request,
-# expected_wire_request_absent_keys, expected_wire_request_count) is
-# defined in 013's / 014's headers (TEI), and expected_wire_headers in
-# 018's header (Jina). THIS fixture introduces the Cohere (§8.4)
-# realization of that vocabulary. New directives:
+# §8.X wire-mapping vocabulary is defined in conformance-adapter §5.15
+# (mapping: <name>) and §5.16 (the wire-request assertions). THIS fixture
+# introduces the Cohere (§8.4) realization of that vocabulary. New directives:
 #
 # - mapping: cohere — selects the §8.4 Cohere wire mapping for the fixture
 #   (parallel to 018's `mapping: jina`; mirrors the per-vendor mapping
 #   selectors). Pins Cohere's real /v2/rerank wire shape (the request the
-#   mapping MUST send, the response it MUST consume). This mapping is
-#   rerank-only — Cohere's embeddings wire is a separate future mapping.
+#   mapping MUST send, the response it MUST consume). The same mapping
+#   also covers Cohere's /v2/embed (§8.4), which fixtures 032 onward use.
 #
 # - cohere_rerank_provider: {base_url, model, api_key} — suite-level
 #   construction block for the bound Cohere RerankProvider (§8.4

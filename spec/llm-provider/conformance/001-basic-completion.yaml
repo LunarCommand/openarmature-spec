@@ -6,22 +6,81 @@
 #   - usage record is populated with all three integer fields.
 #   - raw carries the full original provider response verbatim.
 #
-# Conformance harness contract for llm-provider fixtures:
+# Conformance harness contract for llm-provider fixtures. This header is
+# the directory's harness note (conformance-adapter §3.2); the other
+# fixtures' headers point here.
 #
-#   - The harness instantiates a mock OpenAI-compatible provider preloaded
-#     with the responses in `mock_provider.responses`. Each call() consumes
-#     one response in order.
-#   - For each entry in `calls`, the harness invokes the named operation
-#     (`complete` or `ready`) with the inputs given, then asserts the
-#     `expected` block against the result.
-#   - The `expected.response.raw_check` block specifies subset assertions:
-#     `required_keys` lists top-level keys that MUST appear in raw with the
-#     values from the mock response. The harness compares those keys'
-#     values literally; other keys MAY also be present.
-#   - The `expected.raises` block, when present (mutually exclusive with
-#     `expected.response`), asserts the operation raised an error of the
-#     stated category and that the error preserved the underlying provider
-#     exception as cause when applicable.
+#   - The harness instantiates a mock provider for the mapping under test,
+#     preloaded with the responses in `mock_provider.responses`. Each
+#     request the implementation sends consumes one response, in order.
+#     `mock_provider.capabilities` is defined in conformance-adapter §5.11.
+#   - An empty `mock_provider.responses: []` is the pre-send-reject
+#     convention: the case expects the call to be rejected before sending,
+#     so any request the implementation sends finds no response and fails
+#     the case.
+#   - `mapping: <name>`, at the document root, selects the wire mapping
+#     under test: `anthropic` (§8.2 Anthropic Messages), `gemini` (§8.3
+#     Google Gemini) or `streaming_unsupported_stub` (below). A fixture
+#     without `mapping` targets the §8.1 OpenAI-compatible mapping.
+#   - `mapping: streaming_unsupported_stub` selects a synthetic wire mapping
+#     that supports an atomic complete() and declares no streaming support.
+#     It stands in for a mapping that does not implement streaming, so the
+#     §5 rejection of a stream-set call is tested apart from any one
+#     vendor's wire details.
+#   - Positions. For each call, the harness invokes the named operation
+#     (`complete` or `ready`) with the inputs given, then checks the call's
+#     assertions. They sit at `calls[i].expected` for the i-th call of a
+#     document-level `calls` list, at `cases[j].expected` for a case's
+#     `call`, or at the document root for a single `call:`. The wire
+#     assertions sit beside `expected`, never inside it.
+#   - `call.stream: <bool>`: when true, the call is
+#     complete(..., stream=True).
+#   - `stream_body: [<sse_chunk>, ..., "[DONE]"]` replaces `body` on a
+#     streamed mock response. It lists, in order, the parsed JSON objects
+#     carried on successive SSE `data:` lines, and ends with the literal
+#     string "[DONE]" (the §8.1.6 sentinel). Each chunk has the OpenAI
+#     streamed-chunk shape, {choices: [{index, delta:
+#     {content|reasoning_content|reasoning|tool_calls}, finish_reason}]},
+#     and the terminal usage chunk carries empty choices and {usage: {...}}.
+#     The mock SSE server yields these lines as the response body.
+#     Observability's mock_llm_stream stands in for this wire-level source.
+#   - `expected.response`, in a call's `expected:`, is the Response the
+#     operation returned, matched by named keys (conformance-adapter §8.4).
+#     `parsed` and each tool call's `arguments` are exact. `message.tool_calls`
+#     and a block-list `message.content` are complete and ordered.
+#     `tool_calls: null` matches a missing, null or empty list, because §3
+#     treats absent and empty tool calls alike. A content block or tool call
+#     asserts absence with `absent_keys`, and a value inside one with
+#     `<key>_absent_keys`.
+#   - `expected.response.raw_check.required_keys` is a parameter list. Each
+#     listed key is a top-level key of `raw` whose value equals the mock
+#     body's value for that key, by exact deep equality. It is defined only
+#     for an atomic call: a streamed mock has no single body, and §6 fixes
+#     only that the assembled `raw` keeps the terminal chunk's usage block
+#     verbatim, not where it keeps it.
+#   - `expected.raises` is defined in conformance-adapter §5.8.
+#   - The wire assertions (`expected_wire_request`,
+#     `expected_wire_request_includes`, `expected_wire_request_absent_keys`
+#     and `expected_wire_request_count`) are defined in conformance-adapter
+#     §5.16. That section also states the Gemini rule: under
+#     `mapping: gemini`, the wire `model` key is compared with the request
+#     URL's {model} path segment.
+#   - `expected_wire_bytes_identical: {calls: [...]}`, at the document root:
+#     the captured request bytes of every listed call are byte-identical
+#     (§8's intra-implementation wire-byte stability). A body with a
+#     repeated member name fails it.
+#   - Capability `anthropic_fallback_tool_coercion`: when the provider's
+#     capability metadata says the model lacks native structured output,
+#     the implementation takes tool-call coercion, the fallback §8.2.5.1
+#     says it SHOULD prefer. A case gates on a capability with
+#     `requires_capability` (conformance-adapter §5.17), which also defines
+#     `llm_strict_native_schema` and `llm_prompt_augmentation_fallback`.
+#   - Mock echo `<request_tool_choice_name>`: written in a mock response
+#     body, it is replaced by the `tool_choice` name the request carried.
+#     It is a mock input, not a matcher, and lets a coercion case's mock
+#     answer with the synthetic tool the implementation named.
+#   - Binding token `<tool_name_X>` (conformance-adapter §5.10): a name the
+#     implementation chooses that two positions must share.
 
 mock_provider:
   responses:

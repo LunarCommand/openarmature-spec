@@ -50,7 +50,7 @@ calls:
         - {role: user, content: "Hello."}
     expected:
       response:
-        message: {role: assistant, content: "Answer.", tool_calls: null}
+        message: {role: assistant, content: [{type: text, text: "Answer."}], tool_calls: null}
         finish_reason: stop
         usage:
           prompt_tokens: null       # malformed input_tokens => not reported
@@ -58,9 +58,9 @@ calls:
           total_tokens: null        # DERIVED total: addend unreported => null,
                                     # NOT the surviving addend (7)
         raw_check:
-          # required_keys asserts raw.usage is PRESENT (key presence only — it
-          # does NOT pin the value). The verbatim malformed Anthropic wire
-          # input_tokens is asserted by the adapter-enforced invariant below.
+          # Listing `usage` asserts that raw.usage equals the mock's usage
+          # exactly, so the malformed Anthropic wire input_tokens is pinned
+          # here too. The invariant below states the same claim.
           required_keys: [type, id, model, role, content, stop_reason, usage]
       invariants:
         # raw.usage.input_tokens preserves the Anthropic wire's malformed "abc"

@@ -2,8 +2,8 @@
 # the input state and the partial update. Verifies the middleware sees what the
 # spec promises and the engine merges normally.
 #
-# Conformance harness contract for pipeline-utilities fixtures (used by all
-# 001-016):
+# Conformance harness contract for pipeline-utilities fixtures (used by every
+# fixture in this directory):
 #
 #   - The harness instantiates the graph following graph-engine fixture format
 #     (state.fields, entry, nodes, edges, initial_state).
@@ -21,9 +21,8 @@
 #
 # fixture-only test middleware:
 #
-#   - `trace_recorder` — records (state_in, state_seen_in_post_phase,
-#     partial_update_returned) for every dispatch. Inspectable via
-#     `expected.trace_records`.
+#   - `trace_recorder`: records (state_in, partial_update_returned) for
+#     every dispatch. Inspectable via `expected.trace_records`.
 #   - `short_circuit` — never calls next; returns the partial update specified
 #     in its config. Verifies short-circuit semantics.
 #   - `error_recovery` — catches the wrapped chain's exception and returns
@@ -34,6 +33,88 @@
 #   - `state_inspector` — wraps next, comparing the input state to a captured
 #     snapshot to verify immutability (i.e., that nothing mutated the state
 #     between middleware invocation and engine merge).
+#
+# Directives defined for this directory. The assertions follow the matching
+# rules of conformance-adapter §8.4, which also defines "complete",
+# "ordered" and "matched by named keys".
+#
+#   - `expected_failure_isolation_event`: inside `expected:`. Exactly one
+#     failure-isolation event (§6.3) was dispatched in the call, and it
+#     matches. Sub-keys: `event_name`; `wrapped_node_lineage` (`namespace`,
+#     `attempt_index`, `fan_out_index`, `branch_name`); `pre_state`, an
+#     exact snapshot; `post_state`, exact as a mapping equal to the
+#     degraded update; `caught_exception` in conformance-adapter §5.8's
+#     shape. In `caught_exception.chain` a carrier link matches a run of one
+#     or more consecutive carrier links, because §6.3 lets a placement add
+#     one or more.
+#   - `expected_attempt_events`: inside `expected:`. Every node event the
+#     call dispatched, complete and ordered. Entries match by named keys,
+#     plus `error_category`, read by the category rule conformance-adapter
+#     §5.8 gives for raised errors.
+#   - `expected_observer_event`: inside `expected:`. Exactly one completed
+#     node event from `node_name`, matched by named keys. The event fields
+#     that must be absent are listed in `expected_observer_event_absent_keys`,
+#     beside it.
+#   - `timing_records`: the records every timing middleware with
+#     `capture_to: timing_records` passed to its callback, in callback
+#     order: complete and ordered. Entries match by named keys over §6.2's
+#     `TimingRecord`.
+#   - `trace_records`: `{<recorder>: [<record>, ...]}`, one record per
+#     dispatch, complete and ordered. Record sub-keys: `state_in` (exact),
+#     `partial_update_returned`, and `pre_seen` and `post_seen`, which say
+#     whether the recorder's pre-phase and post-phase ran.
+#   - `checkpoint_saves`: the records the call passed to `Checkpointer.save`,
+#     in call order: complete and ordered. Entries carry `after_node` and the
+#     record sub-assertions conformance-adapter §5.8 defines for
+#     `saved_record_assertions`.
+#   - `latest_record_assertions`: the record passed to the call's last save.
+#     Under a case's `expected:` that is the run; under `resume.expected:` it
+#     is the resumed run. It takes the record sub-assertions of
+#     conformance-adapter §5.8, matched by named keys.
+#   - `every_save_assertions`: at the case level, beside `expected:`. Applies
+#     the record sub-assertions to every record passed to a save in the
+#     case, and fails if none was.
+#   - `nodes_executed_during_resume`: under a `resume:` block's `expected:`.
+#     The function nodes at any depth whose execution the resumed call began,
+#     in order, with retries collapsed: complete and ordered.
+#   - `nodes_skipped_during_resume`: under a `resume:` block's `expected:`.
+#     The function nodes in the loaded record's `completed_positions` that
+#     the resumed call did not execute: complete and unordered.
+#   - `successful_attempt_index_during_resume`: under a `resume:` block's
+#     `expected:`. The `attempt_index` of the completed event that carries
+#     `post_state` for the case's single retried node, in the resumed call.
+#   - `concurrency_invariant.max_in_flight`: an upper bound. At no point were
+#     more than this many of the fan-out's instances in flight.
+#   - `raises` with `error_category`: in a node's `raises:` mock, a sibling
+#     `error_category: <category>` gives the raised error that category.
+#     Without it the error is uncategorized, as conformance-adapter §5.1
+#     defines `raises:`.
+#   - `abort_after_instance: <int>`, on a `fan_out:` node: a simulated crash.
+#     After the fan-out instance with that index completes and its save
+#     fires, the fan-out node raises an uncategorized error, so the run ends
+#     and the error surfaces as `node_exception` from the fan-out node
+#     (conformance-adapter §5.8's category rule).
+#   - `flaky_call_count`: inside `expected:`. The number of times the case's
+#     single flaky node body was invoked in the call, counting every fan-out
+#     instance and every attempt.
+#   - `expected_error.fan_out_category` and `expected_error.transient`: the
+#     fan-out category the raised error carries (§9.1), and whether §6.1's
+#     default classifier classifies the error as transient.
+#   - `on_caught_calls`: every invocation of the failure-isolation
+#     `on_caught` callback in the call: complete and ordered, with entries
+#     `{message}`.
+#   - `on_caught: record`, on a `failure_isolation` middleware entry: the
+#     adapter supplies an `on_caught` callback that records the message of
+#     each exception it receives, for `on_caught_calls`, and does nothing
+#     else. It writes nothing to state.
+#   - `expected_chain_ambiguity_error: <category>`: at the case level beside
+#     `expected:`, or inside `resume:`. It accepts the named category
+#     surfacing at either build time or during resume. It preserves
+#     §10.12.2's compile-time-SHOULD / load-time-acceptable carve-out, so
+#     implementations that detect ambiguity at either point pass the same
+#     fixture.
+#   - Binding tokens (conformance-adapter §5.10): `<corr_id_X>` and
+#     `<invocation_id_X>`.
 
 state:
   fields:

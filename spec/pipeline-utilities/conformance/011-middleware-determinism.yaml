@@ -2,9 +2,10 @@
 # backoff). Two runs of an identical mocked-failure-then-success scenario
 # MUST produce identical final state and identical observer event sequences.
 #
-# This fixture's expected block lists `run_count: 2` so the harness invokes
-# the graph twice and asserts equality between runs (and against the
-# expected final_state/observer_events).
+# It sets `run_count: 2` at the case level, so the harness runs the graph
+# twice and checks each run against `expected:` (conformance-adapter §5.7).
+# Both runs must therefore produce the asserted final state and observer
+# event sequence.
 
 state:
   fields:
@@ -38,6 +39,9 @@ middleware:
         max_attempts: 3
         backoff: {type: deterministic, seconds: 0}
 
+observers:
+  - {name: obs, attach: graph, target: outer, behavior: record}
+
 run_count: 2
 
 expected:
@@ -49,15 +53,16 @@ expected:
   # (transient failures); the final 2 are a pair ending in `post_state`
   # (success). Run 1 and Run 2 MUST produce identical sequences.
   observer_events:
-    - {step: 0, phase: started,   node_name: target, attempt_index: 0, namespace: [target],
-       pre_state: {v: 0, trace: []}}
-    - {step: 0, phase: completed, node_name: target, attempt_index: 0, namespace: [target],
-       pre_state: {v: 0, trace: []}, error: node_exception}
-    - {step: 0, phase: started,   node_name: target, attempt_index: 1, namespace: [target],
-       pre_state: {v: 0, trace: []}}
-    - {step: 0, phase: completed, node_name: target, attempt_index: 1, namespace: [target],
-       pre_state: {v: 0, trace: []}, error: node_exception}
-    - {step: 0, phase: started,   node_name: target, attempt_index: 2, namespace: [target],
-       pre_state: {v: 0, trace: []}}
-    - {step: 0, phase: completed, node_name: target, attempt_index: 2, namespace: [target],
-       pre_state: {v: 0, trace: []}, post_state: {v: 100, trace: ["target"]}}
+    obs:
+      - {step: 0, phase: started,   node_name: target, attempt_index: 0, namespace: [target],
+         pre_state: {v: 0, trace: []}}
+      - {step: 0, phase: completed, node_name: target, attempt_index: 0, namespace: [target],
+         pre_state: {v: 0, trace: []}, error: {category: node_exception}}
+      - {step: 0, phase: started,   node_name: target, attempt_index: 1, namespace: [target],
+         pre_state: {v: 0, trace: []}}
+      - {step: 0, phase: completed, node_name: target, attempt_index: 1, namespace: [target],
+         pre_state: {v: 0, trace: []}, error: {category: node_exception}}
+      - {step: 0, phase: started,   node_name: target, attempt_index: 2, namespace: [target],
+         pre_state: {v: 0, trace: []}}
+      - {step: 0, phase: completed, node_name: target, attempt_index: 2, namespace: [target],
+         pre_state: {v: 0, trace: []}, post_state: {v: 100, trace: ["target"]}}

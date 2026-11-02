@@ -23,8 +23,9 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 001's header (calls_embed), 016's
 # header (expected_error: {category, raised_from} — the conformance-adapter
-# §5.8 compact error-assertion shape), and 032's header (mapping: cohere,
-# cohere_embedding_provider). Pre-send-reject convention:
+# §5.8 compact error-assertion shape), and 032's header
+# (cohere_embedding_provider). `mapping:` is defined in conformance-adapter
+# §5.15. Pre-send-reject convention:
 #
 # - NO mock_embedding entry and NO expected_wire_request: the rejection
 #   happens at the pre-send validation layer, so NO wire request is ever

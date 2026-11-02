@@ -1,5 +1,5 @@
 # State migration — function raises. Saved record at v1, current schema
-# at v2, registered v1 -> v2 migration function raises a KeyError mid-
+# at v2, registered v1 -> v2 migration function raises an error mid-
 # execution (simulating a buggy user-supplied migration). The engine MUST
 # raise checkpoint_state_migration_failed (per §10.12.2 + §10.10),
 # preserve the raised exception as cause, and NOT raise
@@ -33,8 +33,8 @@ cases:
     migrations:
       - from_version: "v1"
         to_version: "v2"
-        # Harness mock that raises KeyError mid-execution.
-        migrate: raises_keyerror
+        # Harness mock that raises an error mid-execution.
+        migrate: raises_during_migration
     resume:
       from_seeded_record: true
       expected_error:
@@ -43,7 +43,7 @@ cases:
           from_version: "v1"
           to_version: "v2"
         cause:
-          exception_type: KeyError
+          raised_by_mock: raises_during_migration
       invariants:
         # Verify the engine did NOT route to checkpoint_record_invalid
         # or to checkpoint_state_migration_missing — the migration

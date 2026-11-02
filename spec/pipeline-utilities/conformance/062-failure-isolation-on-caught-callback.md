@@ -12,8 +12,8 @@ the degraded return.
 **Cases:**
 
 1. `on_caught_callback_invoked_with_exception` — A node wrapped with `FailureIsolationMiddleware`
-   whose `on_caught` is a recording callback (captures the exception into a state field via a
-   side channel for assertion). The node raises a `provider_unavailable` error; the middleware
+   whose `on_caught` is a recording callback (`on_caught: record`, defined in this directory's note),
+   which `on_caught_calls` reads. The node raises a `provider_unavailable` error; the middleware
    catches and returns the degraded update. Asserts:
    - The `on_caught` callback fires exactly once during the catch.
    - The callback receives the original caught exception (matching category + message).

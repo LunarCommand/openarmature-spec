@@ -16,11 +16,12 @@
 # (the declared value is what reaches the wire).
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 005's header (mapping: openai default,
-# the bound model becomes the wire `model` field), 032's header (config declared
+# Per-directory harness directives: see 001's header (mapping: openai default;
+# §8.1.1 makes the bound model the `model` field), 032's header (config declared
 # RuntimeConfig fields + config.extras — the §6 undeclared pass-through bag that
-# lands keys at the request-body root), 013's header (expected_wire_request),
-# and 074's header (the pre-send-reject convention: mock_provider.responses: []
+# lands keys at the request-body root), conformance-adapter §5.16
+# (expected_wire_request), and 001's header (the pre-send-reject convention:
+# mock_provider.responses: []
 # so a sent request fails the test; expected.raises: {category}).
 
 cases:

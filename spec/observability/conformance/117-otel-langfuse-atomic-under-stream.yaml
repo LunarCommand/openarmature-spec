@@ -4,7 +4,7 @@
 # (no per-token children) and one Langfuse Generation observation (no per-token
 # observations), each carrying the FULL assembled input/output — identical to a
 # non-streamed call. A 500-token response is one span / one Generation, not 500.
-# (Streaming directives in fixture 111's header; the span / Langfuse expected
+# (Streaming inputs in fixture 001's header; the span / Langfuse expected
 # shapes follow the observability suite's standard span_tree / langfuse_trace.)
 
 cases:
@@ -27,6 +27,7 @@ cases:
           stream: true
           messages:
             - {role: user, content: "say hello"}
+          model: gpt-test
           stores_response_in: answer
     edges:
       - {from: ask, to: END}
@@ -78,6 +79,7 @@ cases:
           stream: true
           messages:
             - {role: user, content: "say hello"}
+          model: gpt-test
           stores_response_in: answer
     edges:
       - {from: ask, to: END}

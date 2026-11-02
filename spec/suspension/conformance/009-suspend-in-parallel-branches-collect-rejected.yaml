@@ -67,5 +67,3 @@ cases:
           outcome: errored
           error:
             category: suspension_in_unsupported_context
-    invariants:
-      collect_mode_parallel_branches_suspend_rejected_at_runtime: true

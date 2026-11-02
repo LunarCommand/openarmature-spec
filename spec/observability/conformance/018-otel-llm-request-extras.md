@@ -29,6 +29,7 @@ is non-empty and `disable_provider_payload = False`.
 
 - `gen_ai.request.temperature: 0.7` is present on the span.
 - `openarmature.llm.request.extras` parses to an object equivalent to `{repetition_penalty: 1.05}`.
+- `gen_ai.request.repetition_penalty` is absent from the span (`attributes_absent`).
 
 **What fails:**
 

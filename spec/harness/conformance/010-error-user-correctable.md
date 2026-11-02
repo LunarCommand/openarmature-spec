@@ -14,8 +14,8 @@ explicitly.
 
 - Invoke errors with `error.category == provider_invalid_request`.
 - Harness classifies into the user_correctable bucket.
-- Outbound includes the diagnostic message from the upstream error
-  AND a `user_action_required: true` flag.
+- Outbound includes a non-empty `diagnostic_message`. §7.3 does not fix
+  what the diagnostic information says, so its text is not asserted.
 
 **What fails:**
 

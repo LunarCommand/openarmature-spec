@@ -20,8 +20,8 @@ implementations that try to fold all attempts into a single span MUST fail this 
    invocation span: attempts 0 and 1 with status ERROR + `openarmature.error.category`,
    attempt 2 with status OK.
 2. `retry_exhausts_all_three_spans_error` — same flaky node but `fail_count: 999`. All three
-   attempt spans are ERROR; the engine raises `node_exception`; the parent invocation span is
-   also ERROR.
+   attempt spans are ERROR, and the parent invocation span is also ERROR. `expected_error`
+   asserts `provider_rate_limit`, the category of the error the flaky node raised.
 
 **What passes:**
 

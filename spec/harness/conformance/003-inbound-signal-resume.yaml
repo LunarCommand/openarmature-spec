@@ -43,6 +43,7 @@ cases:
         expected:
           dispatch_path: "3.2"
           invoke_outcome: suspended
+          invocation_id: "<invocation_id_paused>"
           descriptor:
             signal_id: "approval-test-001"
           # Harness MUST register a signal subscription per §5.3 step 2.
@@ -51,13 +52,13 @@ cases:
       - name: tx_resume_signal
         payload:
           kind: "signal_arrival"
-          invocation_id: "<from previous suspended outcome>"
+          invocation_id: "<from tx_initial_suspends suspended outcome>"
         signal_payload: {approved: true}
         dispatch_intent: signal_resume
         expected:
           dispatch_path: "3.3"
           invoke_args:
-            resume_invocation: "<from previous suspended outcome>"
+            resume_invocation: "<invocation_id_paused>"
             signal_payload: {approved: true}
           invoke_outcome: completed
           final_state: {approved: true, completed_flag: true}

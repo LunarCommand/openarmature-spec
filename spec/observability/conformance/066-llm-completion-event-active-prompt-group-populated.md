@@ -39,5 +39,3 @@ per prompt-management §12 / observability §8.4.4 when the LLM call ran inside 
 - `active_prompt_group` is null when the LLM call ran inside a group context.
 - `active_prompt_group` is collapsed to a flat string (just the group_name) rather than a
   `{group_name}` record — the spec mandates record shape for future extensibility.
-- `active_prompt_group` carries fields beyond `group_name` (the v0.51.0 spec carves only
-  the one field; additions land via follow-on proposals).

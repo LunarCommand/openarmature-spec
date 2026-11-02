@@ -41,7 +41,5 @@ cases:
           outbound_payload_includes:
             category: provider_unavailable
             bucket: retryable_transient
-            retry_safe: true
     invariants:
       provider_unavailable_classified_as_retryable_transient: true
-      outbound_marked_retry_safe: true

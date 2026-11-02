@@ -18,10 +18,10 @@
 #     stream_options is conditionally managed.
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 005's header (mapping: openai default,
+# Per-directory harness directives: see 001's header (mapping: openai default,
 # expected_wire_request), 032's header (config.extras pass-through bag), 059's
 # header (the OpenAI streaming request shape: stream: true + stream_options),
-# and 060's header (the pre-send reject convention: mock_provider.responses: []
+# and 001's header (the pre-send reject convention: mock_provider.responses: []
 # so a sent request fails the test; expected.raises: {category};
 # no_token_events_emitted on the rejected stream path).
 

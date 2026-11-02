@@ -31,8 +31,7 @@ calls:
         # template_hash), so the fixture only asserts presence and
         # non-empty string. Determinism (same inputs → same hash) is
         # covered separately by fixture 006.
-        rendered_hash_present: true
-        rendered_hash_non_empty_string: true
+        rendered_hash: "<any-string>"
         messages:
           - {role: user, content: "Hello, Alice!"}
         variables: {user: "Alice"}

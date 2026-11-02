@@ -19,12 +19,13 @@ YAML.
   entry_node, spec_version}`.
 - §8.4.2 Observation-level mapping — `observation.name`, `metadata.{namespace, step,
   attempt_index, correlation_id}` on each Span observation.
-- §8.6 Trace name — entry-node-name fallback when no caller-supplied invocation label.
+- §8.6 Trace name: the Trace carries a name. With no caller-supplied invocation label, §8.6 only
+  RECOMMENDS the entry-node name, so the case does not pin the value.
 
 **What passes:**
 
 - Exactly one Trace emitted with id matching the framework's invocation_id (UUIDv4).
-- Trace `name == "a"` (entry-node-name fallback per §8.6).
+- Trace `name` is a non-empty string (§8.6).
 - Trace metadata carries `correlation_id` (auto-generated UUIDv4), `entry_node = "a"`,
   `spec_version` populated.
 - Three Span observations emitted in execution order (a, b, c), each as a direct child of the
@@ -39,8 +40,7 @@ YAML.
 
 - An extra top-level Span observation wrapping the three node observations (per §8.3, the
   invocation maps to the Trace container, NOT to an additional Span observation).
-- Trace `name` is missing or differs from the entry-node name (no caller label supplied → must
-  fall back to entry-node name per §8.6).
+- Trace `name` is missing or empty. §8.6 requires every Trace to carry a name.
 - `correlation_id` differs across the Trace and Observations (must be invocation-scoped per §8.5).
 - `correlation_id` is missing on the Trace or on any Observation (must be cross-cutting per §8.5).
 - Trace `id` differs from the framework's `invocation_id` (must be verbatim per §8.4.1).

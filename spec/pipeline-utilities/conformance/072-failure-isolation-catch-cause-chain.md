@@ -28,8 +28,9 @@ provider failure. `catch` classifies *through* the carrier and catches correctly
    category check (the carrier is `node_exception`) would miss it.
 2. `catch_non_matching_category_propagates` — same carrier-wrapped
    `provider_unavailable` failure, but `catch=[provider_rate_limit]` excludes the
-   originating category, so the gate rejects and the exception propagates as
-   `node_exception` from the fan-out node; no failure-isolation event fires.
+   originating category, so the gate rejects and the exception propagates from
+   the fan-out node, with `provider_unavailable` as the raised error's category;
+   no failure-isolation event fires.
 
 ## Anti-cases (would indicate a broken implementation)
 

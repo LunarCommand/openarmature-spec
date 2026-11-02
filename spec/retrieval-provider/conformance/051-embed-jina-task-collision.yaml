@@ -15,15 +15,15 @@
 # input_type absent + extras task -> rides untouched onto the wire.
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 020's header (mapping: jina,
-# jina_embedding_provider, calls_embed, the input_type -> task realization,
-# expected_wire_request + expected_wire_headers + expected_wire_request_absent_keys),
-# 034's header (the pre-send-reject convention: NO mock_embedding and NO
-# expected_wire_request when the rejection is client-side, the
-# no_embed_request_issued invariant), 016's header (expected_error:
-# {category, raised_from}), and 039's header (calls_*.config.extras — the §2
-# extras-pass-through bag; a collision with a mapping-managed wire key is
-# governed by the §6 collision rule).
+# Per-directory harness directives: see 020's header (jina_embedding_provider,
+# the input_type -> task realization), 034's header (the pre-send-reject
+# convention: NO mock_embedding and NO expected_wire_request when the rejection
+# is client-side, the no_embed_request_issued invariant), 016's header
+# (expected_error: {category, raised_from}), and 039's header
+# (calls_*.config.extras: the §2 extras-pass-through bag; a collision with a
+# mapping-managed wire key is governed by the §6 collision rule). `mapping:`
+# and calls_embed are defined in conformance-adapter §5.15 and the wire-request
+# assertions in §5.16.
 
 mapping: jina
 
@@ -114,9 +114,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.10, 0.20, 0.30, 0.40]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: jina-embeddings-test
       invariants:
         input_type_absent_no_managed_task: true

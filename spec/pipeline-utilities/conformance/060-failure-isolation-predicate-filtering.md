@@ -5,27 +5,29 @@ others propagate.
 
 **Spec sections exercised:**
 
-- §6.3 — Failure isolation middleware; `predicate` field; single-argument `(exception) -> bool`
-  signature; default-always-true behavior.
+- §6.3: failure-isolation middleware's `predicate` field. An exception the predicate matches is
+  caught, and one it does not match propagates. The default predicate, which catches every
+  exception, is fixture 063's subject.
 
 **Cases:**
 
-1. `predicate_catches_matching_propagates_non_matching` — A node wrapped with
-   `FailureIsolationMiddleware(predicate=<matches provider_invalid_response>, ...)`. Two
-   sub-runs:
-   - The node raises `provider_invalid_response` — predicate matches; middleware catches;
-     engine continues from degraded return.
-   - The node raises `provider_invalid_request` — predicate does NOT match; exception
-     propagates as `node_exception` per graph-engine §4.
+In both, the node is wrapped with failure-isolation middleware whose `predicate` matches
+`provider_invalid_response`.
+
+1. `predicate_matches_catches_and_returns_degraded`: the node raises `provider_invalid_response`.
+   The predicate matches, the middleware catches, and the engine continues from the degraded
+   return.
+2. `predicate_does_not_match_propagates_raised_error`: the node raises `provider_invalid_request`.
+   The predicate does not match, so the exception propagates per graph-engine §4, and the raised
+   error's category is the node's own `provider_invalid_request`.
 
 **What passes:**
 
 - Matching exception: caught, degraded return reaches engine, framework-emitted event observed.
-- Non-matching exception: propagates as `node_exception`; no framework-emitted event observed.
+- Non-matching exception: propagates, and the raised error's category is
+  `provider_invalid_request`; no framework-emitted event observed.
 
 **What fails:**
 
 - Non-matching exception is caught — predicate filter not enforced.
 - Matching exception propagates — middleware ignored the matching predicate.
-- Predicate receives a multi-argument signature (e.g., `(exception, state)`) — §6.3 mandates
-  the single-argument shape.

@@ -27,10 +27,10 @@ the leak on it.
 **Cases:**
 
 1. `generation_usage_omits_input_when_prompt_tokens_null` — one LLM-calling node; Langfuse observer,
-   `disable_provider_payload=False`. Mock usage `{null, 5, 15}`. Asserts `generation.usage` = `{output:
-   5, total: 15}` — the `input` field omitted (the missing key is the omission, exact-map, as fixture 140
-   asserts an empty `usageDetails`) — with the rest of the Generation (model, output, metadata, DEFAULT
-   level) unaffected.
+   `disable_provider_payload=False`. Mock usage `{null, 5, 15}`. Asserts `generation.usage.output = 5`
+   and `generation.usage.total = 15`, and that the `input` field is absent (`usage_absent_keys: [input]`,
+   as fixture 140 asserts its `usageDetails` omission with `usageDetails_absent_keys`), with the rest of
+   the Generation (model, output, metadata, DEFAULT level) unaffected.
 
 **What passes:**
 

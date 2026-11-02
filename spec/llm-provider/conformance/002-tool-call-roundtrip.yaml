@@ -83,7 +83,7 @@ calls:
 
   # Caller appends a tool message bearing the SAME id verbatim, then makes the
   # follow-on call. The implementation MUST send `tool_call_id: call_abc123_with_underscores`
-  # in the wire request — verifying verbatim id preservation.
+  # in the wire request, and expected_wire_request asserts it there.
   - operation: complete
     messages:
       - {role: user, content: "What's the weather in Boston?"}
@@ -102,6 +102,29 @@ calls:
           properties:
             city: {type: string}
           required: [city]
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "What's the weather in Boston?"}
+        - role: assistant
+          content: null
+          tool_calls:
+            - id: call_abc123_with_underscores
+              type: function
+              function:
+                name: get_weather
+                arguments: '{"city":"Boston"}'
+        - {role: tool, content: '{"temp": 68, "condition": "sunny"}', tool_call_id: call_abc123_with_underscores}
+      tools:
+        - type: function
+          function:
+            name: get_weather
+            description: "Get current weather for a city."
+            parameters:
+              type: object
+              properties:
+                city: {type: string}
+              required: [city]
     expected:
       response:
         message:

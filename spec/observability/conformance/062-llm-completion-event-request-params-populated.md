@@ -18,12 +18,9 @@ semantics — only parameters the caller actually supplied appear in the mapping
    (`top_p`, `seed`, `frequency_penalty`, `presence_penalty`, `stop_sequences`) MUST NOT
    appear in the mapping.
 
-**Harness extensions:**
-
-- `expected.observers.<name>.contains_event.fields_absent_keys.<field>: [<key>, ...]` — the
-  adapter MUST assert that the named field is a mapping AND that none of the listed keys
-  appear in it. Distinct from asserting key presence with `null` value (which would mean
-  "key supplied with a null value"); absence asserts "key not supplied at all."
+**How absence is asserted:** an event's `request_params` is compared exactly
+(conformance-adapter §8.4). The written mapping is the whole value, so a key it leaves out
+must be absent from the event's `request_params`.
 
 **What passes:**
 

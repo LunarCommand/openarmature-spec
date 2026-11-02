@@ -7,7 +7,7 @@
 #   case A: choices[].delta.reasoning_content  (DeepSeek / older vLLM)
 #   case B: choices[].delta.reasoning          (current vLLM)
 # Within a chunk a reasoning delta and a content delta are mutually exclusive,
-# and reasoning streams before content. (Streaming directives in fixture 111's
+# and reasoning streams before content. (Streaming inputs in fixture 001's
 # header; the reasoning_content / reasoning chunk fields per llm-provider §8.1.6.)
 
 cases:
@@ -33,6 +33,7 @@ cases:
         calls_llm:
           stream: true
           messages: [{role: user, content: "what is the answer?"}]
+          model: gpt-test
           stores_response_in: answer
     edges:
       - {from: ask, to: END}
@@ -96,6 +97,7 @@ cases:
         calls_llm:
           stream: true
           messages: [{role: user, content: "what is the answer?"}]
+          model: gpt-test
           stores_response_in: answer
     edges:
       - {from: ask, to: END}

@@ -39,29 +39,34 @@ observers:
     target: outer
     behavior: record
 
-expected:
-  # The graph run does NOT complete successfully — fail_node raises and
-  # the engine propagates a node_exception per §4. The observer event for
-  # ok_node was already dispatched (step 0); the event for fail_node is
-  # dispatched with `error` populated before the failure propagates.
-  expected_error:
-    category: node_exception
-    message: "boom"
+# The graph run does NOT complete successfully: fail_node raises and
+# the engine propagates a node_exception per §4. The observer event for
+# ok_node was already dispatched (step 0); the event for fail_node is
+# dispatched with `error` populated before the failure propagates.
+expected_error:
+  category: node_exception
+  message: "boom"
+  # State at the point of failure: ok_node's update merged in, nothing
+  # from fail_node, which raised before returning an update.
+  recoverable_state: {v: "ok", trace: ["ok_node"]}
 
+expected:
   # Each attempt produces a started/completed pair. The failing node STILL
   # produces a started event (engine fires it before invoking the node) and
   # a completed event with `error` populated.
   observer_events:
     obs:
       - {step: 0, phase: started,   node_name: ok_node, namespace: [ok_node],
-         pre_state: {v: "", trace: []}}
+         pre_state: {v: "", trace: []}, parent_states: []}
       - {step: 0, phase: completed, node_name: ok_node, namespace: [ok_node],
-         pre_state: {v: "", trace: []}, post_state: {v: "ok", trace: ["ok_node"]}}
+         pre_state: {v: "", trace: []}, post_state: {v: "ok", trace: ["ok_node"]},
+         parent_states: [], absent_keys: [error]}
       - {step: 1, phase: started,   node_name: fail_node, namespace: [fail_node],
-         pre_state: {v: "ok", trace: ["ok_node"]}}
+         pre_state: {v: "ok", trace: ["ok_node"]}, parent_states: []}
       # Failed-node completed event: `error` populated, `post_state` absent.
       - {step: 1, phase: completed, node_name: fail_node, namespace: [fail_node],
-         pre_state: {v: "ok", trace: ["ok_node"]}, error: node_exception}
+         pre_state: {v: "ok", trace: ["ok_node"]}, error: {category: node_exception},
+         parent_states: [], absent_keys: [post_state]}
 
   delivery_order:
     - {observer: obs, step: 0, phase: started}

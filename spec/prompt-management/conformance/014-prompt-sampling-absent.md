@@ -13,13 +13,15 @@ NOT synthesize a default at any layer.
 
 **Cases:**
 
-1. `backend supplies no sampling` — backend's Prompt record has no `sampling` field;
-   `PromptResult` after render also has no `sampling` field.
+1. `backend supplies no sampling`: the backend's prompt record has no `sampling` field, so the
+   fetched `Prompt` has none, and the `PromptResult` after render has none either.
 
 **Harness extensions:**
 
-- `expected.rendered.sampling_absent: true` — harness asserts the field is null / None /
-  undefined per language idiom (NOT a populated SamplingConfig with default values).
+- `expected.prompt_absent_keys: [sampling]`, on the fetched `Prompt`, and
+  `expected.rendered_absent_keys: [sampling]`, on the rendered `PromptResult`, assert the field is
+  absent, null or missing (conformance-adapter §8.4), and NOT a populated SamplingConfig with default
+  values.
 
 **What passes:**
 

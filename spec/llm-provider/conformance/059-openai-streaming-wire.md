@@ -1,6 +1,6 @@
 # 059 — OpenAI-compatible streaming wire path
 
-Verifies the llm-provider §8.1.6 streaming wire path. `complete(stream=True)` sends `stream: true` plus `stream_options: {include_usage: true}`, consumes the Server-Sent Events response, and assembles the atomic `Response` per §6 *Streaming assembly*. The assembled `Response` (content, tool calls, usage, finish_reason) MUST equal the equivalent non-streamed response — streaming is a delivery concern, not a `Response`-shape change. This fixture introduces the streaming wire directives (`call.stream`, the `stream`/`stream_options` request fields, and `mock_provider` `stream_body`) documented in its YAML header per conformance-adapter §3.2.
+Verifies the llm-provider §8.1.6 streaming wire path. `complete(stream=True)` sends `stream: true` plus `stream_options: {include_usage: true}`, consumes the Server-Sent Events response, and assembles the atomic `Response` per §6 *Streaming assembly*. The assembled `Response` (content, tool calls, usage, finish_reason) MUST equal the equivalent non-streamed response: streaming is a delivery concern, not a `Response`-shape change. The streaming wire directives it uses, `call.stream` and the `mock_provider` `stream_body`, are defined in the harness note in fixture 001's header.
 
 **Spec sections exercised:**
 
@@ -17,7 +17,7 @@ Verifies the llm-provider §8.1.6 streaming wire path. `complete(stream=True)` s
 
 - The wire request carries `stream: true` and `stream_options: {include_usage: true}`.
 - The assembled `Response` content / tool_calls / usage / finish_reason equal the non-streamed equivalent.
-- Tool-call argument deltas reassemble and parse; reasoning deltas assemble into a thinking block.
+- Tool-call argument deltas reassemble and parse; reasoning deltas assemble into a thinking block with no `signature`, since the reasoning extension has no wire signature field.
 
 **What fails:**
 

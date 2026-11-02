@@ -1,26 +1,28 @@
 # 0127: Matching Rules and Definitions for the Assertion Directives
 
-- **Status:** Draft
+- **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-10-29
+- **Accepted:** 2026-11-01
 - **Targets:**
-  - spec/conformance-adapter/spec.md: rewrites §8.4 (the matching rules every assertion follows); adds §4.5 (what
-    a fixture may assert), §5.16 (wire-request assertions, moved out of §5.15) and §5.17 (capability gates,
-    generalized from §5.5); modifies §2 (the *Assertion shape* entry), §3.2 (span_tree and the binding tokens
-    become general), the §5 preamble (assertion positions and the reserved absence keys), §5.1 (the
-    middleware-log sentence, the accumulator snapshot and `flaky_by_index`'s deterministic form), §5.5
-    (typed-event and log assertions, and the `accumulate` behavior's buckets), §5.6 (session, resume and
-    checkpointer assertions, and their positions), §5.8 (its preamble's position rule, the state snapshots, raised
-    errors including `raises` and the harness turn outcomes, observer events, spans and traces, metrics and
-    checkpoint records), §5.10 (`<timestamp>` and the binding-token rules), §5.11 (what `llm_spans` reads for a
-    bare call, and the `appended_messages` forms), §5.12 and §5.13 (pointers to the new `raises` and `cause`
-    definitions), §5.15 (the order mock responses are dispatched in), §6.1 (per-call accumulator buckets), §6.2,
-    §6.3 and §6.9 (what the harness primitives record)
+  - spec/conformance-adapter/spec.md: rewrites §8.4 (the matching rules every assertion follows); adds §4.5 (what a
+    fixture may assert), §5.16 (wire-request assertions, moved out of §5.15) and §5.17 (capability gates,
+    generalized from §5.5); modifies §2 (the *Assertion shape* and *Invariant* entries), §3.2 (span_tree and the
+    binding tokens become general), the §5 preamble (assertion positions and the reserved absence keys), §5.1 (the
+    middleware-log sentence, the accumulator snapshot, `flaky_by_index`'s deterministic form and `flaky_per_index`'s
+    failures and optional `category`), §5.5 (its preamble, typed-event and log assertions, and the `accumulate`
+    behavior's buckets), §5.6 (its preamble, session, resume and checkpointer assertions, and their positions), §5.7
+    (`run_count`), §5.8 (its preamble's position rule, the state snapshots, raised errors including `raises` and the
+    harness turn outcomes, observer events, spans and traces, metrics and checkpoint records), §5.9 (its opener),
+    §5.10 (its opener, `<timestamp>` and the binding-token rules), §5.11 (what `llm_spans` reads for a bare call,
+    and the `appended_messages` forms), §5.12 and §5.13 (pointers to the new `raises` and `cause` definitions),
+    §5.15 (the order mock responses are dispatched in), §6.1 (per-call accumulator buckets), §6.2, §6.3, §6.7 and
+    §6.9 (what the harness primitives record)
   - spec/observability/spec.md: modifies §11.5 (the metric-capture primitive records each measurement)
   - the harness notes of observability, llm-provider, pipeline-utilities, harness, harness-chat, sessions,
-    prompt-management and suspension: definitions for the assertion directives, capabilities and mock keys only
-    that directory uses
-  - fixtures in every other capability's conformance directory: about 180 files, listed in *Fixture changes*
+    prompt-management and suspension: definitions for the assertion directives only that directory uses, and for
+    the capabilities and mock inputs those assertions rely on
+  - fixtures in every other capability's conformance directory: about 300 files, listed in *Fixture changes*
 - **Related:** 0120 (the definition-homes rule this completes for assertion directives), 0126 (`log_records`
   counts and absence, `llm_spans`), 0081 and 0107 (earlier vocabulary passes), and a following proposal that
   settles the named-claim assertions (`invariants:` blocks and the boolean claims under `expected:`)
@@ -95,12 +97,14 @@ carriers, and a migration list ordered only within each chain.
 - Numbers compare by numeric value: `1` matches `1.0`. A boolean never matches a number, and a string never
   matches a number.
 - **Span attributes are the exception.** observability fixes each attribute's OpenTelemetry type, so the type is
-  part of the value there: a YAML integer matches only an integer attribute and a YAML float only a double.
+  part of the value there: a YAML integer matches only an integer attribute and a YAML float only a double. On a
+  host whose attribute model has a single numeric type, an integer-valued double cannot be told apart from an
+  integer, so a whole-number value compares by value there.
 - A value that a wire mapping defines as a JSON-encoded string, such as a tool call's `arguments`, is compared
   after decoding both sides as JSON. Two implementations may serialize the same arguments with different
   separators, and the capability specs require only that the string be JSON.
-- Strings compare case-sensitively, and so do the substring matchers: `_mentions`, `content_contains`,
-  `content_includes` and `content_matches_template`.
+- Strings compare case-sensitively, and so do the substring matchers: `_mentions`, `content_contains`
+  and `content_includes`.
 - Floating-point values compare exactly, as binary64 values.
 
 #### 1.2 Lists
@@ -122,7 +126,8 @@ carriers, and a migration list ordered only within each chain.
   in state are examples.
 
 The lists declared unordered are named in their definitions: span and observation `children`, a span's `links`,
-the top-level span and trace lists, `metrics`, `traces` and `langfuse_traces`, and the instance lists of a resume.
+the top-level span and trace lists, a Langfuse trace's top-level `observations`, `metrics`, `traces` and
+`langfuse_traces`, the instance lists of a resume, and `nodes_skipped_during_resume`.
 The spec fixes which span is whose parent, and which traces a span links to, but not the order of siblings or of
 links, and §7 forbids an adapter from imposing an order the spec does not fix. Where order matters, a fixture
 asserts it through attributes such as the step or attempt index. `expected_compile_warning` is declared a set.
@@ -224,7 +229,7 @@ This replaces §5.5's rule that a `null` in `contains_event.fields` matches only
 - **The unit is the call, not the invocation id.** A suspension resume reuses the suspended call's invocation id
   (suspension §7), so an event is attributed to the call that dispatched it.
 - **A case with `run_count`** runs its graph that many times, each run one call, and its `expected:` block
-  applies to each run.
+  applies to each run. §5.7 gains a `run_count` entry that says so, since §5 has none.
 - **When state is read.** Observer and backend state is read after delivery for the call has completed. Where the
   case's own drain timed out, it is read when that drain returned.
 
@@ -296,6 +301,11 @@ The definitions that place a directive elsewhere:
 
 graph-engine fixture 014 and pipeline-utilities fixture 033, the two that nest `expected_error` inside
 `expected:`, move it out.
+
+The §5.5 and §5.6 preambles place every directive in those sections at the top level of a case, which their
+assertion entries contradict. Each is rewritten to say that the section holds configuration and assertion
+directives and that each entry states its position. §5.6's `session_store` and `checkpointer` entries, which
+state none, gain theirs: the case level.
 
 The §5 preamble gains a paragraph on assertion positions:
 
@@ -433,7 +443,9 @@ second after the call returned and delivery completed. Both lists are complete a
 to keep one bucket per `invoke()` call rather than per invocation id, since a suspension resume reuses the id.
 §5.1's `invoke_drain_events_for` snapshots the current call's bucket. §2's *Assertion shape* entry is reworded in
 two places. It calls an assertion a key at an assertion position, which the §5 preamble describes, rather than a
-field under `expected:`. It points at §8.4 rather than calling `final_state` a literal-equality check.
+field under `expected:`. It points at §8.4 rather than calling `final_state` a literal-equality check. §2's
+*Invariant* entry and §5.9's opener, which describe the other assertions as exact-equality checks, also point at
+§8.4.
 
 **`drain_summary`** and **`node_drain_summaries`** (§5.8) match by named keys, because graph-engine §6 lets a
 summary carry more detail. `node_drain_summaries` gains `undelivered_count_min`, which fixture 030 uses, and an
@@ -452,7 +464,7 @@ executions began:
 **`middleware_log_captured`** (§5.8, new). It reads the §6.7 middleware-log accumulator: the markers
 `wrap_with_middleware` middlewares recorded during the call, in recording order. The list is complete and
 ordered. §5.1's sentence that the markers are "recorded as state-log entries" is corrected to point at the §6.7
-accumulator.
+accumulator, and §6.7 keeps one accumulator per call, as §1.7 requires.
 
 #### 4.4 Typed events (§5.5)
 
@@ -485,8 +497,9 @@ says does not exist.
 - **`relative_order_of_events_matching: {filter, expected_order}`** keeps the retained events, in arrival order,
   that match `filter`. It then asserts that the `expected_order` matchers occur among them as a subsequence.
 
-**`node_completed_event_carries_error: {node_name, error_category}`** asserts exactly one completed node event
-from `node_name` in the call. Its error category, derived as for `expected_error`, must equal `error_category`.
+**`node_completed_event_carries_error: {node_name, error_category}`** sits under `expected:`, not in a collector
+slot, and reads the node events the call dispatched. It asserts exactly one completed node event from
+`node_name`, whose error category, derived as for `expected_error`, must equal `error_category`.
 
 Two duplicates of `event_count` are re-expressed in its terms and retired: `contains_exactly_n_events_of_type`
 (observability 054, 055) and `does_not_contain_event_of_type` (observability 053).
@@ -501,9 +514,11 @@ Two duplicates of `event_count` are re-expressed in its terms and retired: `cont
 - **Building the tree.** The spans are joined into a forest by parent span id. The top-level list names every
   root, and `children` names every child of an entry. Both are complete and unordered, and an entry without
   `children` asserts nothing about its children.
-- **§6.3 is extended** so that any case asserting `span_tree`, in any directory, composes the OTel observer and
-  its in-memory exporter. A case does not declare its own OTel observer for this, so suspension 011's `behavior:
-  otel` observer entry, which no definition covers, is removed.
+- **§6.3 is extended** so that any case asserting `span_tree`, `traces` or `llm_spans`, in any directory,
+  composes the OTel observer and its in-memory exporter. A case does not declare its own OTel observer for this,
+  so suspension 011's `behavior: otel` observer entry, which no definition covers, is removed. Such a case MUST
+  NOT set `otel_observer: {attached: false}`, and an adapter rejects the combination with
+  `fixture_schema_invalid`. §5.5's entry for `attached: false` points at this exception.
 
 A span entry's sub-keys each assert only when present:
 
@@ -539,7 +554,9 @@ retired the same way in fixture 008.
 that some captured record matches the fields it names, the list is not exhaustive, and entries may match the same
 record. `count` and `log_records_absent` carry exact counts and absence. An entry gains `trace_id` and `span_id`,
 compared against the record's OTel trace context, which observability §7 keeps apart from the record's
-attributes. §6.3 is extended so that any case asserting `log_records` captures log records.
+attributes. An all-zero trace or span id, OpenTelemetry's invalid context, counts as absent, so a binding token
+there does not match a record emitted outside any span. §6.3 is extended so that any case asserting
+`log_records` captures log records.
 
 **`metrics`** (§5.8):
 
@@ -570,8 +587,9 @@ JSON body of each outbound request the case or call sent, parsed from the captur
 - **List form.** It names every request and is complete.
   - Entries follow call order, and chunk order within a chunked call. Each entry is compared with the request
     that carries its slice of inputs or documents, not with the request that arrived in its position. Mock
-    responses are dispatched the same way, and a chunked call's stitched `raw` follows chunk order. The capability
-    specs require one request per chunk but do not order their issue.
+    responses are dispatched the same way, and a chunked call's stitched `raw` follows chunk order, the order
+    retrieval-provider §8 calls request order. The capability specs require one request per chunk but do not order
+    their issue.
 - **Mapping form.** It is a one-element list, so it asserts that exactly one request was sent.
 - **Each body is exact** (§1.3):
   - Member order is not significant, and arrays compare in order.
@@ -684,6 +702,8 @@ produced.
   in RFC 3339 form, and asserts presence and form only.
 - **The binding-token rules of §1.6** are stated beside the token list, and observability's list gains
   `<path_X>`.
+- **Where a token is written.** §5.10's opener says a token goes in an `expected:` mapping. It now says any
+  assertion where a literal scalar value would go, since §1.6's binding scope covers every assertion block.
 - **The `"*"` wildcard is retired.** Seven llm-provider uses write it with the meaning `<any-string>` already
   has. Fixture 041, where two positions must hold the same unknown name, uses a binding token instead.
 
@@ -700,7 +720,7 @@ harness and harness-chat both use these, so they move from the harness note to �
 
 #### 4.12 §5.1 clarifications
 
-Three §5.1 sentences change. §4.3 covers the accumulator snapshot, and the other two are corrected here:
+Four §5.1 sentences change. §4.3 covers the accumulator snapshot, and the other three are corrected here:
 
 - **The middleware-log sentence.** §5.1 says `wrap_with_middleware` markers are "recorded as state-log entries".
   It now points at the §6.7 accumulator that `middleware_log_captured` reads.
@@ -708,13 +728,19 @@ Three §5.1 sentences change. §4.3 covers the accumulator snapshot, and the oth
   uncategorized error. Its optional `category`, which §5.1 already calls "meaningful only for the retrying form",
   applies only to `fail_count_per_idx`. pipeline-utilities 018 and 019 read the same mock that way, and
   `node_exception` stays 018's expected category.
+- **`flaky_per_index`'s failures** are uncategorized, which §5.1 did not say, unless a new optional `category` gives
+  them one. Uncategorized, they read as the carrier's `node_exception` under the category rule, and the retry
+  middleware's default classifier, which retries only transient categories (pipeline-utilities §6.1), does not
+  retry them. pipeline-utilities 048 to 052 and 054 expect `node_exception` and read the mock that way. 053 sets
+  `category: provider_unavailable`, so its instance's retries exhaust as its narrative says (§6.7).
 
 ### 5. Definitions in the directory notes
 
 Each directory's harness note is the fixture-header comment or per-directory README that §3.2 and §3.3 describe.
 In practice it is the header comment of the directory's first fixture, except observability's Langfuse note,
 which is in fixture 022's header. Where a note is spread across several fixture headers today, it is
-consolidated, and the pointers that name the wrong header are corrected. Each entry below gets a full definition
+consolidated, and the pointers that name the wrong header are corrected, including older ones that name a header
+the content has left. Each entry below gets a full definition
 in its note, written to the §1 rules.
 
 **observability** (fixture 001's header; fixture 022's header for Langfuse, which observability §8 alone uses):
@@ -731,6 +757,7 @@ in its note, written to the §1 rules.
 | capability | `langfuse_token_budget_warning_level`: on a token-budget exceedance the implementation sets the Langfuse generation's level to `WARNING` with a `statusMessage` (observability §5.5.15 and §8.4.3, a SHOULD). |
 | default bound model | A `calls_llm` that names no `model`, and every `calls_llm_from_wrapper` call, is bound to `test-model`. A case that asserts another request model MUST name it on `calls_llm`. |
 | binding tokens | `<path_X>` (fixture 161), for a call's `structured_output_path`, which its typed event and its span's path attribute must share. |
+| streaming inputs | `calls_llm.stream: <bool>` and `mock_llm_stream`, moved from fixture 111's header, since fixtures 113 to 118 and 161 stream too. `mock_llm_stream` holds one entry per `complete()` call, in call order, each the ordered list of chunks the mock yields for that call. The mid-stream failure marker and the `wire_attempts:` form a call under call-level retry takes stay defined in fixture 114's and 116's headers, which the note points at. |
 | `langfuse_trace` | The one Langfuse Trace the call produced, from the §6.4 recorder; a case producing more than one uses `langfuse_traces`. Trace fields match by named keys. `input` and `output` are exact. `metadata` matches by named keys, with `metadata_absent`. `observations` lists the top-level observations, complete and unordered. Trace-field absence is written `langfuse_trace_absent_keys`. |
 | `langfuse_traces` | Every Trace in the block's scope, the invocation's own and each detached one: complete, unordered, each entry as `langfuse_trace`. |
 | observation entries | `type` (`span`, `generation`, `event`, `embedding`, `retriever`, `tool`), `name`, `level`, `statusMessage`, `input`, `output`, `model`, `usage` (with `usage_absent_keys`), `usageDetails` (with `usageDetails_absent_keys`), `modelParameters`, `metadata`, `metadata_absent`, `metadata_truncation`, `input_parses_as_messages`, `prompt_entity_link`, `children` and `absent_keys`. Unset fields read per §1.5. `input_parses_as_messages` parses a string `input` as JSON; the message list is complete and ordered and each message matches by named keys. |
@@ -740,11 +767,12 @@ in its note, written to the §1 rules.
 | Directive | Definition |
 |---|---|
 | positions | A call's assertions sit at `calls[i].expected` for the *i*-th call of a document-level list, at `cases[j].expected` for a case's `call`, or at the document root for a single `call:`. The wire assertions sit beside `expected`, never inside it. |
-| `response` | The `Response` the operation returned, matched by named keys (§1.3). `parsed` and each tool call's `arguments` are exact. `message.tool_calls` and a block-list `message.content` are complete and ordered. `tool_calls: null` matches a missing, null or empty list, because llm-provider §3 treats absent and empty tool calls alike. A content block or tool call asserts absence with `absent_keys`, and a value inside one with `<key>_absent_keys`. |
+| `response` | In a call's `expected:`, the `Response` the operation returned, matched by named keys (§1.3). `parsed` and each tool call's `arguments` are exact. `message.tool_calls` and a block-list `message.content` are complete and ordered. `tool_calls: null` matches a missing, null or empty list, because llm-provider §3 treats absent and empty tool calls alike. A content block or tool call asserts absence with `absent_keys`, and a value inside one with `<key>_absent_keys`. |
 | `response.raw_check.required_keys` | A parameter list. Each listed key is a top-level key of `raw` whose value equals the mock body's value for that key, by exact deep equality. Defined only for an atomic call: a streamed mock has no single body, and llm-provider §6 fixes only that the assembled `raw` keeps the terminal chunk's usage block verbatim, not where it keeps it. |
 | `expected_wire_bytes_identical: {calls: [...]}` | At the document root. The captured request bytes of every listed call are byte-identical (llm-provider §8's intra-implementation stability). A body with a repeated member name fails it. |
 | capability | `anthropic_fallback_tool_coercion`: when the provider's capability metadata says the model lacks native structured output, the implementation takes tool-call coercion, the fallback llm-provider §8.2.5.1 says it SHOULD prefer. |
 | mock echo | `<request_tool_choice_name>`, written in a mock response body, is replaced by the `tool_choice` name the request carried. It is a mock input, not a matcher, and lets a coercion case's mock answer with the synthetic tool the implementation named. |
+| pre-send reject | An empty `mock_provider.responses: []` means the case expects the call to be rejected before sending: any request the implementation sends finds no response and fails the case. |
 | binding tokens | `<tool_name_X>`, for a name the implementation chooses that two positions must share. |
 
 **pipeline-utilities** (fixture 001's header):
@@ -759,14 +787,16 @@ in its note, written to the §1 rules.
 | `checkpoint_saves` | The records the call passed to `Checkpointer.save`, in call order: complete and ordered. Entries carry `after_node` and the record sub-assertions of §4.8. |
 | `latest_record_assertions` | The record passed to the call's last save. Under a case's `expected:` that is the run; under `resume.expected:` it is the resumed run. Record sub-assertions of §4.8, matched by named keys (§1.3). |
 | `every_save_assertions` | Case level, beside `expected:`. Applies the record sub-assertions to every record passed to a save in the case, and fails if none was. |
-| `nodes_executed_during_resume` | Function nodes at any depth whose execution the resumed call began, in order, with retries collapsed: complete and ordered. |
-| `nodes_skipped_during_resume` | Function nodes in the loaded record's `completed_positions` that the resumed call did not execute: complete and unordered. |
-| `successful_attempt_index_during_resume` | The `attempt_index` of the completed event that carries `post_state` for the case's single retried node, in the resumed call. |
+| `nodes_executed_during_resume` | Under a `resume:` block's `expected:`. Function nodes at any depth whose execution the resumed call began, in order, with retries collapsed: complete and ordered. |
+| `nodes_skipped_during_resume` | Under a `resume:` block's `expected:`. Function nodes in the loaded record's `completed_positions` that the resumed call did not execute: complete and unordered. |
+| `successful_attempt_index_during_resume` | Under a `resume:` block's `expected:`. The `attempt_index` of the completed event that carries `post_state` for the case's single retried node, in the resumed call. |
 | `concurrency_invariant.max_in_flight` | An upper bound: at no point were more than this many of the fan-out's instances in flight. |
 | `raises` with `error_category` | In a node's `raises:` mock, a sibling `error_category: <category>` gives the raised error that category. Without it the error is uncategorized, as §5.1 defines `raises:`. |
-| `flaky_call_count` | Inside `expected:`, moved out of `expected_error`. The number of times the case's single flaky node body was invoked. |
+| `flaky_call_count` | Inside `expected:`, moved out of `expected_error`. The number of times the case's single flaky node body was invoked in the call, counting every fan-out instance and every attempt. |
 | `expected_error.fan_out_category`, `expected_error.transient` | The fan-out category the raised error carries (pipeline-utilities §9.1), and whether §6.1's default classifier classifies the error as transient. |
 | `on_caught_calls` | New. Every invocation of the failure-isolation `on_caught` callback in the call: complete and ordered, with entries `{message}`. It replaces fixture 062's undefined write of callback results into state. |
+| `on_caught: record` | New. On a `failure_isolation` middleware entry, the adapter supplies an `on_caught` callback that records the message of each exception it receives, for `on_caught_calls`, and writes nothing to state. |
+| `abort_after_instance` | A mock input that fixtures 052 and 056 use, defined here for the first time. On a `fan_out:` node, a simulated crash: after the instance with that index completes and its save fires, the fan-out node raises an uncategorized error, which surfaces as `node_exception` from the fan-out node. |
 | binding tokens | `<corr_id_X>` and `<invocation_id_X>`. |
 
 `expected_chain_ambiguity_error`, defined in fixture 047's header, moves into this note unchanged, with its
@@ -789,7 +819,7 @@ position stated: at the case level beside `expected:`, or inside `resume:`.
 | Directive | Definition |
 |---|---|
 | `final_state` | The post-turn session's saved state: `ChatTurnOutcome.final_state` is optional (harness-chat §5.2), so the adapter reads the session. `messages_count` and `messages_history_contains` are retired; a fixture writes the `messages` list. |
-| `reply.content_matches_template` | The reply's text content contains the string, case-sensitively. |
+| `tool_calls` absence | On a message or reply, `absent_keys: [tool_calls]` also matches an empty list, since llm-provider §3 treats absent and empty tool calls alike. |
 | `reply.content_includes` | A parameter list: each string occurs in the reply's text content, case-sensitively. Block content is read as its text blocks joined in order. |
 | `expected_listener_callback` | Exactly one callback fired on the named listener for this arrival (harness-chat §8.2), with `outcome` and `replies` (complete and ordered). |
 | `signal_descriptor` | As §5.8's `descriptor`: `metadata` exact, `metadata_includes` by named keys. |
@@ -807,12 +837,12 @@ position stated: at the case level beside `expected:`, or inside `resume:`.
 
 | Directive | Definition |
 |---|---|
-| `prompt`, `prompt_result` | The `Prompt` or `PromptResult` the call returned, matched by named keys (§1.3). `template` compares as its source text. `messages` is complete and ordered. Absence is written `prompt_absent_keys` or `prompt_result_absent_keys`. |
+| `prompt`, `prompt_result` | In a call's `expected:`. The `Prompt` or `PromptResult` the call returned, matched by named keys (§1.3). `template` compares as its source text. `messages` is complete and ordered. Absence is written `prompt_absent_keys` or `prompt_result_absent_keys`. |
 | capture-label assertions | `expected.<label>` asserts on the value the call carrying `capture_as: <label>` returned, matched by named keys (§1.3), with `<label>_absent_keys`. |
 | `result_equivalence` | `{of, fields_must_match, fields_may_differ}`: each field in `fields_must_match` is equal, deeply, across the captured results. Fields in `fields_may_differ` are not compared. |
 | `prompt_group` | `{of, group_name, member_names}`: `member_names` is complete and ordered. `member_count` is retired as redundant. |
 | `rendered_hash_equal`, `rendered_hash_different` | Pairs of capture labels whose `rendered_hash` values are equal, or differ. |
-| `backend_call_counts` | `{<backend>: <n>}`: the `fetch()` calls each mock backend received during the call. `secondary_backend_call_count` folds into it. |
+| `backend_call_counts` | `{<backend>: <n>}`, in a call's `expected:`: the `fetch()` calls each mock backend received during the call. `secondary_backend_call_count` folds into it. |
 | `expected_shared_prefix`, `expected_message_equal` | Case-level, beside `expected:`. The `between` results' message at an index starts with `prefix`, byte for byte; or the messages at the listed indices are equal across the results. |
 
 **suspension** (fixture 001's header) gains one capability: `session_save_at_suspend`, under which a session
@@ -848,6 +878,7 @@ the rules apply. Each change is listed with the rule that drives it.
 | Fixture | Change |
 |---|---|
 | observability 140, 142 | `usageDetails_absent_keys`: `[input]` in 140, `[input, searchUnits]` in 142. Each wrote `usageDetails: {}` to mean "no keys". |
+| observability 024 | `prompt_entity_link_absent: true` becomes `absent_keys: [prompt_entity_link]`. |
 | observability 148 | `usage_absent_keys: [input]`. It relied on an exact `usage` map. |
 | observability 062 | `fields_absent_keys` and its comment removed. The exact `request_params` already asserts the absence. |
 | prompt-management 004 | `rendered_hash: "<any-string>"` replaces `rendered_hash_present` and `rendered_hash_non_empty_string`. |
@@ -860,7 +891,7 @@ the rules apply. Each change is listed with the rule that drives it.
 | llm-provider 052, 059 | `absent_keys: [signature]` on the thinking blocks whose sidecars say they carry none. |
 | pipeline-utilities 006 | `error_absent: true` becomes `expected_observer_event_absent_keys: [error]`. |
 | harness 001, 002, 011 | The `invoke_args` flags are re-expressed. 001 uses `session_id: "<any-string>"`. 002 drops `session_id_caller_supplied`, since the literal id already proves the threading. 011 uses `invoke_args_absent_keys: [session_id]`. |
-| sessions 012 | The undefined `attributes_absent` on a log entry becomes `log_records_absent`. |
+| sessions 012 | The undefined `attributes_absent` on a log entry becomes `log_records_absent`. A second entry, with the attribute written `""`, keeps the old check's reach: `<any-string>` matches only a non-empty value. |
 
 #### 6.3 Lists that did not name every item (§1.2)
 
@@ -868,9 +899,10 @@ the rules apply. Each change is listed with the rule that drives it.
 |---|---|
 | observability 033 | Its detached fan-out case lists all four Langfuse traces, one per instance plus the parent, and drops `detached_trace_count`. |
 | observability 058 | Its second case adds the `after` node span its graph runs, which fixture 008, the case it mirrors, lists. It also links the detached trace's token, which otherwise occurs once and asserts only presence. |
-| observability 126, 127, 128, 131 | Each `metrics` list gains the token-usage and duration recordings its case makes, matching fixture 125 for the same mock usage. 128's and 131's notes that a `metrics` list cannot express absence are corrected. |
-| observability 119 | The attempt-0 span entry drops `children`. Whether a branch cancelled under `fail_fast` before it ran dispatches `started` is unsettled (*Open questions*), so the child set is not fixed. |
-| observability 029, 039 (three cases), 044, 054 | Declare the `products` state field their initial state supplies, and name it wherever the case writes `final_state`. |
+| observability 126, 127, 128, 131 | Each `metrics` list gains the token-usage and duration recordings its case makes, matching fixture 088's success recordings, and fixture 125's failure recordings for 131's first case. 131's second case gains a complete `metrics` list: the failed attempt's one duration recording. 128's and 131's notes that a `metrics` list cannot express absence are corrected. |
+| observability 119 | The attempt-0 span entry drops `children`. Whether a branch cancelled under `fail_fast` before it ran dispatches `started` is unsettled (*Open questions*), so the child set is not fixed. That also drops the checks on the attempt-0 vector span, which only the child set reached. |
+| observability 029, 039 (three cases), 044, 054 | Declare the `products` state field their initial state supplies, and name it wherever the case writes `final_state`. 039's third case also declares `products` in its `wrapped_fan_out` subgraph and maps it in with `inputs: {products: products}`, since graph-engine §2 projects nothing into a subgraph by default. Its `wrap` node is written in §5.4's `subgraph:` form, and its `result` field becomes a `list<dict>`, the type of the `picks` list mapped out to it, since graph-engine §2 says an implementation SHOULD check mapped field types at compile time. Its sidecar's `subgraph_call` description is replaced to match. |
+| observability 088 | Gains a case, `retried_call_records_each_attempt`, whose call fails twice with `provider_unavailable` under call-level retry before its third attempt succeeds. observability §11.2 records the duration once per attempt, so the complete `metrics` list holds two identical failed-attempt recordings, which a capture that merges a repeat fails (§6.9). Its header and sidecar say the duration records once per attempt. |
 | graph-engine 020 | Declares `target_node_name`, which its first case's `pre_state` asserts but its schema does not declare. |
 
 #### 6.4 Raised errors (§4.1)
@@ -888,10 +920,11 @@ error's, so the two now come from the same link.
 | pipeline-utilities 016 (`state_blocks_retry`) | `provider_invalid_request` |
 | pipeline-utilities 021 | `provider_rate_limit` |
 | pipeline-utilities 027 | `provider_rate_limit` (`first_run_expected_error`) |
-| pipeline-utilities 060 (second case) | `provider_invalid_request` |
+| pipeline-utilities 060 (second case, renamed `predicate_does_not_match_propagates_raised_error`, since its old name claimed a `node_exception` outcome) | `provider_invalid_request` |
 | pipeline-utilities 072 | `provider_unavailable` |
 
-The comments and sidecars in 013 and 016 that say `node_exception` wraps the error are corrected with them.
+The headers, comments and sidecars of all nine that describe the expected category as `node_exception` are corrected
+with them.
 
 - **Position.** graph-engine 014 and pipeline-utilities 033 move `expected_error` beside `expected:`. 033's
   `recoverable_state` moves inside it, and its `branch_name` moves under `carries`.
@@ -899,7 +932,8 @@ The comments and sidecars in 013 and 016 that say `node_exception` wraps the err
   - graph-engine 009 moves `execution_order` from `expected_error` to `expected:`.
   - pipeline-utilities 009 and 016 move `flaky_call_count` the same way.
   - pipeline-utilities 046 and sessions 013 replace `cause.exception_type: KeyError`, a host-language class name,
-    with `cause: {raised_by_mock: <mock>}`.
+    with `cause: {raised_by_mock: <mock>}`. Their migration mock, `raises_keyerror`, is renamed
+    `raises_during_migration` for the same reason.
 - **Undefined error fields.** llm-provider 057 and 058 drop `raises.message`, which llm-provider §7 does not
   define for a provider error. llm-provider 004 drops `raises.retry_after_seconds`, which its own comment made
   optional.
@@ -912,23 +946,25 @@ either way is also made by an ungated case or by a case gated on the capability'
 
 | Fixture | Change |
 |---|---|
-| llm-provider 021, 026 | Split. A case gated on `llm_strict_native_schema` keeps the exact body with `strict: true`. The ungated case asserts the native `response_format` with `expected_wire_request_includes`, its schema copy exact and `strict` left out, and keeps 021's parsed value. |
-| llm-provider 027 | Split into two cases on the same inputs. The fallback case is gated on `llm_prompt_augmentation_fallback`, and its header's "MUST fall back" becomes SHOULD. Its call asserts `model` with `expected_wire_request_includes` and the missing `response_format` with `expected_wire_request_absent_keys: [response_format]`. It leaves the messages unasserted, since §8.1.5.1 lets the directive be appended or merged into an existing system message. Without the fallback, §8.1.5's native request is the default and the mock's response is the same, so an ungated case asserts what holds either way: the response, its parsed value, and that the caller's messages are unmodified. |
+| llm-provider 021, 026 | Split. A case gated on `llm_strict_native_schema` keeps the exact body with `strict: true`. Each ungated case asserts the native `response_format` with `expected_wire_request_includes`, its schema copy exact and `strict` left out, and keeps the response, `model`, `messages` and a `name` of `"<any-string>"`. |
+| llm-provider 027 | Split into two cases on the same inputs. The fallback case is gated on `llm_prompt_augmentation_fallback`, and its header's "MUST fall back" becomes SHOULD. Its call asserts `model` with `expected_wire_request_includes` and the missing `response_format` with `expected_wire_request_absent_keys: [response_format]`. It leaves the messages unasserted, since §8.1.5.1 lets the directive be appended or merged into an existing system message. Without the fallback, §8.1.5's native request is the default and the mock's response is the same, so an ungated case asserts what holds either way: the request's `model`, the response, its parsed value, and that the caller's messages are unmodified. |
 | llm-provider 051 | The fallback directive's placement is left open the same way: `expected_wire_request_includes` asserts the native structured-output fields absent. |
-| llm-provider 041 | Gated on `anthropic_fallback_tool_coercion`. `expected_wire_request_includes` asserts the synthetic tool's input schema, exact, and the forcing `tool_choice`, with a `<tool_name_X>` token tying the two names. `expected_wire_request_absent_keys: [output_config]` asserts that the native field is missing. It leaves the description, which §8.2.5.1 does not require, unasserted. Its mock answers through `<request_tool_choice_name>`. |
+| llm-provider 041 | Gated on `anthropic_fallback_tool_coercion`. `expected_wire_request_includes` asserts the synthetic tool's input schema, exact, and the forcing `tool_choice`, with a `<tool_name_X>` token tying the two names. `expected_wire_request_absent_keys: [output_config]` asserts that the native field is missing. The includes body also keeps `model`, `max_tokens` and `messages`, which coercion leaves unchanged. It leaves the description, which §8.2.5.1 does not require, unasserted. Its mock answers through `<request_tool_choice_name>`. Falling back at all is required, so a second case on the same model, gated on the capability's `false` value, asserts what holds without coercion: `model` and `max_tokens` with `expected_wire_request_includes`, `expected_wire_request_absent_keys: [output_config, tools, tool_choice]`, the parsed text answer, and the `caller_messages_unmodified` claim 027's cases carry, since §8.2.5.1 requires the caller's messages to be left unchanged. That path is prompt augmentation, which may put its directive in the system field or the messages, so neither is asserted. |
 | llm-provider 059 (three cases), 071 | `raw_check` removed from streamed calls. 071's claim that the terminal usage block survives verbatim stays with its named claim, which the following proposal settles. |
 | observability 161 | The eight cases that expect the `schema_not_honored` record (1, 3, 12, 13, 14, 15, 18 and 19) are gated on `llm_strict_native_schema: true`. Each gains a twin gated on `false`, appended as cases 20 to 27. A twin keeps its case's other assertions, and asserts the `native_unenforced` path and no record, which observability §5.5.7 forbids off the native path. The eight native cases that expect no record (2, 4, 5, 6, 7, 9, 16 and 17) hold on either path, so they stay ungated. Each asserts the event's `structured_output_path` and the span's path attribute with one shared `<path_X>` token, since either value can be right but the two must agree. `prompt_augmentation_path_absent` is gated on `llm_prompt_augmentation_fallback` and drops its `input_messages` assertion, whose directive position §8.1.5.1 leaves open. An ungated companion on the same inputs, appended as case 28, asserts what holds without the fallback too: the `structured_output_invalid` error, its category on the span and the failed event, the event's `finish_reason`, and the path through a shared `<path_X>` token. Whether the record is emitted there depends on `llm_strict_native_schema`, so it stays unasserted. |
 | observability 022, 031, 032, 033, 134, 136 | The trace name, whose default observability §8.6 only RECOMMENDS, becomes `"<any-string>"`. |
-| observability 130 | Split. A case gated on `langfuse_token_budget_warning_level` asserts the `WARNING` level and a `statusMessage` of `"<any-string>"`; §8.4.3 gives the message's text only as an example. The MUST token-budget metadata stays ungated. |
+| observability 130 | Split. A case gated on `langfuse_token_budget_warning_level` asserts the `WARNING` level and a `statusMessage` of `"<any-string>"`, since no matcher can check that the message names the exceeded bound and §8.4.3 gives its text only as an example. The MUST token-budget metadata stays ungated. |
 | observability 039 | Its third case sets `concurrency: 1`, so the last writer it asserts is fixed. |
 | observability 073 | Its third case drops `error_type: null`, which accepts only one of the two sourcing styles graph-engine §6 allows, and its description is reworded. Its `error_category` and `expected_error` assertions stand. |
 | observability 050, 111, 112, 113, 114, 116, 117 (both cases), 118 (both cases) | `calls_llm` names `model: gpt-test`, the request model each case asserts. The default bound model, `test-model`, is now written in observability's note. |
 | harness 008, 009, 010 | `outbound_payload_includes` drops `intervention_required`, which harness §7.1 makes a SHOULD, and `retry_safe` and `user_action_required`, which no section requires. The invariants that restate those flags go with them: 008's `outbound_marked_intervention_required`, 009's `outbound_marked_retry_safe` and 010's `outbound_marks_user_action_required`. The synthetic transport is the adapter's, so a flag on it would test the adapter rather than the implementation. 010's `diagnostic_message` becomes `"<any-string>"`, since harness §7.3 does not fix what the diagnostic information says. The other named claims, such as 008's `harness_auto_retried: false`, stay until the following proposal settles them. |
-| harness-chat 007, 008 | `content_matches_template` removed. harness-chat §10.1 and §10.2 let the text be customized. |
+| harness-chat 007, 008 | `content_matches_template` removed, and with these its only uses, the note's definition goes too. harness-chat §10.1 and §10.2 let the text be customized. |
 | harness-chat 007 to 010 | `error_category` removed. harness-chat §5.2 makes it optional. |
 | suspension 012 | Split. A case gated on `session_save_at_suspend` asserts the suspend-time save and carries the `session_saves_at_suspend_time` claim; the resume-side assertions stay ungated. |
 | pipeline-utilities 019, 034 | Each collect-mode errors-field entry is written `{}`, and the field is declared a bare `list` in place of 019's `list<dict<string,string>>` and 034's `list<dict>` (§1.3). The list still asserts how many entries there are. |
-| pipeline-utilities 026 | The `schema_version` assertion and its sidecar claim removed. With no declared version the record holds an implementation-defined sentinel, typically `""`, which `<any-string>` rejects. |
+| pipeline-utilities 026 | The `schema_version` assertion and its sidecar claim removed. With no declared version the record holds an implementation-defined sentinel, typically `""`, which `<any-string>` rejects. Its header, case description and sidecar no longer claim every §10.2 required field. |
+| suspension 007, 009 | The `collect_mode_suspend_rejected_at_runtime` and `collect_mode_parallel_branches_suspend_rejected_at_runtime` claims are removed. An implementation that follows suspension §9's SHOULD and rejects at compile time satisfies `outcome: errored` (§4.1) but fails them, and the outcome with its category already asserts the MUST. |
+| retrieval-provider 056 | Both cases stop asserting the input. With no prompt map, retrieval-provider §8.1 lets the mapping prepend the client-side prefix (a MAY), so the first case asserts `prompt_name: "passage"` with `expected_wire_request_includes`, the second keeps only its absent keys and count, and the `client_side_prefix_applied_to_input` claim goes. The extras `prompt_name` rides untouched either way. |
 
 #### 6.6 Re-expressed in defined vocabulary (§4, §5)
 
@@ -943,6 +979,8 @@ either way is also made by an ungated case or by a case gated on the capability'
 | observability 053, 054, 055 | `does_not_contain_event_of_type` and `contains_exactly_n_events_of_type` become `event_count`. |
 | observability 114 | Its count entry for `LlmTokenFailedEvent`, which §5.5 no longer lists, is removed. |
 | observability 008 | `parent_trace` becomes `span_tree`. |
+| pipeline-utilities 063 | Its node's undefined `raises: {message, exception_kind: ValueError}` becomes conformance-adapter §5.1's string form, `raises: "bad input"`, which raises the same uncategorized error. |
+| observability 094 | Its mock tool's `error_type`, which nothing asserts, becomes the neutral `MockToolError` in place of a host-language class name. |
 | observability 010 | `trace_id` and `span_id` move from a log entry's `attributes` to the entry. |
 | suspension 011 | `otel_spans` becomes `span_tree`, and its `behavior: otel` observer entry is removed (§4.5). |
 | suspension 013 | `paused_invocation_record_exists`, which `record_type: suspended` already asserts, is removed. |
@@ -950,9 +988,9 @@ either way is also made by an ungated case or by a case gated on the capability'
 | sessions 001, 004 | Invocation-level assertions move into an `expected:` block. `expected_final_state` becomes `final_state`, and `loaded_invoke_state_for_scratch` becomes `entry_state`. |
 | sessions 005, 006, 008 | `store_after` takes its reshaped form. |
 | pipeline-utilities 011 | Declares its observer and keys `observer_events` by it. |
-| pipeline-utilities 062 | Asserts the callback with `on_caught_calls`, and writes `final_state` as the state the graph produces. |
+| pipeline-utilities 062 | Asserts the callback with `on_caught_calls`, and writes `final_state` as the state the graph produces. Its `on_caught` input becomes `on_caught: record`, and the side-channel state fields go. |
 | graph-engine 014, pipeline-utilities 011 and 015 | An event's `error` is written `{category: <id>}`, as graph-engine 020 already writes it. |
-| prompt-management 008, 009, 011 | `secondary_backend_call_count` folds into `backend_call_counts`, and `member_count` and `member_order_preserved`, which `member_names` already asserts, are removed. |
+| prompt-management 008, 011 | `secondary_backend_call_count` folds into `backend_call_counts`, and `member_count` and `member_order_preserved`, which `member_names` already asserts, are removed. |
 
 #### 6.7 Claims with no assertion behind them (§1.8)
 
@@ -964,20 +1002,42 @@ Where the spec requires the claimed behavior, an assertion is added. Otherwise t
   - 020: `openarmature.llm.system` added to `attributes_absent`.
   - 027: `langfuse_trace_absent_keys: [userId, sessionId]`; the stale sidecar is refreshed.
   - 029, 030: trace `metadata_absent`.
-  - 031, 032, 136, 137, 138: observation `metadata_absent`, per each sidecar's failure list.
+  - 031, 032, 136: observation `metadata_absent`, per each sidecar's failure list.
+  - 137, 138: the response-derived metadata a failure leaves unset is asserted absent: `openarmature_dimensions`
+    and `openarmature_response_id` in 137, `openarmature_result_count` and `openarmature_response_id` in 138.
   - 033: `detached_from_invocation_id` asserted against a literal caller id.
   - 039: `metadata_absent: [note]` on the shared parents.
   - 156: `level: DEFAULT` and `statusMessage: null`.
+- **observability, removals:** 032's sidecar claim that `compute` carries no `subgraph_name`. No section forbids
+  the attribute on a node span.
 - **llm-provider:**
   - 002: the wire `tool_call_id` its comment says is checked is now asserted.
   - 056: attempt 1's usage attributes are asserted.
 - **graph-engine:**
   - 014: the `recoverable_state` its sidecar describes is asserted.
   - 024: its sidecar's cross-invocation leak claim can no longer fail under the per-call scope, which leaves the
-    first call's late events out by construction. The claim moves to the following proposal, and the sidecar says
-    so.
+    first call's late events out by construction. The sidecar now says only that the
+    `second_invocation_drain_independent_of_first` named claim states the leak check, and the following proposal
+    settles that claim.
+  - 031: the same, for its claim that one call's events stay out of another call's bucket.
+- **pipeline-utilities:**
+  - 053's claim that an instance exhausts its retries had nothing behind it, since its mock's failures were
+    uncategorized and never retried. The mock now raises `provider_unavailable` through `flaky_per_index`'s new
+    `category` (§4.12), so the attempts exhaust, and `first_run_expected_error.category` becomes
+    `provider_unavailable`. The failing instance moves from index 1 to the last, index 2, so no sibling can start
+    while it fails, and `first_run_expected: {flaky_call_count: 5}` asserts the retries. The saved record, the
+    resume's instance lists and the `instance_2_*` named claims follow. The instance retry is written in the note's
+    `type: retry` entry form with a zero deterministic backoff, and the sidecar drops its claim about §9.7's retry
+    wrapping, which no key asserts.
+  - 005's claim that the original exception is kept as the cause is removed. No key asserts it, and graph-engine §4
+    does not require it of a node raise.
+  - 060's sidecar claims about the predicate's single-argument signature and its default are removed. No case
+    checks the signature, and fixture 063 covers the default.
 - **harness-chat:** 003 gains `absent_keys: [tool_calls]` on its last reply.
-- **prompt-management:** 024's sidecar drops a claim about `detail` that no form can assert.
+- **prompt-management:**
+  - 014 gains a fetch asserting `prompt_absent_keys: [sampling]`, which its sidecar claims and prompt-management §3
+    requires.
+  - 024's sidecar drops a claim about `detail` that no form can assert.
 
 #### 6.8 Comments and sidecars that contradict the rules
 
@@ -987,8 +1047,13 @@ These are corrected with no change to any assertion:
   - the "presence only" `raw_check` comments in 005, 008, 068, 069 and 070 and in the 068 to 070 sidecars;
   - 009's comment allowing a string in place of an array;
   - the sidecars and headers of the cases §6.5 rewrites: 021's and 026's listing of `strict: true` for the
-    ungated case, 027's pass and fail conditions for the system directive, 041's `"*"` description checks and its
-    claim that coercion is required, and 051's `systemInstruction` and `"*"` explanation.
+    ungated case, 027's pass and fail conditions for the system directive, 041's title and intro, which named
+    only coercion, its `"*"` description checks and its claim that coercion is required, and 051's
+    `systemInstruction` and `"*"` explanation;
+  - the older pointers in 072 to 081 that name the headers of 013, 037, 051, 060 and 074 for content now in 001's
+    note, in conformance-adapter §5.16, or in 038's header;
+  - 006's sidecar, which calls the unset usage fields "explicit null" and rules out a missing one, where §1.5
+    reads null as null or missing.
 - **observability:**
   - 012's sidecar, which calls `attributes` exact;
   - 066's sidecar, which rejects an additional field;
@@ -998,26 +1063,59 @@ These are corrected with no change to any assertion:
   - 161's header, which says every request carries `strict: true`, and the `prompt_augmentation_path_absent`
     description;
   - 161's sidecar: its case table and failure list, which the new cases and the shared path token change; the
-    line on case 8's `input_messages`; and the claim that fixture 027 asserts the directive references the schema.
+    line on case 8's `input_messages`; and the claim that fixture 027 asserts the directive references the schema;
+  - 161's cases 10 and 11, whose descriptions say the path is "present and null" where §1.5 reads a written null
+    as null or missing;
+  - 111's header and sidecar, whose streaming-input definitions move to 001's note (§5), the headers of 112 to
+    115, 117 and 118, which pointed at 111's, and 161's header and sidecar, which called 111's header a harness
+    note.
 - **pipeline-utilities:**
   - the comments allowing an assertion to be skipped: the YAML comments in 018 and 020 and the sidecars of 007,
     016 and 021;
   - 019's comment and sidecar, which describe the error entry's index and category;
   - 034's sidecar, which requires the entry's `branch_name` and category "at minimum", where §11.1 says SHOULD;
   - 022's sidecar, now an upper bound;
-  - 024's header, which cites a retired fixture;
+  - 024's header sentence that cites a retired fixture, removed whole, since it also contradicts §10.3's saves at
+    fan-out instance internal nodes;
   - 068's header, on the carrier count;
-  - the 011 and 015 sidecars, which count three events where the YAML lists six.
+  - the 011 and 015 sidecars, which count three events where the YAML lists six;
+  - 011's header, which put `run_count` in its `expected` block and claimed an equality check between runs,
+    where §5.7 checks each run against `expected:`;
+  - 060's sidecar, which listed one case under a name the YAML does not use.
 - **graph-engine:**
-  - the event counts in the 012 and 014 sidecars, and 018's sidecar reason;
+  - the event counts in the 012, 013, 014, 015 and 016 sidecars;
+  - 018's sidecar: its registration-time MUST for an unknown phase string, which graph-engine §6 does not state, is
+    removed, and its empty-`phases` lines say SHOULD, as §6 does;
+  - 012's sidecar paragraph on draining before assertions, which §8.4 now states, and 013's pointer to 012's format
+    description, now §5.5 and §5.8;
   - the comments and sidecars of 028 and 031, which describe the accumulator's buckets as keyed by
     `invocation_id`.
 - **retrieval-provider:**
   - the "arrival order" comments in 014, 015, 037, 038, 042 and 043, which now read chunk order;
-  - the same comments in 001 and 006, which now read "call order, and chunk order within a chunked call".
+  - the same comments in 001 and 006, which now read "one request, in call order, and chunk order within a
+    chunked call";
+  - the wire-assertion definitions in the headers of 013, 014, 015 and 018, now pointers to §5.16;
+  - the other headers that name another fixture's header for the wire-request assertions, which now point at
+    §5.16, including six that say those are "defined in" 013, 014, 015, 018, 020 or 023, and the headers of 022,
+    031, 036, 044, 045, 046, 047, 048 and 056, which use those assertions without pointing at a definition;
+  - every pointer that names a header an item is not in. The item now points at the header that has it, at the
+    cases that assert it, or at the conformance-adapter section that defines it (§5.5, §5.8 or §5.15). Examples:
+    `mapping:`, which 032's header and several others do not define; the TEI `/rerank` shapes, which are in
+    014's header, not 013's; and the `raw` assertions of 014, 037 and 039, which are in their cases;
+  - the list comparison that 037, 038 and 043 restate, which now points at §5.16;
+  - 028's and 031's statements that the Cohere mapping is rerank-only, where §8.4 maps `/v2/embed` too. 031
+    also gains a case, `embed_429_maps_to_provider_rate_limit`, since §8.4's *Errors* mapping covers both
+    endpoints and no fixture asserted it for embed;
+  - 043's claim that 042 sums `billed_units`, where 042's malformed chunk nulls the sum; the notes in 001 and 006
+    that promise a forthcoming per-vendor mapping proposal, which §8.1 to §8.4 now are; and the TEI fixture
+    ranges in 013's and 027's headers.
 - **harness:** the 008, 009 and 010 sidecars' descriptions of the dropped payload flags and invariants, and 010's
   line that the outbound carries the upstream error's diagnostic message.
 - **harness-chat:** the field names in the 001 and 007 to 010 sidecars.
+- **Host-language names:** the comments and sidecars of pipeline-utilities 005, 046, 063, 064 and 072, sessions 013,
+  llm-provider 031 and observability 046 name Python classes and attributes (`ValueError`, `KeyError`,
+  `RuntimeError`, `__cause__`, `str(exc)`, `None`) where the text means any error, cause, message or null. They now
+  say so in plain words.
 
 ## Conformance test impact
 
@@ -1033,9 +1131,11 @@ checks:
   claims that assert SHOULD-level behavior, such as harness 008's claim that the harness did not auto-retry; they
   stay until the following proposal settles named claims. An implementation that emitted extra spans, events,
   requests, wire members or metric recordings, or reported an error's category inconsistently, can now be caught.
-- **Fixtures** change as listed in §6, about 180 files. No fixture is added or retired, though some cases are
+- **Fixtures** change as listed in §6, about 300 files. No fixture is added or retired, though some cases are
   split so that only their SHOULD part is gated. observability 161 gains nine cases: eight for the non-strict path
-  and an ungated companion to its prompt-augmentation case.
+  and an ungated companion to its prompt-augmentation case. llm-provider 041 gains a case for the path without
+  tool-call coercion, observability 088 a case whose retried call repeats a metric recording, and
+  retrieval-provider 031 a Cohere embed rate-limit case.
 
 The change is MINOR: it changes conformance expectations, which GOVERNANCE.md routes through a proposal, and
 pre-1.0 MINOR bumps may carry such changes. conformance-adapter's `Latest` advances, and so does observability's,
@@ -1066,8 +1166,8 @@ for its §11.5 sentence. The other capability specs whose fixtures change do not
 
 ## Open questions
 
-These are capability questions the audit found. They are left to the capability specs, so this proposal does not
-change the fixtures that depend on them:
+These are the questions the audit found. The capability questions are left to the capability specs, so this
+proposal does not change the fixtures that depend on them. The last waits on the following proposal:
 
 1. **Does a plain subgraph node dispatch its own started/completed pair?** graph-engine fixtures 013 and 019 list
    no events for it, while graph-engine §6's "Each node attempt produces a started/completed event pair" and
@@ -1097,3 +1197,11 @@ change the fixtures that depend on them:
     `openarmature.error.category` to "the §4 category identifier", and observability 119 asserts `node_exception`
     where a provider error was raised. observability 007 asserts `provider_rate_limit` in the same situation. No
     implementation passes both.
+12. **Must every chunk request be sent when one chunk fails?** retrieval-provider §8's batch chunking says to issue
+    one request per chunk, but not whether a failing chunk stops the rest. retrieval-provider 043's second case
+    asserts that both requests reach the wire.
+13. **Which named claims pin a recommendation, or can no longer fail?** Named claims wait for the following
+    proposal, so two kinds ship unchanged. harness 008 asserts that the harness did not auto-retry, under
+    `expected:` and as an invariant, though harness §7.1 makes that a SHOULD NOT. graph-engine 024 and 031 keep
+    their cross-call isolation checks only as named claims, since the per-call scope keeps one call's events out
+    of another call's bucket by construction.

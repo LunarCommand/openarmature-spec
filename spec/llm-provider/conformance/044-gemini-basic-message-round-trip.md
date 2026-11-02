@@ -16,7 +16,8 @@ Verifies §8.3.1 system extraction, the `assistant`↔`model` role rename, and t
 - The system message becomes `systemInstruction.parts[].text`, not a `contents` entry.
 - The user message maps to a `user`-role `Content` with a text part.
 - `max_tokens` maps under `generationConfig.maxOutputTokens`.
-- The `model`-role response maps back to a spec `assistant` message.
+- The `model`-role response maps back to a spec `assistant` message whose content is a single text
+  block (§8.3.2).
 
 **What fails:**
 

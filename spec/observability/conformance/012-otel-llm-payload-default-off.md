@@ -28,7 +28,8 @@ GenAI semconv attributes emitting.
 **What passes:**
 
 - Span tree shows `invocation → ask_llm → openarmature.llm.complete`.
-- LLM span carries the listed `attributes` with the listed values (exactly; not as a subset rule).
+- LLM span carries each listed `attributes` key with the listed value. `attributes` asserts only
+  the keys it names, so the absences are asserted through `attributes_absent`.
 - LLM span carries NO key matching any entry in `attributes_absent`.
 
 **What fails:**

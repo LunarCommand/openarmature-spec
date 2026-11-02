@@ -6,40 +6,10 @@
 # concatenation of the content deltas equals the terminal event's assembled
 # content, and every token event shares the terminal event's call_id.
 #
-# Per-directory streaming harness directives (per conformance-adapter §3.2).
-# These supplement the observability suite's harness contract (fixture 001's
-# header) for the streaming fixtures (111-118); they are harness-internal
-# stand-ins for genuine wire streaming (the spec cannot test wire-incremental
-# delivery — see llm-provider §5 — only the assembled-equals-concatenation
-# proxy), analogous to the mock_rerank stand-in (retrieval-provider 006):
+# The streaming inputs `calls_llm.stream` and `mock_llm_stream` are defined in
+# fixture 001's header, this directory's harness note.
 #
-# - calls_llm.stream: <bool> — when true, the node calls complete(..., stream=True)
-#   so the provider emits per-chunk LlmTokenEvents (graph-engine §6). Default
-#   false / absent preserves the atomic, no-token-event path.
-#
-# - mock_llm_stream: [[<chunk>, ...], ...] — suite-level; replaces mock_llm for
-#   streamed calls. A list with one entry per complete() call, in arrival order;
-#   each entry is the ordered list of streamed SSE chunks the mock provider
-#   yields for that call. Each <chunk> mirrors the OpenAI streamed-chunk shape:
-#     {choices: [{index, delta: {content: "..."}
-#                                | {reasoning_content: "..."}  (DeepSeek/older vLLM ext)
-#                                | {reasoning: "..."}          (current vLLM ext)
-#                                | {tool_calls: [{index, id?, function: {name?, arguments?}}]},
-#                 finish_reason: <reason|null>}]}
-#   The terminal usage chunk carries empty choices + a usage object:
-#     {choices: [], usage: {prompt_tokens, completion_tokens, total_tokens}}.
-#   A chunk entry MAY instead be a transient failure marker
-#   {error: {status: <int>}} (used by 114/116) — see those fixtures' headers.
-#   The mock body is harness-internal: the llm-provider §8.1.6 streaming wire
-#   mapping is what pins the real SSE source; this suite's chunk shape is the
-#   stand-in the per-vendor mapping fixtures (llm-provider 059) exercise directly.
-#
-# - contains_events_in_order: {event_type, events: [{<field>: <value>, ...}, ...]} —
-#   observer-introspection assertion (per-directory extension of the scalar
-#   contains_event, fixture 050). Asserts the observer's collected events of the
-#   named type, in delivery order, match the listed field maps positionally
-#   (length-exact). Used to pin the chunk_index / delta / delta_kind sequence of
-#   a token stream. Fields not listed on an entry are not asserted for that entry.
+# - contains_events_in_order: defined in conformance-adapter §5.5.
 
 cases:
   - name: token_events_dispatched_in_chunk_order_concatenate_to_content
@@ -66,6 +36,7 @@ cases:
         calls_llm:
           stream: true
           messages: [{role: user, content: "say hello"}]
+          model: gpt-test
           stores_response_in: answer
     edges:
       - {from: ask, to: END}

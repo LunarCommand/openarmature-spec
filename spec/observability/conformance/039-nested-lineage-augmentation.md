@@ -56,10 +56,12 @@ single-level rule).
    augments `note=<product.id>` via `augment_metadata_from_field`. Asserts the outer
    serial subgraph wrapper span (the `wrap` node span) carries the augmentation — the new
    lineage-aware rule across a `descend_into_subgraph` boundary, distinct from a fan-out
-   fork. The wrapper span's `note` resolves to the last instance's value
-   (last-writer-wins) because both inner instances write the same key with distinct
-   values. The fan-out NODE inside the wrapper (shared parent of the instances) and the
-   invocation span (shared parent above the wrapper) MUST NOT carry the augmentation.
+   fork. Both inner instances write the same key with distinct values, and the fan-out
+   runs with `concurrency: 1`, so the instances run one at a time in index order
+   (pipeline-utilities §9.2). Beta writes last, and the wrapper span's `note` is `beta`
+   (last-writer-wins). The fan-out NODE inside the wrapper (shared parent of the instances)
+   and the invocation span (shared parent above the wrapper) MUST NOT carry the
+   augmentation.
 
 **Harness extensions:**
 
@@ -76,11 +78,12 @@ single-level rule).
   instance dispatch spans). Equivalent to placing
   `set_invocation_metadata(note=outer_item["id"])` at the top of the probe branch's body
   inside an outer-instance's subgraph context.
-- `nodes.<name>.subgraph_call: {subgraph: <name>, outputs: {...}}` — case-3 primitive that
-  declares a serial subgraph wrapper (the outer graph descends into `wrapped_fan_out` via a
-  `descend_into_subgraph` dispatch boundary). The wrapper subgraph contains the inner
-  fan-out; the augmenter inside the fan-out has the wrapper span as a dispatch ancestor on
-  its call-stack path.
+- Case 3's `wrap` node runs `wrapped_fan_out` as a subgraph (conformance-adapter §5.4's
+  `subgraph:`), mapping the parent's `products` in and the subgraph's `picks` out to `result`, a
+  field of the same type (graph-engine §2). The outer graph descends into the wrapper through a
+  `descend_into_subgraph` dispatch boundary. The wrapper subgraph contains the inner fan-out, so
+  the augmenter inside the fan-out has the wrapper span as a dispatch ancestor on its call-stack
+  path.
 - `invariants.outer_dispatch_span_carries_inner_augmentation: true` — case-1 invariant; the
   outer-instance dispatch span receives the augmentation that originated in the inner-
   instance's body.
@@ -106,8 +109,8 @@ single-level rule).
   under the same outer, the sibling parallel-branches branch under the same outer, other
   fan-out instances inside the serial subgraph) carry only their own augmentations and the
   baseline — no cross-pollination.
-- Shared-parent spans (fan-out NODE, parallel-branches NODE, invocation) carry only the
-  baseline `tenantId` and no augmented metadata.
+- Shared-parent spans (fan-out NODE, parallel-branches NODE, invocation) carry the
+  baseline `tenantId` and no augmented `note`: each asserts `metadata_absent: [note]`.
 
 **What fails:**
 

@@ -13,7 +13,7 @@ performs.
 - §6.3 — *Cause fidelity at carrier-wrapper sites* (the carrier-wrapper unwrap MUST).
 - §9.7 — instance middleware (the wrapping site in Cases 1 and 3).
 - §11.7 — branch middleware (the wrapping site in Case 2).
-- §6.1 — the carrier-wrapper resolution precedent (a `node_exception` whose `__cause__` is a
+- §6.1: the carrier-wrapper resolution precedent (a `node_exception` whose cause carries a
   category is classified by that category).
 
 **Cases:**

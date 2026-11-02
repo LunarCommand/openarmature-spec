@@ -23,8 +23,9 @@
 # Per-directory harness directives: see 001's header (calls_embed /
 # mock_embedding), 016's header (expected_error: {category, raised_from} —
 # the conformance-adapter §5.8 compact error-assertion shape; non-2xx mock
-# entries drive the error path), and 032's header (mapping: cohere,
-# cohere_embedding_provider, the Cohere /v2/embed request shape).
+# entries drive the error path), and 032's header (cohere_embedding_provider,
+# the Cohere /v2/embed request shape). `mapping:` is defined in
+# conformance-adapter §5.15 and the wire-request assertions in §5.16.
 #
 # - mock_embedding non-2xx entries under `mapping: cohere` carry Cohere's
 #   v2 error body shape ({message}) at HTTP 400 (§8.4 *Errors*). The error

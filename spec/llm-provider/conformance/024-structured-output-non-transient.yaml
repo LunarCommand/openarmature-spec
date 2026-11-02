@@ -36,10 +36,10 @@ calls:
     retry_middleware:
       max_attempts: 3
       classifier: default
+    # Critical: exactly one request MUST have been sent. If the default
+    # classifier mistakenly included structured_output_invalid in the
+    # transient set, the harness would see N requests instead.
+    expected_wire_request_count: 1
     expected:
       raises:
         category: structured_output_invalid
-      # Critical: the call MUST have been invoked exactly once. If the
-      # default classifier mistakenly included structured_output_invalid
-      # in the transient set, the harness would see N calls instead.
-      provider_call_count: 1

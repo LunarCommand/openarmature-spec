@@ -20,12 +20,12 @@
 #     no schema, over-rejects and fails case 2).
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 005's header (mapping: openai default,
+# Per-directory harness directives: see 001's header (mapping: openai default,
 # calls / expected_wire_request), 026's header (structured-output wire:
 # response_schema -> response_format {type: json_schema, json_schema}), 032's
-# header (config.extras — the §6 undeclared-field pass-through bag), and 060's
-# header (the pre-send reject convention: mock_provider.responses: [] so a sent
-# request fails the test; expected.raises: {category}).
+# header (config.extras, the §6 undeclared-field pass-through bag), and 001's
+# header again (the pre-send reject convention: mock_provider.responses: [] so a
+# sent request fails the test; expected.raises: {category}).
 
 cases:
   - name: extras_response_format_conflicts_with_schema_rejected_pre_send

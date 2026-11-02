@@ -23,9 +23,10 @@ counterpart to 083 (which populates `usageDetails.input` when the provider repor
    (`disable_provider_payload=True`). The mocked response is a usage-less embedding body (the standard
    embedding-mock body with the `usage` block dropped) yielding `usage = null` — a harness stand-in for
    a no-usage provider (archetype: TEI `/embed`), not that vendor's exact wire. Asserts the observation
-   type is `embedding`, `model` + identity metadata are populated, `usageDetails` carries no `input` key
-   (encoded as an empty map, mirroring 108's idiom of populating `usageDetails` with only the keys the
-   provider reported), and `input` / `output` stay null under the default payload posture.
+   type is `embedding`, `model` + identity metadata are populated, `usageDetails` is present and carries
+   no `input` key (`usageDetails: {}` beside `usageDetails_absent_keys: [input]`; the empty map matches by
+   named keys, so it asserts only that the map is present), and `input` / `output` stay null under the
+   default payload posture.
 
 **What passes:**
 

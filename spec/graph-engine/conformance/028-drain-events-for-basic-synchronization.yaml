@@ -3,8 +3,8 @@
 # and the snapshotted set of events MUST have been delivered to every
 # registered observer by the time the drain returns.
 #
-# The accumulating observer records events into a per-invocation_id
-# bucket as they are delivered. Without the drain call, the terminal
+# The accumulating observer records events into one bucket per invoke()
+# call as they are delivered. Without the drain call, the terminal
 # node could read the accumulator before the prior node's `completed`
 # event has been dispatched (the race the primitive resolves).
 
@@ -22,7 +22,7 @@ nodes:
   b:
     # Terminal node invokes drain_events_for(state.invocation_id, ...)
     # via the harness primitive, then the harness snapshots the named
-    # accumulator's bucket for state.invocation_id and records both the
+    # accumulator's bucket for the current call and records both the
     # drain summary and the snapshot under this node's name.
     update: {v: 2}
     invoke_drain_events_for:
@@ -36,10 +36,11 @@ edges:
 initial_state: {}
 
 observers:
-  # Accumulating observer keyed by invocation_id. The harness exposes a
-  # read API (snapshot_observer above) returning the per-invocation
-  # bucket at the moment of the snapshot call. Per-event sleep simulates
-  # a non-trivial dispatch tail; without drain, the race window opens.
+  # Accumulating observer with one bucket per invoke() call. The harness
+  # exposes a read API (snapshot_observer above) returning the current
+  # call's bucket at the moment of the snapshot call. Per-event sleep
+  # simulates a non-trivial dispatch tail; without drain, the race
+  # window opens.
   - name: accumulator
     attach: graph
     target: outer

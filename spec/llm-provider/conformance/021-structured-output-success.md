@@ -17,10 +17,24 @@ provider bytes verbatim, and `finish_reason` is `"stop"`.
 - §8.1.5 wire mapping — outbound request includes `response_format` with
   `json_schema` body.
 
+**Cases:**
+
+1. `strict_true_exact_wire_body`, gated on `llm_strict_native_schema`
+   (conformance-adapter §5.17). §8.1.5 makes `strict: true` a SHOULD for
+   a schema that meets the strict-mode constraints, so only an adapter
+   declaring the capability is held to it. The whole wire body is
+   asserted exactly, `strict: true` included.
+2. `native_response_format_by_named_keys`, ungated, on the same inputs.
+   `expected_wire_request_includes` asserts `model`, `messages` and the
+   native `response_format`, whose schema copy is exact. `strict` is not
+   asserted.
+
+Both cases assert the same response.
+
 **What passes:**
 
 - Wire request includes `response_format.json_schema` with the supplied
-  schema verbatim and `strict: true`.
+  schema verbatim (both cases) and `strict: true` (case 1).
 - `Response.parsed == {name: "Alice", age: 30}`.
 - `Response.message.content` is the literal `'{"name":"Alice","age":30}'`
   string.

@@ -43,30 +43,38 @@ expected:
   observer_events:
     # obs_both receives all 6 events (3 nodes × 2 phases).
     obs_both:
-      - {step: 0, phase: started,   node_name: a, namespace: [a], pre_state: {v: 0, trace: []}}
+      - {step: 0, phase: started,   node_name: a, namespace: [a],
+         pre_state: {v: 0, trace: []}, parent_states: []}
       - {step: 0, phase: completed, node_name: a, namespace: [a],
-         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}}
-      - {step: 1, phase: started,   node_name: b, namespace: [b], pre_state: {v: 1, trace: ["a"]}}
+         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}, parent_states: []}
+      - {step: 1, phase: started,   node_name: b, namespace: [b],
+         pre_state: {v: 1, trace: ["a"]}, parent_states: []}
       - {step: 1, phase: completed, node_name: b, namespace: [b],
-         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}}
-      - {step: 2, phase: started,   node_name: c, namespace: [c], pre_state: {v: 2, trace: ["a", "b"]}}
+         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
+      - {step: 2, phase: started,   node_name: c, namespace: [c],
+         pre_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
       - {step: 2, phase: completed, node_name: c, namespace: [c],
-         pre_state: {v: 2, trace: ["a", "b"]}, post_state: {v: 3, trace: ["a", "b", "c"]}}
+         pre_state: {v: 2, trace: ["a", "b"]},
+         post_state: {v: 3, trace: ["a", "b", "c"]}, parent_states: []}
 
     # obs_completed receives only the 3 completed events.
     obs_completed:
       - {step: 0, phase: completed, node_name: a, namespace: [a],
-         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}}
+         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}, parent_states: []}
       - {step: 1, phase: completed, node_name: b, namespace: [b],
-         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}}
+         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
       - {step: 2, phase: completed, node_name: c, namespace: [c],
-         pre_state: {v: 2, trace: ["a", "b"]}, post_state: {v: 3, trace: ["a", "b", "c"]}}
+         pre_state: {v: 2, trace: ["a", "b"]},
+         post_state: {v: 3, trace: ["a", "b", "c"]}, parent_states: []}
 
     # obs_started receives only the 3 started events.
     obs_started:
-      - {step: 0, phase: started, node_name: a, namespace: [a], pre_state: {v: 0, trace: []}}
-      - {step: 1, phase: started, node_name: b, namespace: [b], pre_state: {v: 1, trace: ["a"]}}
-      - {step: 2, phase: started, node_name: c, namespace: [c], pre_state: {v: 2, trace: ["a", "b"]}}
+      - {step: 0, phase: started, node_name: a, namespace: [a],
+         pre_state: {v: 0, trace: []}, parent_states: []}
+      - {step: 1, phase: started, node_name: b, namespace: [b],
+         pre_state: {v: 1, trace: ["a"]}, parent_states: []}
+      - {step: 2, phase: started, node_name: c, namespace: [c],
+         pre_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
 
   # Empty phases set is a configuration error (asserted via a separate harness check
   # rather than in the event sequence).

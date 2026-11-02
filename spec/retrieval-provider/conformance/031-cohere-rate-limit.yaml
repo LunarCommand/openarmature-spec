@@ -1,25 +1,30 @@
 # retrieval-provider §8.4 Cohere — HTTP 429 -> provider_rate_limit.
 #
 # Locks the §8.4 *Errors* mapping: a Cohere HTTP 429 (rate limit) MUST map
-# to provider_rate_limit (§7), NOT provider_unavailable. Parallel to the
-# Jina rate-limit fixture (022), but single-case — the Cohere mapping is
-# rerank-only (no EmbeddingProvider counterpart), so there is no embedding
-# surface to cover. The §7 category exception MUST raise out of the rerank
-# call (the adapter MUST NOT loop / retry — that is a pipeline-utilities
-# concern per §5 / §10).
+# to provider_rate_limit (§7), NOT provider_unavailable. Like the Jina
+# rate-limit fixture (022), it covers both endpoints, which §8.4 maps alike:
+#   - case A: /v2/rerank returns 429 -> provider_rate_limit
+#   - case B: /v2/embed returns 429 -> provider_rate_limit
+# In both, the §7 category exception MUST raise out of the call (the
+# adapter MUST NOT loop or retry: that is a pipeline-utilities concern per
+# §3, §5 and §10).
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 006's header (calls_rerank /
-# mock_rerank), 016's header (expected_error error-assertion shape, non-2xx
-# mock entries), and 028's header (mapping: cohere, the
-# cohere_rerank_provider construction block). Error-assertion shape:
+# mock_rerank), 001's header (calls_embed / mock_embedding), 016's header
+# (expected_error error-assertion shape, non-2xx mock entries), 028's header
+# (mapping: cohere, the cohere_rerank_provider construction block), and
+# 032's header (the cohere_embedding_provider construction block). Both
+# construction blocks are present so each case binds the relevant provider. The
+# wire-request assertions are defined in conformance-adapter §5.16.
+# Error-assertion shape:
 #
 # - expected_error: {category, raised_from} — the conformance-adapter §5.8
 #   compact error-assertion shape (retrieval fixtures 002, 007, 016, 021,
 #   022). Asserts the §7 category and the raising node.
 #
-# - mock_rerank non-2xx entries under `mapping: cohere` carry Cohere's
-#   v2 error body shape ({message}) at HTTP 429 (§8.4 *Errors*:
+# - mock_rerank / mock_embedding non-2xx entries under `mapping: cohere`
+#   carry Cohere's v2 error body shape ({message}) at HTTP 429 (§8.4 *Errors*:
 #   429 -> provider_rate_limit). The error body is non-load-bearing:
 #   classification keys off the HTTP status, so the message string is a
 #   plausible stand-in, not a pinned wire field.
@@ -29,6 +34,11 @@ mapping: cohere
 cohere_rerank_provider:
   base_url: "https://api.cohere.invalid"
   model: cohere-rerank-test
+  api_key: "test-cohere-key"
+
+cohere_embedding_provider:
+  base_url: "https://api.cohere.invalid"
+  model: cohere-embed-test
   api_key: "test-cohere-key"
 
 cases:
@@ -72,6 +82,52 @@ cases:
     expected:
       invariants:
         exception_raised_out_of_rerank_call: true
+        rate_limit_not_misclassified_as_unavailable: true
+        authorization_bearer_header_present: true
+        no_retry_loop: true
+
+  - name: embed_429_maps_to_provider_rate_limit
+    description: |
+      A /v2/embed call where Cohere returns HTTP 429 (rate limit). The
+      adapter MUST classify it as provider_rate_limit and raise out of the
+      embed node, locking the rate-limit mapping on the embedding surface
+      too. The single wire request carries the Authorization: Bearer header
+      and the /v2/embed body, with the mandatory input_type defaulted to
+      search_document (§8.4).
+    state:
+      fields:
+        embedding_response:
+          type: record
+          default: null
+    entry: embed_node
+    nodes:
+      embed_node:
+        calls_embed:
+          input: ["hello"]
+          stores_response_in: embedding_response
+    edges:
+      - {from: embed_node, to: END}
+    initial_state: {}
+    expected_wire_request:
+      model: cohere-embed-test
+      input_type: "search_document"
+      texts: ["hello"]
+      embedding_types: ["float"]
+      truncate: "NONE"
+    expected_wire_request_absent_keys: [output_dimension]
+    expected_wire_request_count: 1
+    expected_wire_headers:
+      Authorization: "Bearer test-cohere-key"
+    mock_embedding:
+      - status: 429
+        body:
+          message: "rate limit exceeded, please retry your request later"
+    expected_error:
+      category: provider_rate_limit
+      raised_from: embed_node
+    expected:
+      invariants:
+        exception_raised_out_of_embed_call: true
         rate_limit_not_misclassified_as_unavailable: true
         authorization_bearer_header_present: true
         no_retry_loop: true

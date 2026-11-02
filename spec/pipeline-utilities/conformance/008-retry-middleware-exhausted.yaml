@@ -1,6 +1,7 @@
 # Retry exhausted: node fails repeatedly with transient exceptions; max_attempts
-# is reached; the final exception propagates as node_exception per §4 with
-# recoverable_state and __cause__.
+# is reached; the final exception propagates per graph-engine §4 with
+# recoverable_state. The raised error's category is that exception's own
+# provider_rate_limit, read through the engine's node_exception carrier.
 
 state:
   fields:
@@ -37,7 +38,7 @@ middleware:
         backoff: {type: deterministic, seconds: 0}
 
 expected_error:
-  category: node_exception
+  category: provider_rate_limit
   raised_from: target
   message: "throttle 3"
   recoverable_state: {v: 5, trace: []}

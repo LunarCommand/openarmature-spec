@@ -1,6 +1,6 @@
 # 046 — State Migration Function Raises
 
-A registered `v1 -> v2` migration function raises a `KeyError` during
+A registered `v1 -> v2` migration function raises an error during
 chain application. Per §10.12.2, the engine wraps the raised exception
 as `checkpoint_state_migration_failed` (per §10.10) and propagates it,
 preserving the underlying exception as cause.
@@ -23,7 +23,8 @@ user-code failures) and NOT as `checkpoint_state_migration_missing`
 **What passes:**
 
 - Resume raises `checkpoint_state_migration_failed`.
-- The error exposes the underlying `KeyError` as cause.
+- The error's cause is the exception the `raises_during_migration` migration
+  mock raised.
 - The error carries `from_version=v1` and `to_version=v2`.
 
 **What fails:**
@@ -32,5 +33,5 @@ user-code failures) and NOT as `checkpoint_state_migration_missing`
   engine treated the migration-function raise as a structural failure.
 - The error category is `checkpoint_state_migration_missing` — would
   mean the engine treated the failure as no-chain-found.
-- The underlying `KeyError` is dropped (would mean the cause wasn't
+- The underlying error is dropped (would mean the cause wasn't
   preserved).

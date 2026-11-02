@@ -47,7 +47,8 @@ success — via the generic §4.2 / §8.4.2 error mapping, mirroring §8.4.6's t
 
 - Observation type is `retriever` (not `generation`); `ERROR` level; `statusMessage` is the §7
   category; `error_type` in metadata under either payload posture, with `error_message` only when the
-  flag permits it; no `output` under either posture.
+  flag permits it; no `output` under either posture; no response-derived `openarmature_result_count` /
+  `openarmature_response_id` in metadata under either posture.
 
 **What fails:**
 
@@ -55,3 +56,5 @@ success — via the generic §4.2 / §8.4.2 error mapping, mirroring §8.4.6's t
   success-level observation.
 - `output` populated under the payload-off flag (the failure has no response to render).
 - `statusMessage` omitted, or set to something other than the §7 `error_category`.
+- `openarmature_result_count` or `openarmature_response_id` present in metadata (both
+  `metadata_absent`): there is no response to derive them from.

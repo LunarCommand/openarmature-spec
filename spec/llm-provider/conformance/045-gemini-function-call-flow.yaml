@@ -62,5 +62,5 @@ calls:
         maxOutputTokens: 512
     expected:
       response:
-        message: {role: assistant, content: "It's 72F and sunny in SF.", tool_calls: null}
+        message: {role: assistant, content: [{type: text, text: "It's 72F and sunny in SF."}], tool_calls: null}
         finish_reason: stop

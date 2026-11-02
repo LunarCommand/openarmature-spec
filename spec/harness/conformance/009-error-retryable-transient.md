@@ -14,11 +14,11 @@ auto-retry behavior (per-runtime).
 
 - Invoke errors with `error.category == provider_unavailable`.
 - Harness classifies into the retryable_transient bucket.
-- Outbound shape marks `retry_safe: true`.
+- Outbound is an `error_response` carrying the category and the bucket.
 
 **What fails:**
 
 - Bucket classified as terminating — would mean the harness can't
   distinguish retryable failures from session-corruption failures.
-- Outbound lacks the retry-safety flag — callers couldn't make a
-  retry decision without parsing the error category themselves.
+- Outbound lacks the bucket. Callers couldn't make a retry decision
+  without parsing the error category themselves.

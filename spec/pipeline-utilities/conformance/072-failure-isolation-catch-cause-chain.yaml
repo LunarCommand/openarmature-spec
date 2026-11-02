@@ -25,7 +25,7 @@ subgraphs:
       work:
         flaky:
           # Provider failure (provider_unavailable is a transient category per §6.1);
-          # the engine wraps the raise as a §4 node_exception carrier whose __cause__
+          # the engine wraps the raise as a §4 node_exception carrier whose cause
           # carries this category. No retry is configured here — the carrier comes from
           # the §9.7 instance placement, isolating the `catch` classification behavior.
           failure_sequence:
@@ -85,8 +85,9 @@ cases:
       Same instance placement and carrier-wrapped provider_unavailable failure,
       but catch=[provider_rate_limit] does NOT include the originating category.
       The derived category (provider_unavailable) is not in the catch set, so the gate rejects and the
-      exception propagates as node_exception from the fan-out node (fail_fast);
-      no failure-isolation event fires.
+      exception propagates from the fan-out node (fail_fast), with
+      provider_unavailable as the raised error's category; no
+      failure-isolation event fires.
     state:
       fields:
         items: {type: list<int>, default: [1]}
@@ -110,7 +111,7 @@ cases:
       - {from: process, to: END}
     initial_state: {}
     expected_error:
-      category: node_exception
+      category: provider_unavailable
       raised_from: process
     expected:
       no_failure_isolation_event: true

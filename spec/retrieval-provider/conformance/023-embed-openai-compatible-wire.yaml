@@ -12,8 +12,8 @@
 #     dimensions the body is exactly {"model": str, "input": [...]}.
 #   - the bound model is sent in the body.
 #   - the Authorization: Bearer <api_key> header is present on the wire
-#     (hosted-vendor auth, §8.3 *Construction*; the assertion convention
-#     is 018's expected_wire_headers).
+#     (hosted-vendor auth, §8.3 *Construction*; asserted with
+#     expected_wire_headers, conformance-adapter §5.16).
 #   - the OpenAI response {object, data: [{object, index, embedding}],
 #     model, usage: {prompt_tokens, total_tokens}} maps to
 #     EmbeddingResponse.vectors IN INPUT ORDER, one vector per input
@@ -32,11 +32,10 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives (per conformance-adapter §3.2). The
 # base calls_embed / mock_embedding directives are defined in 001's
-# header; the §8.X wire-mapping vocabulary (mapping: <name>,
-# expected_wire_request, expected_wire_request_absent_keys) is defined in
-# 013's header (TEI) and the expected_wire_headers Authorization: Bearer
-# assertion in 018's header (Jina). THIS fixture introduces the
-# OpenAI-compatible (§8.3) realization of that vocabulary. New directives:
+# header; the §8.X wire-mapping vocabulary is defined in
+# conformance-adapter §5.15 (mapping: <name>) and §5.16 (the wire-request
+# assertions). THIS fixture introduces the OpenAI-compatible (§8.3)
+# realization of that vocabulary. New directives:
 #
 # - mapping: openai — selects the §8.3 OpenAI-compatible wire mapping for
 #   the fixture (parallel to 013's `mapping: tei` / 018's `mapping: jina`;
@@ -128,9 +127,7 @@ cases:
             - [0.01, 0.02, 0.03, 0.04]
             - [0.11, 0.12, 0.13, 0.14]
             - [0.21, 0.22, 0.23, 0.24]
-          vectors_length: 3
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: text-embedding-test
           response_id: null
           usage:

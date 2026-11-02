@@ -13,15 +13,15 @@ parsing into a §6 `Response`.
   usage `input_tokens`/`output_tokens` → `prompt_tokens`/`completion_tokens`).
 
 **Harness extension:** `mapping: anthropic` selects the §8.2 mapping (fixtures without it target
-§8.1 OpenAI).
+§8.1 OpenAI). The harness note in fixture 001's header defines it.
 
 **What passes:**
 
 - The wire request carries `system: "You are helpful."` as a top-level field, NOT a `messages`
   entry; the `messages` array contains only the user turn.
 - `max_tokens: 256` is on the wire.
-- The response maps to `finish_reason: "stop"` (from `end_turn`), text content, and usage
-  `{prompt_tokens: 12, completion_tokens: 3, total_tokens: 15}`.
+- The response maps to `finish_reason: "stop"` (from `end_turn`), content as a single text block
+  (§8.2.2), and usage `{prompt_tokens: 12, completion_tokens: 3, total_tokens: 15}`.
 
 **What fails:**
 

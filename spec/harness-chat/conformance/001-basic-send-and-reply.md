@@ -8,7 +8,7 @@ single-turn cycle exercising the inbound + outbound wiring.
 This fixture also carries the chat suite's **per-directory contract**
 documentation in its YAML header comment per conformance-adapter §3.2 — the
 chat-specific assertion vocabulary (`chat_turns:`, `expected.outcome:`,
-`expected.replies:`, `expected.reply:`, `expected.pending_message:`,
+`expected.replies:`, `expected.reply:`, `expected.pending_messages:`,
 `expected.signal_descriptor:`) layers on top of the base directive set.
 
 **Spec sections exercised:**

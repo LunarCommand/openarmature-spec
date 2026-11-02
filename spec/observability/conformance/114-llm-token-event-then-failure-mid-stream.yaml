@@ -2,7 +2,7 @@
 # LlmTokenEvents it produced, then the terminal LlmFailedEvent (proposal 0058) —
 # there is NO LlmTokenFailedEvent (the event is unpaired; the call's outcome is
 # carried by the terminal LlmFailedEvent). The §7 category exception still
-# raises out of complete(). (Streaming directives in fixture 111's header.)
+# raises out of complete(). (Streaming inputs in fixture 001's header, this directory's harness note.)
 #
 # Mid-stream failure marker (per conformance-adapter §3.2): a mock_llm_stream
 # chunk entry of the form {error: {status: <int>}} makes the mock provider
@@ -33,6 +33,7 @@ cases:
         calls_llm:
           stream: true
           messages: [{role: user, content: "stream then fail"}]
+          model: gpt-test
           stores_response_in: answer
     edges:
       - {from: ask, to: END}
@@ -68,7 +69,6 @@ cases:
             - {event_type: LlmTokenEvent, count: 2}
             - {event_type: LlmFailedEvent, count: 1}
             - {event_type: LlmCompletionEvent, count: 0}
-            - {event_type: LlmTokenFailedEvent, count: 0}
       invariants:
         partial_token_events_fire_before_failure: true
         exactly_one_terminal_llm_failed_event: true

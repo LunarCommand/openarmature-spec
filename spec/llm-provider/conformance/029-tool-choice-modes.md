@@ -21,7 +21,7 @@ outbound wire shape and end-to-end response mapping.
 
 - `tool_choice_default_omits_wire_field` — no `tool_choice` supplied;
   wire body has NO `tool_choice` key
-  (`expected_wire_request_checks.tool_choice_absent: true`).
+  (`expected_wire_request_absent_keys: [tool_choice]`).
   v0.4.0 backward compatibility verified.
 - `tool_choice_auto_emits_wire_field` — explicit auto; wire body has
   `tool_choice: "auto"`.
@@ -48,13 +48,12 @@ outbound wire shape and end-to-end response mapping.
 
 **Notes:**
 
-- New harness primitive: `expected_wire_request_checks.tool_choice_absent: true`
-  — sibling-to-`expected_wire_request` block; asserts that the named
-  key is NOT present in the wire body (vs present-with-a-specific-value,
-  which the existing `expected_wire_request` matchers cover). Distinct
-  from `tool_choice: null` (asserting the key IS present with a null
-  value). Follows fixture 027's `expected_wire_request_checks.response_format_absent`
-  precedent so `expected_wire_request` stays strictly wire-shaped.
+- `expected_wire_request_absent_keys: [tool_choice]` (conformance-adapter
+  §5.16) sits beside `expected_wire_request` and asserts that the key is
+  NOT present in the wire body. It is distinct from `tool_choice: null`,
+  which would assert the key IS present with a null value. The exact
+  `expected_wire_request` body already rules the key out; the absent-keys
+  list states it explicitly.
 - The mock provider configurations for the required / none cases are
   deliberately constraint-compliant: required → mock returns
   tool_calls, none → mock returns content. The fixture's job is wire

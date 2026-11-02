@@ -7,8 +7,8 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
-| [0127](proposals/0127-assertion-matching-rules.md) | Matching rules and definitions for the assertion directives | conformance-adapter | Draft | —               | —          |
-| [0126](proposals/0126-structured-output-failure-completeness.md) | Complete structured-output failure reports and a schema-not-honored diagnostic | llm-provider | Accepted | Pending         | —          |
+| [0127](proposals/0127-assertion-matching-rules.md) | Matching rules and definitions for the assertion directives | conformance-adapter | Accepted | Pending         | —          |
+| [0126](proposals/0126-structured-output-failure-completeness.md) | Complete structured-output failure reports and a schema-not-honored diagnostic | llm-provider | Accepted | Partial (0.18.0)| —          |
 | [0125](proposals/0125-tool-arm-and-caller-set-fixture-coverage.md) | Fixture coverage for the Tool arm and the caller-set scope | observability | Accepted | Pending         | —          |
 | [0124](proposals/0124-orphan-provider-span-parent-resolution.md) | Resolve an orphan provider span's parent structurally | observability | Accepted | Partial (0.17.0)| —          |
 | [0123](proposals/0123-case-level-subgraph-declaration.md) | Scope a subgraph declaration to the graph specification it accompanies | conformance-adapter | Accepted | Shipped (0.17.0)| —          |

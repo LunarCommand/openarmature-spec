@@ -477,9 +477,11 @@ response-side clause.
   without the constraint having been dropped. Forwarded stop settings the
   exclusion does not name, such as a token-id stop list some OpenAI-compatible
   servers accept, are residual cases of the same kind.
-- **`native_unenforced` has no fixture.** [still-relevant]: forcing it depends on
+- **`native_unenforced` has no fixture.** [resolved-by-0127]: forcing it depends on
   llm-provider §8.1.5's SHOULD to send `strict: false` for a schema outside strict
-  mode, so a case could fail an implementation that conforms.
+  mode, so a case could fail an implementation that conforms. 0127 gates observability
+  161's native cases on the `llm_strict_native_schema` capability, and the cases
+  gated on `false` assert the `native_unenforced` path.
 - **Langfuse rendering of the path.** [still-relevant]: the path attribute has no
   §8.4 mapping. It is a classification rather than harvested content, so the
   exhaustive-mapping rule does not require one, and a Langfuse user loses only
@@ -997,6 +999,52 @@ short-horizon roadmap below.
 
 ## conformance-adapter
 
+### 0127: matching rules and definitions for the assertion directives
+
+These are the questions the 0127 audit found. The capability questions are left to their capability specs, so
+0127 does not change the fixtures that depend on them. The last item waits on the named-claims proposal.
+
+- **Does a plain subgraph node dispatch its own started/completed pair?** [still-relevant]: graph-engine
+  fixtures 013 and 019 list no events for it, while graph-engine §6's "Each node attempt produces a
+  started/completed event pair" and observability §4.1 imply it does. Now that a list of observed events is
+  complete, the answer decides both fixtures.
+- **Which terminal event does an attempt emit when an outer middleware recovers its raise?**
+  [still-relevant]: pipeline-utilities 006 and 061 assert opposite answers, so no implementation passes
+  both.
+- **What is a checkpoint position's `namespace`?** [still-relevant]: pipeline-utilities §10.2 defines it
+  "per graph-engine §6", which includes the node's own name. Fixtures 024, 025, 026, 029 and 070 write the
+  path that contains the node.
+- **Does a branch cancelled under `fail_fast` before it ran dispatch `started`?** [still-relevant]:
+  pipeline-utilities §11.5 is silent, and observability 119's span tree depends on it.
+- **What is a detached subgraph span named?** [still-relevant]: observability 008, 033 and 058 use the
+  subgraph's name, while observability §4.5 names a subgraph span after the node in the parent graph.
+- **Is migration-chain ambiguity detected at registration?** [still-relevant]: sessions §13 makes it a
+  SHOULD and pipeline-utilities §10.12.1 a MUST. sessions 009's `raised_at: registration` depends on which
+  governs.
+- **Where does a fan-out's `fan_out_empty` category live?** [still-relevant]: pipeline-utilities §9.1 says
+  the engine raises a `node_exception` "with category `fan_out_empty`" without saying where.
+  pipeline-utilities 023's `fan_out_category`, and its `category`, depend on the answer.
+- **How is single-text assistant content sent on the OpenAI wire?** [still-relevant]: after thinking blocks
+  are stripped, llm-provider §8.1.1 does not fix whether it is a string or a block array. llm-provider 043
+  and 053 pin a string.
+- **What does a typed implementation raise for a missing required content field?** [still-relevant]:
+  llm-provider §3 lets it reject at construction with an error that is not `provider_invalid_request`.
+  llm-provider 018 and 020 expect the provider category.
+- **Should harness-chat §5.2 require `error_category` on an errored turn?** [still-relevant]: 0127 removes
+  the assertions because the field is optional. Requiring it would restore them.
+- **What category does a failed node's span carry?** [still-relevant]: observability §4.2 and §5.2 set
+  `openarmature.error.category` to "the §4 category identifier", and observability 119 asserts
+  `node_exception` where a provider error was raised. observability 007 asserts `provider_rate_limit` in the
+  same situation. No implementation passes both.
+- **Must every chunk request be sent when one chunk fails?** [still-relevant]: retrieval-provider §8's batch
+  chunking says to issue one request per chunk, but not whether a failing chunk stops the rest.
+  retrieval-provider 043's second case asserts that both requests reach the wire.
+- **Which named claims pin a recommendation, or can no longer fail?** [candidate-for-new-proposal]: 0127
+  leaves named claims to a following proposal, so two kinds ship unchanged. harness 008 asserts that the
+  harness did not auto-retry, under `expected:` and as an invariant, though harness §7.1 makes that a SHOULD
+  NOT. graph-engine 024 and 031 keep their cross-call isolation checks only as named claims, since the per-call
+  scope keeps one call's events out of another call's bucket by construction.
+
 ### 0123 — subgraph declaration placement
 
 - **Whether the scoping rule should be stated once for every declaration form
@@ -1049,7 +1097,10 @@ short-horizon roadmap below.
   sidecar, so a per-directory anchor matches neither population. Closing this needs
   a proposal that measures the predicate surface on its own evidence, and may need
   the definition-homes rule to admit a fixture's own prose (§3.1's `NNN-name.md`)
-  as a third artifact form.
+  as a third artifact form. **Partly resolved by 0127** (v0.120.0): §5's preamble
+  now classes a fixture-specific predicate as a named claim, which an adapter MUST
+  implement rather than reject under §8.2, so the two MUSTs no longer conflict.
+  Cataloguing the predicate surface is still open.
 - **Whether a per-directory README and a fixture-header comment should remain
   interchangeable.** [still-relevant] — 0120 treats both as "a per-directory
   harness note" because §3.2 and §11 already do, and §5's rule now cites §3.2 for
@@ -1116,7 +1167,10 @@ short-horizon roadmap below.
   handled separately by proposal 0102. **Resolved by 0107** (v0.102.0): §5.5 now
   documents `typed_observers` / `contains_event` (including the present-but-null vs
   absent structural rule); §5.8 documents the `caught_exception` assertion; the
-  audit found the mock-input `cause:` directive was already §5.1.
+  audit found the mock-input `cause:` directive was already §5.1. 0127 (v0.120.0)
+  replaced the present-but-null rule: a written `null` now asserts that a field is
+  not set, which on an event matches a field that is null or missing
+  (conformance-adapter §8.4).
 
 ### 0114 — provider-topology test primitives for Langfuse client isolation
 

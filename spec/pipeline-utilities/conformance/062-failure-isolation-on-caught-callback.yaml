@@ -5,12 +5,6 @@
 
 state:
   fields:
-    on_caught_invocation_count:
-      type: int
-      default: 0
-    on_caught_captured_message:
-      type: string
-      default: ""
     result:
       type: string
       default: ""
@@ -34,19 +28,12 @@ middleware:
       - type: failure_isolation
         degraded_update: {result: "degraded"}
         event_name: "summarize_failed"
-        on_caught:
-          # Harness-defined callback shape: increments
-          # on_caught_invocation_count and captures the exception
-          # message into on_caught_captured_message via a side channel
-          # the harness recognizes.
-          kind: record_to_state_side_channel
-          increment_field: on_caught_invocation_count
-          capture_message_field: on_caught_captured_message
+        # A recording callback (this directory's note): on_caught_calls
+        # below reads what it recorded.
+        on_caught: record
 
 expected:
   final_state:
-    on_caught_invocation_count: 1
-    on_caught_captured_message: "service down"
     result: "degraded"
   execution_order: [failing]
 
@@ -57,6 +44,10 @@ expected:
     caught_exception:
       category: provider_unavailable
       message: "service down"
+
+  # The on_caught callback fired once, with the caught exception's message.
+  on_caught_calls:
+    - {message: "service down"}
   invariants:
     on_caught_fires_exactly_once: true
     on_caught_receives_original_exception: true

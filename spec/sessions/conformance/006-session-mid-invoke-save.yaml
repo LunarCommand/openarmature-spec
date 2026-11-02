@@ -43,8 +43,8 @@ cases:
     expected:
       # B's mid-invoke save committed before C raised.
       store_after:
-        load_returns_for_session_id: "s6"
-        loaded_state: {step: "B"}
+        "s6":
+          state: {step: "B"}
       # Auto-save at END did NOT run (invoke errored before END).
       no_auto_save_on_end: true
     invariants:

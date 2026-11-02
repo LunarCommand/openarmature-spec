@@ -1,7 +1,8 @@
 # Content blocks — text-only equivalence. A user message constructed with a
 # single TextBlock is normatively equivalent to the same user message
-# constructed with content as a string. Both produce identical OpenAI wire
-# payloads (modulo allowed representational variation per §3.1.1).
+# constructed with content as a string (§3.1.1). On the OpenAI wire the
+# string maps to a string and the block sequence to the content-array
+# form (§8.1.1).
 
 mock_provider:
   responses:
@@ -45,11 +46,9 @@ calls:
   # Call 2: content as a single-element content-block sequence with one
   # TextBlock. Per §3.1.1, normatively equivalent to call 1.
   #
-  # Implementations MAY map a single-TextBlock content to EITHER the
-  # string form (matching call 1's wire) OR the content-array form. Both
-  # are equivalent per §3.1.1. The harness MAY accept the string form OR
-  # the single-element array form against this expected_wire_request;
-  # the canonical form below is the array form (the more explicit shape).
+  # §8.1.1 maps a content-block sequence to OpenAI's content-array form,
+  # so the wire carries the array, and the exact expected_wire_request
+  # below accepts only that form.
   - operation: complete
     messages:
       - role: user
