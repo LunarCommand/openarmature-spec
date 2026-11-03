@@ -11,15 +11,15 @@ dropped first) when the post-merge length exceeds `max_len`.
 **Cases:**
 
 1. `bounded_append_basic_truncates_when_concat_exceeds_bound` — Single update of 5 items into
-   an empty list with `max_len=3`. Final list is the last 3 items.
+   an empty list with `max_len: 3`. Final list is the last 3 items.
 2. `bounded_append_multi_step_cumulative_bound_across_merges` — Three nodes each append 2 items
-   to a field with `max_len=4`. After each merge the bound is enforced; final list is the last
+   to a field with `max_len: 4`. After each merge the bound is enforced; final list is the last
    4 items across all updates.
 3. `bounded_append_update_larger_than_max_len_evicts_prior_entirely` — Single update of 5 items
-   into a 2-item prior with `max_len=2`. Prior is fully evicted; final list is the last 2
+   into a 2-item prior with `max_len: 2`. Prior is fully evicted; final list is the last 2
    items of the update.
 4. `bounded_append_empty_update_is_noop_even_when_prior_exceeds_bound` — Schema default
-   deliberately exceeds `max_len=3` (5 items). Empty update returns prior unchanged — the
+   deliberately exceeds `max_len: 3` (5 items). Empty update returns prior unchanged: the
    reducer does NOT proactively truncate prior; it transforms updates only. Matches the
    established `concat_flatten` / `merge_all` empty-update pattern.
 

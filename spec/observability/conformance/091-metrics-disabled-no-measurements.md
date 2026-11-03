@@ -5,13 +5,13 @@ with `enable_metrics` off no measurement is recorded.
 
 ## Spec coverage
 
-- §11.1 — when `enable_metrics` is `False`, no instrument is created and no
+- §11.1: when `enable_metrics` is `false`, no instrument is created and no
   measurement is recorded.
 
 ## Cases
 
 1. `no_measurements_when_metrics_disabled` — the same usage-bearing completion as
-   fixture 088, but `enable_metrics=False`: the metric-capture primitive records an
+   fixture 088, but `enable_metrics: false`: the metric-capture primitive records an
    empty set (`metrics: []`).
 
 ## Anti-cases

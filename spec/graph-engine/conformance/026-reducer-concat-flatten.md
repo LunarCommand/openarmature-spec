@@ -32,7 +32,7 @@ lists and every element of `update` strictly required to itself be a list.
   violations. The permissive `type: list` (no element constraint) ensures the reducer is the
   layer reached by the bad shape, making the `reducer_error` assertion the right one for the
   non-list-element case.
-- A separately constrained field (e.g., a Pydantic field declared `list[list[X]]`) would have
+- A separately constrained field (e.g., a field declared `list<list<X>>`) would have
   its typed-state validation reject the bad shape earlier, before the reducer runs — but that's
   a different code path, not an alternative satisfaction of §2. The §2 contract for what the
   reducer does when it sees bad shape is what this fixture asserts.

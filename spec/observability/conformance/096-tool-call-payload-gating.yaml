@@ -1,7 +1,7 @@
 # observability §5.5.4 / §5.5.11 (proposal 0063): disable_provider_payload gates
 # the tool payload attributes (openarmature.tool.call.arguments / .result) on the
-# OTel tool span. Default True (payload off) suppresses them while the identity
-# attributes (openarmature.tool.name / .call.id) stay; False populates them.
+# OTel tool span. Default true (payload off) suppresses them while the identity
+# attributes (openarmature.tool.name / .call.id) stay; false populates them.
 
 cases:
   - name: payload_off_default_suppresses_arguments_and_result

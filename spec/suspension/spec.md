@@ -74,15 +74,15 @@ state, the signal descriptor, the `invocation_id` / `correlation_id`, and the `c
 (which nodes finished before the pause). Stored using the same persistence machinery as proposal 0008's
 checkpoint records per the pipeline-utilities §10.15 composition rule.
 
-**Resume.** A subsequent `invoke()` call with `resume_invocation=<id>` and `signal_payload=<payload>`.
+**Resume.** A subsequent `invoke()` call with `resume_invocation: <id>` and `signal_payload: <payload>`.
 The engine loads the paused record, merges the signal payload into state, and resumes execution from
 the node that suspended (the exact resume entry point is governed by `mark_node_completed`; see §3 and
 §7).
 
 ## 3. The `suspend` operation
 
-A node body invokes `suspend(descriptor, mark_node_completed=True)` to pause the current invocation.
-Implementations expose this as:
+A node body invokes `suspend(descriptor, mark_node_completed: true)` to pause the current
+invocation. Implementations expose this as:
 
 - Python: a coroutine-returning function (`await suspend(descriptor, ...)`), context-var-aware,
   callable from within a node body.
@@ -93,9 +93,9 @@ Implementations expose this as:
 | Parameter | Default | Description |
 |---|---|---|
 | `descriptor` | (required) | Signal descriptor per §4. |
-| `mark_node_completed` | `True` | Whether to mark the suspending node as completed in the paused-invocation record's `completed_positions`. Controls resume behavior — see below. |
+| `mark_node_completed` | `true` | Whether to mark the suspending node as completed in the paused-invocation record's `completed_positions`. Controls resume behavior, described below. |
 
-When `suspend(descriptor, mark_node_completed=True)` is called (default):
+When `suspend(descriptor, mark_node_completed: true)` is called (default):
 
 1. The engine MUST treat the call as the node's terminal action for this invocation. The node's `return`
    value (if any after suspend returns or if the node continues past suspend) is ignored.
@@ -105,7 +105,7 @@ When `suspend(descriptor, mark_node_completed=True)` is called (default):
 3. The engine MUST emit a `suspended` phase NodeEvent for the suspending node (per graph-engine §6).
 4. The engine MUST return from `invoke()` with a `suspended` outcome (per §5).
 
-When `suspend(descriptor, mark_node_completed=False)` is called:
+When `suspend(descriptor, mark_node_completed: false)` is called:
 
 1. Same as step 1 above — `suspend()` is terminal for this attempt.
 2. The engine MUST persist the current invocation state, EXCLUDING the suspending node from
@@ -116,22 +116,22 @@ When `suspend(descriptor, mark_node_completed=False)` is called:
 
 **When to use which:**
 
-- **`mark_node_completed=True` (default).** "Do work, then suspend; on resume, continue forward." The
+- **`mark_node_completed: true` (default).** "Do work, then suspend; on resume, continue forward." The
   suspending node decided to pause and is done with its responsibility for this invocation. The
   follow-on work happens in the next node. Matches OA's "edges drive control flow; nodes do work"
   principle.
-- **`mark_node_completed=False` (opt-in).** "Suspend, then do work; on resume, run this node body with
+- **`mark_node_completed: false` (opt-in).** "Suspend, then do work; on resume, run this node body with
   the payload." The suspending node acts on the payload itself after resume rather than handing off to
   a follow-on node. Power-user shape; the node body must handle re-invocation cleanly.
 
-**Resume re-invocation is not a retry.** Under `mark_node_completed=False`, re-invocation of the
+**Resume re-invocation is not a retry.** Under `mark_node_completed: false`, re-invocation of the
 suspending node body is NOT counted as a retry attempt: `attempt_index` (per graph-engine §6) does NOT
 increment. Retry tracks node-body failures (per pipeline-utilities §6.1); resume tracks intentional
 pauses. The axes are independent. A node body that re-runs after resume sees the same `attempt_index`
 it had when it suspended.
 
 **Multiple suspensions per node.** A node body MAY call `suspend()` again during re-invocation (with or
-without `mark_node_completed=False`). Each suspension persists a new paused-invocation record (or
+without `mark_node_completed: false`). Each suspension persists a new paused-invocation record (or
 extends the existing one with a new descriptor — implementation choice). Multiple resume cycles per
 node are permitted.
 
@@ -162,7 +162,7 @@ suspension control flow and the persistence-failure exception are distinct mecha
 
 Middleware is meant to wrap node execution, not replace it with a suspension. Suspending from
 middleware creates attribution ambiguity (which node is recorded as suspending? the wrapped one that
-may never have run?) and gnarly re-entrancy semantics under `mark_node_completed=False`. Suspending
+may never have run?) and gnarly re-entrancy semantics under `mark_node_completed: false`. Suspending
 logic that needs to gate a node belongs in a preceding regular node, not in middleware. See §8.4 for
 the full rationale.
 
@@ -249,18 +249,18 @@ The default behavior is the shallow overlay above.
 
 ## 7. Resume API
 
-A subsequent `invoke()` call with `resume_invocation=<invocation_id>` and `signal_payload=<payload>`
-triggers resume. The engine MUST:
+A subsequent `invoke()` call with `resume_invocation: <invocation_id>` and
+`signal_payload: <payload>` triggers resume. The engine MUST:
 
 1. Load the paused-invocation record from the configured persistence layer.
 2. Validate that the record's status is `suspended` (not `completed`, `errored`, or never-existed); if
    not, raise `suspension_record_invalid` (§9).
 3. Merge `signal_payload` into the loaded state per §6.
 4. Determine the resume entry point from the paused record's `completed_positions`:
-   - If the suspending node IS in `completed_positions` (i.e., `mark_node_completed=True` at suspend
-     time — the default): emit `started` for the NEXT node downstream from the suspending node and
-     continue from there. The suspending node is NOT re-run.
-   - If the suspending node is NOT in `completed_positions` (i.e., `mark_node_completed=False` at
+   - If the suspending node IS in `completed_positions` (i.e., `mark_node_completed: true` at
+     suspend time, the default): emit `started` for the NEXT node downstream from the suspending
+     node and continue from there. The suspending node is NOT re-run.
+   - If the suspending node is NOT in `completed_positions` (i.e., `mark_node_completed: false` at
      suspend time): re-invoke the suspending node body. The body sees the merged state (signal payload
      overlaid) and runs as a fresh node-body execution. The `started` NodeEvent for the suspending
      node fires again.
@@ -285,9 +285,9 @@ invocation mints a fresh one.)
 
 - The suspending node's `completed_positions` membership is determined by `mark_node_completed` at
   suspend time (per §3).
-- Under the default (`mark_node_completed=True`), resume continues with the next node per normal
+- Under the default (`mark_node_completed: true`), resume continues with the next node per normal
   checkpoint-resume semantics (pipeline-utilities §10.4).
-- Under the opt-in (`mark_node_completed=False`), resume re-invokes the suspending node; subsequent
+- Under the opt-in (`mark_node_completed: false`), resume re-invokes the suspending node; subsequent
   nodes run normally after that re-execution completes.
 - If checkpointing was independently enabled for this invocation, the resume continues to save
   intermediate state per the checkpointer configuration.
@@ -308,10 +308,10 @@ level. From the outer graph's perspective, the suspension is identical to a regu
 `suspend()` directly — the `mark_node_completed` parameter (per §3) controls resume behavior the same
 way:
 
-- **`mark_node_completed=True` (default).** On resume, the engine continues at the next node after
+- **`mark_node_completed: true` (default).** On resume, the engine continues at the next node after
   the fan-out. The fan-out's aggregate output (`target_field`, etc.) is whatever was accumulated up
   to the suspend point; subsequent nodes see an incomplete aggregate.
-- **`mark_node_completed=False`.** On resume, the fan-out node re-runs from scratch — all instances
+- **`mark_node_completed: false`.** On resume, the fan-out node re-runs from scratch: all instances
   start fresh. The suspending instance's pending signal becomes meaningless; any signal payload
   delivered on resume is merged into outer-graph state and the fan-out begins anew with the merged
   state.
@@ -322,9 +322,9 @@ descriptor's `metadata` so the runtime has attribution for which instance is awa
 **Sibling instances are cancelled when any instance suspends**, regardless of `error_policy`. This is a
 deliberate constraint:
 
-- Under `error_policy="fail_fast"` (the default), cancellation on suspend is consistent with
+- Under `error_policy: "fail_fast"` (the default), cancellation on suspend is consistent with
   cancellation on error.
-- Under `error_policy="collect"`, suspension is INCOMPATIBLE — the engine MUST raise
+- Under `error_policy: "collect"`, suspension is INCOMPATIBLE: the engine MUST raise
   `suspension_in_unsupported_context` (§9) when an instance inside a `collect`-mode fan-out calls
   `suspend()`. The fan-out cannot meaningfully aggregate partial results across multiple concurrent
   suspends within one node; the multi-suspend aggregate-descriptor case is deferred to a future
@@ -338,7 +338,7 @@ deliberate constraint:
 Same shape as fan-out. The whole parallel-branches node suspends at the outer level when any branch
 calls `suspend()`. The descriptor is the suspending branch's, with `branch_name` annotated in the
 descriptor's `metadata`. Sibling branches are cancelled regardless of `error_policy`; suspension is
-incompatible with `error_policy="collect"` for parallel-branches (same `suspension_in_unsupported_context`
+incompatible with `error_policy: "collect"` for parallel-branches (same `suspension_in_unsupported_context`
 error category).
 
 **Design rationale (fan-out and parallel-branches both).** The "wait for many concurrent signals and
@@ -368,14 +368,14 @@ or after the inner `next()` call) MUST raise `suspension_in_unsupported_context`
   resume, do we re-enter the outer middleware from its top, the inner middleware (which never ran),
   or jump to the wrapped node? Each answer has different semantics; spec'ing the interaction is
   significant complexity.
-- **Re-entrancy under `mark_node_completed=False`.** What does "re-run on resume" mean for middleware?
+- **Re-entrancy under `mark_node_completed: false`.** What does "re-run on resume" mean for middleware?
   The whole middleware chain? Just the suspending middleware? Different implementations would
   diverge.
 
 The use cases for middleware-suspend (e.g., "gate this node behind a human approval") are achievable by
 extracting the suspend into a preceding regular node, which keeps the engine and observability
 attribution clean. The "do work, then suspend, then next node does work" pattern is the recommended
-shape (and matches the `mark_node_completed=True` default).
+shape (and matches the `mark_node_completed: true` default).
 
 ### 8.5 Checkpointing
 
@@ -454,7 +454,7 @@ Canonical error categories introduced by this capability:
 - **`suspension_in_unsupported_context`** — `suspend()` called from a context where it is not
   permitted. Reserved for: (a) `suspend()` called outside an invocation; (b) `suspend()` called inside
   a fan-out instance or parallel-branches branch whose containing node is configured with
-  `error_policy="collect"` (per §8.2 / §8.3); (c) `suspend()` called from middleware (per §8.4).
+  `error_policy: "collect"` (per §8.2 / §8.3); (c) `suspend()` called from middleware (per §8.4).
   Implementations SHOULD detect (b) at compile / registration time when feasible; runtime detection is
   the spec-mandated minimum for all three cases.
 
@@ -512,3 +512,4 @@ resume events carry timestamps from the resume time, not the suspend time.
 - created by [proposal 0021](../../proposals/0021-graph-suspension.md)
 - §8.7 *Deployment runtime / harness contract* paragraph tightened from a forward-looking placeholder ("formalized by the harness capability when its spec lands") to a concrete cross-reference into the now-existing harness capability spec — points at its §6 *Signal coordinator*, §3.3 *Signal-resume inbound dispatch path*, §5.3 *Suspended outcome handling* (harness MUST NOT block on suspended turns), and §7 *Error categorization at the turn boundary*. Suspension itself stays runtime-neutral; this is a documentary tightening of the cross-spec touchpoint by [proposal 0022](../../proposals/0022-harness-contract.md)
 - §3's rule against intercepting the suspension says "a catch-all error handler" in place of Python's bare `try / except`. No behavior change; spec v0.120.1 (clarification, no proposal)
+- §2, §3, §7, §8.2 to §8.4 and §9 use language-neutral notation. Python's `True` and `False` become `true` and `false`, and keyword arguments are written `name: value`. No behavior change; spec v0.120.2 (clarification, no proposal)

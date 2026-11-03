@@ -1,5 +1,5 @@
 # graph-engine §6 — RerankEvent.top_k mirrors the caller-supplied
-# top_k (or null when the caller passed None); result_count and
+# top_k (or null when the caller passed null); result_count and
 # document_count mirror the response and input. (Directives in fixture
 # 099's header.)
 

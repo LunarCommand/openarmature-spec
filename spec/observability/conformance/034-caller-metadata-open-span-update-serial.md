@@ -35,7 +35,7 @@ node's span — MUST be updated in place to carry the augmented key.
 - `nodes.<node>.augment_metadata: {key: value, ...}` — harness primitive: at the top of the
   named node's body (before its LLM call runs), the harness internally calls the framework's
   augment-metadata helper with the supplied entries. Equivalent to placing
-  `set_invocation_metadata(requestId="req-xyz")` at the top of the node's body. (Node-level
+  `set_invocation_metadata(requestId: "req-xyz")` at the top of the node's body. (Node-level
   analogue of the `augment_metadata` primitive fixture 030 places under a branch.)
 - `invariants.open_span_update_reaches_invocation_and_node_spans: true` — harness verifies
   the augmented key reached the already-open invocation span and node span (not only the

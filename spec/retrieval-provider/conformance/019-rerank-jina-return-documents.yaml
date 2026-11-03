@@ -3,14 +3,14 @@
 #
 # This is the headline behavior the §8.2 accept fixes: Jina's wire
 # `return_documents` defaults `true`, but OA's RerankRuntimeConfig
-# .return_documents defaults `False` (§2 / §6), so the mapping MUST send
+# .return_documents defaults `false` (§2 / §6), so the mapping MUST send
 # return_documents EXPLICITLY rather than relying on Jina's wire default.
 # Verifies:
-#   - case A: OA return_documents=False (the default — no config field
+#   - case A: OA return_documents: false (the default, no config field
 #     supplied) => wire return_documents: false, EXPLICITLY overriding
 #     Jina's `true` wire default. The mocked response carries no document
 #     echo, so ScoredDocument.document is null.
-#   - case B: OA return_documents=True => wire return_documents: true, and
+#   - case B: OA return_documents: true => wire return_documents: true, and
 #     the Jina-echoed `document` per result (a string) populates
 #     ScoredDocument.document verbatim (§6).
 #   - case C: Jina echoes each `document` as a TextDoc object
@@ -105,7 +105,7 @@ cases:
             search_units: null
             input_tokens: 57
           # Verbatim deserialized Jina response (§6 raw) — populated on every
-          # successful return; the default (return_documents=false) response
+          # successful return; the default (return_documents: false) response
           # carries no document echoes.
           raw:
             model: jina-reranker-test

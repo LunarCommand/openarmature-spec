@@ -10,7 +10,7 @@ outbound wire shape and end-to-end response mapping.
 - §5 `complete()` — `tool_choice` parameter (auto / required / none /
   default).
 - §8.1.1 OpenAI request mapping — `tool_choice` wire row:
-  - None / absent → field omitted from wire body
+  - null / absent → field omitted from wire body
   - `"auto"` → `tool_choice: "auto"`
   - `"required"` → `tool_choice: "required"`
   - `"none"` → `tool_choice: "none"`

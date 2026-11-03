@@ -8,7 +8,7 @@
 # (§8.4 *return_documents (not realized — a silent no-op)*). The fixture
 # asserts both halves of the contract:
 #
-#   1. WIRE: rerank(config={return_documents: True}) produces a wire
+#   1. WIRE: rerank(config: {return_documents: true}) produces a wire
 #      request with NO return_documents field — byte-identical to the
 #      default (no-config) request (case 2). The mapping does NOT add a
 #      wire field for return_documents and does NOT error.
@@ -20,7 +20,7 @@
 #      text via documents[result.index].
 #
 # Contrast with Jina §8.2 (fixture 019), where return_documents IS realized
-# (sent explicitly on the wire) and the True case surfaces the Jina-echoed
+# (sent explicitly on the wire) and the true case surfaces the Jina-echoed
 # document verbatim. Cohere has neither surface, so the knob is inert.
 #
 # Both cases return the mocked response UNSORTED to keep the §6 sort

@@ -60,10 +60,10 @@ runtime. Owns the inbound dispatch, the outbound surface, the session lookup (se
 the signal-coordination logic.
 
 **Turn.** One bounded execution of the workflow engine in service of an inbound request or event. A
-turn corresponds to ONE call to `invoke()` or `invoke(resume_invocation=..., signal_payload=...)`. A
-turn begins at invoke entry and ends at invoke return (one of: `completed`, `errored`, or
-`suspended`). The transport-level boundary (HTTP request lifetime, event-handler duration, etc.)
-is set by the runtime, not by the harness contract.
+turn corresponds to ONE call to `invoke()` or `invoke(resume_invocation: ..., signal_payload: ...)`.
+A turn begins at invoke entry and ends at invoke return (one of: `completed`, `errored`, or
+`suspended`). The transport-level boundary (HTTP request lifetime, event-handler duration, etc.) is
+set by the runtime, not by the harness contract.
 
 **Inbound dispatch path.** One of the classification paths the harness routes inbound traffic
 into. See §3.
@@ -92,7 +92,7 @@ construction:
   thread any `session_id` into `invoke()`. Used by deployment runtimes serving inherently stateless
   workloads (REST APIs without per-conversation context, batch processors, scoring services).
 
-Stateless mode is first-class — not a degenerate sessioned case with `session_id = None`. The two
+Stateless mode is first-class, not a degenerate sessioned case with `session_id = null`. The two
 modes have different inbound dispatch classification (§3.1 / §3.2 / §3.3 vs §3.0) and different
 sessions composition (per §8.1). Mode is fixed at harness construction; mixing modes within one
 harness instance is out of scope (an application needing both shapes constructs two harness
@@ -139,7 +139,7 @@ The harness:
 
 1. Resolves `session_id` from the inbound payload, or assigns a fresh one if absent.
 2. Constructs the initial state from the inbound payload per harness-implementation logic.
-3. Calls `invoke(initial_state, session_id=<id>)`.
+3. Calls `invoke(initial_state, session_id: <id>)`.
 4. Handles the outcome per §5.
 
 ### 3.2 Existing-active-session path (sessioned mode)
@@ -154,7 +154,7 @@ The harness:
 1. Resolves `session_id` from the inbound payload.
 2. Constructs the next-turn state from the inbound payload. The session-state load happens inside
    `invoke()` per sessions §6.1; the harness does NOT load session state itself.
-3. Calls `invoke(initial_state, session_id=<id>)`.
+3. Calls `invoke(initial_state, session_id: <id>)`.
 4. Handles the outcome per §5.
 
 The distinction from 3.1 is caller intent: 3.1 starts a new session, 3.2 continues an existing
@@ -169,7 +169,7 @@ The inbound transmission carries a signal payload correlating to a paused invoca
 1. Resolves the target `invocation_id` from the signal correlation (via the signal coordinator,
    see §6).
 2. Constructs the `signal_payload` from the inbound transmission.
-3. Calls `invoke(resume_invocation=<id>, signal_payload=<payload>)`.
+3. Calls `invoke(resume_invocation: <id>, signal_payload: <payload>)`.
 4. Handles the outcome per §5.
 
 A signal-resume MUST also implicitly belong to the paused invocation's session (in sessioned
@@ -191,7 +191,7 @@ from the inbound payload (a given payload always routes to the same path).
 
 A turn has three observable phases:
 
-**Turn entry.** The harness calls `invoke()` (or `invoke(resume_invocation=...)`). The engine's
+**Turn entry.** The harness calls `invoke()` (or `invoke(resume_invocation: ...)`). The engine's
 session-load (sessioned mode only), observer setup, and graph execution begin per sessions §6 and
 graph-engine §3.
 
@@ -345,7 +345,7 @@ Composition splits by harness mode (per §2):
   does NOT directly access the SessionStore — the engine owns that interaction.
 - **Stateless-mode harnesses** omit `session_id` from every `invoke()` per §3.0. The engine MUST
   NOT invoke any SessionStore even if one is registered on the compiled graph (the
-  `session_id=absent` discipline from sessions §3 governs). Stateless harnesses MAY share a
+  `session_id` absent discipline from sessions §3 governs). Stateless harnesses MAY share a
   compiled graph with sessioned harnesses if an application instantiates both for different
   transport surfaces — the engine's behavior is determined per-invocation by whether `session_id`
   is supplied, not by graph configuration.
@@ -483,3 +483,4 @@ correct and expected.
 ## History
 
 - created by [proposal 0022](../../proposals/0022-harness-contract.md)
+- §2, §3.1 to §3.3, §4 and §8.1 use language-neutral notation. Python's `None` becomes `null` and keyword arguments are written `name: value`. No behavior change; spec v0.120.2 (clarification, no proposal)

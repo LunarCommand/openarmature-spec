@@ -19,7 +19,7 @@ halves are asserted.
 
 **Cases:**
 
-1. `input_type_query_is_noop_on_symmetric_wire` — `embed(config={input_type: "query"})` against a
+1. `input_type_query_is_noop_on_symmetric_wire`: `embed(config: {input_type: "query"})` against a
    symmetric provider (no `query_prefix` / `document_prefix` bound). The wire request MUST NOT carry any
    query/document/`input_type`/`task` field and MUST send `input` **verbatim** (un-prefixed); the body
    is exactly `{model, input}`, byte-identical to the no-`input_type` request (case 2). The mapping MUST

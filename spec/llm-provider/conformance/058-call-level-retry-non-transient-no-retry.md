@@ -15,7 +15,7 @@ MUST propagate on attempt 0 without triggering a retry attempt.
 **Cases:**
 
 1. `non_transient_propagates_without_retry` — Mocked provider returns HTTP 400 (→
-   `provider_invalid_request` per §7). `complete()` is called with `retry={max_attempts: 3,
+   `provider_invalid_request` per §7). `complete()` is called with `retry: {max_attempts: 3,
    backoff: {deterministic 0}}`. Asserts:
    - The call raises `provider_invalid_request` on attempt 0 (does not iterate the retry
      loop).

@@ -22,9 +22,9 @@ cases:
     nodes:
       retried_node:
         # Harness primitive describing attempt-keyed behavior. On
-        # attempt 0 the node writes attempt_marker=first then raises
+        # attempt 0 the node writes attempt_marker: first then raises
         # the test's transient error; on attempt 1 it captures the
-        # read into attempt_1_read, writes attempt_marker=second,
+        # read into attempt_1_read, writes attempt_marker: second,
         # and succeeds.
         retry_middleware:
           max_attempts: 2

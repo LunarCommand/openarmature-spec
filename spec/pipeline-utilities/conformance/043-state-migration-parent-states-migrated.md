@@ -1,7 +1,7 @@
 # 043 — State Migration Parent States Migrated
 
 Saved record at a subgraph-internal save point. `parent_states` carries
-one outer-graph entry at `schema_version="v1"`. The registered `v1 -> v2`
+one outer-graph entry at `schema_version: "v1"`. The registered `v1 -> v2`
 migration MUST run for both the outer-record state AND each entry in
 `parent_states` — per §10.12.2's parent-state migration rule.
 

@@ -25,9 +25,9 @@ independent and MAY both be populated on the same event.
   `with_fan_out` branch produced doubled values in input order.
 - Final `plain_value == 100`.
 - Observer events from the fan-out's inner `compute` node carry
-  `branch_name="with_fan_out"` AND `fan_out_index` in `{0, 1, 2}`.
+  `branch_name: "with_fan_out"` AND `fan_out_index` in `{0, 1, 2}`.
 - Observer events from the plain branch's inner `v` node carry
-  `branch_name="plain"` and no `fan_out_index`.
+  `branch_name: "plain"` and no `fan_out_index`.
 
 **What fails:**
 

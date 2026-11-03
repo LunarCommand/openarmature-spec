@@ -17,7 +17,7 @@ attribute's default-value contract.
 
 1. `llm_attempt_index_zero_on_single_attempt_call` — A graph with one LLM-calling node and a
    mocked provider returning a single successful response. `complete()` is called WITHOUT a
-   `retry` parameter (default `None`). Asserts:
+   `retry` parameter (default `null`). Asserts:
    - Exactly one LLM provider span emits (single-span case preserved).
    - The span carries `openarmature.llm.attempt_index = 0` (the default value).
    - The span carries the baseline `openarmature.llm.model` / `finish_reason` /

@@ -16,7 +16,7 @@ The engine must raise `checkpoint_state_migration_missing` rather than
 **What passes:**
 
 - Resume raises `checkpoint_state_migration_missing`.
-- The error carries `from_version=v1`, `to_version=v2`, and a description
+- The error carries `from_version: v1`, `to_version: v2`, and a description
   of the (empty) registered migration set.
 
 **What fails:**

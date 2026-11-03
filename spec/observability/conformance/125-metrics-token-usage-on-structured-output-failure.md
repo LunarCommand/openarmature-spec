@@ -23,7 +23,7 @@ additionally records its `error.type` dimension. Runs the fixture-120 truncation
 **Cases:**
 
 1. `structured_output_failure_records_token_usage_and_duration_with_error_type` — Truncation failure
-   (`finish_reason: "length"`, usage {input 20, output 16}) with `enable_metrics = True`. Two
+   (`finish_reason: "length"`, usage {input 20, output 16}) with `enable_metrics = true`. Two
    token-usage observations (20 / `"input"`, 16 / `"output"`) are recorded for the failed call, and
    one duration observation carrying `error.type = "structured_output_invalid"`. The exception still
    propagates.

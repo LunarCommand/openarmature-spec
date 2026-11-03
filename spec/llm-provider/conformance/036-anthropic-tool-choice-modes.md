@@ -4,7 +4,7 @@ Verifies the §8.2.1 `tool_choice` mapping across all five shapes.
 
 **Spec sections exercised:**
 
-- §8.2.1 tool_choice table: `None`/absent → field omitted; `"auto"` → `{type: auto}`;
+- §8.2.1 tool_choice table: `null`/absent → field omitted; `"auto"` → `{type: auto}`;
   `"required"` → `{type: any}` (the load-bearing rename); `"none"` → `{type: none}`;
   `{type: "tool", name: X}` → `{type: "tool", name: X}`.
 

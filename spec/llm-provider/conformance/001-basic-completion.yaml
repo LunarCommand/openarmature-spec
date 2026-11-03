@@ -34,7 +34,7 @@
 #     `call`, or at the document root for a single `call:`. The wire
 #     assertions sit beside `expected`, never inside it.
 #   - `call.stream: <bool>`: when true, the call is
-#     complete(..., stream=True).
+#     complete(..., stream: true).
 #   - `stream_body: [<sse_chunk>, ..., "[DONE]"]` replaces `body` on a
 #     streamed mock response. It lists, in order, the parsed JSON objects
 #     carried on successive SSE `data:` lines, and ends with the literal

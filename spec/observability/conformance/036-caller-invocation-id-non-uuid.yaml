@@ -41,7 +41,7 @@ cases:
       invocation_id: "run_abc123"
       langfuse_trace:
         # trace.id = first 16 bytes of SHA-256("run_abc123") as 32 hex —
-        # identical to Langfuse create_trace_id(seed="run_abc123").
+        # identical to Langfuse create_trace_id(seed: "run_abc123").
         id: "29b50a6c08dabfeaeb1696301f4fabe1"
         metadata:
           # Raw id preserved for lookup via Langfuse metadata filtering.

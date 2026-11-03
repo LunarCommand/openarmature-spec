@@ -1,13 +1,13 @@
 # 056 — Call-level retry: transient failure then success
 
 Verifies §7.1's in-call retry loop: a `complete()` call with a `retry` parameter configured for
-`max_attempts=2` retries a transient failure on attempt 0 and returns the successful response
+`max_attempts: 2` retries a transient failure on attempt 0 and returns the successful response
 on attempt 1. Two LLM spans emit (one per attempt) carrying
 `openarmature.llm.attempt_index = 0` and `1` per observability §5.5.
 
 **Spec sections exercised:**
 
-- llm-provider §5 — `complete()` extended with optional `retry` kwarg.
+- llm-provider §5: `complete()` extended with an optional `retry` parameter.
 - llm-provider §7.1 — Call-level retry loop: transient classification, max_attempts behavior,
   per-attempt span emission.
 - observability §5.5 — `openarmature.llm.attempt_index` attribute on per-attempt spans;
@@ -17,7 +17,7 @@ on attempt 1. Two LLM spans emit (one per attempt) carrying
 
 1. `call_level_retry_transient_then_success` — Mocked provider returns HTTP 503 (→
    `provider_unavailable` per §7) on attempt 0, then HTTP 200 with a successful chat completion
-   on attempt 1. `complete()` is called with `retry={max_attempts: 2, backoff:
+   on attempt 1. `complete()` is called with `retry: {max_attempts: 2, backoff:
    {deterministic 0}}`. Asserts:
    - The call returns the successful response (does not raise).
    - Two LLM provider spans emit (parented under the same calling node span).

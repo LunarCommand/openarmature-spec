@@ -21,7 +21,7 @@ mechanic.
 
 **Case:**
 
-1. `extras_model_conflicts_with_bound_model_rejected_pre_send` — `complete(config={extras: {model:
+1. `extras_model_conflicts_with_bound_model_rejected_pre_send`: `complete(config: {extras: {model:
    "other-model"}})`. The extras `model` collides with the bound `test-model`; honoring it would silently
    re-route the call. The mapping raises `provider_invalid_request` pre-send, issues **no** request, and
    neither drops nor forwards the value.

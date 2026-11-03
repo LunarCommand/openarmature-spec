@@ -9,23 +9,23 @@ plus the explicit-label-bypass case and the no-resolver-configured case.
 - §6 fetch label-resolution chain: explicit > resolver > spec-fallback `"production"`.
 - §7 LabelResolver.resolve fallback chain: per-name override > default override > spec
   fallback `"production"`.
-- §6 default `label` parameter shift from v0.15.0's `"production"` to v0.26.0's `None` /
+- §6 default `label` parameter shift from v0.15.0's `"production"` to v0.26.0's `null` /
   sentinel.
 
 **Cases (single fixture with six fetch calls):**
 
-1. `fetch("segment_semantic", label=None)` with resolver mapping `{default: "production",
+1. `fetch("segment_semantic", label: null)` with resolver mapping `{default: "production",
    segment_semantic: "staging", extract_claims: "variant-a"}` → resolver returns `"staging"`
    (per-name override).
-2. `fetch("extract_claims", label=None)` → resolver returns `"variant-a"` (per-name
+2. `fetch("extract_claims", label: null)` → resolver returns `"variant-a"` (per-name
    override).
-3. `fetch("classify", label=None)` — no per-name override → resolver returns `"production"`
+3. `fetch("classify", label: null)`: no per-name override → resolver returns `"production"`
    (default override).
-4. `fetch("segment_semantic", label="production")` — EXPLICIT label → resolver NOT
+4. `fetch("segment_semantic", label: "production")`: EXPLICIT label → resolver NOT
    consulted; manager passes `"production"` verbatim to backend.
-5. `fetch("unknown_prompt", label=None)` against a second manager that has NO LabelResolver
+5. `fetch("unknown_prompt", label: null)` against a second manager that has NO LabelResolver
    configured → spec-fallback returns `"production"`.
-6. `fetch("unknown_prompt", label=None)` against a third manager that HAS a LabelResolver
+6. `fetch("unknown_prompt", label: null)` against a third manager that HAS a LabelResolver
    configured but the resolver's mapping has NO `default` key (only unrelated per-name
    overrides) → resolver is consulted, misses per-name, misses default, spec-fallback
    returns `"production"`. Distinct code path from case 5 (resolver IS consulted here).

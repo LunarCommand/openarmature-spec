@@ -9,12 +9,12 @@ Verifies llm-provider §6 *Streaming assembly* together with graph-engine §6: s
 
 **Cases:**
 
-1. `tool_call_deltas_reassemble_only_content_token_events` — A `stream=True` call whose mock yields a content preamble `"Looking "` then OpenAI-shaped tool-call argument deltas (opening delta with `index`/`id`/`function.name`, then `function.arguments` string fragments), a terminal `finish_reason=tool_calls` chunk, and a usage chunk. Asserts exactly one `LlmTokenEvent` (`delta_kind="content"`, `"Looking "`), zero token events of any other kind, and the terminal `LlmCompletionEvent.output_tool_calls` reassembled to `[{id: call_w1, name: get_weather, arguments: {city: "Paris"}}]`.
+1. `tool_call_deltas_reassemble_only_content_token_events`: A `stream: true` call whose mock yields a content preamble `"Looking "` then OpenAI-shaped tool-call argument deltas (opening delta with `index`/`id`/`function.name`, then `function.arguments` string fragments), a terminal `finish_reason: tool_calls` chunk, and a usage chunk. Asserts exactly one `LlmTokenEvent` (`delta_kind: "content"`, `"Looking "`), zero token events of any other kind, and the terminal `LlmCompletionEvent.output_tool_calls` reassembled to `[{id: call_w1, name: get_weather, arguments: {city: "Paris"}}]`.
 
 **What passes:**
 
 - Only the content delta produces a token event; the tool-call argument deltas produce none.
-- No `LlmTokenEvent` with `delta_kind="tool_call"` is emitted (the reserved kind is not surfaced in this version).
+- No `LlmTokenEvent` with `delta_kind: "tool_call"` is emitted (the reserved kind is not surfaced in this version).
 - The terminal `LlmCompletionEvent.output_tool_calls` is the complete reassembled tool call, `arguments` parsing to the same mapping as the non-streamed equivalent.
 
 **What fails:**

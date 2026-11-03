@@ -1,9 +1,9 @@
 # graph-engine §6 + llm-provider §6/§8.1.6 — streamed reasoning deltas surface
-# as LlmTokenEvent(delta_kind="reasoning"), streamed FIRST, then content deltas
-# as delta_kind="content". The reasoning assembles into the terminal Response's
-# reasoning/thinking block AND content into message.content. The reasoning-delta
-# field name is an OpenAI-compatible EXTENSION that varies by backend, and the
-# mapping MUST recognize BOTH names → delta_kind="reasoning":
+# as LlmTokenEvent(delta_kind: "reasoning"), streamed FIRST, then content
+# deltas as delta_kind: "content". The reasoning assembles into the terminal
+# Response's reasoning/thinking block AND content into message.content. The
+# reasoning-delta field name is an OpenAI-compatible EXTENSION that varies by
+# backend, and the mapping MUST recognize BOTH names → delta_kind: "reasoning":
 #   case A: choices[].delta.reasoning_content  (DeepSeek / older vLLM)
 #   case B: choices[].delta.reasoning          (current vLLM)
 # Within a chunk a reasoning delta and a content delta are mutually exclusive,

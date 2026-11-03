@@ -20,7 +20,7 @@ nodes:
       failure_sequence:
         - {transient: true, category: provider_unavailable, message: "down 1"}
         - {transient: true, category: provider_unavailable, message: "down 2"}
-      # Both attempts fail; retry exhausts after max_attempts=2.
+      # Both attempts fail; retry exhausts after max_attempts: 2.
 
 edges:
   - {from: target, to: END}

@@ -14,7 +14,7 @@ is load-bearing for.
 **Cases:**
 
 1. `rerank_out_of_range_index_raises_provider_invalid_response` — 2 input documents; mocked response
-   returns a result with `index=5`. The adapter MUST detect the out-of-range index and raise
+   returns a result with `index: 5`. The adapter MUST detect the out-of-range index and raise
    `provider_invalid_response`.
 
 **What passes:**

@@ -17,7 +17,7 @@ cases:
       messages:
         - {role: user, content: "Do something."}
       tool_choice: required
-      # tools omitted — equivalent to None / [].
+      # tools omitted: equivalent to null / [].
     mock_provider:
       # If the implementation sends a request despite the validation
       # failure, the mock fails — confirming pre-send catch.

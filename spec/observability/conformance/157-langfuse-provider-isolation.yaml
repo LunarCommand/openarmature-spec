@@ -18,7 +18,7 @@
 #     TracerProvider, so a leak to the global provider is caught by the exporter
 #     caller_global_otel_active installs.
 #   - langfuse_observer: {disable_provider_payload} — Langfuse-side payload flag
-#     (existing convention). The OTel side takes its §5.5.4 default (True).
+#     (existing convention). The OTel side takes its §5.5.4 default (true).
 #   - expected.no_langfuse_observations_on_global — no langfuse.observation.*
 #     span reached the global exporter.
 #   - expected.langfuse_observations_on_global — at least one did.

@@ -10,7 +10,7 @@ Verifies the llm-provider §7 *Malformed usage counter* rule for a **streamed** 
 
 **Scenario:**
 
-A `complete(stream=True)` call. The mock SSE stream yields one content chunk (`"Hi."`, `finish_reason: stop`), then a terminal empty-choices usage chunk carrying `{prompt_tokens: "abc", completion_tokens: 3, total_tokens: 10}`, then `[DONE]`.
+A `complete(stream: true)` call. The mock SSE stream yields one content chunk (`"Hi."`, `finish_reason: stop`), then a terminal empty-choices usage chunk carrying `{prompt_tokens: "abc", completion_tokens: 3, total_tokens: 10}`, then `[DONE]`.
 
 **What passes:**
 

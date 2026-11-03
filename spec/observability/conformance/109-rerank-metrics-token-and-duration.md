@@ -13,16 +13,16 @@ is a billing unit, not a token); the duration histogram records every rerank cal
 
 **Cases:**
 
-1. `rerank_records_input_token_and_duration` — provider reports `input_tokens=5`; records token.usage
-   `input=5` + duration, both `operation="rerank"`.
+1. `rerank_records_input_token_and_duration`: provider reports `input_tokens: 5`; records token.usage
+   `input: 5` + duration, both `operation: "rerank"`.
 2. `rerank_search_units_only_records_no_token_usage` — provider reports `search_units` only; **no**
    token.usage observation, duration still recorded.
 3. `errored_rerank_records_duration_with_error_type` — 503 → `provider_unavailable`; duration carries
-   `error.type="provider_unavailable"`, no token.usage.
+   `error.type: "provider_unavailable"`, no token.usage.
 
 **What passes:**
 
-- Rerank metrics carry `operation="rerank"`; token.usage fires only on reported `input_tokens`;
+- Rerank metrics carry `operation: "rerank"`; token.usage fires only on reported `input_tokens`;
   duration always recorded (with `error.type` on failure).
 
 **What fails:**

@@ -13,7 +13,7 @@ Mirrors fixture 062 for the LLM-side variant.
 **Cases:**
 
 1. `request_params_populates_dimensions_when_supplied` — `embed()` called with
-   `config.dimensions=128`. Asserts `request_params = {dimensions: 128}`.
+   `config.dimensions: 128`. Asserts `request_params = {dimensions: 128}`.
 2. `request_params_empty_when_no_config_supplied` — `embed()` called without config. Asserts
    `request_params = {}` (empty mapping, not null).
 

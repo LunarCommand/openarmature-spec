@@ -25,7 +25,7 @@ response maps onto `EmbeddingResponse.vectors` in input order with §4's cross-i
    response of dimension 4 MUST map to `vectors` in input order (distinct first components make the
    order check load-bearing), with `vectors` length 3, all inner length 4, `dimensions` 4,
    `response_id` null, `usage` null.
-2. `embed_dimensions_maps_to_tei_dimensions_field` — `config={dimensions: 4}` ⇒ the wire request
+2. `embed_dimensions_maps_to_tei_dimensions_field`: `config: {dimensions: 4}` ⇒ the wire request
    carries TEI's `dimensions` field alongside `inputs`; the one-element vector-array response holds.
 
 **What passes:**

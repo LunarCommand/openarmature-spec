@@ -1,4 +1,4 @@
-# graph-engine §6 + llm-provider §5/§7.1 — a streamed complete(retry=...) whose
+# graph-engine §6 + llm-provider §5/§7.1: a streamed complete(retry: ...) whose
 # first WIRE attempt fails transiently and whose second wire attempt succeeds.
 # Per the §7.1 interaction note, the retry loop runs INSIDE one complete() call:
 # it is ONE call with ONE call_id and ONE node-level attempt_index (the wire

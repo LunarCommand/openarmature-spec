@@ -21,13 +21,13 @@ provider failure. `catch` classifies *through* the carrier and catches correctly
 
 1. `catch_matches_carrier_wrapped_category_and_degrades` — single-instance
    fan-out; the instance raises `provider_unavailable`, wrapped by the engine as
-   a `node_exception` carrier at the instance placement. `catch=[provider_unavailable]`
+   a `node_exception` carrier at the instance placement. `catch: [provider_unavailable]`
    matches the originating category through the carrier, so the instance is
    caught and degraded (`results: ["(degraded)"]`), and the failure-isolation
    event reports `caught_exception.category = provider_unavailable`. A surface
    category check (the carrier is `node_exception`) would miss it.
 2. `catch_non_matching_category_propagates` — same carrier-wrapped
-   `provider_unavailable` failure, but `catch=[provider_rate_limit]` excludes the
+   `provider_unavailable` failure, but `catch: [provider_rate_limit]` excludes the
    originating category, so the gate rejects and the exception propagates from
    the fan-out node, with `provider_unavailable` as the raised error's category;
    no failure-isolation event fires.

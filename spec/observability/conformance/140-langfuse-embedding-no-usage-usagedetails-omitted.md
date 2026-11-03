@@ -20,7 +20,7 @@ counterpart to 083 (which populates `usageDetails.input` when the provider repor
 **Cases:**
 
 1. `embedding_observation_omits_usagedetails_input_when_no_usage_record` — Default observer config
-   (`disable_provider_payload=True`). The mocked response is a usage-less embedding body (the standard
+   (`disable_provider_payload: true`). The mocked response is a usage-less embedding body (the standard
    embedding-mock body with the `usage` block dropped) yielding `usage = null` — a harness stand-in for
    a no-usage provider (archetype: TEI `/embed`), not that vendor's exact wire. Asserts the observation
    type is `embedding`, `model` + identity metadata are populated, `usageDetails` is present and carries

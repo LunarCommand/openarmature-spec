@@ -1,7 +1,7 @@
 # 058 — Failure-isolation middleware: static degraded update
 
 Verifies §6.3's basic catch-and-degrade contract. A node wrapped with
-`FailureIsolationMiddleware(degraded_update={...}, event_name="...")` that raises an exception:
+`FailureIsolationMiddleware(degraded_update: {...}, event_name: "...")` that raises an exception:
 the middleware catches, returns the static `degraded_update` as the node's partial update, emits
 a framework-emitted failure-isolation event with `event_name` + lineage + caught-exception
 record + pre/post state, and the engine continues edge resolution from the degraded return.
@@ -14,8 +14,8 @@ record + pre/post state, and the engine continues edge resolution from the degra
 **Cases:**
 
 1. `failure_isolation_static_degraded_update` — Node `failing` raises a `provider_unavailable`
-   error. The middleware wraps it with `degraded_update={"result": []}` and
-   `event_name="extraction_failed"`. Asserts:
+   error. The middleware wraps it with `degraded_update: {"result": []}` and
+   `event_name: "extraction_failed"`. Asserts:
    - Engine continuation: final state has `result == []` (the degraded update merged via the
      reducer); the graph reached END.
    - Observer event: a framework-emitted failure-isolation event is observed carrying

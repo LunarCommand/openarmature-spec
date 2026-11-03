@@ -4,7 +4,7 @@ Verifies §8.3.1 `tool_choice` → `toolConfig.functionCallingConfig` mapping ac
 
 **Spec sections exercised:**
 
-- §8.3.1 tool-choice mapping — `None`/absent → field omitted; `"auto"` → `AUTO`; `"required"` →
+- §8.3.1 tool-choice mapping: `null`/absent → field omitted; `"auto"` → `AUTO`; `"required"` →
   `ANY`; `"none"` → `NONE`; `{type: "tool", name: X}` → `ANY` + `allowedFunctionNames: [X]`.
 
 **What passes:**

@@ -310,7 +310,7 @@ distinguishes "model in registry" from "model loaded" SHOULD be preferred over a
 `ready()` is a pre-flight check intended for fail-fast on startup or warmup polling. It MUST NOT
 be called automatically by `complete()`; callers decide when (or whether) to invoke it.
 
-### `complete(messages, tools=None, config=None, response_schema=None, tool_choice=None, retry=None, stream=False)`
+### `complete(messages, tools?, config?, response_schema?, tool_choice?, retry?, stream?)`
 
 Async. Performs a single completion call. When `response_schema` is supplied, the call
 additionally requests output that conforms to the schema and validates the response against it (§6
@@ -328,9 +328,11 @@ per-chunk `LlmTokenEvent` (graph-engine §6) as each chunk arrives — the retur
   `provider_invalid_request` (§7).
 - `tools` — optional ordered sequence of `Tool` records. When present and non-empty, the model is
   permitted to return `tool_calls`. Tool names MUST be unique within the list.
+  Default is `null` / absent.
 - `config` — optional `RuntimeConfig` (§6). Per-call sampling parameters and budget hints.
-- `response_schema` — optional JSON Schema describing the expected output shape. When `None` /
-  absent, the call behaves as in v0.4.0: free-form text content; no parsed value. When present,
+  Default is `null` / absent.
+- `response_schema`: optional JSON Schema describing the expected output shape. When `null` /
+  absent (the default), the call behaves as in v0.4.0: free-form text content; no parsed value. When present,
   MUST be a valid JSON Schema. A `response_schema` that declares no `$schema` **MUST** be interpreted as
   JSON Schema draft 2020-12, so that validation, and the violations §7 reports, do not depend on which
   validator an implementation uses. The top-level schema MUST be an object schema (`type: "object"` at
@@ -352,7 +354,7 @@ per-chunk `LlmTokenEvent` (graph-engine §6) as each chunk arrives — the retur
     named tool MUST appear in the supplied `tools` list; violations raise `provider_invalid_request`
     (§7) at pre-send validation. (`tools` MUST be non-empty in this case, by transitivity.)
 
-  Default is `None` / absent. When `tool_choice` is `None` / absent, the engine MUST omit the
+  Default is `null` / absent. When `tool_choice` is `null` / absent, the engine MUST omit the
   wire-level `tool_choice` field — the provider's own default applies. This preserves the
   v0.4.0 behavior exactly (no wire-shape change for callers who don't supply `tool_choice`).
 
@@ -364,13 +366,13 @@ per-chunk `LlmTokenEvent` (graph-engine §6) as each chunk arrives — the retur
 - `retry` — optional. Accepts an instance of the pipeline-utilities §6.1 retry middleware
   configuration record (four-field `max_attempts` / `classifier` / `backoff` / `on_retry` shape),
   an **llm-provider retry-config** that extends that record with two optional adaptive fields
-  (`per_attempt_override`, `reask` — §7.1), or `None` / absent. Default is `None` / absent — the
+  (`per_attempt_override`, `reask`, §7.1), or `null` / absent. Default is `null` / absent: the
   v0.4.0 behavior is preserved verbatim (no in-call retry; transient errors raise to the caller).
   When supplied, the call performs an in-call retry loop per §7.1 *Call-level retry*; the same
   configuration-record instance a caller would pass to pipeline-utilities §6.1's retry middleware
   is accepted here (cross-spec re-use of the framework-agnostic shape), and the adaptive fields add
   the §7.1 opt-in behaviors below.
-- `stream` — optional boolean (keyword-only, or per-language idiomatic equivalent). Default `False`
+- `stream`: optional boolean (passed by name, or per-language idiomatic equivalent). Default `false`
   / absent — the v0.4.0 atomic behavior is preserved exactly. When set, the provider consumes the
   model's streaming wire response and emits per-chunk `LlmTokenEvent`s (graph-engine §6) as chunks
   arrive; the call STILL returns the atomic `Response` (the flag controls per-chunk event emission,
@@ -395,7 +397,7 @@ signaled by `finish_reason`. If `finish_reason` is `"tool_calls"`, the user hand
 and may make a follow-on `complete()`; if `finish_reason` is `"stop"`, the user reads `parsed`
 and/or `message.content`.
 
-When `response_schema` is `None` / absent, `Response.parsed` is absent regardless of content. The
+When `response_schema` is `null` / absent, `Response.parsed` is absent regardless of content. The
 v0.4.0 behavior is preserved exactly.
 
 Operation semantics:
@@ -413,15 +415,15 @@ Operation semantics:
   fails to validate against `response_schema`, OR fails to parse as JSON at all, `complete()`
   raises `structured_output_invalid` (§7).
 - `complete()` MUST validate `tool_choice` against `tools` before sending. The validation rules:
-  1. `tool_choice="required"` requires `tools` non-empty.
-  2. `tool_choice={type: "tool", name: X}` requires `tools` non-empty AND X to be a `Tool.name`
+  1. `tool_choice: "required"` requires `tools` non-empty.
+  2. `tool_choice: {type: "tool", name: X}` requires `tools` non-empty AND X to be a `Tool.name`
      in the supplied list.
-  3. `tool_choice="auto"` and `tool_choice="none"` have no `tools`-related preconditions.
+  3. `tool_choice: "auto"` and `tool_choice: "none"` have no `tools`-related preconditions.
 
   Violations of rules 1–2 raise `provider_invalid_request` (§7) at pre-send validation, before
   the implementation contacts the provider.
 
-When `tool_choice="none"` is supplied AND the provider returns tool calls anyway, the
+When `tool_choice: "none"` is supplied AND the provider returns tool calls anyway, the
 implementation MUST surface what the provider returned (per the §6 transparency principle)
 without re-validating against the constraint post-hoc. The constraint is a request-side hint
 the implementation passes to the wire; whether the model honored it is observable via the
@@ -533,7 +535,7 @@ in the container on the config record and forwarded to the wire request body unt
 to the wire-format mapping (§8). Whether an implementation additionally tolerates an undeclared key
 supplied at the record's top level, rather than in the container, is implementation-defined; only the
 container is the spec's surface, and only keys in it are governed here. The pass-through MUST NOT translate, rename, or otherwise transform
-undeclared fields. A caller supplying `repetition_penalty=1.05` as an extras-container key MUST see
+undeclared fields. A caller supplying `repetition_penalty: 1.05` as an extras-container key MUST see
 `repetition_penalty: 1.05` in the wire
 body under whatever placement the wire-format mapping defines (e.g., §8.1's OpenAI-compatible
 mapping places undeclared keys at the request-body root). Undeclared fields are NOT validated by
@@ -587,14 +589,14 @@ A mapping **MUST NOT** silently drop a conflicting extras value, and **MUST NOT*
 managed value. A key the mapping does **not** manage is unaffected — it keeps the untouched pass-through above
 verbatim. The managed set is **opt-in per mapping**; the default for every other undeclared key is unchanged.
 
-**Null-skip semantics.** A declared `RuntimeConfig` field with a value of `None` (Python `None`,
+**Null-skip semantics.** A declared `RuntimeConfig` field with a value of `null` (Python `None`,
 TypeScript `undefined`, the language's equivalent "unset" sentinel) MUST be omitted from the wire
 request body. Such a value denotes "field not supplied for this call," distinct from "field
-supplied with an explicit null value." Implementations MUST NOT serialize `None`-valued declared
+supplied with an explicit null value." Implementations MUST NOT serialize `null`-valued declared
 fields as JSON `null` in the wire body. The null-skip rule applies to declared fields only;
 undeclared fields supplied in `RuntimeConfig`'s extras container are forwarded per the
 extras-pass-through contract
-above (the implementation's wire-format mapping determines whether an undeclared-field `None`
+above (the implementation's wire-format mapping determines whether an undeclared-field `null`
 appears as `null` in the request body or is omitted — implementation-defined, since the spec does
 not constrain undeclared-field types).
 
@@ -603,10 +605,10 @@ assembled from the streamed chunks so the streamed and non-streamed paths produc
 identical `Response` records:
 
 - **Content** — `message.content` is the ordered concatenation of the streamed content deltas. Each
-  content delta is also emitted live as `LlmTokenEvent(delta_kind="content")` (graph-engine §6).
+  content delta is also emitted live as `LlmTokenEvent(delta_kind: "content")` (graph-engine §6).
 - **Reasoning** — when the provider streams reasoning / thinking content (§3.1.4 / §3.1.5), the
   reasoning deltas assemble into their `ThinkingBlock` / `RedactedThinkingBlock` entries on the
-  terminal `Response` AND are emitted live as `LlmTokenEvent(delta_kind="reasoning")`. Whether a
+  terminal `Response` AND are emitted live as `LlmTokenEvent(delta_kind: "reasoning")`. Whether a
   provider streams reasoning is a per-§8.X-mapping capability (see §8.1); a mapping that does not
   surface streamed reasoning simply emits no `reasoning`-kind token events.
 - **Tool calls** — streamed tool-call argument deltas are reassembled into complete `ToolCall`
@@ -655,10 +657,11 @@ A provider call (`ready()` or `complete()`) may raise one of the following canon
   required, per §3 *Validation timing*; the cross-message, value, and structural malformations that
   reach the `complete()` boundary are the `provider_invalid_request` cases. The
   `tool_choice` parameter (§5) adds three validation failure modes routed through this category:
-  (1) `tool_choice="required"` supplied with empty / absent `tools`; (2) `tool_choice={type: "tool",
-  name: X}` supplied with empty / absent `tools`; (3) `tool_choice={type: "tool", name: X}`
-  supplied with X not in the supplied `tools` list. Each MUST raise `provider_invalid_request`
-  at pre-send validation, before the implementation contacts the provider.
+  (1) `tool_choice: "required"` supplied with empty / absent `tools`;
+  (2) `tool_choice: {type: "tool", name: X}` supplied with empty / absent `tools`;
+  (3) `tool_choice: {type: "tool", name: X}` supplied with X not in the supplied `tools` list.
+  Each MUST raise `provider_invalid_request` at pre-send validation, before the implementation
+  contacts the provider.
 - `provider_unsupported_content_block` — the bound model does not support a content block type
   used in the request (e.g., a text-only model received an image block, or the model supports
   images but not the requested `media_type` (per §3.1.2) or `source` variant (per §3.1.3)).
@@ -769,7 +772,7 @@ attributes, token-usage histogram, and token-budget instruments (observability �
 
 ### 7.1 Call-level retry
 
-When `complete()` is called with a non-`None` `retry` parameter (per §5), the provider
+When `complete()` is called with a non-`null` `retry` parameter (per §5), the provider
 implementation performs an in-call retry loop:
 
 - On each attempt, dispatch the underlying request as it would for a non-retried call.
@@ -795,7 +798,7 @@ remains independently coherent.)
 
 **Adaptive extensions (opt-in).** The `retry` parameter (§5) MAY instead be an **llm-provider
 retry-config** that extends the §6.1 four-field record with two optional fields; both default to
-absent, and a plain §6.1 record (or `None`) behaves exactly as above. These extensions are
+absent, and a plain §6.1 record (or `null`) behaves exactly as above. These extensions are
 LLM-completion-specific — they concern sampling and messages — and so live here at the call level,
 not on the framework-agnostic §6.1 middleware.
 
@@ -803,9 +806,9 @@ not on the framework-agnostic §6.1 middleware.
   `RuntimeConfig` (§6) partial-overrides; when supplied, the loop **MUST** apply it. **Attempt 0
   always uses the caller's base `config` unmodified.** The schedule applies to retries: retry *i*
   (attempt *i+1*) uses the base config with the *i*-th override shallow-merged on top per key — a field set
-  to a non-`None` value in the override replaces the base's value for that key; a field left `None` or absent
-  inherits the base (per §6's null-skip semantics, `None` means "unset", so an override cannot clear a base
-  field to `None`). Undeclared extras (§6) merge by the same per-key rule. (A general `RuntimeConfig` partial;
+  to a non-`null` value in the override replaces the base's value for that key; a field left `null` or absent
+  inherits the base (per §6's null-skip semantics, `null` means "unset", so an override cannot clear a base
+  field to `null`). Undeclared extras (§6) merge by the same per-key rule. (A general `RuntimeConfig` partial;
   the canonical case overrides only sampling, e.g. an escalating temperature schedule). When the schedule is shorter than the retry count, the last
   entry carries forward. The override is applied to an internal per-attempt copy; `complete()` MUST
   NOT mutate the caller's `config` (§5). `on_retry` stays observe-only — the schedule is the
@@ -887,8 +890,8 @@ node → per-call budgets reset for each fresh per-node attempt.
 **Common mistakes to avoid:**
 
 - **Multiplicative budget on chunked nodes.** Stacking the §6.1 retry middleware (configured
-  with `max_attempts=3`) over a node that issues 5 LLM calls, each with a per-call `retry`
-  record configured for `max_attempts=3`, can issue up to `3 × 5 × 3 = 45` LLM calls in the
+  with `max_attempts: 3`) over a node that issues 5 LLM calls, each with a per-call `retry`
+  record configured for `max_attempts: 3`, can issue up to `3 × 5 × 3 = 45` LLM calls in the
   worst case. The budget multiplies. Authors stacking both layers SHOULD pick intentional
   budgets per layer (e.g., per-call retries narrower than per-node retries, or one layer only).
 - **Inline retry via an error handler inside the node body.** Implementing retry as an
@@ -1000,9 +1003,9 @@ scope; Automatic Prefix Caching's hit rate is computed on a per-deployment basis
 port at a time), so intra-impl stability is sufficient for the use case.
 
 Implementations SHOULD document the canonicalization mechanism (e.g., "object keys serialized
-via `json.dumps(..., sort_keys=True)`") so users can reason about which inputs collide on the
-cache. The §8.X.4 *Concurrency* subsection MAY note any concurrency interaction (none expected
-— the rule is pure transformation, not state).
+in sorted order") so users can reason about which inputs collide on the cache. The §8.X.4
+*Concurrency* subsection MAY note any concurrency interaction (none expected: the rule is pure
+transformation, not state).
 
 ### 8.1 OpenAI-compatible mapping
 
@@ -1097,13 +1100,13 @@ The §5 `tool_choice` parameter maps to OpenAI's `tool_choice` request-body fiel
 
 | Spec `tool_choice` | OpenAI wire body |
 |---|---|
-| `None` / absent | (field omitted from request body) |
+| `null` / absent | (field omitted from request body) |
 | `"auto"` | `tool_choice: "auto"` |
 | `"required"` | `tool_choice: "required"` |
 | `"none"` | `tool_choice: "none"` |
 | `{type: "tool", name: X}` | `tool_choice: {type: "function", function: {name: X}}` |
 
-The `None`-omitted-from-wire row is load-bearing for backward compatibility: existing callers
+The `null`-omitted-from-wire row is load-bearing for backward compatibility: existing callers
 who never supply `tool_choice` see no wire-shape change, and the OpenAI provider's own default
 (which itself depends on whether `tools` is non-empty) applies unchanged. The spec `type: "tool"`
 discriminator renames OpenAI's `type: "function"` for spec-layer readability; the implementation
@@ -1231,7 +1234,7 @@ decoding only for `strict: true`, so the mapping reports a call sent with `stric
 path (graph-engine §6 `structured_output_path`), and one sent with `strict: false`, or without `strict`,
 as `"native_unenforced"`, whatever a particular OpenAI-compatible server does with the field.
 
-When `complete()` is called without `response_schema` (or with `response_schema=None`), the
+When `complete()` is called without `response_schema` (or with `response_schema: null`), the
 mapping **MUST NOT construct** a `response_format` of its own; the v0.4.0 wire shape is preserved
 unchanged for free-form calls (absent an extras-supplied `response_format`, which rides the §6
 extras pass-through untouched — see the managed-field clause below).
@@ -1303,8 +1306,8 @@ assembling the atomic `Response` per §6 *Streaming assembly*.
   usage the mapping reads — is **rejected pre-send** with `provider_invalid_request` (§7); the mapping
   **MUST NOT** silently drop it or silently let it override (a matching value is a no-op). For a non-streaming
   call the mapping sends no `stream_options`, so an extras `stream_options` is unmanaged and rides untouched.
-  The `stream` flag is the wire realization of the declared `complete(stream=…)` argument and is a **managed
-  non-additive** field (§6 clause (b)). Because the call always fixes a stream mode (`complete(stream=…)` carries
+  The `stream` flag is the wire realization of the declared `complete(stream: …)` argument and is a **managed
+  non-additive** field (§6 clause (b)). Because the call always fixes a stream mode (`complete(stream: …)` carries
   a value), it is **always** managed — there is no declared-field-absent branch: a matching extras `stream` is a
   redundant no-op, and a **conflicting** one (e.g. an extras `stream: false` on a streaming call, which would
   break the mapping's streaming consumer) is **rejected pre-send** with `provider_invalid_request` (§7). The
@@ -1313,7 +1316,7 @@ assembling the atomic `Response` per §6 *Streaming assembly*.
   `content` delta, a `refusal` delta, `tool_calls` deltas (each with an `index` and partial `id` /
   `function.name` / `function.arguments` fields), and/or a reasoning delta (see below). The
   `data: [DONE]` sentinel terminates the stream.
-- **Content deltas** → `LlmTokenEvent(delta_kind="content")` (§5), concatenated into
+- **Content deltas** → `LlmTokenEvent(delta_kind: "content")` (§5), concatenated into
   `message.content` per §6. A `refusal` delta is a content delta: OpenAI streams a refusal's text
   there in place of `content`, so each piece is emitted as a content token event as it arrives.
 - **Tool-call deltas** → reassembled into `message.tool_calls` per §6; NOT emitted as token events.
@@ -1332,7 +1335,7 @@ raw reasoning — its reasoning models do not expose chain-of-thought over this 
 is an OpenAI-compatible *extension* offered by reasoning-model servers, and the delta field name
 **varies by backend**: `choices[].delta.reasoning_content` (DeepSeek, and earlier vLLM) and
 `choices[].delta.reasoning` (current vLLM). The mapping MUST recognize **either** as a reasoning delta
-→ `LlmTokenEvent(delta_kind="reasoning")`, assembling into the terminal `Response`'s reasoning blocks
+→ `LlmTokenEvent(delta_kind: "reasoning")`, assembling into the terminal `Response`'s reasoning blocks
 per §6. On these backends a reasoning delta and a content delta are mutually exclusive within a single
 chunk, and reasoning tokens stream first, then content. A backend that emits neither extension field
 streams no reasoning token events (the vanilla-OpenAI case). The streamed-chunk shapes above (the
@@ -1376,7 +1379,7 @@ Schema passes through verbatim under the renamed key.
 
 | Spec `tool_choice` | Anthropic wire body |
 |---|---|
-| `None` / absent | (field omitted) |
+| `null` / absent | (field omitted) |
 | `"auto"` | `{"type": "auto"}` |
 | `"required"` | `{"type": "any"}` |
 | `"none"` | `{"type": "none"}` |
@@ -1393,12 +1396,12 @@ request body:
 - `temperature`, `top_p`, `stop_sequences` map directly (`stop_sequences` matches
   Anthropic's wire-key convention exactly — no rename).
 - `max_tokens` maps directly. Anthropic requires this field on every request; if
-  `RuntimeConfig.max_tokens` is `None` or absent, implementations MUST reject at pre-send
+  `RuntimeConfig.max_tokens` is `null` or absent, implementations MUST reject at pre-send
   validation (`provider_invalid_request`) identifying `max_tokens` as required by this mapping.
   The mapping MUST NOT default to a magic value.
 - `seed`, `frequency_penalty`, `presence_penalty` — Anthropic does NOT support these (its Messages
   API has no `seed` parameter and no penalty parameters). If supplied
-  (non-`None`), implementations MUST raise `provider_invalid_request` at pre-send validation
+  (non-`null`), implementations MUST raise `provider_invalid_request` at pre-send validation
   identifying the unsupported field. Quiet drop is forbidden.
 
 The bound model identifier becomes Anthropic's `model` field. Undeclared `RuntimeConfig` fields
@@ -1661,7 +1664,7 @@ Gemini's `toolConfig.functionCallingConfig`:
 
 | Spec `tool_choice` | Gemini `functionCallingConfig` |
 |---|---|
-| `None` / absent | (field omitted) |
+| `null` / absent | (field omitted) |
 | `"auto"` | `{"mode": "AUTO"}` |
 | `"required"` | `{"mode": "ANY"}` |
 | `"none"` | `{"mode": "NONE"}` |
@@ -1959,7 +1962,7 @@ caller or observer can inspect it per call.
 
 ## 9. Determinism
 
-LLM completions are not deterministic by default. Even with `temperature=0` and a fixed `seed`,
+LLM completions are not deterministic by default. Even with `temperature: 0` and a fixed `seed`,
 identical inputs MAY produce different outputs across calls or across deployments of the same
 provider (different model weight versions, different infrastructure, different sampling
 implementations).
@@ -1980,7 +1983,7 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
   incremental parsing / early-stop) is deferred, additive if a consumer surfaces.
 - **Tool-call-delta token events** — `LlmTokenEvent` carries `content` and `reasoning` deltas (§5);
   tool-call argument deltas are reassembled into the atomic `Response` but NOT emitted as token events.
-  A `delta_kind="tool_call"` variant is additive if a consumer needs live tool-argument streaming.
+  A `delta_kind: "tool_call"` variant is additive if a consumer needs live tool-argument streaming.
 - **Per-vendor streaming wire mappings beyond OpenAI-compatible** — Anthropic §8.2 and Gemini §8.3
   streaming handling land as follow-ons; until then those mappings reject `stream`-set calls (§5
   *Provider streaming support*).
@@ -2010,18 +2013,19 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §8 renamed from "OpenAI-compatible wire format" to "Wire-format mappings" and reorganized as a catalog of provider mappings; existing OpenAI-compatible body nested under new §8.1 "OpenAI-compatible mapping" (subsections §8.1 through §8.5 → §8.1.1 through §8.1.5); §8 framing paragraph added establishing the default placement rule (in-spec for any mapping with multi-language ambition; out-of-tree allowed only for single-language / opt-out / experimental cases) by [proposal 0019](../../proposals/0019-llm-provider-multi-provider-extension.md)
 - §5 `complete()` extended with optional `tool_choice` parameter (four modes: `"auto"` / `"required"` / `"none"` / `{type: "tool", name: X}`) with pre-send validation routing through `provider_invalid_request`; §7 clarified to enumerate the three new validation failure modes; §8.1.1 gained a `tool_choice` mapping row by [proposal 0025](../../proposals/0025-llm-provider-tool-choice.md)
 - §8 framing gained a *Per-mapping subsection structure* paragraph recommending the canonical §8.X template (Request mapping / Response mapping / Error mapping / Concurrency / Structured output) with allowance for sub-subsections, provider-specific top-level additions, and SHOULD-level divergence-explanation requirement; resolves 0019's open-question #2 by [proposal 0026](../../proposals/0026-llm-provider-wire-format-mapping-template.md)
-- §6 `RuntimeConfig` extended with three new declared fields (`frequency_penalty`, `presence_penalty`, `stop_sequences`) matching the cross-vendor OpenTelemetry GenAI semconv naming; existing "MAY accept additional provider-specific fields" line replaced with an explicit extras-pass-through contract (undeclared fields MUST reach the wire untouched) and a null-skip contract (declared fields with `None` MUST be omitted from the wire body); §8.1 OpenAI-compatible mapping extended to cover the three new declared-field mappings (with `stop_sequences` → OpenAI body `stop` rename) and formally specify undeclared-field placement at the OpenAI request-body root by [proposal 0032](../../proposals/0032-llm-provider-runtime-config-refinements.md)
+- §6 `RuntimeConfig` extended with three new declared fields (`frequency_penalty`, `presence_penalty`, `stop_sequences`) matching the cross-vendor OpenTelemetry GenAI semconv naming; existing "MAY accept additional provider-specific fields" line replaced with an explicit extras-pass-through contract (undeclared fields MUST reach the wire untouched) and a null-skip contract (declared fields with `null` MUST be omitted from the wire body); §8.1 OpenAI-compatible mapping extended to cover the three new declared-field mappings (with `stop_sequences` → OpenAI body `stop` rename) and formally specify undeclared-field placement at the OpenAI request-body root by [proposal 0032](../../proposals/0032-llm-provider-runtime-config-refinements.md)
 - §8.2 Anthropic Messages wire-format mapping added (sibling to §8.1) with §8.2.1 request mapping / §8.2.1.1 content-block mapping (including spec `ThinkingBlock` round-trip and §3 opaque `signature` field) / §8.2.1.2 tool-result content blocks / §8.2.2 response mapping / §8.2.3 error mapping; §3 Message gained opaque `signature` fields on `TextBlock` / `ThinkingBlock` / `ToolCall` for round-trip preservation of provider-side reasoning signatures by [proposal 0037](../../proposals/0037-llm-provider-anthropic-messages-mapping.md)
 - §8.3 Google Gemini wire-format mapping added (sibling to §8.1 / §8.2) with §8.3.1 request mapping / §8.3.1.1 parts wire mapping (including thought-summary capture into `ThinkingBlock.text` and `thoughtSignature` round-trip into the §3 opaque `signature` field) / §8.3.1.2 `tool` role bidirectional translation / §8.3.2 response mapping / §8.3.3 error mapping; undeclared `RuntimeConfig` fields nest under Gemini's `generationConfig` (not the request root) to match Gemini's parameter location by [proposal 0038](../../proposals/0038-llm-provider-google-gemini-mapping.md)
 - §6 `Response.usage` extended with two optional fields (`cached_tokens?` for prefix-cache hit input tokens, `cache_creation_tokens?` for input tokens written to the cache during the call); §8 framing gained an *Intra-impl wire-byte stability* paragraph (canonical sorted-key serialization of JSON-schema, content-block, and RuntimeConfig-extras payloads — within a single implementation; cross-impl byte equality is non-normative); per-mapping *Wire-byte stability* sub-paragraphs added to §8.1.1 / §8.2.1 / §8.3.1 anchoring the rule to that mapping's payloads; §8.1.2 gained cache-stat source rows (`usage.cached_tokens` ← `usage.prompt_tokens_details.cached_tokens` with the OpenAI Responses API alternate path and a vLLM dual-flag caveat; `cache_creation_tokens` left absent for OpenAI); §8.2.2 gained the Anthropic-implicit-not-supported caveat (Anthropic implicit-cache fields left absent because Anthropic only supports explicit `cache_control`-driven caching, out of scope for §6's implicit-cache surface); §8.3.2 maps `usage.cached_tokens` ← Gemini's `usageMetadata.cachedContentTokenCount` (Gemini 2.5+ implicit caching) by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
-- §5 `complete()` signature extended with an optional `retry` parameter accepting an instance of pipeline-utilities §6.1's retry middleware configuration record (or `None` / absent default preserving the v0.4.0 no-retry behavior); the "does NOT retry" operation-semantics bullet amended to note retry policy lives at the per-node layer (pipeline-utilities §6.1) OR the per-call layer (this parameter per §7.1); new §7.1 *Call-level retry* sub-section defining the in-call retry loop semantics (transient classification reuses §6.1's default categories, backoff reuses §6.1's exponential-with-jitter default, cancellation propagation rule preserved, per-attempt span emission produces N spans for N attempts), reuses the §6.1 framework-agnostic four-field configuration record (cross-spec reference direction is the inverse of §6.1's existing dependency on §7 transient categories; bidirectional acceptable because the shared record is framework-agnostic), plus a *Two-level retry lane separation* table comparing per-call vs per-node layers and a *Common mistakes* list (multiplicative budget pitfall `3 × 5 × 3 = 45` worst-case, inline try/except defeating per-attempt attribution, classifier widening to mask real errors) by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
+- §5 `complete()` signature extended with an optional `retry` parameter accepting an instance of pipeline-utilities §6.1's retry middleware configuration record (or `null` / absent default preserving the v0.4.0 no-retry behavior); the "does NOT retry" operation-semantics bullet amended to note retry policy lives at the per-node layer (pipeline-utilities §6.1) OR the per-call layer (this parameter per §7.1); new §7.1 *Call-level retry* sub-section defining the in-call retry loop semantics (transient classification reuses §6.1's default categories, backoff reuses §6.1's exponential-with-jitter default, cancellation propagation rule preserved, per-attempt span emission produces N spans for N attempts), reuses the §6.1 framework-agnostic four-field configuration record (cross-spec reference direction is the inverse of §6.1's existing dependency on §7 transient categories; bidirectional acceptable because the shared record is framework-agnostic), plus a *Two-level retry lane separation* table comparing per-call vs per-node layers and a *Common mistakes* list (multiplicative budget pitfall `3 × 5 × 3 = 45` worst-case, inline try/except defeating per-attempt attribution, classifier widening to mask real errors) by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
 - §5 `complete()` gained an optional `stream` flag (default off; return type unchanged — still `Response`), a *Streaming* rule (consume the wire incrementally + emit per-chunk `LlmTokenEvent`s; observably identical to the atomic path when no observer is attached), and a *Provider streaming support* rule (a mapping without streaming rejects `stream`-set calls with `provider_invalid_request`); §6 gained a *Streaming assembly* contract (content concatenation, reasoning-block assembly, tool-call-delta reassembly, terminal usage / finish_reason, structural identity with the atomic path); §8.1 gained §8.1.6 *Streaming* (OpenAI-compatible SSE: `stream_options.include_usage`, `[DONE]`, content / tool-call deltas, and the OpenAI-compatible reasoning-delta extension recognizing both `reasoning_content` and `reasoning`); §10 *Out of scope* lifted the blanket streaming deferral, replaced by narrower deferrals (node-body iterator consumption, tool-call-delta token events, Anthropic / Gemini streaming wire, non-completion streaming) by [proposal 0062](../../proposals/0062-llm-completion-streaming.md)
 - §5 `complete()`'s `retry` parameter extended to also accept an llm-provider retry-config (a superset of the pipeline-utilities §6.1 four-field record adding two optional fields); new §7.1 *Adaptive extensions (opt-in)* defining `per_attempt_override` — a declarative retry override schedule (attempt 0 uses the base `config`; the *i*-th override applies to retry *i*; a general `RuntimeConfig` partial merged onto base; last entry carries forward) — and `reask` — a caller-supplied corrective-message builder that makes `structured_output_invalid` retryable-for-this-call and, on each such failure, appends the model's raw output as an `assistant` message plus the builder's returned content as a `user` message to a working transcript that accumulates across reask retries (keeping the sequence role-alternating; the builder receives 0082's `output_content` + `error_message`; the implementation authors no prompt of its own, per charter §3.1 principle 7 *No built-in prompts*; reask reuses the `max_attempts` budget); the §7.1 per-attempt span gains an `openarmature.llm.retry_reason` (`transient` | `reask`) attribute on retry attempts; the *Common mistakes* classifier-widening bullet points `structured_output_invalid` at `reask` by [proposal 0095](../../proposals/0095-adaptive-call-level-retry.md)
 - §7 gains **Malformed usage counter** — a `Response.usage` counter that is present on the wire but malformed (a non-integer, a negative, a boolean) is treated as **not reported**, the per-field `null` §6 already permits: that counter is `null` and the others stand (§6's "the first three MUST be `null` together" is conditioned on *no* usage being reported, which a partially-malformed record does not satisfy). It MUST NOT raise `provider_invalid_response` (or any category) because of the counter — a genuine §6-shape parse failure still raises — and MUST NOT be fabricated, coerced, clamped, or repaired; the verbatim value stays on `Response.raw`. A **derived** `total_tokens` (§8.2) whose addend is not reported is itself `null`, never the surviving addend. §6's streaming `raw` assembly MUST preserve the terminal chunk's usage verbatim. This is a **reversal**: composing §6's "non-negative integer or `null`" counter type with §7's "cannot be parsed into the §6 shape" reservation, a strict implementation today raises on `"abc"`; from this version it MUST NOT. Reconciled across the surfaces a null counter renders through (graph-engine §6 `LlmCompletionEvent.usage` mirrors the response; observability §5.5.3 / §11.2 / §5.5.15 / §8.4.3 omit rather than emit / sum / compare / divide over a not-reported counter) by [proposal 0101](../../proposals/0101-malformed-usage-counter-llm-observability.md)
-- §6 *Extras pass-through* gains a **Managed-field collision** clause (inherited by retrieval-provider §10) — a bounded carve-out to untouched pass-through when an undeclared extras key names a wire field the mapping **manages** (sets for its own correctness / response consumer / a mapping-level contract; each §8.x mapping MUST enumerate its managed keys). An additive / list-shaped managed field **merges** the caller's value(s) with the mapping's (deterministic order, mapping-first, de-duplicated); a **non-additive** managed field — a scalar mode-switch **or an object the mapping constructs wholesale**, whose value is mutually exclusive with the caller's — takes a matching extras value as a redundant no-op and **rejects a conflicting one pre-send** `provider_invalid_request`, never silently dropping or overriding. A field the mapping produces only **conditionally** is managed only while it is producing it. Every unmanaged undeclared key keeps untouched pass-through. Generalizes 0099's mapping-local `embedding_types` exception. The OpenAI mapping (§8.1) enumerates its managed keys: the **structural** wire-root fields `model` / `messages` / `tools` / `tool_choice` (set for the mapping's own correctness — an override would silently replace the caller's conversation / tool set / bound model), and two **conditionally-managed non-additive** object fields — §8.1.5 `response_format` (managed while the mapping is producing it, i.e. the native structured-output path; unmanaged on a free-form call or the §8.1.5.1 fallback) and §8.1.6 `stream_options` (managed while streaming) — each a *reject*-arm key. The `stop` / `stream` wire fields (realizations of the declared `stop_sequences` / `complete(stream=…)`) and §8.2 `task` / §8.3 `encoding_format` are the *declared-field-vs-extras* residual, deferred to a follow-on by [proposal 0105](../../proposals/0105-extras-managed-field-collision-rule.md)
+- §6 *Extras pass-through* gains a **Managed-field collision** clause (inherited by retrieval-provider §10): a bounded carve-out to untouched pass-through when an undeclared extras key names a wire field the mapping **manages** (sets for its own correctness / response consumer / a mapping-level contract; each §8.x mapping MUST enumerate its managed keys). An additive / list-shaped managed field **merges** the caller's value(s) with the mapping's (deterministic order, mapping-first, de-duplicated); a **non-additive** managed field, a scalar mode-switch **or an object the mapping constructs wholesale**, whose value is mutually exclusive with the caller's, takes a matching extras value as a redundant no-op and **rejects a conflicting one pre-send** `provider_invalid_request`, never silently dropping or overriding. A field the mapping produces only **conditionally** is managed only while it is producing it. Every unmanaged undeclared key keeps untouched pass-through. Generalizes 0099's mapping-local `embedding_types` exception. The OpenAI mapping (§8.1) enumerates its managed keys: the **structural** wire-root fields `model` / `messages` / `tools` / `tool_choice` (set for the mapping's own correctness: an override would silently replace the caller's conversation / tool set / bound model), and two **conditionally-managed non-additive** object fields, §8.1.5 `response_format` (managed while the mapping is producing it, i.e. the native structured-output path; unmanaged on a free-form call or the §8.1.5.1 fallback) and §8.1.6 `stream_options` (managed while streaming), each a *reject*-arm key. The `stop` / `stream` wire fields (realizations of the declared `stop_sequences` / `complete(stream: …)`) and §8.2 `task` / §8.3 `encoding_format` are the *declared-field-vs-extras* residual, deferred to a follow-on by [proposal 0105](../../proposals/0105-extras-managed-field-collision-rule.md)
 - §6 *Managed-field collision* extended: a wire field is managed not only when the mapping sets it for its own correctness (0105) but also when it is the **wire realization of a declared OA field**, and only **while producing it** (a field whose value is always determined — `stream` — is always managed). This is **general** over every declared field a mapping puts on the wire, resolving the *declared-field-vs-extras* residual 0105 deferred. §8.1 OpenAI enumerates the realizations: the scalar sampling fields (`temperature` / `top_p` / `max_tokens` / `seed` / `frequency_penalty` / `presence_penalty`, non-additive — matching no-op, conflicting reject pre-send) and the **`stop`** wire key (realizing `stop_sequences`, list-shaped — an extras `stop` merges, a scalar-string coerced to a one-element list, an over-cap merged list sent fail-loud); §8.1.6 makes **`stream`** an always-managed non-additive field. §8.2 Anthropic (`stop_sequences` merge, the `temperature` / `top_p` / `max_tokens` scalars — `seed` and the penalties are Anthropic-unsupported and pre-send reject; and, since §8.2 is atomic-only, an extras `stream` selecting streaming is rejected rather than smuggled onto the wire) and §8.3 Gemini (`stopSequences` merge, the six scalar `generationConfig` fields; no body `stream` — Gemini streams by endpoint, so an extras `stream` is a benign stray key) enumerate theirs. When a declared field is absent the wire key is unmanaged and an extras key rides untouched (the escape hatch) by [proposal 0108](../../proposals/0108-declared-field-vs-extras-collision.md)
 - §7.1 *reask* — the **assistant-prefill continuation** branch is removed. The clause that continued a trailing `assistant` message (a caller prefill) rather than appending a new one is deleted, along with its only fixture (067). §3 already requires the last message before the call to be `user` or `tool` (a MUST, validated pre-send), so the reask working transcript never ends in `assistant` and the branch was unreachable — a reask retry now always appends the model's output as a fresh `assistant` message, which never produces the consecutive-`assistant` sequence §8.2 forbids. Non-behavioral (dead-branch removal): fixture 067 was unsatisfiable against a §3-conforming implementation, and reachable reask behavior stays covered by fixtures 062–066. First-class caller prefill remains unsupported, deferred to a dedicated future proposal by [proposal 0110](../../proposals/0110-remove-reask-assistant-prefill-continuation.md)
 - §6 *Managed-field collision* — the **merge arm** gains a rule for a **malformed** caller value (the arm previously defined only the well-formed case): an extras value that is not the field's expected list shape, or a list with any element not of the expected element type/shape, is treated as **absent** — the mapping sends only the value(s) it would send with no such extra (all-or-nothing, the well-formed elements of a partially-malformed list are not salvaged), and MUST NOT raise or emit a diagnostic. Malformation is judged structurally (the mapping does not semantically validate element values against a provider vocabulary), and this is the request-side counterpart of §7's malformed-ancillary-is-not-reported rule. The **reject** arm is unaffected — a malformed value is already unequal to the managed value under the deep-equality test, so it is a rejected conflict. New fixture 081 (malformed extras `stop` → the declared value only); the retrieval `embedding_types` instance is retrieval fixture 053 by [proposal 0113](../../proposals/0113-malformed-merge-managed-extras.md)
-- §6 *Extras pass-through* gained an **Extras container** paragraph settling the shape of the extras surface: undeclared fields are carried in a container on the config record **distinct from and addressable separately from** the declared fields, so a caller MAY set a declared field and an extras key of the same name in one call, and a key in that container is undeclared by virtue of being there. The container's ergonomics stay implementation-defined; its **name is normative as `extras`**, on the observability §5.5.4 precedent for flag names. §6's existing "preserved on the config record" wording, which admitted a flat reading in which undeclared fields sit alongside declared ones, is amended rather than merely supplemented, and the four other sites stating that reading (§6's own example, the `None`-forwarding sentence, §8.1's request-body-root placement, and §8.3's Gemini `toolConfig` note) are reconciled to the container model by [proposal 0122](../../proposals/0122-declared-field-collision-reachability.md)
+- §6 *Extras pass-through* gained an **Extras container** paragraph settling the shape of the extras surface: undeclared fields are carried in a container on the config record **distinct from and addressable separately from** the declared fields, so a caller MAY set a declared field and an extras key of the same name in one call, and a key in that container is undeclared by virtue of being there. The container's ergonomics stay implementation-defined; its **name is normative as `extras`**, on the observability §5.5.4 precedent for flag names. §6's existing "preserved on the config record" wording, which admitted a flat reading in which undeclared fields sit alongside declared ones, is amended rather than merely supplemented, and the four other sites stating that reading (§6's own example, the `null`-forwarding sentence, §8.1's request-body-root placement, and §8.3's Gemini `toolConfig` note) are reconciled to the container model by [proposal 0122](../../proposals/0122-declared-field-collision-reachability.md)
 - §7 `structured_output_invalid`: the exposure sentence is rewritten, and **What `error_message` describes** is added. `error_message` MUST describe every violation the content commits, each with its location as a JSON Pointer in RFC 6901's URI fragment form (`#`, `#/site/lat`) and the constraint that failed, and for a `type` violation the expected type. The definition says where a violation is located (a missing required property at the pointer it would occupy, an unexpected property at its own location), filters `anyOf` / `oneOf` members by their own `type`, applies every `allOf` member, makes a composite whose own constraint fails (a `oneOf` over-match, a satisfied `not`, a `contains` with too few or too many matches) one violation at the keyword, and makes content that is not well-formed JSON a single violation with no location. §7.1's per-attempt span paragraph states that each attempt's span, and the call's typed event, describe the request actually sent. §8.1.2 and §8.1.6 map an OpenAI refusal, atomic or streamed, to `finish_reason` `"content_filter"` with the refusal text as the message's content, matching the Anthropic mapping; a streamed refusal's `delta.refusal` pieces are content deltas, each emitted as a content token event whether or not tool-call deltas arrive, and §8.1.5.2 notes that content. §5 now says a `response_schema` call requests and validates conforming output, with decoding constrained only on some paths, and that a `response_schema` without `$schema` is interpreted as JSON Schema draft 2020-12; §7 defines `output_content` as the mapped message content, and §8.2.5's strict-tool-use note carries the same inherent exceptions as its JSON output. §8.1.5 narrows "identical regardless of `strict`" to validation, reporting `strict: true` as the `"native"` path and `strict: false` or no `strict` as `"native_unenforced"`. §8.2.5 corrects what Anthropic's constrained decoding guarantees (well-formed JSON with the schema's field types and required properties, but not the capitalization of string `enum` / `const` values) and adds that capitalization case as a third inherent non-conformance case. §8.3.5 states that Gemini produces well-formed JSON but supports a subset of JSON Schema. §8.1.5.1, §8.2.5.1 and §8.3.5.1 report the path a call took on the typed event, and §8.1.5.1 points at observability §5.5.7's `schema_not_honored` diagnostic, which is not a detection arm and MUST NOT by itself trigger the fallback by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)
 - §7.1's guidance against inline retry and §8.1.1's note on the extras pass-through use plain words in place of Python's `try/except` and keyword-argument syntax. No behavior change; spec v0.120.1 (clarification, no proposal)
+- §5 to §10 use language-neutral notation. Python's `None`, `True` and `False` become `null`, `true` and `false`, and keyword arguments are written `name: value`. §5's `complete()` signature marks optional parameters with `?`, its parameter list states the `null` default of `tools` and `config`, and "keyword-only" becomes "passed by name". §8's canonicalization example says object keys are serialized in sorted order in place of quoting Python's `json.dumps`. No behavior change; spec v0.120.2 (clarification, no proposal)

@@ -1,4 +1,4 @@
-# §8.1.6 OpenAI-compatible streaming wire path. complete(stream=True) sends
+# §8.1.6 OpenAI-compatible streaming wire path. complete(stream: true) sends
 # `stream: true` + `stream_options: {include_usage: true}` and consumes the
 # Server-Sent Events response, assembling the atomic Response per §6 *Streaming
 # assembly*. The assembled Response (content, tool_calls, usage, finish_reason)

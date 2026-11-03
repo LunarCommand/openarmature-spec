@@ -23,11 +23,11 @@ rather than being silently truncated). So `truncate` is a managed scalar.
 
 **Cases:**
 
-1. `conflicting_extras_truncate_rejected_pre_send` — `embed(config={extras: {truncate: "END"}})`. `"END"`
+1. `conflicting_extras_truncate_rejected_pre_send`: `embed(config: {extras: {truncate: "END"}})`. `"END"`
    conflicts with the managed `"NONE"`; honoring it would silently truncate an over-length input the mapping
    fails loud on. The mapping raises `provider_invalid_request` at the pre-send layer and issues **no**
    `/v2/embed` request. It does **not** silently drop the value and does **not** forward it to the wire.
-2. `matching_extras_truncate_is_noop` — `embed(config={extras: {truncate: "NONE"}})`. `"NONE"` equals the
+2. `matching_extras_truncate_is_noop`: `embed(config: {extras: {truncate: "NONE"}})`. `"NONE"` equals the
    managed value, so it is a redundant no-op: the normal `/v2/embed` request goes out with `truncate: "NONE"`
    (unduplicated, byte-identical to a call with no extras `truncate`) and returns vectors normally.
 

@@ -25,7 +25,7 @@ across both empty and no-path-found registry states.
   fixture 041).
 - The error payload's registered-migrations description has count 1
   (one irrelevant migration registered).
-- `from_version=v1`, `to_version=v2` (the path the engine needed but
+- `from_version: v1`, `to_version: v2` (the path the engine needed but
   couldn't find).
 
 **What fails:**

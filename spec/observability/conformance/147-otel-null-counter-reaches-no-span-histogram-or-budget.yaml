@@ -8,7 +8,7 @@
 # present record slipped past all three.
 #
 # One node renders a budgeted prompt (input_max_tokens 10) and calls the LLM;
-# enable_metrics=True; default OTel observer. Mock usage {prompt_tokens: null,
+# enable_metrics: true; default OTel observer. Mock usage {prompt_tokens: null,
 # completion_tokens: 5, total_tokens: 15} — the {null, 5, 15} record of 0101
 # (malformed prompt_tokens nulled per llm-provider §7 *Malformed usage
 # counter*). Wire null is the post-nulling state; this fixture renders it, it

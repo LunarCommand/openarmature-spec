@@ -9,7 +9,7 @@ Verifies graph-engine §6's unpaired-token-event contract: a streamed `complete(
 
 **Cases:**
 
-1. `partial_token_events_then_failed_event_no_token_failed_event` — A `stream=True` call whose mock yields content chunks `"Par"` / `"tial "` then a mid-stream failure marker (`503` → `provider_unavailable`). Asserts the two partial `LlmTokenEvent`s (`delta_kind="content"`, `chunk_index` `0,1`), exactly one `LlmFailedEvent` (`error_category="provider_unavailable"`), zero `LlmCompletionEvent`, zero events of any `LlmTokenFailedEvent` kind, and that the exception propagates out of `complete()`.
+1. `partial_token_events_then_failed_event_no_token_failed_event`: A `stream: true` call whose mock yields content chunks `"Par"` / `"tial "` then a mid-stream failure marker (`503` → `provider_unavailable`). Asserts the two partial `LlmTokenEvent`s (`delta_kind: "content"`, `chunk_index` `0,1`), exactly one `LlmFailedEvent` (`error_category: "provider_unavailable"`), zero `LlmCompletionEvent`, zero events of any `LlmTokenFailedEvent` kind, and that the exception propagates out of `complete()`.
 
 **What passes:**
 

@@ -1,5 +1,5 @@
 # §7.1 Call-level retry — exhaustion path. Both attempts fail with
-# provider_unavailable; max_attempts=2 exhausts; the final error
+# provider_unavailable; max_attempts: 2 exhausts; the final error
 # propagates. Two LLM spans emit with attempt_index 0 and 1.
 
 mock_provider:

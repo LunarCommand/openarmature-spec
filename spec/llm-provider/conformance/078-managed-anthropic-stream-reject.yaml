@@ -5,7 +5,7 @@
 #
 # §8.2 consumes an ATOMIC response. Anthropic's Messages API accepts a body
 # `stream` flag, so an extras `stream: true` on a NON-stream-set call (declared
-# stream=False, which §5 does not reject) would — if left unmanaged — ride the
+# stream: false, which §5 does not reject) would, if left unmanaged, ride the
 # §6 untouched pass-through to Anthropic's request-body root, make Anthropic
 # emit an event-stream, and break the atomic consumer opaquely mid-call (the
 # exact silent fallback §5 forbids). §8.2 therefore manages `stream` for its

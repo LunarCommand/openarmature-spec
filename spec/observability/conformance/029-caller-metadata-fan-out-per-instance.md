@@ -33,7 +33,7 @@ reach every instance's spans + observations.
   primitive: for each fan-out instance, harness internally calls the framework's
   augment-metadata helper with `{<metadata_key>: item.<item_field>}` before any LLM call
   in that instance's subgraph runs. (Equivalent to placing
-  `set_invocation_metadata(productId=item["id"])` at the top of the instance's body node;
+  `set_invocation_metadata(productId: item["id"])` at the top of the instance's body node;
   the harness primitive avoids requiring a real user-defined body function.)
 - `invariants.fan_out_per_instance_metadata_isolation: true` — harness verifies no
   instance's observation metadata contains another instance's per-item-id value.
@@ -67,5 +67,5 @@ reach every instance's spans + observations.
   helper call but does NOT update the already-open instance-dispatch span or inner `ask`
   node span — a §3.4 violation. The open spans in the augmenting instance's async context
   (its dispatch span and the inner node span open at the call) MUST be updated in place
-  (`trace.update(metadata=...)` / `span.set_attribute(...)`) where the SDK supports it, so
+  (`trace.update(metadata: ...)` / `span.set_attribute(...)`) where the SDK supports it, so
   the augmented `productId` reaches them and not only the LLM generation.

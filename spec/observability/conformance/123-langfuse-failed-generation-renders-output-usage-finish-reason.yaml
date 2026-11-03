@@ -9,8 +9,9 @@
 #
 # Drives the fixture-120 truncation case through the Langfuse observer. Case 1
 # is payload-on; case 2 is the payload-disabled variant (disable_provider_payload
-# True) — generation.output is redacted while usage / finish_reason / ERROR level
-# / statusMessage stay, mirroring the §5.5.4 gating idiom fixtures 108 / 013 use.
+# true): generation.output is redacted while usage / finish_reason /
+# ERROR level / statusMessage stay, mirroring the §5.5.4 gating idiom
+# fixtures 108 / 013 use.
 #
 # Harness note (per conformance-adapter §3.2): `calls_llm.response_schema`
 # carries the JSON Schema the node passes to complete(), per the 022/023

@@ -1,4 +1,4 @@
-# §8.2: under error_policy="fail_fast" (the default), when one fan-out
+# §8.2: under error_policy: "fail_fast" (the default), when one fan-out
 # instance calls suspend(), the entire fan-out node suspends at the
 # outer-graph level. Sibling instances are cancelled. The descriptor
 # bubbles up with fan_out_index annotated in metadata so the runtime

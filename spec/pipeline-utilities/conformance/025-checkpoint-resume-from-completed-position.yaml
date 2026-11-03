@@ -46,7 +46,7 @@ cases:
       state: {a_ran: true, b_ran: false, c_ran: false}
       completed_positions:
         - {namespace: [], node_name: node_a, step: 0, attempt_index: 0}
-    # Second invocation: invoke(resume_invocation=<first run's id>).
+    # Second invocation: invoke(resume_invocation: <first run's id>).
     resume:
       from_first_run: true
       expected:

@@ -19,7 +19,7 @@ the real-world archetype of a no-usage embedding provider (its actual wire diffe
 
 ## Cases
 
-1. `embedding_no_usage_records_duration_but_no_token_observation` — `enable_metrics=True`; mock body
+1. `embedding_no_usage_records_duration_but_no_token_observation`: `enable_metrics: true`; mock body
    drops the `usage` block → `usage = null`. The `metrics:` list carries only the duration observation;
    the invariants assert the token-usage observation was not recorded and the duration observation was.
 

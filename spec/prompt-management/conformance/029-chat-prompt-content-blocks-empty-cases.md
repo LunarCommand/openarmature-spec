@@ -18,7 +18,7 @@ whose block list is empty. Both raise `prompt_render_error`. Parallel to fixture
 
 1. `empty_rendered_text_block_in_content_blocks_raises` — user content-blocks segment
    with a text block (`text: "{{ description }}"`) and an image block. Render with
-   `variables={"description": ""}`. Asserts `prompt_render_error` raised; text-block
+   `variables: {"description": ""}`. Asserts `prompt_render_error` raised; text-block
    emptiness within a content-blocks segment is rejected the same way as a top-level
    empty text-template segment.
 2. `empty_content_blocks_list_raises` — user content-blocks segment with `content: []`.

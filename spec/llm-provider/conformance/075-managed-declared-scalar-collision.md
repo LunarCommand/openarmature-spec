@@ -19,10 +19,10 @@ scalar mechanic.
 
 **Cases:**
 
-1. `extras_temperature_conflicts_with_declared_rejected_pre_send` — `complete(config={temperature: 0.7, extras:
+1. `extras_temperature_conflicts_with_declared_rejected_pre_send`: `complete(config: {temperature: 0.7, extras:
    {temperature: 0.2}})`. The extras `temperature` conflicts with the declared `0.7`; the mapping raises
    `provider_invalid_request` pre-send, issues **no** request, and neither drops nor forwards the value.
-2. `extras_temperature_matching_declared_is_no_op` — `complete(config={temperature: 0.7, extras: {temperature:
+2. `extras_temperature_matching_declared_is_no_op`: `complete(config: {temperature: 0.7, extras: {temperature:
    0.7}})`. The extras equals the declared value: a redundant no-op; the wire carries `temperature: 0.7` once and
    the call proceeds.
 

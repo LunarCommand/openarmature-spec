@@ -1,7 +1,7 @@
 # graph-engine §6 *Typed LLM token event* + llm-provider §5 *Streaming* /
 # §6 *Streaming assembly*. When complete() is called with `stream` set, the
 # provider consumes the streamed wire response and emits one LlmTokenEvent
-# per chunk (delta_kind="content" for answer text), in chunk_index order,
+# per chunk (delta_kind: "content" for answer text), in chunk_index order,
 # all BEFORE the terminal LlmCompletionEvent for the same call. The ordered
 # concatenation of the content deltas equals the terminal event's assembled
 # content, and every token event shares the terminal event's call_id.

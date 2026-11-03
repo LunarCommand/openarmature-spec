@@ -1,5 +1,5 @@
 # disable_genai_semconv opt-out: observer constructed with
-# disable_genai_semconv=True. Verifies §5.5.4 — no gen_ai.* attributes
+# disable_genai_semconv: true. Verifies §5.5.4: no gen_ai.* attributes
 # emit, while the v0.7.0 OA-namespaced baseline attributes continue to
 # emit normally.
 

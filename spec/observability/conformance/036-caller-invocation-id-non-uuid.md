@@ -10,7 +10,7 @@ derivation matches Langfuse's own `create_trace_id(seed)` and that the raw id is
 - §5.1 — `openarmature.invocation_id` carries a caller-supplied non-UUID value verbatim.
 - §8.4.1 — non-UUID `invocation_id` → `trace.id` = first 16 bytes of `SHA-256(invocation_id)`
   (UTF-8) as 32 lowercase hex; raw id ALSO written to `trace.metadata.invocation_id`. The
-  derivation equals `create_trace_id(seed=invocation_id)`.
+  derivation equals `create_trace_id(seed: invocation_id)`.
 
 **Cases:**
 

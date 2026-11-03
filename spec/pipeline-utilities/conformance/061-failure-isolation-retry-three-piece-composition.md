@@ -14,9 +14,9 @@ failure isolation catches the exhaustion-propagated exception and returns the de
 
 1. `retry_exhausts_then_failure_isolation_catches` — A node configured to fail with
    `provider_unavailable` on every attempt. The middleware stack is:
-   - Outer: `FailureIsolationMiddleware(degraded_update={"result": "degraded"},
-     event_name="extraction_failed")`
-   - Inner: `RetryMiddleware(max_attempts=2)`
+   - Outer: `FailureIsolationMiddleware(degraded_update: {"result": "degraded"},
+     event_name: "extraction_failed")`
+   - Inner: `RetryMiddleware(max_attempts: 2)`
 
    Asserts the inner retry consumes both attempts (the engine dispatches 2 started/completed
    NodeEvent pairs with `attempt_index = 0` and `1` per §6.1); the second attempt's failure

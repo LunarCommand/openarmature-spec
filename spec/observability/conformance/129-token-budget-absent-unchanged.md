@@ -21,7 +21,7 @@ present.
 **Cases:**
 
 1. `token_budget_absent_leaves_baseline_unperturbed` — Prompt with no `token_budget`, mock usage
-   `{prompt 5, completion 1, total 6}`, `enable_metrics = True`. `LlmCompletionEvent.token_budget` is
+   `{prompt 5, completion 1, total 6}`, `enable_metrics = true`. `LlmCompletionEvent.token_budget` is
    null; `active_prompt` is still populated (the identity surface is independent of the budget surface);
    no `openarmature.*.token_budget.*` span attributes; the token-usage (5 / 1) and duration observations
    still record; neither token-budget instrument records.

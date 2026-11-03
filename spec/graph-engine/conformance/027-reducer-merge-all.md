@@ -43,8 +43,8 @@ strictly required to itself be a mapping.
   violations. The permissive `type: dict` (no value constraint) ensures the reducer is the
   layer reached by the bad shape, making the `reducer_error` assertion the right one for the
   non-mapping-element case.
-- A separately constrained field (e.g., a Pydantic field declared `dict[str, X]` whose values
-  are constrained, or whose update is typed as `list[dict[str, X]]`) would have its typed-state
+- A separately constrained field (e.g., a field declared `dict<string, X>` whose values
+  are constrained, or whose update is typed as `list<dict<string, X>>`) would have its typed-state
   validation reject the bad shape earlier, before the reducer runs — but that's a different
   code path, not an alternative satisfaction of §2. The §2 contract for what the reducer does
   when it sees bad shape is what this fixture asserts.

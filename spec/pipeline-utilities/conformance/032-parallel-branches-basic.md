@@ -20,7 +20,7 @@ fundamental shape before testing nuances in 033-038.
 **What passes:**
 
 - All three branches run.
-- Final state has `alpha_result=1`, `beta_result=2`, `gamma_result=3`.
+- Final state has `alpha_result: 1`, `beta_result: 2`, `gamma_result: 3`.
 - `execution_order` is `[dispatcher]` — the inner branch nodes don't appear
   at the outer-graph level (the parent sees the parallel-branches node as
   one dispatch, matching §11.6).

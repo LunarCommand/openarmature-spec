@@ -1,19 +1,19 @@
 # 021 — disable_genai_semconv Opt-Out
 
-Verifies §5.5.4 `disable_genai_semconv = True`: when set, the §5.5.2 request-parameter
+Verifies §5.5.4 `disable_genai_semconv = true`: when set, the §5.5.2 request-parameter
 attributes and the §5.5.3 response-attribute set are NOT emitted. The v0.7.0 OA-namespaced
 baseline attributes continue to emit — the opt-out is GenAI-specific and does not affect the
 baseline.
 
 **Spec sections exercised:**
 
-- §5.5.4 `disable_genai_semconv = True` — suppresses §5.5.2 and §5.5.3 emission.
+- §5.5.4 `disable_genai_semconv = true`: suppresses §5.5.2 and §5.5.3 emission.
 - §5.5.4 independence rule — the three opt-out flags are independent; the GenAI opt-out does
   NOT suppress the v0.7.0 baseline OA attributes.
 
 **Cases:**
 
-1. `genai_opt_out` — observer constructed with `disable_genai_semconv = True`. `RuntimeConfig`
+1. `genai_opt_out`: observer constructed with `disable_genai_semconv = true`. `RuntimeConfig`
    supplies `temperature: 0.7`. The span carries the v0.7.0 baseline OA attributes; none of the
    `gen_ai.*` attributes appear (including the request parameter attribute, which §5.5.4 ties to
    the same flag as §5.5.3's response attributes).

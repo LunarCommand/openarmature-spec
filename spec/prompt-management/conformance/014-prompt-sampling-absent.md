@@ -33,7 +33,7 @@ NOT synthesize a default at any layer.
 
 - Manager synthesizes a default SamplingConfig (e.g., all-fields-null SamplingConfig)
   when backend supplied none — violates §3's opt-in semantic. Should remain absent.
-- `Prompt.sampling` is a populated SamplingConfig with default-ish values (all `None` in
+- `Prompt.sampling` is a populated SamplingConfig with default-ish values (all `null` in
   declared fields, empty extras) — also defaulting; should be absent entirely.
 - Backend silently raises or refuses to fetch when no `sampling` is configured — the
   field is OPTIONAL; absence is valid.

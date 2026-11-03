@@ -30,7 +30,7 @@ not a token-usage measurement).
 **Cases:**
 
 1. `token_usage_histogram_records_no_input_observation_when_prompt_tokens_null` — one LLM-calling node;
-   `enable_metrics=True`. Mock usage `{null, 5, 15}`. Asserts the exhaustive `metrics:` set is the
+   `enable_metrics: true`. Mock usage `{null, 5, 15}`. Asserts the exhaustive `metrics:` set is the
    `"output"` token.usage observation (value 5) plus one `operation.duration` observation, with an
    invariant that **no** `"input"` token.usage observation was recorded.
 

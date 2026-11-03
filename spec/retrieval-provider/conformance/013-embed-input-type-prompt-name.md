@@ -20,10 +20,10 @@ Verifies the retrieval-provider §8.1 TEI embedding mapping's `input_type` reali
 
 **Cases:**
 
-1. `input_type_query_sends_prompt_name_query` — `embed(config={input_type: "query"})` against a
+1. `input_type_query_sends_prompt_name_query`: `embed(config: {input_type: "query"})` against a
    provider whose map binds `query → "query"`. The `/embed` wire request MUST carry
    `prompt_name: "query"`; `EmbeddingEvent.request_params` MUST carry `input_type: query`.
-2. `input_type_document_sends_prompt_name_passage` — `embed(config={input_type: "document"})`;
+2. `input_type_document_sends_prompt_name_passage`: `embed(config: {input_type: "document"})`;
    `document → "passage"` per the map, so the wire request MUST carry `prompt_name: "passage"` and the
    event MUST carry `input_type: document`.
 3. `input_type_absent_omits_prompt_name_symmetric_default` — `embed()` with no config. The wire

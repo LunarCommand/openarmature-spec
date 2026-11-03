@@ -1,7 +1,7 @@
 # 008 — Suspend inside parallel-branches (fail_fast)
 
 Peer to fixture 006 (fan-out fail_fast). Under
-`error_policy="fail_fast"` (the default), one parallel-branches branch
+`error_policy: "fail_fast"` (the default), one parallel-branches branch
 calling `suspend()` suspends the entire parallel-branches node at the
 outer-graph level. Sibling branches are cancelled. The descriptor
 bubbles up with `branch_name` annotated in `metadata`.

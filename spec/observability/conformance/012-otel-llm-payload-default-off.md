@@ -1,7 +1,7 @@
 # 012 — LLM Payload Default-Off
 
-Verifies §5.5.4 default opt-out flags: `disable_provider_payload = True` (default) suppresses the
-§5.5.1 payload attributes; `disable_genai_semconv = False` (default) keeps the §5.5.2 / §5.5.3
+Verifies §5.5.4 default opt-out flags: `disable_provider_payload = true` (default) suppresses the
+§5.5.1 payload attributes; `disable_genai_semconv = false` (default) keeps the §5.5.2 / §5.5.3
 GenAI semconv attributes emitting.
 
 **Spec sections exercised:**
@@ -11,7 +11,7 @@ GenAI semconv attributes emitting.
 - §5.5.2 request parameters — none in this case (no `RuntimeConfig` supplied), so no
   `gen_ai.request.*` parameter attributes emit; `gen_ai.request.model` (per §5.5.3) does emit.
 - §5.5.3 GenAI semconv response attributes — full set emits by default.
-- §5.5.4 `disable_provider_payload = True` default — `openarmature.llm.input.messages`,
+- §5.5.4 `disable_provider_payload = true` default: `openarmature.llm.input.messages`,
   `openarmature.llm.output.content`, `openarmature.llm.request.extras` MUST NOT emit.
 
 **Cases:**

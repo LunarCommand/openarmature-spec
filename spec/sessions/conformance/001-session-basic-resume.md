@@ -14,15 +14,15 @@ initial state before the graph runs.
 
 **Cases:**
 
-1. `second_invoke_loads_first_invoke_state` — two invokes under `session_id="s1"`. Invoke #1 starts
-   from an empty store and saves `history=["x"]`. Invoke #2 loads that record, and the `append`
+1. `second_invoke_loads_first_invoke_state`: two invokes under `session_id: "s1"`. Invoke #1 starts
+   from an empty store and saves `history: ["x"]`. Invoke #2 loads that record, and the `append`
    reducer merges the node's `["x"]` onto the loaded `["x"]` → `["x","x"]`.
 
 **What passes:**
 
-- Invoke #1 saves a record under `s1` containing `history=["x"]`.
-- Invoke #2's pre-execution state reflects the loaded `history=["x"]` (not the default `[]`).
-- Invoke #2 ends with `history=["x","x"]` and saves it (overwriting invoke #1's record).
+- Invoke #1 saves a record under `s1` containing `history: ["x"]`.
+- Invoke #2's pre-execution state reflects the loaded `history: ["x"]` (not the default `[]`).
+- Invoke #2 ends with `history: ["x","x"]` and saves it (overwriting invoke #1's record).
 
 **What fails:**
 

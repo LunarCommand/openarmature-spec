@@ -18,8 +18,8 @@ raw record.
 
 **What passes:**
 
-- The engine raises `session_state_migration_missing` carrying `from_version="v1"` and
-  `to_version="v2"`.
+- The engine raises `session_state_migration_missing` carrying `from_version: "v1"` and
+  `to_version: "v2"`.
 - The graph's entry node is never invoked.
 - The store's record is unchanged after the failed load.
 

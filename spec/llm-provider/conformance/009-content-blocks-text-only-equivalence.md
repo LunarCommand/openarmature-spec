@@ -1,7 +1,7 @@
 # 009 — Content Blocks Text-Only Equivalence
 
 A user message constructed with `content: "hello"` (string form) and a
-user message constructed with `content: [TextBlock(text="hello")]`
+user message constructed with `content: [TextBlock(text: "hello")]`
 (single-block content-array form) are normatively equivalent per §3.1.1.
 The harness exercises both shapes via two sequential calls and asserts
 that the responses are identical and that each call's wire content takes

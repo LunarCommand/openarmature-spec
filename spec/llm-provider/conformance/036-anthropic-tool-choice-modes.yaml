@@ -1,4 +1,4 @@
-# §8.2.1 Anthropic tool_choice mapping. Five cases: None/absent
+# §8.2.1 Anthropic tool_choice mapping. Five cases: null/absent
 # (field omitted), "auto" -> {type: auto}, "required" -> {type: any}
 # (the load-bearing rename), "none" -> {type: none}, and a specific
 # tool -> {type: tool, name: X}.

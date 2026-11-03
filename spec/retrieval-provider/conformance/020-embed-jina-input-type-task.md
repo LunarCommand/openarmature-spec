@@ -21,15 +21,15 @@ and MUST flow `input_type` into `EmbeddingEvent.request_params` with absence-is-
 
 **Cases:**
 
-1. `input_type_query_sends_task_retrieval_query` — `embed(config={input_type: "query"})`. The
+1. `input_type_query_sends_task_retrieval_query`: `embed(config: {input_type: "query"})`. The
    `/v1/embeddings` wire request MUST carry `task: "retrieval.query"` alongside `{model, input,
    truncate: false}`; `EmbeddingEvent.request_params` MUST carry `input_type: query`.
-2. `input_type_document_sends_task_retrieval_passage` — `embed(config={input_type: "document"})` ⇒
+2. `input_type_document_sends_task_retrieval_passage`: `embed(config: {input_type: "document"})` ⇒
    `task: "retrieval.passage"`; the event MUST carry `input_type: document`.
 3. `input_type_absent_omits_task_symmetric_default` — `embed()` with no config. The wire request MUST
    NOT carry `task` (the symmetric / model default); the body is exactly `{model, input, truncate:
    false}`. `EmbeddingEvent.request_params` MUST be the empty mapping (no `input_type` key).
-4. `dimensions_maps_to_jina_dimensions_field` — `config={dimensions: 4}` ⇒ the wire request carries
+4. `dimensions_maps_to_jina_dimensions_field`: `config: {dimensions: 4}` ⇒ the wire request carries
    Jina's `dimensions` field; `task` stays ABSENT (no `input_type`).
 
 **What passes:**

@@ -27,8 +27,8 @@ NOT a field on the §6 NodeEvent — it propagates through the ambient invocatio
 
 **What passes:**
 
-- Every span across the trace tree carries `openarmature.session_id="s12"` (case 1).
-- Every log record carries `openarmature.session_id="s12"` (case 1).
+- Every span across the trace tree carries `openarmature.session_id: "s12"` (case 1).
+- Every log record carries `openarmature.session_id: "s12"` (case 1).
 - `openarmature.session_id` is absent from spans and log records when no `session_id` is
   supplied (case 2).
 - The NodeEvent delivered to observers does NOT contain a `session_id` field.

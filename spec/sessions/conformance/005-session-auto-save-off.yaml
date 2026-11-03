@@ -1,4 +1,4 @@
-# Auto-save opt-out (§6.3): `auto_save=False` on the store registration. The
+# Auto-save opt-out (§6.3): `auto_save: false` on the store registration. The
 # engine MUST NOT save at invoke exit even after END is reached. Sessions then
 # persist only via explicit mid-invoke save (§6.2).
 

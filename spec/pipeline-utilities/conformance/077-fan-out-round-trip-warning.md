@@ -6,8 +6,8 @@ instance via `inputs` and back out via `extra_outputs` through the *same subgrap
 non-round-trip-idempotent parent reducer (e.g. `append`), round-trips through the reducer and re-merges —
 doubling the value.
 
-Fan-out `inputs` is `Mapping[str, str]` (`subgraph_field → parent_field`); `extra_outputs` is
-`Mapping[str, str]` (`parent_field → subgraph_field`). Here parent `log` (reducer `append`) is copied into
+Fan-out `inputs` is `dict<string, string>` (`subgraph_field → parent_field`); `extra_outputs` is
+`dict<string, string>` (`parent_field → subgraph_field`). Here parent `log` (reducer `append`) is copied into
 subgraph field `carry` via `inputs: {carry: log}`, and subgraph field `carry` is merged back into parent
 `log` via `extra_outputs: {log: carry}` — the same subgraph field, the same parent field: a round-trip.
 

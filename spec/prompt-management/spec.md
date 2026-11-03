@@ -91,9 +91,9 @@ A `Prompt` record:
 | `template` | The unrendered template, in the implementation's chosen template representation (a Jinja2 `Template` instance, a string, an AST, etc.). The spec does not constrain the in-memory representation; it constrains the render contract (§8). |
 | `template_hash` | String. A stable content-derived hash of the unrendered template. Implementations SHOULD use a cryptographic hash (e.g., SHA-256 hex) over the canonical serialization of the template. The hash MUST be deterministic for identical template content. |
 | `fetched_at` | Timestamp of when this Prompt was fetched from its backend. Implementation-defined precision. When the backend serves a cached result, `fetched_at` MUST reflect the original fetch time, not the cache hit time (matching §5's "caching MUST NOT break content-addressing" intent). |
-| `sampling` | Optional. A `SamplingConfig` sub-record carrying per-prompt sampling configuration. Field shape mirrors llm-provider §6 `RuntimeConfig`: the seven declared fields (`temperature`, `max_tokens`, `top_p`, `seed`, `frequency_penalty`, `presence_penalty`, `stop_sequences`), all optional, plus an extras mapping for vendor-specific fields per `RuntimeConfig`'s extras-pass-through contract. Per-language implementations SHOULD use the SAME type as `RuntimeConfig` (or a structurally-compatible subtype) so callers can splat `prompt.sampling` directly into `provider.complete(config=...)` without per-field translation. The model identifier is NOT part of `SamplingConfig`; per-prompt model selection is out of scope (the bound provider determines the model). Absent (`None` / `null` / `undefined`, per the language idiom) when the backend doesn't supply sampling config for this prompt. |
+| `sampling` | Optional. A `SamplingConfig` sub-record carrying per-prompt sampling configuration. Field shape mirrors llm-provider §6 `RuntimeConfig`: the seven declared fields (`temperature`, `max_tokens`, `top_p`, `seed`, `frequency_penalty`, `presence_penalty`, `stop_sequences`), all optional, plus an extras mapping for vendor-specific fields per `RuntimeConfig`'s extras-pass-through contract. Per-language implementations SHOULD use the SAME type as `RuntimeConfig` (or a structurally-compatible subtype) so callers can splat `prompt.sampling` directly into `provider.complete(config: ...)` without per-field translation. The model identifier is NOT part of `SamplingConfig`; per-prompt model selection is out of scope (the bound provider determines the model). Absent (`None` / `null` / `undefined`, per the language idiom) when the backend doesn't supply sampling config for this prompt. |
 | `token_budget` | Optional. A `TokenBudget` sub-record: `{input_max_tokens?: int, total_max_tokens?: int}`, both optional, non-negative. `input_max_tokens` is the expected ceiling on the call's **input** (prompt) tokens; `total_max_tokens` is the ceiling on **input + output** tokens. The **output** budget is `sampling.max_tokens` and is not duplicated here. **Advisory and observability-only**: unlike `sampling` — which configures the call — `token_budget` has **no effect on the LLM request**; it drives the observability signals in observability §5.5 / §7 / §8.4 / §11 (compared reactively against the provider's reported usage). Sourced from the same §5 config sidecar as `sampling`; a backend ignores unrecognized keys in a `token_budget` config (it has no extras mapping) and a malformed `token_budget` config never breaks the call (§5, proposal 0109). Absent (`None` / `null` / `undefined`) when the backend supplies no budget. |
-| `observability_entities` | Optional mapping (`dict[str, Any] \| None`) carrying backend-keyed references to first-class entities the prompt has been registered as in observability backends. Keys follow `<backend>_<entity>` naming. Spec-normative keys: `langfuse_prompt` — the Langfuse SDK Prompt-entity reference, used by observability §8.4.4 to establish the Langfuse Generation → Prompt link. Future observability backend mappings define their own keys. Values are opaque to the spec; per-language implementations determine the concrete type (e.g., the Langfuse Python SDK's `Prompt` class instance, the Langfuse TypeScript SDK's equivalent). Absent / `None` when the backend doesn't expose any such references; absent keys within a populated mapping signal "this backend's reference is not available." |
+| `observability_entities` | Optional mapping (`dict<string, any>` or null) carrying backend-keyed references to first-class entities the prompt has been registered as in observability backends. Keys follow `<backend>_<entity>` naming. Spec-normative keys: `langfuse_prompt`, the Langfuse SDK Prompt-entity reference, used by observability §8.4.4 to establish the Langfuse Generation → Prompt link. Future observability backend mappings define their own keys. Values are opaque to the spec; per-language implementations determine the concrete type (e.g., the Langfuse Python SDK's `Prompt` class instance, the Langfuse TypeScript SDK's equivalent). Absent (`null`) when the backend doesn't expose any such references; absent keys within a populated mapping signal "this backend's reference is not available." |
 | `metadata` | Optional implementation-defined mapping of additional backend-supplied metadata (e.g., Langfuse tags, file path of origin, other backend-attribution metadata). The spec does not constrain shape. Note that the Langfuse Prompt-entity reference moved out of this field as of v0.26.0 (proposal 0033) — it now lives on `observability_entities['langfuse_prompt']` so the observability §8.4.4 lookup has a spec-defined location. |
 
 The `name + version + label` triple identifies a prompt; the `template_hash` lets two
@@ -101,7 +101,7 @@ prompts with the same name be distinguished by content (e.g., a Langfuse-backed 
 fetched at two different times with the same `latest` label may have different content).
 
 **Opt-in per backend.** A backend that doesn't supply sampling config or observability
-entities returns prompts with those fields as `None`. Callers consume the fields defensively
+entities returns prompts with those fields as `null`. Callers consume the fields defensively
 (checking for absence) or rely on the language's idiom for unset optional fields. The spec
 does NOT mandate a default sampling config in the absence of a supplied one — callers fall
 back to `RuntimeConfig()` defaults at the provider layer.
@@ -113,7 +113,7 @@ A `Prompt` is one of two variants:
 - **Text prompt** — the shape described by the §3 table above; carries `template` (a single
   template per the implementation's chosen representation) and renders to a single text
   Message per §6.render. The simple lane for single-message prompts; remains text-only.
-- **Chat prompt** — carries `chat_template: list[ChatSegment]` IN PLACE OF `template`. All
+- **Chat prompt**: carries `chat_template: list<ChatSegment>` IN PLACE OF `template`. All
   other §3 fields (`name`, `version`, `label`, `template_hash`, `fetched_at`, `sampling`,
   `observability_entities`, `metadata`) apply identically. Renders to a multi-message
   `PromptResult` per §6.render. The lane for any prompt with structure: multiple roles,
@@ -142,8 +142,8 @@ shape — per the language idiom).
     blocks are user-only per llm-provider §3.1.2 — a content-blocks segment containing any
     image block MUST have `role: "user"`; a non-user role with an image-block-containing
     template is a `prompt_render_error` (§11).
-- **Placeholder segment** — `{placeholder: str}`. The `placeholder` is a name identifying a
-  slot that the caller fills at render time with a `list[Message]` (per llm-provider §3).
+- **Placeholder segment**: `{placeholder: string}`. The `placeholder` is a name identifying a
+  slot that the caller fills at render time with a `list<Message>` (per llm-provider §3).
   Placeholder names MUST match the regex `[A-Za-z_][A-Za-z0-9_]*` (ASCII-identifier shape:
   non-empty; starts with a letter or underscore; remaining characters are letters, digits,
   or underscores). The constraint is pinned for cross-impl portability and to avoid
@@ -216,7 +216,7 @@ which is exactly the equivalence relation a memoization layer wants.
 
 A `PromptBackend` exposes one operation:
 
-### `fetch(name, label="production", cache_ttl_seconds=None)`
+### `fetch(name, label?, cache_ttl_seconds?)`
 
 Async. Retrieves a `Prompt` by name and label. Returns a `Prompt` record (§3) on success.
 
@@ -224,10 +224,10 @@ Async. Retrieves a `Prompt` by name and label. Returns a `Prompt` record (§3) o
 - `label` — string. The label under which to fetch. Default `"production"`. Backends MAY
   support backend-specific label conventions (e.g., Langfuse's labels are user-defined;
   filesystem backends MAY interpret label as a subdirectory or filename suffix).
-- `cache_ttl_seconds` — optional non-negative integer, default absent / `None`. Bounds the
+- `cache_ttl_seconds`: optional non-negative integer, default absent (`null`). Bounds the
   staleness of a cached template the backend MAY serve for *this* fetch, for backends that
   maintain a client-side cache:
-  - **absent / `None`** — the backend's own caching behavior governs (current behavior; fully
+  - **absent (`null`)**: the backend's own caching behavior governs (current behavior; fully
     backward-compatible).
   - **`0`** — the backend MUST NOT serve a cached entry; it fetches fresh from the source.
   - **`N > 0`** — the backend MUST NOT serve a cached entry older than `N` seconds; an entry
@@ -283,7 +283,7 @@ source the backend has access to. Common sources:
 - A filesystem `PromptBackend` MAY adopt the convention of loading a sidecar file (see
   *Filesystem sidecar conventions* below).
 - A database-backed backend loads from a per-prompt config column.
-- A test / mock backend leaves both fields as `None` for prompts that don't need them.
+- A test / mock backend leaves both fields as `null` for prompts that don't need them.
 
 When a backend supplies `Prompt.sampling`, it MUST construct the sub-record per §3's shape
 (the seven declared fields plus extras mapping; declared-field types match `RuntimeConfig`).
@@ -330,25 +330,26 @@ non-negative integer carrying the same per-fetch semantics as §5's `cache_ttl_s
 (`0` = force fresh, `N > 0` = bound staleness to `N` seconds); a negative value is invalid and
 MUST be rejected at construction (per the language's idiom for an invalid argument). It exposes:
 
-### `fetch(name, label=None, cache_ttl_seconds=None)`
+### `fetch(name, label?, cache_ttl_seconds?)`
 
 Async. Fetches a `Prompt` by name and label, consulting backends in order per §9
 fallback semantics. Label resolution:
 
-1. If `label` is explicitly supplied (non-`None`), use it verbatim. Manager passes it
+1. If `label` is explicitly supplied (non-`null`), use it verbatim. Manager passes it
    through to the backend `fetch` calls.
-2. If `label` is `None` (or absent) AND the manager has a `LabelResolver` configured,
+2. If `label` is `null` (or absent) AND the manager has a `LabelResolver` configured,
    consult the resolver per §7: `label = resolver.resolve(name)`. Manager passes the
    resolved label to backends.
-3. If `label` is `None` (or absent) AND no `LabelResolver` is configured, use the default
+3. If `label` is `null` (or absent) AND no `LabelResolver` is configured, use the default
    `"production"` (backwards-compatible with the v0.15.0 default).
 
-The default value for the `label` parameter is `None` (or the language's idiomatic "unset"
+The default value for the `label` parameter is `null` (or the language's idiomatic "unset"
 sentinel) rather than the string `"production"`. This makes the resolver / default chain
 explicit: callers who want to force-pass `"production"` continue to do so; callers who
 want the resolver to decide simply omit the argument.
 
-`cache_ttl_seconds` resolves by the same shape as label resolution:
+`cache_ttl_seconds` is optional, default absent (`null`), and resolves by the same shape as label
+resolution:
 
 1. If a per-call `cache_ttl_seconds` is explicitly supplied (including `0`), use it verbatim —
    subject to the §5 rule that a negative value is rejected.
@@ -370,7 +371,7 @@ per-fetch semantics of the resolved value are defined in §5.
 Returns a `Prompt`. Raises `prompt_not_found` if no backend produces the prompt; raises
 `prompt_store_unavailable` only when ALL backends are unavailable.
 
-### `render(prompt, variables=None, placeholders=None)`
+### `render(prompt, variables?, placeholders?)`
 
 Synchronous (rendering is local — no I/O). Applies `variables` (and, for Chat prompts,
 `placeholders`) to `prompt.template` or `prompt.chat_template` and returns a `PromptResult`
@@ -378,7 +379,7 @@ Synchronous (rendering is local — no I/O). Applies `variables` (and, for Chat 
 
 - `prompt` — a `Prompt` record (§3), Text-prompt or Chat-prompt variant. Required.
 - `variables` — mapping of template variable names to values. Default empty.
-- `placeholders` — optional mapping of placeholder name → `list[Message]` (each `Message`
+- `placeholders`: optional mapping of placeholder name → `list<Message>` (each `Message`
   per llm-provider §3). Default empty. Meaningful only when `prompt` is a Chat-prompt
   variant containing placeholder segments.
 
@@ -428,13 +429,13 @@ discrimination.) Multi-message and multimodal prompts MUST use the Chat-prompt v
   strict-undefined applies per text-template substitution within each block. Role-block
   compatibility (image blocks user-only) is enforced per §11.
 - **Placeholder segment.** Look up `placeholders[<placeholder name>]`. If present, the
-  resolved `list[Message]` appends to `PromptResult.messages` in order — each injected
+  resolved `list<Message>` appends to `PromptResult.messages` in order: each injected
   Message MUST appear as a standalone Message in the output (no merging across adjacent
   placeholder slots and no merging with surrounding content segments). If the placeholder
   name is absent from `placeholders` (including the case where `placeholders` itself is
-  `None` / omitted), raise `prompt_render_error` (§11).
+  `null` / omitted), raise `prompt_render_error` (§11).
 
-An injected `list[Message]` MAY be empty; an empty list contributes zero messages to the
+An injected `list<Message>` MAY be empty; an empty list contributes zero messages to the
 output and is NOT an error. This natively handles the chat-history "first turn / no prior
 messages" case without weakening the §8 / §11 empty-segment rule below.
 
@@ -449,14 +450,15 @@ Render is synchronous because it is purely a transformation step over the in-mem
 template; no backend I/O is involved. Async render would surface no benefits and would
 needlessly couple the operation to the host's event loop.
 
-### `get(name, label=None, variables=None, cache_ttl_seconds=None)`
+### `get(name, label?, variables?, cache_ttl_seconds?)`
 
 Async. Convenience equivalent to `render(await fetch(name, label, cache_ttl_seconds), variables)`.
-Same label-resolution rule as `fetch()` (per the three-step chain above): explicit label →
-resolver → spec-fallback `"production"`. `cache_ttl_seconds` (default absent) governs the
-fetch leg only, resolved by the same precedence chain as `fetch` (per-call > manager default >
-backend — the §6 chain; per-fetch semantics per §5); `render` performs no I/O. Implementations SHOULD provide this as a
-convenience for the common single-shot path; users wanting fetch/render separation use
+`label` defaults to `null` and `variables` to empty, as for `fetch` and `render`. Same
+label-resolution rule as `fetch()` (per the three-step chain above): explicit label → resolver →
+spec-fallback `"production"`. `cache_ttl_seconds` (default absent) governs the fetch leg only,
+resolved by the same precedence chain as `fetch` (per-call > manager default > backend, the §6
+chain; per-fetch semantics per §5); `render` performs no I/O. Implementations SHOULD provide this
+as a convenience for the common single-shot path; users wanting fetch/render separation use
 `fetch` and `render` directly.
 
 ## 7. LabelResolver
@@ -467,7 +469,7 @@ changes by updating the resolver's data.
 
 Operation:
 
-### `resolve(name) -> str`
+### `resolve(name) -> string`
 
 Synchronous. Returns the label to use when fetching the prompt named `name`. Pure
 function; deterministic for given resolver state.
@@ -514,7 +516,7 @@ variable that is not present in the `variables` mapping passed to `render()`, re
 raise `prompt_render_error` (§11). Silently substituting empty strings or `null` is
 forbidden by default.
 
-Implementations MAY offer an explicit opt-out (e.g., a `strict=False` flag on `render`,
+Implementations MAY offer an explicit opt-out (e.g., a `strict: false` flag on `render`,
 a per-template directive) for callers who need lenient behavior. When opted out, the
 spec does not constrain the substitution semantics; implementations SHOULD document
 their choice.
@@ -723,7 +725,7 @@ mechanism flexible.
 ### Llm-provider §6 (RuntimeConfig wiring)
 
 When a managed prompt has `Prompt.sampling` set (per §3), the LLM call site MAY thread
-the sub-record through to `provider.complete(config=...)`'s `RuntimeConfig` argument. The
+the sub-record through to `provider.complete(config: ...)`'s `RuntimeConfig` argument. The
 declared-fields-plus-extras shape mirrors `RuntimeConfig` exactly, so the wiring is a
 direct splat in the implementation's idiom.
 
@@ -748,7 +750,7 @@ The reference lives at a spec-defined location on Prompt:
 
 When that key is present (value is the opaque Langfuse SDK Prompt reference for the
 rendered prompt), the Langfuse observer MUST establish the native link per §8.4.4 case 1.
-When the key is absent or `observability_entities` itself is `None`, §8.4.4 case 2
+When the key is absent or `observability_entities` itself is `null`, §8.4.4 case 2
 applies (metadata-only, no Prompt-entity link). The trigger semantic is unchanged from
 v0.23.0; only the lookup location is now spec-defined rather than
 implementation-defined.
@@ -781,7 +783,7 @@ otherwise-identical renders with one differing tail variable should hit the cach
 the shared prefix.
 
 User templates MAY include variables that capture nondeterministic values (e.g., the
-caller passes `now=datetime.utcnow()` as a variable); the determinism contract applies
+caller passes `now: <current time>` as a variable); the determinism contract applies
 to the rendering operation given fixed inputs, not to user-supplied variable values.
 
 Fetch is NOT required to be deterministic across time — a backend MAY return different
@@ -864,9 +866,10 @@ benefits flow naturally from author discipline rather than spec enforcement.
 ## History
 
 - created by [proposal 0017](../../proposals/0017-prompt-management-core.md)
-- §3 *Prompt shape* extended with two new optional typed fields (`sampling` — sub-record mirroring llm-provider §6 `RuntimeConfig`'s declared-fields-plus-extras shape for per-prompt sampling configuration; `observability_entities` — backend-keyed mapping for first-class entity references, with spec-normative key `langfuse_prompt` for the Langfuse Prompt entity). §4 *PromptResult shape* propagates both new fields. §5 *PromptBackend protocol* gains an informative filesystem sidecar convention (per-prompt `<root>/<name>.config.json` and unified `<root>/prompt_configs.json` shapes) for sourcing `sampling`. §6 *PromptManager interface* gains optional `LabelResolver` integration on `fetch()`; the default label parameter shifts from `"production"` to `None`/sentinel with a fallback chain (explicit > resolver > spec-fallback `"production"`). New §7 *LabelResolver* primitive added (renumbers existing §7-§13 → §8-§14). §12 (was §11) *Cross-spec touchpoints* gains two new touchpoints: `Prompt.sampling` → llm-provider §6 `RuntimeConfig` wiring at the LLM call site, and `Prompt.observability_entities['langfuse_prompt']` → observability §8.4.4 Langfuse Generation linkage lookup by [proposal 0033](../../proposals/0033-prompt-management-surface-refinements.md)
-- §3 *Prompt shape* gains a new §3.1 *Chat-prompt variant* subsection introducing a Chat-prompt variant alongside the existing Text-prompt variant (Chat-prompt carries `chat_template: list[ChatSegment]` in place of `template`; ChatSegments are either content segments — text-template or content-blocks-template `content`, with content-blocks mirroring llm-provider §3.1 text + image-URL + image-inline block shapes for multimodal user-message authoring, image blocks user-only per §3.1.2 — or placeholder segments naming a slot filled at render time with a `list[Message]`; Chat-prompt `template_hash` covers the canonical chat_template serialization). §6.render gains a `placeholders` parameter, a per-segment / per-block render rule for Chat prompts (text-template segments render to a text Message; content-blocks segments render to a Message with a rendered block sequence; placeholder segments inject the caller-supplied message list, empty injected lists valid), and a narrowing of the Text-prompt render clause to "exactly one Message with text content; multi-message and multimodal MUST use chat_template" (replaces the prior vague "MAY produce multiple messages" line). §8 *Variable injection* gains a per-segment / per-block strict-undefined paragraph. §11 *Errors* extends `prompt_render_error` with five new Chat-prompt triggers (empty content segment, empty content-blocks list, unfilled placeholder, duplicate placeholder name, role-block compatibility violation). §5 *PromptBackend protocol* gains a paragraph noting returned Prompts MAY be either variant. §12 cross-spec touchpoints confirms the §8.4.4 Langfuse Prompt-entity linkage is unaffected by Prompt variant or message count by [proposal 0046](../../proposals/0046-prompt-management-multi-message-rendering.md)
+- §3 *Prompt shape* extended with two new optional typed fields (`sampling`: sub-record mirroring llm-provider §6 `RuntimeConfig`'s declared-fields-plus-extras shape for per-prompt sampling configuration; `observability_entities`: backend-keyed mapping for first-class entity references, with spec-normative key `langfuse_prompt` for the Langfuse Prompt entity). §4 *PromptResult shape* propagates both new fields. §5 *PromptBackend protocol* gains an informative filesystem sidecar convention (per-prompt `<root>/<name>.config.json` and unified `<root>/prompt_configs.json` shapes) for sourcing `sampling`. §6 *PromptManager interface* gains optional `LabelResolver` integration on `fetch()`; the default label parameter shifts from `"production"` to `null`/sentinel with a fallback chain (explicit > resolver > spec-fallback `"production"`). New §7 *LabelResolver* primitive added (renumbers existing §7-§13 → §8-§14). §12 (was §11) *Cross-spec touchpoints* gains two new touchpoints: `Prompt.sampling` → llm-provider §6 `RuntimeConfig` wiring at the LLM call site, and `Prompt.observability_entities['langfuse_prompt']` → observability §8.4.4 Langfuse Generation linkage lookup by [proposal 0033](../../proposals/0033-prompt-management-surface-refinements.md)
+- §3 *Prompt shape* gains a new §3.1 *Chat-prompt variant* subsection introducing a Chat-prompt variant alongside the existing Text-prompt variant (Chat-prompt carries `chat_template: list<ChatSegment>` in place of `template`; ChatSegments are either content segments, text-template or content-blocks-template `content`, with content-blocks mirroring llm-provider §3.1 text + image-URL + image-inline block shapes for multimodal user-message authoring, image blocks user-only per §3.1.2, or placeholder segments naming a slot filled at render time with a `list<Message>`; Chat-prompt `template_hash` covers the canonical chat_template serialization). §6.render gains a `placeholders` parameter, a per-segment / per-block render rule for Chat prompts (text-template segments render to a text Message; content-blocks segments render to a Message with a rendered block sequence; placeholder segments inject the caller-supplied message list, empty injected lists valid), and a narrowing of the Text-prompt render clause to "exactly one Message with text content; multi-message and multimodal MUST use chat_template" (replaces the prior vague "MAY produce multiple messages" line). §8 *Variable injection* gains a per-segment / per-block strict-undefined paragraph. §11 *Errors* extends `prompt_render_error` with five new Chat-prompt triggers (empty content segment, empty content-blocks list, unfilled placeholder, duplicate placeholder name, role-block compatibility violation). §5 *PromptBackend protocol* gains a paragraph noting returned Prompts MAY be either variant. §12 cross-spec touchpoints confirms the §8.4.4 Langfuse Prompt-entity linkage is unaffected by Prompt variant or message count by [proposal 0046](../../proposals/0046-prompt-management-multi-message-rendering.md)
 - §13 *Determinism* tightened with a *Cross-variable substring stability* paragraph (variable substitution MUST be in-place and MUST NOT introduce position-dependent transformations — variable-index numbering, per-variable salts, whole-template-state-dependent normalization — that would shift bytes earlier in the rendered output based on later content; substring-replacing-substring semantics MUST NOT be defeated by template-engine post-processing that reflows the text). New §14 *APC-friendly authoring guidance* added (non-normative): pin high-cardinality stable region at the prompt start; avoid front-loading per-call variables in shared regions; keep substitution in-place (mirroring §13); stabilize multi-value formatting (sorted-key JSON, source-order iteration); prefer the `messages` shape's natural turn boundaries. Existing §14 *Out of scope* renumbered to §15 by [proposal 0047](../../proposals/0047-implicit-prefix-cache-wire-stability.md)
-- §5 *PromptBackend protocol* `fetch` and §6 *PromptManager* `fetch` / `get` gain an optional `cache_ttl_seconds` parameter (absent / `None` = current behavior; `0` = force a fresh read past any client-side cache; `N > 0` = bound a served entry's staleness to N seconds; negative rejected). A read-side contract — `cache_ttl_seconds` governs only which cached entry MAY be served for *this* fetch, not whether / how the result is cached (those stay implementation-defined); cacheless backends (filesystem, in-memory) no-op it; the manager threads it through the §9 fallback chain; `render` is unchanged (local, no I/O). §5's backend-caching paragraph is amended so the per-fetch TTL is a defined caller lever, and §15's *Cache invalidation policies* bullet now distinguishes the (now-controllable) backend-template cache from the still-out-of-scope user-level result cache. New conformance fixtures `033-prompt-backend-cache-ttl-force-fresh` and `034-prompt-backend-cache-ttl-max-age` (exercising a caching prompt-backend harness primitive, conformance-adapter §6.8) by [proposal 0072](../../proposals/0072-prompt-management-fetch-cache-ttl.md)
+- §5 *PromptBackend protocol* `fetch` and §6 *PromptManager* `fetch` / `get` gain an optional `cache_ttl_seconds` parameter (absent (`null`) = current behavior; `0` = force a fresh read past any client-side cache; `N > 0` = bound a served entry's staleness to N seconds; negative rejected). A read-side contract: `cache_ttl_seconds` governs only which cached entry MAY be served for *this* fetch, not whether / how the result is cached (those stay implementation-defined); cacheless backends (filesystem, in-memory) no-op it; the manager threads it through the §9 fallback chain; `render` is unchanged (local, no I/O). §5's backend-caching paragraph is amended so the per-fetch TTL is a defined caller lever, and §15's *Cache invalidation policies* bullet now distinguishes the (now-controllable) backend-template cache from the still-out-of-scope user-level result cache. New conformance fixtures `033-prompt-backend-cache-ttl-force-fresh` and `034-prompt-backend-cache-ttl-max-age` (exercising a caching prompt-backend harness primitive, conformance-adapter §6.8) by [proposal 0072](../../proposals/0072-prompt-management-fetch-cache-ttl.md)
 - §6 *PromptManager interface* construction gains an optional `default_cache_ttl_seconds`; the §6 `fetch` / `get` cache-control resolution becomes a precedence chain (explicit per-call value > manager default > backend implementation-defined), mirroring the label chain. A negative default is rejected at construction; the §5 per-call negative-rejection still applies. §9's backend-fallback `fetch` signature is reconciled to the threaded 3-arg form. §5's backend-caching paragraph notes a backend receives a single resolved `cache_ttl_seconds` per fetch regardless of source; §15's *Cache invalidation policies* bullet now covers both the per-fetch lever and the manager-level standing default. New conformance fixture `036-prompt-manager-default-cache-ttl` (manager default-resolution + per-call override, conformance-adapter §6.8) by [proposal 0086](../../proposals/0086-prompt-default-cache-ttl.md)
 - §11 `prompt_render_error` exposed fields named — the `variables` mapping and the `description` of the render failure (previously "the variable mapping" and "a description of the render failure"), so a `carries` fixture can field-anchor them per conformance-adapter §5.13 by [proposal 0102](../../proposals/0102-general-carries-error-field-assertion.md)
+- §3, §3.1, §5 to §8, §12 and §13 use language-neutral notation. Python's `None` and `False` become `null` and `false`, keyword arguments are written `name: value`, and type annotations use `list<T>`, `dict<string, any>` and `string`. The §5 and §6 signatures mark optional parameters with `?`, §6 states the `cache_ttl_seconds` default of `fetch` and the `label` and `variables` defaults of `get`, and §13's example variable is the current time rather than a Python call. No behavior change; spec v0.120.2 (clarification, no proposal)

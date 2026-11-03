@@ -25,7 +25,7 @@ user-code failures) and NOT as `checkpoint_state_migration_missing`
 - Resume raises `checkpoint_state_migration_failed`.
 - The error's cause is the exception the `raises_during_migration` migration
   mock raised.
-- The error carries `from_version=v1` and `to_version=v2`.
+- The error carries `from_version: v1` and `to_version: v2`.
 
 **What fails:**
 

@@ -235,7 +235,7 @@ cases:
       augment:
         update: {msg: "unreached"}
         # Harness primitive (per fixture 034): call
-        # set_invocation_metadata(step="checkout") at the top of the body.
+        # set_invocation_metadata(step: "checkout") at the top of the body.
         augment_metadata:
           step: "checkout"
     edges:

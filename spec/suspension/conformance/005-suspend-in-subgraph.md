@@ -12,7 +12,7 @@ happens normally once the subgraph completes after resume.
 - §8.1 — subgraph composition: suspension propagates to the outer
   invocation.
 - §7 — resume re-enters at the suspended node (under default
-  `mark_node_completed=True`, continues at the node AFTER the
+  `mark_node_completed: true`, continues at the node AFTER the
   suspending node inside the subgraph).
 
 **What passes:**
@@ -32,5 +32,5 @@ happens normally once the subgraph completes after resume.
   `completed_positions` did not preserve the pre-suspend execution
   trace.
 - Resume re-runs `inner_suspend` — would mean the default
-  `mark_node_completed=True` did not apply (would only re-run under
-  `mark_node_completed=False`, covered in a future fixture).
+  `mark_node_completed: true` did not apply (would only re-run under
+  `mark_node_completed: false`, covered in a future fixture).

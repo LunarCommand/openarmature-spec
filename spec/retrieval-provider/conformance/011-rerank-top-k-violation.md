@@ -12,7 +12,7 @@ whose provider returns **more** results than the caller-supplied `top_k` MUST ra
 
 **Cases:**
 
-1. `rerank_top_k_violation_raises_provider_invalid_response` — `top_k=2` over 3 documents; mocked
+1. `rerank_top_k_violation_raises_provider_invalid_response`: `top_k: 2` over 3 documents; mocked
    response returns 3 results. The adapter MUST detect the violation and raise
    `provider_invalid_response`.
 

@@ -9,8 +9,8 @@ out — the implementation's pre-send validation catches them.
 
 - §5 `complete()` operation semantics — `tool_choice` validation
   rules (1) and (2):
-  - `tool_choice="required"` requires `tools` non-empty.
-  - `tool_choice={type: "tool", name: X}` requires `tools` non-empty
+  - `tool_choice: "required"` requires `tools` non-empty.
+  - `tool_choice: {type: "tool", name: X}` requires `tools` non-empty
     AND X to be a `Tool.name` in the supplied list.
 - §7 Error semantics — `provider_invalid_request` enumerates these
   three new validation failure modes inline under its existing
@@ -56,8 +56,8 @@ out — the implementation's pre-send validation catches them.
   short-circuit on `tools` empty without checking the name-in-list
   path still pass — the spec requires the category, not the internal
   code structure.
-- This fixture explicitly does NOT exercise `tool_choice="auto"` or
-  `tool_choice="none"` with empty tools — both are spec-valid (per §5
+- This fixture explicitly does NOT exercise `tool_choice: "auto"` or
+  `tool_choice: "none"` with empty tools: both are spec-valid (per §5
   operation semantics rule (3): "auto and none have no tools-related
   preconditions"). A future regression fixture could verify those
   cases don't raise; covered as part of fixture 029's default-case

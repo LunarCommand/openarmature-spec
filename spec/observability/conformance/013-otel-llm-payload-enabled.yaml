@@ -1,4 +1,4 @@
-# OTel observer constructed with disable_provider_payload=False. Verifies the
+# OTel observer constructed with disable_provider_payload: false. Verifies the
 # §5.5.1 payload attributes emit and that openarmature.llm.input.messages
 # parses to the §3 message structure that was sent to the provider.
 

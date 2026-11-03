@@ -10,9 +10,9 @@ are omitted from the wire body per §6's null-skip contract.
 
 - §6 RuntimeConfig declared-fields table — all seven declared fields are recognized at the API
   boundary.
-- §6 extras-pass-through contract — `repetition_penalty=1.05` (undeclared) reaches the wire body
+- §6 extras-pass-through contract: `repetition_penalty: 1.05` (undeclared) reaches the wire body
   untouched.
-- §6 null-skip contract — declared fields with value `None` (unset) MUST be omitted from the
+- §6 null-skip contract: declared fields with value `null` (unset) MUST be omitted from the
   wire body; MUST NOT appear as JSON `null`.
 - §8.1 declared-field mapping — `frequency_penalty` / `presence_penalty` map directly;
   `stop_sequences` renames to OpenAI body field `stop`.
@@ -21,7 +21,7 @@ are omitted from the wire body per §6's null-skip contract.
 **Cases:**
 
 1. `all_declared_fields_plus_extra` — all seven declared fields set + one undeclared field
-   (`repetition_penalty=1.05`). Verifies every declared field reaches the wire body under the
+   (`repetition_penalty: 1.05`). Verifies every declared field reaches the wire body under the
    right key, `stop_sequences` becomes `stop` on the wire (and `stop_sequences` is NOT present),
    and `repetition_penalty` lands at the request-body root.
 2. `partial_config_null_skip` — only `temperature` and `max_tokens` set; the remaining five

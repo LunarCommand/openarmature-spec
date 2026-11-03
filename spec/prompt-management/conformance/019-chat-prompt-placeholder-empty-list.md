@@ -8,7 +8,7 @@ than by working around the §11 empty-segment or unfilled-placeholder rules.
 **Spec sections exercised:**
 
 - §3.1 — placeholder segment.
-- §6.render — empty-list injection rule ("An injected `list[Message]` MAY be empty; an
+- §6.render: empty-list injection rule ("An injected `list<Message>` MAY be empty; an
   empty list contributes zero messages to the output and is NOT an error.").
 - §11 — distinction between `placeholders[<name>] = []` (valid, zero messages) and
   `<name>` absent from `placeholders` (error; covered by fixture 022).
@@ -16,7 +16,7 @@ than by working around the §11 empty-segment or unfilled-placeholder rules.
 **Cases:**
 
 1. `placeholder_injection_empty_list_valid` — same chat_template as fixture 018, rendered
-   with `placeholders={"history": []}`. Asserts resulting messages is `[system,
+   with `placeholders: {"history": []}`. Asserts resulting messages is `[system,
    final-user]` (length 2) with no error.
 
 **Harness extensions:**

@@ -1,4 +1,4 @@
-# §8.3: under error_policy="fail_fast" (the default), when one
+# §8.3: under error_policy: "fail_fast" (the default), when one
 # parallel-branches branch calls suspend(), the entire parallel-
 # branches node suspends at the outer-graph level. Sibling branches
 # are cancelled. The descriptor bubbles up with branch_name annotated

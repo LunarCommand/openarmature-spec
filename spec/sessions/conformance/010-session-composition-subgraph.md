@@ -18,7 +18,7 @@ outer graph projects in via the subgraph's input/output mapping (graph-engine §
 **What passes:**
 
 - The inner subgraph's pre-state contains only the two fields in its declared schema, populated
-  per the explicit mapping (`inner_input="outer-data"`, `inner_output=""`).
+  per the explicit mapping (`inner_input: "outer-data"`, `inner_output: ""`).
 - The inner subgraph performs no `SessionStore` operations of its own.
 - The outer graph saves the full outer state at END (including the projected-back
   `outer_result`).

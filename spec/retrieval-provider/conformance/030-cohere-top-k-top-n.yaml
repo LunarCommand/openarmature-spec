@@ -3,7 +3,7 @@
 # Verifies the §8.4 Cohere top_n mapping: a supplied top_k MUST appear on
 # the wire as top_n (Cohere's parameter name); the 028 round-trip already
 # locks the absent-top_k -> top_n-OMITTED arm. Locks:
-#   - rerank(top_k=2) over 3 documents => wire request carries top_n: 2
+#   - rerank(top_k: 2) over 3 documents => wire request carries top_n: 2
 #     (top_k -> top_n, §8.4)
 #   - the request still carries {model, query, documents: [str]} with NO
 #     return_documents / truncation keys, and the Authorization: Bearer

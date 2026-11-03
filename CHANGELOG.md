@@ -4,6 +4,17 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.120.2] - 2026-11-05
+
+**Changed**
+
+- **The rest of the Python notation in the specs is neutral.** Python's `None` becomes `null`, and `True` and `False` become `true` and `false`. Keyword arguments are written `name: value`, as in `invoke(resume_invocation: <id>)` and `auto_save: false`. Operation signatures mark optional parameters with `?` in place of a Python default or the keyword-only `*`, as in `fetch(name, label?, cache_ttl_seconds?)`, and every dropped default is stated in the parameter list or the text after the signature: llm-provider §5's `complete()`, retrieval-provider's `embed()` and `rerank()`, prompt-management §6's `fetch` and `get`, sessions §5.4's `list` and pipeline-utilities §10.1's `list` gain the default statements they lacked. Type annotations use conformance-adapter §5.2's syntax, as in `list<ChatMessage>` and `dict<string, any>`, and an `X | None` type reads "`X` or null". A callback or operation that returned `None` is described as returning nothing. Three single-language examples that carried this notation, llm-provider §8's `json.dumps(..., sort_keys=True)`, prompt-management §13's `datetime.utcnow()` and observability §3.4's "in Python idiom" type, are restated in neutral terms. The conformance fixtures' YAML comments and sidecars, README's capability summaries and the glossary's *Resume* entry are reworded the same way.
+- Asides that name two or more languages side by side, such as "(Python `None`, TypeScript `undefined`, ...)" and "(Python: `dict[str, Any]`; TypeScript: `Record<string, unknown>`)", are kept as mapping guidance, and so is the spaced `name = value` form that describes a field's value, such as `usage = null`. `## History` entries that used this notation are reworded the same way, while History lines that record a past removal still name what was removed.
+
+**Notes**
+
+- **PATCH, non-behavioral.** No normative rule, adapter obligation or fixture assertion changes, and every fixture parses to the same YAML as before. A heading that carries a signature changes with it, and so does its link anchor: llm-provider §5's `complete`, prompt-management §5 to §7's operations, retrieval-provider §3's `embed` and §5's `rerank`, sessions §5.4 and pipeline-utilities §10.4. conformance-adapter, graph-engine, harness, harness-chat, llm-provider, observability, pipeline-utilities, prompt-management, retrieval-provider, sessions and suspension `Latest` move to 0.120.2.
+
 ## [0.120.1] - 2026-11-05
 
 **Changed**

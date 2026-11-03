@@ -1,6 +1,6 @@
 # observability §8.4.7 — Langfuse rerank observation mapping.
 # Verifies that RerankProvider.rerank() calls render as a dedicated
-# `Retriever` observation type (created via asType="retriever"), NOT a
+# `Retriever` observation type (created via asType: "retriever"), NOT a
 # Generation, with model / usageDetails / metadata / input / output
 # field population. Two cases gate the disable_provider_payload flag.
 # (Directives in fixture 099's header.)

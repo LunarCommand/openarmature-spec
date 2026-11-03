@@ -2,7 +2,7 @@
 
 Verifies §5.5.1: `openarmature.llm.request.extras` is emitted as a JSON-encoded object carrying
 the `RuntimeConfig` extras container (the undeclared pass-through keys llm-provider §6 permits) when the container
-is non-empty and `disable_provider_payload = False`.
+is non-empty and `disable_provider_payload = false`.
 
 **Spec sections exercised:**
 
@@ -13,7 +13,7 @@ is non-empty and `disable_provider_payload = False`.
 
 1. `extras_emitted` — `RuntimeConfig` carries `temperature: 0.7` and an extras bag with
    `repetition_penalty: 1.05` (a vLLM / HuggingFace-style vendor-specific knob with no path to
-   becoming a declared field). `disable_provider_payload = False`. The span carries
+   becoming a declared field). `disable_provider_payload = false`. The span carries
    `gen_ai.request.temperature` (per §5.5.2) and `openarmature.llm.request.extras` (per §5.5.1)
    as a JSON-encoded object.
 
@@ -34,7 +34,7 @@ is non-empty and `disable_provider_payload = False`.
 **What fails:**
 
 - Extras attribute is absent — implementation gated `request.extras` under
-  `disable_provider_payload = True` semantics (incorrect — the spec says default-off only when the
+  `disable_provider_payload = true` semantics (incorrect: the spec says default-off only when the
   user has NOT opted in; the user IS opted in here).
 - Extras content is duplicated in `gen_ai.request.*` namespace — implementation tried to map
   provider-specific extras into the GenAI semconv (incorrect — extras stay OA-shape).

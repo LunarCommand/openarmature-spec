@@ -18,7 +18,7 @@ keys on the response *shape*, not the request parameter.
 
 **Case:**
 
-1. `base64_encoding_decodes_to_float_vectors_in_input_order` — `embed(config={extras: {encoding_format:
+1. `base64_encoding_decodes_to_float_vectors_in_input_order`: `embed(config: {extras: {encoding_format:
    "base64"}})` over three inputs. The wire request carries `encoding_format: "base64"`. The mock returns
    `data[].embedding` as base64 strings encoding exactly-representable float32 vectors, emitted out of natural
    order (`index` 2, 0, 1). The adapter decodes each string to a little-endian float32 array and returns

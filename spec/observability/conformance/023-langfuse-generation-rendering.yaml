@@ -1,7 +1,7 @@
 # Langfuse Generation observation rendering for an LLM call. Verifies
 # §8.4.3 Generation field population (model, modelParameters, usage,
 # input/output, metadata.{system, response_model, finish_reason}) under
-# disable_provider_payload=False. Also covers the truncation case for
+# disable_provider_payload: false. Also covers the truncation case for
 # generation.input / generation.output.
 
 cases:

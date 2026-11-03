@@ -9,7 +9,7 @@
 # `dimensions`) assert on their wires — Cohere names the SAME Matryoshka
 # knob `output_dimension`, so the source field is OA's declared `dimensions`
 # (NOT the extras bag).
-#   - embed(config={dimensions: 8}) MUST send output_dimension: 8 alongside
+#   - embed(config: {dimensions: 8}) MUST send output_dimension: 8 alongside
 #     {model, input_type: "search_document", texts, embedding_types:
 #     ["float"], truncate: "NONE"}.
 #   - embed() with no dimensions MUST OMIT output_dimension (Cohere's model

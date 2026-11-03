@@ -20,12 +20,12 @@ the mapping's are mutually exclusive on (a scalar mode-switch, or an object the 
 
 **Cases:**
 
-1. `extras_response_format_conflicts_with_schema_rejected_pre_send` — `complete(response_schema=…,
-   config={extras: {response_format: {type: "json_object"}}})`. The extras `response_format` collides with the
+1. `extras_response_format_conflicts_with_schema_rejected_pre_send`: `complete(response_schema: …,
+   config: {extras: {response_format: {type: "json_object"}}})`. The extras `response_format` collides with the
    mapping's schema-derived one; `{type: "json_object"}` (unconstrained JSON) is mutually exclusive with the
    schema-constrained format. The mapping raises `provider_invalid_request` pre-send, issues **no** request,
    and neither drops nor forwards the value.
-2. `extras_response_format_without_schema_rides_untouched` — `complete(config={extras: {response_format: {type:
+2. `extras_response_format_without_schema_rides_untouched`: `complete(config: {extras: {response_format: {type:
    "json_object"}}})` with **no** `response_schema`. The mapping produces no `response_format`, so it is
    **unmanaged**: the extras value rides untouched onto the wire, the call proceeds normally. Proves
    `response_format` is **conditionally** managed.

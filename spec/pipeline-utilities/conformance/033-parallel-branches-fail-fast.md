@@ -16,7 +16,7 @@ branches, no contributions land in parent state.
 
 **What passes:**
 
-- The graph raises `parallel_branches_branch_failed` with `branch_name=beta`
+- The graph raises `parallel_branches_branch_failed` with `branch_name: beta`
   and the cause carrying beta's `"branch beta failed"` message.
 - `recoverable_state` shows ALL parent fields at their initial defaults
   (alpha's contribution buffered then discarded; gamma never completed).

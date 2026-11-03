@@ -1,5 +1,5 @@
 # §3.1 + §6.render — placeholder list-injection (empty-list valid).
-# Same chat_template as 018 but rendered with placeholders={"history":
+# Same chat_template as 018 but rendered with placeholders: {"history":
 # []}. The empty list contributes zero messages — present-with-empty-
 # value is valid and is NOT a render error (distinct from "name absent
 # from placeholders" which IS an error; see fixture 022).

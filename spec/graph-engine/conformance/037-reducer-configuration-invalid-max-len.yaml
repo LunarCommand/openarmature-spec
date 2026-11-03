@@ -1,4 +1,4 @@
-# §2 reducer_configuration_invalid: bounded_append(max_len=0) MUST
+# §2 reducer_configuration_invalid: bounded_append(max_len: 0) MUST
 # raise the compile-time error at field registration / graph
 # compilation time, before any node body runs. Verifies proposal
 # 0023's reducer_configuration_invalid error category.

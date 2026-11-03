@@ -6,7 +6,7 @@
 # -> wire dimensions (Matryoshka, on models that support it) when set").
 # This is the §8.3 realization of the dimensions passthrough that 017
 # (TEI) and 020 (Jina) assert on their wires:
-#   - embed(config={dimensions: 4}) MUST send {model, input, dimensions: 4}
+#   - embed(config: {dimensions: 4}) MUST send {model, input, dimensions: 4}
 #     on the wire (no input_type / task / encoding_format).
 #   - the response is a one-element data array of a length-4 vector; the
 #     EmbeddingResponse.dimensions field MUST equal the inner vector

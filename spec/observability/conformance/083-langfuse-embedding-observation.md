@@ -16,10 +16,10 @@ documented in proposal 0059's *Privacy posture for embedding observations* secti
 **Cases:**
 
 1. `embedding_observation_payload_suppressed_by_default` — Default observer config
-   (`disable_provider_payload=True`). Asserts the observation type is `embedding`, `model` +
+   (`disable_provider_payload: true`). Asserts the observation type is `embedding`, `model` +
    `usageDetails` + identity metadata are populated, and `input` + `output` are null
    (payload-gated).
-2. `embedding_observation_payload_emitted_with_flag_off` — `disable_provider_payload=False`.
+2. `embedding_observation_payload_emitted_with_flag_off`: `disable_provider_payload: false`.
    Asserts the same shape PLUS `input` carries the strings list and `output` carries the full
    vectors.
 
@@ -33,7 +33,7 @@ documented in proposal 0059's *Privacy posture for embedding observations* secti
 
 - Observation type is `generation` with a metadata discriminator — the adapter implemented the
   pre-proposal-0059 mapping shape.
-- Payload populated under `disable_provider_payload=True` — default-conservative privacy
+- Payload populated under `disable_provider_payload: true`: default-conservative privacy
   posture broken.
-- Payload still null under `disable_provider_payload=False` — flag does not gate the field
+- Payload still null under `disable_provider_payload: false`: flag does not gate the field
   surface.

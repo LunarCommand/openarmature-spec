@@ -8,7 +8,7 @@ happens to return content that looks like JSON.
 
 **Spec sections exercised:**
 
-- §5 — when `response_schema` is `None`/absent, the call behaves as
+- §5: when `response_schema` is `null`/absent, the call behaves as
   in v0.4.0; `Response.parsed` is absent regardless of content.
 - §8.1.5 — when `complete()` is called without `response_schema`, the
   request body MUST NOT include `response_format`.
@@ -28,4 +28,4 @@ happens to return content that looks like JSON.
   callers).
 - `Response.parsed` is populated — would mean the implementation
   auto-detected the JSON-looking content and validated it, contrary to
-  §5's "parsed is absent when response_schema is None" rule.
+  §5's "parsed is absent when response_schema is null" rule.

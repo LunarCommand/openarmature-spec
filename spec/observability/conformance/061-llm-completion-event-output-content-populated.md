@@ -13,10 +13,10 @@ rule.
 
 **Cases:**
 
-1. `output_content_populated_for_text_response` — Assistant returns `content="Done."` with
-   `finish_reason=stop`. The typed event's `output_content` carries the content verbatim.
+1. `output_content_populated_for_text_response`: Assistant returns `content: "Done."` with
+   `finish_reason: stop`. The typed event's `output_content` carries the content verbatim.
 2. `output_content_null_for_tool_call_only_response` — Assistant returns `tool_calls` (no
-   content) with `finish_reason=tool_calls`. The typed event's `output_content` is null per
+   content) with `finish_reason: tool_calls`. The typed event's `output_content` is null per
    the structured-response / tool-call mutual-exclusion rule.
 
 **What passes:**

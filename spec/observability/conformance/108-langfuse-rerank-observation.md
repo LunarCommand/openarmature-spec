@@ -1,7 +1,7 @@
 # 108 — Langfuse rerank observation mapping
 
 Verifies observability §8.4.7's Langfuse mapping: `RerankProvider.rerank()` calls render as a
-dedicated `Retriever` observation type (created via `asType="retriever"`), NOT a `Generation`, with
+dedicated `Retriever` observation type (created via `asType: "retriever"`), NOT a `Generation`, with
 `model` / `usageDetails` / `metadata` always populated and `input` / `output` gated by
 `disable_provider_payload`.
 
@@ -13,10 +13,10 @@ dedicated `Retriever` observation type (created via `asType="retriever"`), NOT a
 **Cases:**
 
 1. `rerank_observation_payload_suppressed_by_default` — default config
-   (`disable_provider_payload=True`). The `Retriever` observation emits `model` + `usageDetails`
+   (`disable_provider_payload: true`). The `Retriever` observation emits `model` + `usageDetails`
    (`searchUnits`) + identity metadata; `input` and `output` are null. Observation type is
    `retriever`.
-2. `rerank_observation_payload_emitted_with_flag_off` — `disable_provider_payload=False`. The
+2. `rerank_observation_payload_emitted_with_flag_off`: `disable_provider_payload: false`. The
    observation additionally carries `input` (`{query, documents}`) and `output` (the scored results).
 
 **What passes:**

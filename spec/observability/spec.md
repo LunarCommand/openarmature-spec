@@ -137,7 +137,7 @@ spans.
 
 In addition to the correlation ID surface (§3.1–§3.3), the framework MUST accept an optional
 **caller-supplied metadata mapping** at invoke time. Callers attach a mapping from string keys to
-OTel-attribute-compatible values (a `dict[str, AttributeValue]` in Python idiom, where
+OTel-attribute-compatible values (a `dict<string, AttributeValue>`, where
 `AttributeValue` matches OTel's scalar / homogeneous-array type contract; equivalent per
 language) carrying arbitrary key/value entries that identify the invocation for search and
 filtering in observability backends.
@@ -857,7 +857,7 @@ etc.), which write to the OTel global provider while openarmature writes to its 
 
 **Opt-out for external-instrumentation-only setups.** Implementations MUST support disabling
 the openarmature-emitted LLM provider span — a configuration parameter on the OTel observer
-(implementation-defined ergonomics; e.g., `disable_llm_spans=True`). This serves the explicit
+(implementation-defined ergonomics; e.g., `disable_llm_spans: true`). This serves the explicit
 case where the user prefers their external auto-instrumentation library as the canonical source
 of LLM spans and wants openarmature to stay out of that lane. With the flag enabled, the OTel
 observer skips the §5.5 span entirely; all other spans (node, subgraph, fan-out, etc.) continue
@@ -1121,13 +1121,13 @@ Implementations MUST support the following observer-level configuration flags (s
 ergonomics — constructor argument, builder method, etc. — are implementation-defined; flag names
 below are normative for cross-implementation consistency):
 
-- `disable_provider_payload: bool` — default `True`. When `True`, payload attributes from any
+- `disable_provider_payload: bool`, default `true`. When `true`, payload attributes from any
   provider call are NOT emitted — the §5.5.1 LLM payload attributes
   (`openarmature.llm.input.messages`, `openarmature.llm.output.content`,
   `openarmature.llm.output.tool_calls`, `openarmature.llm.request.extras`), the §5.5.8 embedding payload attributes
   (`openarmature.embedding.input.strings`, `openarmature.embedding.request.extras`), the §5.5.11 tool
   payload attributes (`openarmature.tool.call.arguments`, `openarmature.tool.call.result`), and the
-  equivalent Langfuse payload fields per §8. When `False`, payload attributes emit per the
+  equivalent Langfuse payload fields per §8. When `false`, payload attributes emit per the
   corresponding section, subject to the §5.5.5 truncation contract and per the
   privacy posture documented in §8 for payload-bearing Langfuse observations (embedding §8.4.5, tool §8.4.6). (Renamed from
   `disable_llm_payload` by proposal 0059; the flag's scope broadened to cover payload from any
@@ -1137,7 +1137,7 @@ below are normative for cross-implementation consistency):
     **Failed-call error message (proposal 0118).** The flag additionally gates a failed provider
     call's harvested exception **text**: the `error_message` field the Langfuse mapping writes to
     `observation.metadata` on a failed Generation / Embedding / Tool / Retriever observation (§8.4.2,
-    §8.4.3, §8.4.5, §8.4.6, §8.4.7). When `True`, `error_message` is NOT emitted. Rationale: the
+    §8.4.3, §8.4.5, §8.4.6, §8.4.7). When `true`, `error_message` is NOT emitted. Rationale: the
     message is the raised exception's rendered text, harvested runtime content that can embed the very payload the flag
     exists to suppress: it is the failure's human-readable description as the source failure event
     carries it. A `structured_output_invalid` failure's message commonly quotes the model output that
@@ -1162,14 +1162,14 @@ below are normative for cross-implementation consistency):
     The gate is Langfuse-side only, because the OTel surface carries no `error_message` span
     attribute: on that side the exception reaches the backend through `record_exception` on
     openarmature's own span (§6), which this flag does not affect. So a caller running the default
-    posture (`True`) sees error types and categories in Langfuse, and full exception text in their
+    posture (`true`) sees error types and categories in Langfuse, and full exception text in their
     OTel backend.
 
-- `disable_genai_semconv: bool` — default `False`. When `True`, the §5.5.2 request-parameter
-  attributes and the §5.5.3 response-attribute set are NOT emitted. When `False` (the default),
+- `disable_genai_semconv: bool`, default `false`. When `true`, the §5.5.2 request-parameter
+  attributes and the §5.5.3 response-attribute set are NOT emitted. When `false` (the default),
   GenAI semconv attributes emit per §5.5.2 and §5.5.3.
 
-The existing `disable_llm_spans` flag (above) MUST continue to behave as specified: when `True`,
+The existing `disable_llm_spans` flag (above) MUST continue to behave as specified: when `true`,
 the LLM provider span is not emitted at all, and none of the attributes specified in §5.5.1
 through §5.5.3 are emitted (they have no span to attach to).
 
@@ -1177,10 +1177,10 @@ The three flags are independent. Typical configurations:
 
 | Configuration | `disable_llm_spans` | `disable_provider_payload` | `disable_genai_semconv` | Outcome |
 |---|---|---|---|---|
-| Default (out of the box) | `False` | `True` | `False` | LLM span emits with OA + GenAI semconv attributes; no payload. |
-| Maximum visibility | `False` | `False` | `False` | LLM span emits with full payload and all attributes. |
-| External auto-instrumentation is canonical | `True` | (irrelevant) | (irrelevant) | OA emits no LLM span; external library handles it. |
-| OA span without GenAI semconv | `False` | `True` | `True` | OA-namespaced attributes only; useful when an external library is the canonical GenAI emitter and OA's role is internal-only attribution. |
+| Default (out of the box) | `false` | `true` | `false` | LLM span emits with OA + GenAI semconv attributes; no payload. |
+| Maximum visibility | `false` | `false` | `false` | LLM span emits with full payload and all attributes. |
+| External auto-instrumentation is canonical | `true` | (irrelevant) | (irrelevant) | OA emits no LLM span; external library handles it. |
+| OA span without GenAI semconv | `false` | `true` | `true` | OA-namespaced attributes only; useful when an external library is the canonical GenAI emitter and OA's role is internal-only attribution. |
 
 #### 5.5.5 Truncation contract
 
@@ -1313,8 +1313,8 @@ Implementations of §5.5.1 through §5.5.5 across languages (Python, TypeScript)
   `{type: "image", source: {type: "inline_redacted", byte_count}, media_type, detail?}` record —
   `media_type` at the image-block level per llm-provider §3.1.2, with `detail` preserved
   verbatim when present).
-- The default values: `disable_provider_payload = True`, `disable_genai_semconv = False`,
-  `disable_llm_spans = False`.
+- The default values: `disable_provider_payload = true`, `disable_genai_semconv = false`,
+  `disable_llm_spans = false`.
 
 Per-language ergonomics (constructor argument naming, builder patterns, environment-variable
 lookup) MAY differ. The above are the cross-impl behavioral surface.
@@ -1653,7 +1653,7 @@ completion span (`openarmature.llm.complete`) and the embedding span
 |---|---|---|
 | `openarmature.rerank.query_length` | int | The byte length of the query string (UTF-8 encoded). Not a token count — `gen_ai.usage.input_tokens` carries that when the provider reports it. |
 | `openarmature.rerank.document_count` | int | The number of input documents. |
-| `openarmature.rerank.top_k` | int | The caller-supplied `top_k` value; omitted from the attribute set when the caller passed `None`. |
+| `openarmature.rerank.top_k` | int | The caller-supplied `top_k` value; omitted from the attribute set when the caller passed `null`. |
 | `openarmature.rerank.result_count` | int | The number of `ScoredDocument` entries the provider returned. |
 | `openarmature.rerank.search_units` | int | The provider-reported search-units billed for this call (sourced from `RerankResponse.usage.search_units`). Conditionally emitted: present only when a usage record is reported and its `search_units` is non-null (omitted when `usage = null`). Flat namespace matches §5.5.8's `openarmature.embedding.*` convention (no `.usage.` infix). |
 | `openarmature.rerank.query` | string | The query string. Subject to `disable_provider_payload` (§5.5.4) and the §5.5.5 truncation contract. |
@@ -2022,7 +2022,7 @@ observations** are emitted instead through the Langfuse client's `TracerProvider
 client binds to the **global** provider by default. When that provider is shared with the application or
 other instrumentation, openarmature's Langfuse observations are exported to every span processor on it, not
 only to Langfuse. Those exports carry openarmature's **harvested payload** — full prompt and completion text
-(`disable_provider_payload=False`, §5.5.4), the Trace-level application-state payload (§8.4.1), and a failed
+(`disable_provider_payload: false`, §5.5.4), the Trace-level application-state payload (§8.4.1), and a failed
 observation's exception message (§8.4.3 / §8.4.5–§8.4.7) — into whatever backend the shared provider feeds. The
 obligations **track which party controls the provider** (the ownership mode of §8.9):
 
@@ -2034,14 +2034,14 @@ obligations **track which party controls the provider** (the ownership mode of �
 
     - the **provider payload** — Generation / Embedding / Tool / Retriever `input` / `output` (prompts,
       completions, embedding inputs, tool arguments / results, rerank query / documents), live when
-      `disable_provider_payload=False` (§5.5.4);
+      `disable_provider_payload: false` (§5.5.4);
     - the **state payload** — Trace-level `input` / `output` carrying application state (§8.4.1), live when
-      `disable_state_payload=False`, **or** when a `trace_input_from_state` / `trace_output_from_state` hook is
+      `disable_state_payload: false`, **or** when a `trace_input_from_state` / `trace_output_from_state` hook is
       supplied (a supplied hook may emit regardless of the knob per §8.4.1's decision tree, so a supplied hook
       is treated as potentially payload-bearing); and
     - the **error message** — `error_message` (and `error_type`) on a failed LLM Generation / Embedding /
       Tool / Retriever observation (§8.4.3 / §8.4.5 / §8.4.6 / §8.4.7), live when
-      `disable_provider_payload=False` (§5.5.4, which gates the harvested exception text alongside the
+      `disable_provider_payload: false` (§5.5.4, which gates the harvested exception text alongside the
       provider payload). Because both ride the same flag, the error message needs no separate liveness
       test: wherever the provider payload is live, so is the error message, and the arms below cover both.
 
@@ -2111,7 +2111,7 @@ obligations **track which party controls the provider** (the ownership mode of �
 
   _Error message: gated with the provider payload._ A failed observation's `error_message` is harvested
   exception text gated by `disable_provider_payload` (§5.5.4), so it needs no separate per-emission rule. At
-  the flag's default (`True`) it is never emitted at all; with the flag `False` it rides the provider-payload
+  the flag's default (`true`) it is never emitted at all; with the flag `false` it rides the provider-payload
   channel through the arms above, which raise where a leak is detectable, suppress where the binding cannot be
   established, and emit where the provider is isolated or the caller has accepted a shared provider. Wherever
   the message is omitted, the observation retains its `error_type` and its error **category** where one exists
@@ -2124,7 +2124,7 @@ obligations **track which party controls the provider** (the ownership mode of �
   _Suppressing all harvested channels._ Where openarmature suppresses (the cannot-establish arm above) it
   **MUST** suppress **every** harvested-payload channel so no payload-bearing observation reaches a shared
   provider: the provider payload **and** a failed observation's `error_message` (both as if
-  `disable_provider_payload=True`, leaving that observation's `error_type` and error category, which are
+  `disable_provider_payload: true`, leaving that observation's `error_type` and error category, which are
   classifications rather than harvested text), and the Trace-level state payload
   (forcing the §8.4.1 minimal stub — raw state not serialized **and** a supplied `trace_*_from_state` hook not
   applied).
@@ -2140,13 +2140,13 @@ obligations **track which party controls the provider** (the ownership mode of �
   categorized error distinguishable by its `langfuse_provider_isolation_unavailable` category so callers can
   catch it specifically.
 
-  _When no payload channel is live_ — `disable_provider_payload=True` **and** `disable_state_payload=True`
-  **and** no `trace_*_from_state` hook is supplied — a **successful** run's observations carry only metadata
+  _When no payload channel is live_, `disable_provider_payload: true` **and** `disable_state_payload: true`
+  **and** no `trace_*_from_state` hook is supplied, a **successful** run's observations carry only metadata
   and span structure; a shared provider then duplicates only that (the same duplication the private-provider
   rule above prevents for openarmature's own OTel spans). openarmature **SHOULD** isolate and **MAY** warn,
   carrying the event name `openarmature.langfuse.shared_provider_no_payload` (§7 *Diagnostic event names*),
   but **MUST NOT** raise. A *failed* observation adds nothing harvested in this configuration either, because
-  `disable_provider_payload=True` also suppresses its `error_message` (§5.5.4), leaving its `error_type` and
+  `disable_provider_payload: true` also suppresses its `error_message` (§5.5.4), leaving its `error_type` and
   error category. So the locked-down posture carries no harvested content on either the success or the failure
   path.
 - **Mode (a) — the caller supplies the client.** The implementation does **not** control the provider and
@@ -2169,7 +2169,7 @@ provider, and openarmature establishes its observations would reach a shared pro
 it **MUST** raise `langfuse_provider_isolation_unavailable`.
 In every other case — mode (a), a run with no live payload channel, an opted-in caller, or a binding
 openarmature cannot establish (which suppresses instead) — it **MUST NOT** raise. Note that the locked-down
-posture (`disable_provider_payload=True`) is a no-live-channel case on the failure path too, since that flag
+posture (`disable_provider_payload: true`) is a no-live-channel case on the failure path too, since that flag
 also suppresses a failed observation's error message (§5.5.4), so a run that merely fails never triggers a
 raise on that account. A live **state** channel still does, independently of the provider flag.
 
@@ -2393,7 +2393,7 @@ The §5 OA attribute keys translate to Langfuse fields per the tables below. Imp
 set the corresponding Langfuse fields when the source OA attribute is set on the source span
 (per §5), with one carve-out: a failed **LLM Generation** / Tool / Embedding / Retriever observation's
 `error_message` (§8.4.3 / §8.4.5–§8.4.7) is harvested exception text **gated by
-`disable_provider_payload`** (§5.5.4, default `True`), and when the flag permits it, still subject to
+`disable_provider_payload`** (§5.5.4, default `true`), and when the flag permits it, still subject to
 §6's payload-leak invariant like the rest of the provider payload. Where it is omitted the observation
 carries its `error_type` and its error **category**, which are classifications rather than harvested text and
 are not gated.
@@ -2475,7 +2475,7 @@ to also catch Langfuse-specific constraints early, per §3.4's MAY-expand allowa
 | `openarmature.implementation.version` | `trace.metadata.implementation_version` |
 | (caller-supplied invocation label OR entry node name, per §8.6) | `trace.name` |
 | §4.4 detached-mode dispatch context: the parent invocation's `invocation_id` | `trace.metadata.detached_from_invocation_id` — emitted on the detached child trace only (a trace produced by detached-mode dispatch per §4.4). Points back to the parent invocation for inverse lookup. Sibling to `trace.metadata.correlation_id` (preserved across detached / parent traces per §3.1, providing the forward direction). Absent on non-detached traces. |
-| Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at trace emission time (per §3.4, including any mid-invocation augmentations applied before trace closure) | `trace.metadata.<key>` (top level, sibling to `correlation_id` / `entry_node` / `spec_version`; NOT nested under a `user` sub-object so Langfuse UI filtering on `metadata.<key>` matches what callers supplied; implementations SHOULD use Langfuse SDK's `trace.update(metadata=...)` to apply mid-invocation augmentations to the open Trace) |
+| Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at trace emission time (per §3.4, including any mid-invocation augmentations applied before trace closure) | `trace.metadata.<key>` (top level, sibling to `correlation_id` / `entry_node` / `spec_version`; NOT nested under a `user` sub-object so Langfuse UI filtering on `metadata.<key>` matches what callers supplied; implementations SHOULD use Langfuse SDK's `trace.update(metadata: ...)` to apply mid-invocation augmentations to the open Trace) |
 | `initial_state` at invocation entry — sourced via the *Trace input/output sourcing* paragraph below | `trace.input` |
 | Final state at invocation exit — sourced via the *Trace input/output sourcing* paragraph below | `trace.output` |
 | `openarmature.session_id` (per §5.6; present when the invocation is session-bound per the sessions capability / proposal 0020) | `trace.sessionId` — groups every trace sharing the session id under one Langfuse Session. Absent when the invocation is not session-bound. See *Session / user trace-field sourcing* below. |
@@ -2545,7 +2545,7 @@ invocation-span-at-root change has no direct Langfuse analog — the Trace alrea
 
 This non-UUID derivation is exactly Langfuse's own `create_trace_id(seed)` helper
 (`sha256(seed.encode("utf-8")).digest()[:16].hex()`), so the derived `trace.id` equals
-`create_trace_id(seed=invocation_id)` — a consumer can reproduce or look up the trace id from its
+`create_trace_id(seed: invocation_id)`: a consumer can reproduce or look up the trace id from its
 raw id via the helper. (`trace.metadata.invocation_id` is reserved against caller-metadata
 collision per §3.4.)
 
@@ -2599,12 +2599,12 @@ LangfuseObserver construction surface (per-language idiomatic naming and shape �
 constructor arguments, configuration record fields, builder methods, etc.; the spec defines the
 contract, not the surface syntax):
 
-- `trace_input_from_state(state) → InputValue | None` — called once per invocation, at
+- `trace_input_from_state(state) → InputValue`: called once per invocation, at
   invocation entry, after the engine has constructed `initial_state` and before any node runs.
   Takes the raw state object (the typed-state instance in language-idiomatic form). Returns
   the value to use as `trace.input`. Returning the language's null sentinel falls through to
   the next lever in the decision tree.
-- `trace_output_from_state(state) → OutputValue | None` — called once per invocation, at
+- `trace_output_from_state(state) → OutputValue`: called once per invocation, at
   invocation exit, after the engine has produced the final state (whether the invocation
   reached END or failed). Same signature shape; falls through to the next lever on null.
 
@@ -2615,7 +2615,7 @@ exceeds the cap.
 Hook signature takes the raw state, not a typed wrapper or `NodeEvent` — minimum added surface
 area, consistent with the framework's "transparency over abstraction" framing.
 
-**Resume semantics.** On a resumed invocation (`invoke(resume_invocation=...)` per
+**Resume semantics.** On a resumed invocation (`invoke(resume_invocation: ...)` per
 pipeline-utilities §10.4), the framework mints a fresh `invocation_id` and therefore a fresh
 Langfuse trace per the *`trace.id` derivation* note above. The hooks fire on the resumed
 invocation as if it were a new invocation, writing to the resumed trace's `input` / `output`.
@@ -2669,7 +2669,7 @@ the binding, unless the caller has accepted a shared provider.
 | `openarmature.correlation_id` | `observation.metadata.correlation_id` (cross-cutting per §8.5) |
 | Each entry `(key, value)` in the in-scope caller-supplied invocation metadata at the observation's emission time (per §3.4) | `observation.metadata.<key>` on EVERY Observation (top level, same propagation rationale as `correlation_id`; lets users filter across observations from detached subgraphs / fan-outs in one Langfuse UI query). For the fan-out per-instance use case, each instance's observations carry that instance's augmented metadata (per §3.4 per-async-context scoping), so adopters can filter Langfuse by the per-instance identifier (e.g., `productId`) to find that specific instance's subtree. |
 | `openarmature.error.category` | `observation.level = "ERROR"`, `observation.statusMessage = <category>` |
-| `error_type` / `error_message` — failed **Generation / Embedding / Tool / Retriever** observations (§8.4.3 / §8.4.5 / §8.4.6 / §8.4.7; from `LlmFailedEvent` §5.5.7 / `EmbeddingFailedEvent` §5.5.9 / `ToolCallFailedEvent` §5.5.12 / `RerankFailedEvent` §5.5.14) | `observation.metadata.error_type` / `observation.metadata.error_message`. `error_type` is a classification token and is **not** gated. `error_message` is harvested exception text, **gated by `disable_provider_payload`** (§5.5.4, default `True`, so it is absent under the default posture) and, when the flag permits it, subject to §6's payload-leak invariant like the rest of the provider payload. Where the message is omitted the observation still carries `error_type` and its error **category**, and the message **MUST NOT** be surfaced through `statusMessage` instead (§6). In-cell-scoped to those four provider observation types. A node `Span` carries only `error.category` here (its category is the §4.2 graph-engine mapping — a node Span harvests no provider exception). Framework-emitted observer events these tables do not render — notably the failure-isolation event (pipeline-utilities §6.3), which is a distinct event kind that does not reuse `NodeEvent.error` — have **no** mapping here at all: a harvested exception message from such an event (its `caught_exception` detail) is mapped by no §8.4.x table and is **over-emission** (§8.4 *Exhaustive mapping*), so it **MUST NOT** be written to any Langfuse observation; the caller consumes that detail from the event itself (§6.3 `caught_exception` / `on_caught`). On a failed **Generation** the `error_message` is the exception string, **distinct** from any payload-gated `generation.output` (§8.4.3): `structured_output_invalid` carries both, while `provider_invalid_request` / timeout / `provider_unavailable` carries no output, so the error message is its only harvested error content. A Generation retains its error **category** like Embedding / Retriever (§5.5.7); only a Tool failure has none (§8.4.6). |
+| `error_type` / `error_message`: failed **Generation / Embedding / Tool / Retriever** observations (§8.4.3 / §8.4.5 / §8.4.6 / §8.4.7; from `LlmFailedEvent` §5.5.7 / `EmbeddingFailedEvent` §5.5.9 / `ToolCallFailedEvent` §5.5.12 / `RerankFailedEvent` §5.5.14) | `observation.metadata.error_type` / `observation.metadata.error_message`. `error_type` is a classification token and is **not** gated. `error_message` is harvested exception text, **gated by `disable_provider_payload`** (§5.5.4, default `true`, so it is absent under the default posture) and, when the flag permits it, subject to §6's payload-leak invariant like the rest of the provider payload. Where the message is omitted the observation still carries `error_type` and its error **category**, and the message **MUST NOT** be surfaced through `statusMessage` instead (§6). In-cell-scoped to those four provider observation types. A node `Span` carries only `error.category` here (its category is the §4.2 graph-engine mapping: a node Span harvests no provider exception). Framework-emitted observer events these tables do not render, notably the failure-isolation event (pipeline-utilities §6.3), which is a distinct event kind that does not reuse `NodeEvent.error`, have **no** mapping here at all: a harvested exception message from such an event (its `caught_exception` detail) is mapped by no §8.4.x table and is **over-emission** (§8.4 *Exhaustive mapping*), so it **MUST NOT** be written to any Langfuse observation; the caller consumes that detail from the event itself (§6.3 `caught_exception` / `on_caught`). On a failed **Generation** the `error_message` is the exception string, **distinct** from any payload-gated `generation.output` (§8.4.3): `structured_output_invalid` carries both, while `provider_invalid_request` / timeout / `provider_unavailable` carries no output, so the error message is its only harvested error content. A Generation retains its error **category** like Embedding / Retriever (§5.5.7); only a Tool failure has none (§8.4.6). |
 
 #### 8.4.3 Generation-specific mapping (sourced from LLM provider span attributes)
 
@@ -2735,7 +2735,7 @@ Generation has `output` / `usage` absent as before.
 Generation of any category, sourced from the graph-engine §6 `LlmFailedEvent` (§5.5.7), carries `error_type` in
 `observation.metadata` under every posture wherever the failure event supplies one (it is optional and may be
 `null`, §5.5.12), and `error_message` **only when `disable_provider_payload` is
-`False`** (§5.5.4). The flag defaults to `True`, so under the default posture a failed Generation carries its
+`false`** (§5.5.4). The flag defaults to `true`, so under the default posture a failed Generation carries its
 `error_type` and its error **category** without the exception text. Where the flag permits the message, it is
 additionally subject to §6's payload-leak invariant like the rest of the provider payload.
 
@@ -2791,7 +2791,7 @@ The trigger for case 1 versus case 2 is whether a Langfuse Prompt reference is a
 prompt record at emission time. As of v0.26.0 (prompt-management proposal 0033), the reference
 lives at a spec-defined location: `Prompt.observability_entities['langfuse_prompt']`. When the
 key is present (value is the opaque Langfuse SDK Prompt reference), case 1 applies; when the
-key is absent or `observability_entities` is `None`, case 2 applies. The Langfuse observer
+key is absent or `observability_entities` is `null`, case 2 applies. The Langfuse observer
 MUST establish the link when the reference is present and MUST NOT fabricate one when absent.
 
 In both cases the following metadata is set:
@@ -2838,7 +2838,7 @@ Field mappings:
 | Embedding observation field | Source |
 |---|---|
 | `embedding.model` | `EmbeddingEvent.response_model` (the provider's returned model; falls back to `EmbeddingEvent.model`, the requested model, when the provider returns none). |
-| `embedding.input` | The `EmbeddingEvent.input_strings`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), this field is NOT populated. |
+| `embedding.input` | The `EmbeddingEvent.input_strings`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `true` (default), this field is NOT populated. |
 | `embedding.output` | The `EmbeddingEvent.output_vectors` (the embedding vectors, themselves sourced from `EmbeddingResponse.vectors` at dispatch). Privacy-gated per `disable_provider_payload`. |
 | `embedding.usageDetails.input` | `EmbeddingEvent.usage.input_tokens` when populated. Omitted when the embedding call reports no usage record (`usage = null`, e.g. TEI `/embed`); Langfuse's `usageDetails` is an open-shape map carrying only the usage figures the provider reported, so it is an empty map when none are (no `input` key). |
 | `embedding.metadata.openarmature_input_count` | The length of `input_strings`. |
@@ -2847,9 +2847,9 @@ Field mappings:
 
 **Privacy posture for embedding observations.** Both `input` strings and `output` vectors are
 payload-bearing data on the same footing — both gated by `disable_provider_payload` (default
-`True` per §5.5.4). When the flag is `True`, the `Embedding` observation populates `model` +
+`true` per §5.5.4). When the flag is `true`, the `Embedding` observation populates `model` +
 `usageDetails` + identity metadata only; both `input` and `output` are NOT populated. When
-`False`, both fields populate fully. On a **failed** Embedding observation the same flag additionally
+`false`, both fields populate fully. On a **failed** Embedding observation the same flag additionally
 withholds `metadata.error_message` (proposal 0118); `metadata.error_type`, where the failure event
 supplies one, and the error category / `statusMessage` emit regardless, being classifications rather
 than harvested text (§5.5.4).
@@ -2874,7 +2874,7 @@ roll into the same `trace.totalCost` aggregation as LLM completion costs.
 **Failure observations.** An `EmbeddingFailedEvent` (graph-engine §6) renders an `Embedding`
 observation at `ERROR` level — the §7 `error_category` as the observation's status message and
 `error_type` / `error_message` in `metadata` (the §8.4.2 error row). `error_type` is not gated; `error_message`
-is **gated by `disable_provider_payload`** (§5.5.4, default `True`, so the default posture carries the type and
+is **gated by `disable_provider_payload`** (§5.5.4, default `true`, so the default posture carries the type and
 category without the message) and, when the flag permits it, subject to §6's payload-leak invariant. The
 failure observation carries no `output` (no response was received).
 
@@ -2891,15 +2891,15 @@ Field mappings:
 
 | Tool observation field | Source |
 |---|---|
-| `tool.input` | The tool `arguments`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), NOT populated. |
-| `tool.output` | The tool `result`. Privacy-gated per `disable_provider_payload`. When the flag is `True` (default), NOT populated. |
+| `tool.input` | The tool `arguments`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `true` (default), NOT populated. |
+| `tool.output` | The tool `result`. Privacy-gated per `disable_provider_payload`. When the flag is `true` (default), NOT populated. |
 | `tool.metadata.openarmature_tool_name` | The tool name (`tool_name`). |
 | `tool.metadata.openarmature_tool_call_id` | The `tool_call_id` (the §5.5.10 model-request linkage) when present. |
-| `tool.level` / status | `DEFAULT` on `ToolCallEvent`; `ERROR` on `ToolCallFailedEvent`, with `error_type` / `error_message` in metadata. `error_type` is not gated; `error_message` is **gated by `disable_provider_payload`** (§5.5.4, default `True`) and, when the flag permits it, subject to §6's payload-leak invariant. A `Tool` failure has **no** error category (§5.5.12), so wherever the message is omitted the observation is discriminated by its `error_type` alone and carries no message-derived status text (§6 forbids substituting the message into `statusMessage`). |
+| `tool.level` / status | `DEFAULT` on `ToolCallEvent`; `ERROR` on `ToolCallFailedEvent`, with `error_type` / `error_message` in metadata. `error_type` is not gated; `error_message` is **gated by `disable_provider_payload`** (§5.5.4, default `true`) and, when the flag permits it, subject to §6's payload-leak invariant. A `Tool` failure has **no** error category (§5.5.12), so wherever the message is omitted the observation is discriminated by its `error_type` alone and carries no message-derived status text (§6 forbids substituting the message into `statusMessage`). |
 
 **Privacy posture.** `input` (arguments) and `output` (result) are payload-bearing, gated by
-`disable_provider_payload` (default `True` per §5.5.4) identically to the other provider observations.
-When the flag is `True`, the `Tool` observation populates the tool name + identity metadata (+ status)
+`disable_provider_payload` (default `true` per §5.5.4) identically to the other provider observations.
+When the flag is `true`, the `Tool` observation populates the tool name + identity metadata (+ status)
 only; `input` / `output` are NOT populated. On a **failed** Tool observation the same flag additionally
 withholds `metadata.error_message` (proposal 0118), while `metadata.error_type` emits wherever the
 failure event supplies one; a Tool failure carries no error category (§5.5.12), so the omitted message
@@ -2931,8 +2931,8 @@ Field mappings:
 | Retriever observation field | Source |
 |---|---|
 | `retriever.model` | `RerankEvent.response_model` (the provider's returned model; falls back to `RerankEvent.model`, the requested model, when the provider returns none). |
-| `retriever.input` | The `RerankEvent.query` + `documents`, serialized as `{query, documents}`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `True` (default), NOT populated. |
-| `retriever.output` | The `RerankEvent.output_results` (the scored results, each `{index, relevance_score, document?}`; themselves sourced from `RerankResponse.results` at dispatch). Privacy-gated per `disable_provider_payload`. When the flag is `True` (default), NOT populated. |
+| `retriever.input` | The `RerankEvent.query` + `documents`, serialized as `{query, documents}`. Privacy-gated per `disable_provider_payload` (§5.5.4). When the flag is `true` (default), NOT populated. |
+| `retriever.output` | The `RerankEvent.output_results` (the scored results, each `{index, relevance_score, document?}`; themselves sourced from `RerankResponse.results` at dispatch). Privacy-gated per `disable_provider_payload`. When the flag is `true` (default), NOT populated. |
 | `retriever.usageDetails.input` | `RerankEvent.usage.input_tokens` when populated. Omitted when the rerank call reports no usage record (`usage = null`, e.g. TEI `/rerank`) or the record's `input_tokens` is null. |
 | `retriever.usageDetails.searchUnits` | `RerankEvent.usage.search_units` when populated. Omitted when the rerank call reports no usage record (`usage = null`, e.g. TEI `/rerank`) or the record's `search_units` is null. Langfuse's `usageDetails` is an open-shape mapping carrying only the usage figures the provider reported (an empty map when none); the spec defines the OA convention for the rerank-specific `searchUnits` key here. |
 | `retriever.metadata.openarmature_query_length` | The byte length of the query (UTF-8). |
@@ -2942,9 +2942,9 @@ Field mappings:
 | `retriever.metadata.openarmature_response_id` | `RerankEvent.response_id` when present. |
 
 **Privacy posture for rerank observations.** Query, input documents, and result document echoes are
-all payload-bearing data, gated by `disable_provider_payload` (default `True` per §5.5.4). When the
-flag is `True`, the `Retriever` observation populates `model` + `usageDetails` + identity metadata
-only; `input` and `output` are NOT populated. When `False`, both fields populate fully. On a **failed**
+all payload-bearing data, gated by `disable_provider_payload` (default `true` per §5.5.4). When the
+flag is `true`, the `Retriever` observation populates `model` + `usageDetails` + identity metadata
+only; `input` and `output` are NOT populated. When `false`, both fields populate fully. On a **failed**
 Retriever observation the same flag additionally withholds `metadata.error_message` (proposal 0118);
 `metadata.error_type`, where the failure event supplies one, and the error category / `statusMessage`
 emit regardless (§5.5.4).
@@ -2958,7 +2958,7 @@ aggregation as LLM completion and embedding costs.
 **Failure observations.** A `RerankFailedEvent` (graph-engine §6) renders a `Retriever` observation
 at `ERROR` level — the §7 `error_category` as the observation's status message and `error_type` /
 `error_message` in `metadata` (the §8.4.2 error row). `error_type` is not gated; `error_message` is **gated by
-`disable_provider_payload`** (§5.5.4, default `True`, so the default posture carries the type and category
+`disable_provider_payload`** (§5.5.4, default `true`, so the default posture carries the type and category
 without the message) and, when the flag permits it, subject to §6's payload-leak invariant. The failure
 observation carries no `output`.
 
@@ -3034,13 +3034,13 @@ on the observer) at their discretion; the behavioral contract above is the minim
 ### 8.7 Generation rendering
 
 Generation observations render the LLM call's input/output content when the Langfuse observer's
-`disable_provider_payload` flag is `False`. The flag governs Langfuse-side emission only; it is
+`disable_provider_payload` flag is `false`. The flag governs Langfuse-side emission only; it is
 independent of the OTel observer's flag per §8.9. Both observers consume the same source data
 (per §5.5's definition of LLM-payload content) from the §6 LLM provider event, and each makes
 its own emission decision.
 
 The Langfuse observer MUST support its own `disable_provider_payload` flag independent of the OTel
-observer's setting (per §8.9). When the flag is `False`, the observer:
+observer's setting (per §8.9). When the flag is `false`, the observer:
 
 - Parses the §5.5.1 `openarmature.llm.input.messages` JSON string back to the native message-list
   structure (per llm-provider §3 message shape) and sets `generation.input` to the parsed
@@ -3051,7 +3051,7 @@ observer's setting (per §8.9). When the flag is `False`, the observer:
 - On a **failed** Generation, sets `generation.metadata.error_message` from the `LlmFailedEvent`'s
   exception text (§5.5.7, §8.4.3). Proposal 0118 brought this harvested text under the same flag.
 
-When the flag is `True` (default), `generation.input`, `generation.output`,
+When the flag is `true` (default), `generation.input`, `generation.output`,
 `generation.metadata.request_extras`, and a failed Generation's `generation.metadata.error_message`
 MUST NOT be set on the Generation observation. Other fields (model, modelParameters, usage,
 metadata.system, metadata.response_model, metadata.response_id, prompt linkage) continue to emit per
@@ -3110,15 +3110,15 @@ both attached; both MAY emit during the same invocation.
 Each observer's behavior is governed by its own configuration:
 
 - **`disable_llm_spans`** — each observer supports the flag independently. Setting
-  `disable_llm_spans=True` on one observer does NOT suppress emission on the other. Use case: a
+  `disable_llm_spans: true` on one observer does NOT suppress emission on the other. Use case: a
   user has external auto-instrumentation writing OTel spans for LLM calls and also wants the
-  Langfuse observer to emit Generations natively; they set `disable_llm_spans=True` on the OTel
-  observer (so OA doesn't duplicate the external library's spans) and leave it `False` on the
+  Langfuse observer to emit Generations natively; they set `disable_llm_spans: true` on the OTel
+  observer (so OA doesn't duplicate the external library's spans) and leave it `false` on the
   Langfuse observer (so Generations still emit to Langfuse).
 
 - **`disable_provider_payload`** — each observer supports the flag independently. A user MAY emit full
   payload to Langfuse (their canonical generation-rendering tool) while keeping OTel-side payload
-  off (cost / size reasons). Defaults: `True` for OTel per §5.5.4, `True` for Langfuse for
+  off (cost / size reasons). Defaults: `true` for OTel per §5.5.4, `true` for Langfuse for
   symmetric privacy posture. (Renamed from `disable_llm_payload` by proposal 0059; covers any
   provider call's payload including embedding.)
 
@@ -3310,11 +3310,11 @@ carries. Metrics introduce no other data source.
 ### 11.1 Emission and the Meter
 
 Metrics are **opt-in**. Implementations MUST provide an observer-level boolean flag `enable_metrics`
-(default `False`); specific ergonomics (constructor argument, builder method, etc.) are
+(default `false`); specific ergonomics (constructor argument, builder method, etc.) are
 implementation-defined, but the flag name is normative for cross-implementation consistency. When
-`enable_metrics` is `False`, no metric instrument is created and no measurement is recorded.
+`enable_metrics` is `false`, no metric instrument is created and no measurement is recorded.
 
-When `enable_metrics` is `True`, the implementation obtains a `Meter` from the configured OTel
+When `enable_metrics` is `true`, the implementation obtains a `Meter` from the configured OTel
 `MeterProvider` — parallel to how the span-emitting observer obtains a `Tracer` from the
 `TracerProvider`. When no `MeterProvider` is configured, recording MUST be a silent no-op (the OTel
 global / no-op meter); it MUST NOT raise.
@@ -3495,7 +3495,7 @@ spec:
 - §3.4 *Shared-parent boundary (MUST NOT)* paragraph rewritten from "all three are unconditional shared parents regardless of runtime cardinality" prose to a three-bullet structural classification — fan-out node always a shared parent, parallel-branches node always a shared parent, invocation span a shared parent **only when** at least one fan-out or parallel-branches dispatch is on the augmenter's call-stack path (predicate stated via the lineage chain having non-`null` `fan_out_index` or `branch_name` entries; pure-serial augmentations reach the invocation span via rule 2 of the boundary decision tree). The decision tree's rule 3 gains a short parenthetical pointing readers at the conditional invocation-span classification. Documentary tightening only — fixtures 034 (outermost-serial updates invocation span) and 039 (nested cases do not) already exercise the predicate-derived behavior; this proposal closes the spec-text-vs-fixture ambiguity that previously made the two fixtures' behavior unreconcilable from §3.4's text alone by [proposal 0053](../../proposals/0053-shared-parent-boundary-clarification.md)
 - §4.2 *Status mapping* table extended with a new row for the `SUSPENDED` logical status (applied to both the suspending node's span and the invocation root span when a node calls `suspend()` per the suspension capability §3); new *Suspended status mapping* paragraph defining the OTel physical mapping (status `OK` plus an `openarmature.outcome = "suspended"` span attribute, since OTel's native status code field lacks a third state) with backend-mapping freedom for non-OTel backends. §4.3 *Parent-child rules* gained a *Suspended-resume invocation spans* paragraph defining the cross-invocation-span correlation invariant for suspension-resume (per suspension §7) — the resume invocation span carries the same `openarmature.invocation_id` as the suspended one; OTel observers SHOULD additionally link via span-link or parent-of mechanisms; explicitly distinguishes from checkpoint-resume per pipeline-utilities §10.4 (fresh `invocation_id`, correlated only via shared `correlation_id`). New §5.8 *Suspension span attributes* defining `openarmature.suspension.signal_id` (string; always present on a `suspended` node span; carries the descriptor's `signal_id` per suspension §4) and `openarmature.suspension.metadata.*` (flattened descriptor metadata fields, OTel-attribute-compatible scalars per §3.4 value-type contract) with composition rules for detached trace mode (§4.4) by [proposal 0021](../../proposals/0021-graph-suspension.md)
 - §4 *Span hierarchy* gained a new §4.6 *Turn-level wrapper span (harness capability)* — the harness MAY open a turn-level wrapper span around `invoke()` when running inside a deployment runtime, with the invocation root span becoming its child. Wrapper is OPTIONAL (runtimes that already provide a transport-level parent span MAY skip it). Span name + attributes are harness-implementation-defined; turn-level attributes follow §5.6 (`openarmature.session_id` in sessioned mode) and §5.8 (suspension descriptor attributes on signal-resume turns). See the harness capability spec for the full contract by [proposal 0022](../../proposals/0022-harness-contract.md)
-- §5.5.4 observer-level privacy flag renamed `disable_llm_payload` → `disable_provider_payload`; semantics broadened to cover payload from any provider call (LLM completion + embedding + rerank when it lands) rather than LLM-only — same default-conservative posture (default `True`); cross-references in §8 + graph-engine §6 updated. New §5.5.8 *Embedding provider attributes* sub-subsection covering OTel mapping for `EmbeddingProvider.embed()` calls — span name `openarmature.embedding.complete`, Stable GenAI semconv attribute subset (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.response.id`, `gen_ai.usage.input_tokens`), OA-namespace `openarmature.embedding.*` attributes (`input_count`, `dimensions`, payload-gated `input.strings` + `request.extras`); the upstream `gen_ai.operation.name` attribute deferred per the stable-only adoption policy (operation discrimination via span name + provider). New §5.5.9 *Typed embedding events* sub-subsection framing the `EmbeddingEvent` + `EmbeddingFailedEvent` typed-event surface as the structured form of the embedding-span attribute surface (paralleling §5.5.7 for LLM completion). New §8.4.5 *Embedding-specific mapping* sub-subsection covering Langfuse mapping — embedding calls render as a dedicated `Embedding` observation type (created via the SDK's `asType: "embedding"`), NOT `Generation` with operation metadata; both `input` strings and `output` vectors are payload-bearing and gated by `disable_provider_payload` under the vec2text-aware privacy posture by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
+- §5.5.4 observer-level privacy flag renamed `disable_llm_payload` → `disable_provider_payload`; semantics broadened to cover payload from any provider call (LLM completion + embedding + rerank when it lands) rather than LLM-only, same default-conservative posture (default `true`); cross-references in §8 + graph-engine §6 updated. New §5.5.8 *Embedding provider attributes* sub-subsection covering OTel mapping for `EmbeddingProvider.embed()` calls: span name `openarmature.embedding.complete`, Stable GenAI semconv attribute subset (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.response.id`, `gen_ai.usage.input_tokens`), OA-namespace `openarmature.embedding.*` attributes (`input_count`, `dimensions`, payload-gated `input.strings` + `request.extras`); the upstream `gen_ai.operation.name` attribute deferred per the stable-only adoption policy (operation discrimination via span name + provider). New §5.5.9 *Typed embedding events* sub-subsection framing the `EmbeddingEvent` + `EmbeddingFailedEvent` typed-event surface as the structured form of the embedding-span attribute surface (paralleling §5.5.7 for LLM completion). New §8.4.5 *Embedding-specific mapping* sub-subsection covering Langfuse mapping: embedding calls render as a dedicated `Embedding` observation type (created via the SDK's `asType: "embedding"`), NOT `Generation` with operation metadata; both `input` strings and `output` vectors are payload-bearing and gated by `disable_provider_payload` under the vec2text-aware privacy posture by [proposal 0059](../../proposals/0059-retrieval-provider-embedding.md)
 - §4.4 *Detached trace mode* updated so a detached OTel trace roots in its own `openarmature.invocation` span carrying the **same** `invocation_id` as the parent invocation (detached mode is an observer-side trace-rendering choice, not an engine-level sub-invocation, so the run identity is unchanged), with the detached unit's spans nested under it — replacing the prior "spans use the new `trace_id` as their root, not children of any invocation span" shape; §4.1 *Span timing* gained a detached-invocation-span window paragraph (the detached-unit window, not the outer `invoke()` window); §4.2 *Status mapping* gained a *Detached invocation span status* note (the detached unit's own outcome — a raising detached subgraph surfaces `ERROR` on both the parent dispatch span and the detached invocation span); §4.3 gained a *Detached-dispatch invocation spans* paragraph pinning the shared-`invocation_id` correlation (`trace_id` = per-backend rendering identity, `invocation_id` = shared engine-level run identity, distinct from checkpoint-resume's fresh `invocation_id`); §5.1 + §4.5 gained multiple-invocation-spans-per-run notes (the always-emit attribution invariant applies to each invocation span); §8.4.1 gained a detached-trace attribution-sourcing note (no normative Langfuse change). Reconciles the contradicting expected span trees in conformance fixtures `008-otel-detached-trace-mode` and `058-implementation-attribution-otel`; no graph-engine change by [proposal 0061](../../proposals/0061-detached-trace-invocation-span.md)
 - §8.4.1 Trace-level mapping gained two rows — `openarmature.session_id` → `trace.sessionId` (groups every trace sharing a session id into one Langfuse Session) and a recognized `userId` caller-metadata key → `trace.userId` (Langfuse's Users dimension; additive — the key also remains at `trace.metadata.userId`; recognized, not reserved) — plus a *Session / user trace-field sourcing* paragraph (the MUST-set / unset rules, the OTel-has-no-trace-level-equivalent asymmetry, and multi-invocation / detached / suspend-resume grouping semantics). §8.1 and the §8.4 *Distinction from Langfuse Sessions / Users* note updated to record that Sessions / Users grouping is now realized; §8.10's *Langfuse Sessions* out-of-scope bullet removed (realized — the sessions capability, proposal 0020, is Accepted). New conformance fixture `084-langfuse-session-user-promotion`; no OTel-side change by [proposal 0064](../../proposals/0064-observability-langfuse-session-user-promotion.md)
 - §5.5 gained a *GenAI semconv attribute adoption* framing note recording that the emitted `gen_ai.*` attributes are adopted under the new GenAI **de-facto-standard carve-out** (`GOVERNANCE.md` *External-dependency adoption*): recognized **core** names are emitted directly even though the upstream GenAI semantic conventions are wholly Development (they moved to the dedicated `semantic-conventions-genai` repo — 96 attributes Development, none Stable), while **peripheral** Development attributes are mirrored to `openarmature.*` (§5.5.3.1) until Stable or demonstrably ubiquitous — the deciding line being installed-base recognition, not the upstream maturity label. §5.5.3's `gen_ai.system` entry notes the attribute is **retained** per the new **post-adoption retention** rule even though upstream removed it in favor of `gen_ai.provider.name` (migration deferred); the §5.5.3.1 and §5.5.8 *until upstream Stable* wording is reconciled to *Stable or demonstrably ubiquitous*. Reframes adoption rationale only — no emitted attribute changes, existing `gen_ai.*` fixtures remain valid — and adds the de-facto-standard carve-out + retention rule to `GOVERNANCE.md`, correcting `docs/compatibility.md` accordingly by [proposal 0073](../../proposals/0073-genai-semconv-adoption-reconciliation.md)
@@ -3514,7 +3514,7 @@ spec:
 - §8.9 *Composition with OTel* gained a **Client ownership** contract requiring implementations to support both a caller-constructed Langfuse client and constructing the client from caller-supplied credentials (closing a cross-implementation divergence the section previously left open); §6 *Driving span lifecycle* extended the TracerProvider-isolation subsection to openarmature's **Langfuse observations** with obligations that track which party controls the provider — where the implementation constructs the client it SHOULD isolate the client's provider by default and MUST isolate where a shared provider would defeat an OTel-side `disable_provider_payload` suppression; where the caller supplies the client the implementation MUST NOT mutate or misrepresent it, SHOULD document the remedy, and MAY warn best-effort (reading a supplied client's provider is not portably guaranteed); the §6 rationale list's `Langfuse v3` example updated to `Langfuse v4`. No new fixtures — the contract concerns observer construction and provider wiring, outside the graph-run fixture vocabulary by [proposal 0114](../../proposals/0114-langfuse-client-provider-isolation.md)
 - §6 *Driving span lifecycle* replaced the mode-(b) Langfuse-isolation obligation with a **payload-leak invariant**: when the implementation constructs the client and the Langfuse observer emits payloads, openarmature **MUST** keep them off a provider shared with the application — isolate (SHOULD, the default), **raise** `langfuse_provider_isolation_unavailable` where it establishes the observations would reach a shared provider, or **suppress** its own Langfuse-side payload where it cannot establish the binding (best-effort detection, since reading the client's bound provider rests on non-portable SDK internals with no cross-language guarantee — the same fact that makes the mode-(a) warn a MAY), with a single explicit caller opt-out to accept a shared provider. The detection keys on the leak condition (a provider not among those openarmature established as isolated), not on identity with the provider supplied on a given call. Defines the `langfuse_provider_isolation_unavailable` error category, carves the *No hard failure* rule for the one detected-leak / not-opted-in case, and rewords the *isolation trade-off* paragraph. New fixture **158** gates the raise (on adapters declaring bound-provider detection) and the suppress floor (on adapters without it) and the opt-out path. Closes the Langfuse-SDK per-credential-singleton gap that could silently defeat 0114's mode-(b) isolation by [proposal 0116](../../proposals/0116-langfuse-isolation-fail-loud.md)
 - §6 *Driving span lifecycle* broadened the mode-(b) payload-leak invariant (proposal 0116) from the provider-payload channel to **every channel openarmature emits harvested payload through** — adding the Trace-level **state payload** (`disable_state_payload` + the `trace_*_from_state` hooks, §8.4.1) and a failed Tool/Embedding/Retriever observation's **error message** (§8.4.5–§8.4.7, ungated by any privacy knob) — with an explicit **exemption** for the caller-attached identity/correlation dimensions (`correlation_id`, `session_id`, the promoted `userId`, trace name, caller metadata) as opaque cross-backend join keys the caller owns. The construction-time raise/suppress arms cover the provider + state channels (gated on a live payload channel); the error-message channel is handled per-emission (omit to a not-established-isolated provider, category only — a failed Tool observation has no error category, so nothing message-derived is surfaced). Reconciled the §6 section-level paragraphs (subsection lead-in, *No hard failure*, *isolation trade-off*), the §8.4 header and §8.4.1 / §8.4.2 / §8.4.5–§8.4.7 mappings (adding the §8.4.2 `error_type` / `error_message` row, in-cell-scoped to the three failed provider observations), and fixed the now-false "only metadata and span structure" clause. Fixture **158** gains six cases (state-raises, hook-raises, error-message-omitted, tool-failure-omitted, state-suppress, hook-suppress) by [proposal 0117](../../proposals/0117-payload-leak-invariant-channels.md)
-- §5.5.4 *Opt-out flags* extended `disable_provider_payload` to gate a failed provider call's harvested exception **text** (the `error_message` field the Langfuse mapping writes to `observation.metadata`), so the default posture withholds it. `error_type` is deliberately **not** gated: it is a classification token, so suppressing it buys no privacy while removing the only failure discriminator on a Tool observation, which has no error category (conformance-adapter §6.4's payload-bearing classification is narrowed to match). §8.7 lists the message in both the flag-`False` emission set and the flag-`True` suppression set. Langfuse-side only, since the OTel surface defines no `error_message` attribute and its `record_exception` path is unaffected. §8.4.2 / §8.4.3 additionally added the failed **LLM Generation** to the mapped error-message surfaces, which proposal 0117 had excluded on the rationale that a Generation's error output is the payload-gated `generation.output`; that holds only for `structured_output_invalid`, while every other failure category carries no output, leaving the exception message (`LlmFailedEvent` §5.5.7) as its only harvested error content. §6 **retired 0117's per-emission error-message rule**, which the flag makes unreachable in every configuration, keeping the suppress-all arm's coverage of the error message and the Tool anti-smuggling MUST NOT, and reconciled the *No hard failure* and *isolation trade-off* paragraphs. New fixture **159** (`langfuse-llm-failure-error-message`, two cases) gates the flag on a normal provider: flag on withholds the message while `error_type` and the category are retained, flag off emits it. Five shipped fixtures that asserted the message present under the default posture were **reconciled in the same change** (137 / 138 assert it absent; 150 / 151 / 098's failure case move to the flag-off configuration their literal assertions require), since leaving them would have made the corpus unsatisfiable. **098** gained a default-posture case carrying the Tool anti-smuggling clause for every adapter, and **123**'s payload-disabled case gained `metadata_absent: [error_message]`, gating the `structured_output_invalid` leak this change exists to close. Fixture **158**'s two error-message cases were repointed to the flag-off suppress arm, where they gate suppress-all covering the message. conformance-adapter §5.5 gained `metadata_absent` for the absence assertions this requires by [proposal 0118](../../proposals/0118-llm-error-message-channel.md)
+- §5.5.4 *Opt-out flags* extended `disable_provider_payload` to gate a failed provider call's harvested exception **text** (the `error_message` field the Langfuse mapping writes to `observation.metadata`), so the default posture withholds it. `error_type` is deliberately **not** gated: it is a classification token, so suppressing it buys no privacy while removing the only failure discriminator on a Tool observation, which has no error category (conformance-adapter §6.4's payload-bearing classification is narrowed to match). §8.7 lists the message in both the flag-`false` emission set and the flag-`true` suppression set. Langfuse-side only, since the OTel surface defines no `error_message` attribute and its `record_exception` path is unaffected. §8.4.2 / §8.4.3 additionally added the failed **LLM Generation** to the mapped error-message surfaces, which proposal 0117 had excluded on the rationale that a Generation's error output is the payload-gated `generation.output`; that holds only for `structured_output_invalid`, while every other failure category carries no output, leaving the exception message (`LlmFailedEvent` §5.5.7) as its only harvested error content. §6 **retired 0117's per-emission error-message rule**, which the flag makes unreachable in every configuration, keeping the suppress-all arm's coverage of the error message and the Tool anti-smuggling MUST NOT, and reconciled the *No hard failure* and *isolation trade-off* paragraphs. New fixture **159** (`langfuse-llm-failure-error-message`, two cases) gates the flag on a normal provider: flag on withholds the message while `error_type` and the category are retained, flag off emits it. Five shipped fixtures that asserted the message present under the default posture were **reconciled in the same change** (137 / 138 assert it absent; 150 / 151 / 098's failure case move to the flag-off configuration their literal assertions require), since leaving them would have made the corpus unsatisfiable. **098** gained a default-posture case carrying the Tool anti-smuggling clause for every adapter, and **123**'s payload-disabled case gained `metadata_absent: [error_message]`, gating the `structured_output_invalid` leak this change exists to close. Fixture **158**'s two error-message cases were repointed to the flag-off suppress arm, where they gate suppress-all covering the message. conformance-adapter §5.5 gained `metadata_absent` for the absence assertions this requires by [proposal 0118](../../proposals/0118-llm-error-message-channel.md)
 - §8.4 *Attribute mapping table* and §6 added the **exhaustive-mapping rule** (elevating proposal 0117's Open Question #2 to normative): the §8.4.x tables are the complete definition of the **harvested content** openarmature renders to Langfuse, so a harvested error message / content field is emitted only where a table maps it (there, subject to §6's rule) and harvested content no table maps — a stacktrace, or the exception detail on a framework-emitted observer event the tables do not render (e.g. the failure-isolation event's `caught_exception`, pipeline-utilities §6.3) — is **non-conforming over-emission** that **MUST NOT** be written to any Langfuse observation; such detail reaches consumers through the surface that owns it (openarmature's OTel span via `record_exception` where the error propagates, else the typed observer event itself). Caller-**attached** dimensions (the failure-isolation `event_name`, the §6-exempt identity/correlation tags) stay governed by the harvest-vs-attach exemption. §8.4.2 additionally states that framework-emitted observer events the tables do not render — notably the failure-isolation event, which carries neither `NodeEvent.error` nor a §4 category — have no mapping there at all. Closes the invariant's channel enumeration after the failure-isolation event's caught-exception message surfaced as a second missed emission site. That event is observer-event-only (§6.3), carrying neither `NodeEvent.error` nor a §4 category, and the §8.4.x tables render it nowhere, so it was never a fifth channel: any Langfuse `error_message` on it is an emission the tables never defined. The rule forbids such emission, so it is gated by the mapping tables themselves rather than by a fixture by [proposal 0118](../../proposals/0118-llm-error-message-channel.md)
 - §7 *Log correlation* gained a **Diagnostic event names** rule: a log record openarmature emits to signal one of the conditions the section's table enumerates MUST carry that condition's event name on the OTel `LogRecord` `EventName` field, in the `openarmature.` namespace and never reworded once shipped. The table is the complete set and the rule reaches exactly what it lists; a record the table does not name carries no obligation and an implementation MUST NOT invent a name for one. Five diagnostics are enumerated, and every emission site the table names cross-references its row. Fixture 158's six `WARNING` cases gain `event_name` assertions, and twelve cases across eleven fixtures migrate off a bare case-level OTel observer flag onto the new `otel_observer` directive. Adopting the `EventName` field is distinct from adopting an upstream event name; the Event semantic conventions remain Development by [proposal 0121](../../proposals/0121-diagnostic-event-names-and-otel-observer-directive.md)
 - §5.5.5 *Truncation contract* generalized from an enumerated list of `openarmature.*` span attributes to **every payload-classified value**, with the cap applied by the backend mapping that writes a value having no span-attribute source, and a note that the marker is appended to a plain string for a value that was never JSON-encoded. §8.7 gained the direct-application arm for a failed observation's `metadata.error_message` under the Langfuse observer's own cap; §5.5.4 states that a message the payload flag permits is subject to the cap. §3.4 reserved four further exact names (`error_type`, `error_message`, `token_budget`, `token_budget_exceeded`) and extended the reserved-namespace rule to `openarmature_`, closing the nine underscore-prefixed keys §8.4.5 to §8.4.7 write, with §3.4's maintenance rule reconciled so a key already under a reserved namespace needs no redundant exact-match entry. The generalization reaches the operative rules, not only the framing: the cap, the truncation algorithm and the measurement basis are stated over a **value** rather than an attribute, the OTel `record_exception` path is carved out explicitly as one §5.5.4 keeps full, and the two source-less
@@ -3524,3 +3524,4 @@ values are stated to be strings so the rule does not silently reach a structured
 - §5.5's baseline attributes gain **`openarmature.llm.structured_output.path`**, set on an LLM provider span when the call supplied a `response_schema` and sent a request, and never otherwise; a classification, not payload-gated. §5.5.7 gains **A schema the provider did not honor**: for each wire attempt of a `complete()` call, including an attempt call-level retry catches, an implementation MUST emit exactly one `WARNING` log record, however many observers are attached, when the attempt failed `structured_output_invalid` with content that is not well-formed JSON or not a JSON object, on the `"native"` path, with `finish_reason` `"stop"` and no stop sequence on its request, declared or under the mapping's stop key in its extras. It keys on malformed or non-object content alone, because vendors document schema non-conformance on a normal finish but promise well-formed JSON, and it is evaluated per attempt so that a reask that recovers cannot hide it. The record is advisory and MUST NOT by itself cause a retry, a path change or an altered request, and it carries `openarmature.llm.provider`, `openarmature.llm.model`, `openarmature.llm.call_id` and `openarmature.llm.attempt_index`. §5.5.2's absence rule reads per request, so each attempt's span reports its own request parameters. §11 takes a caught attempt's duration, `error.type` and token-usage samples from the implementation's record of that attempt, since it has no typed event, and §11.3's `error.type` applies per attempt. §7's *Diagnostic event names* table gains `openarmature.structured_output.schema_not_honored` (MUST) by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)
 - §11.5 *Conformance support*: the metric-capture primitive records each measurement individually, as a recording hook sees it, rather than through an aggregating in-memory `MetricReader`, so conformance-adapter §5.8's complete `metrics` list can count a repeated recording by [proposal 0127](../../proposals/0127-assertion-matching-rules.md)
 - §2, §3.4, §4.4, §4.5, §5.5.7, §5.5.9, §5.5.12, §5.5.14 and §6 use language-neutral notation. The Python configuration example and the observer and middleware code blocks become prose and pseudo-code, the `isinstance(...)` examples name the event type an observer filters on, single-language names such as `add_subgraph_node` and `ContextVar` become plain words, and the middleware-driven block restores the previous current span when its span ends. No behavior change; spec v0.120.1 (clarification, no proposal)
+- §3.4, §5.5, §5.5.4, §5.5.6, §5.5.13, §6, §8.4 to §8.4.7, §8.7, §8.9 and §11.1 use language-neutral notation. Python's `None`, `True` and `False` become `null`, `true` and `false`, keyword arguments are written `name: value`, and §3.4's metadata type is `dict<string, AttributeValue>`. §8.4.1's trace hooks are written as returning `InputValue` and `OutputValue`, with the null return stated in the text that follows. No behavior change; spec v0.120.2 (clarification, no proposal)
