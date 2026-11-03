@@ -30,7 +30,7 @@
 cases:
   - name: extras_response_format_conflicts_with_schema_rejected_pre_send
     description: |
-      complete(response_schema=..., config={extras: {response_format: {type:
+      complete(response_schema: ..., config: {extras: {response_format: {type:
       "json_object"}}}). The mapping constructs response_format from the schema
       (§8.1.5); the caller's extras response_format — an UNDECLARED key — names
       that managed field. `{type: "json_object"}` (unconstrained JSON) conflicts
@@ -69,7 +69,7 @@ cases:
 
   - name: extras_response_format_without_schema_rides_untouched
     description: |
-      complete(config={extras: {response_format: {type: "json_object"}}}) with
+      complete(config: {extras: {response_format: {type: "json_object"}}}) with
       NO response_schema. The mapping produces NO response_format (§8.1.5 — the
       request body MUST NOT include it for free-form calls), so response_format
       is UNMANAGED here: the extras response_format rides the extras bag

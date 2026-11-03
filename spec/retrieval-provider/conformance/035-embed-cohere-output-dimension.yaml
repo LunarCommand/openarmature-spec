@@ -40,7 +40,7 @@ cohere_embedding_provider:
 cases:
   - name: dimensions_maps_to_output_dimension_field
     description: |
-      embed(config={dimensions: 8}) — the §8.4 mapping sends Cohere's
+      embed(config: {dimensions: 8}): the §8.4 mapping sends Cohere's
       `output_dimension` field (Matryoshka truncation) alongside {model,
       input_type: "search_document", texts, embedding_types: ["float"],
       truncate: "NONE"}. No input_type supplied, so the mandatory-field

@@ -90,7 +90,7 @@ cases:
 
   - name: embed_dimensions_maps_to_tei_dimensions_field
     description: |
-      embed(config={dimensions: 4}) — the §8.1 mapping sends TEI's
+      embed(config: {dimensions: 4}): the §8.1 mapping sends TEI's
       `dimensions` field alongside the inputs array. Single input; the
       response is a one-element vector array of length 4. Confirms the
       dimensions request-param maps onto the wire and the response shape

@@ -19,7 +19,7 @@ backends:
 cases:
   - name: placeholder_injection_empty_list_valid
     description: |
-      Render with placeholders={"history": []} (the first-turn / no-
+      Render with placeholders: {"history": []} (the first-turn / no-
       prior-messages case for a chat-history layer). Asserts the
       resulting PromptResult.messages is [system, final-user] (length
       2) with no render error. Empty-list injection contributes zero

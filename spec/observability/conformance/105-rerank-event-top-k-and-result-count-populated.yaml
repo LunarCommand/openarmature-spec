@@ -55,7 +55,7 @@ cases:
 
   - name: top_k_null_when_caller_passed_none
     description: |
-      rerank() called without top_k (None) over 3 documents; provider
+      rerank() called without top_k (null) over 3 documents; provider
       returns 3 results. The typed event carries top_k=null,
       document_count=3, result_count=3.
     state:

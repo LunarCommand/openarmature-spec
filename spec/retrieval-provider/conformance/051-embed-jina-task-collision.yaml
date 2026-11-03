@@ -35,7 +35,7 @@ jina_embedding_provider:
 cases:
   - name: conflicting_extras_task_with_input_type_rejected_pre_send
     description: |
-      embed(config={input_type: "query", extras: {task: "text-matching"}}). The
+      embed(config: {input_type: "query", extras: {task: "text-matching"}}). The
       §8.2 mapping realizes input_type "query" as the wire `task`
       "retrieval.query"; the caller's extras `task` (the WIRE name, an UNDECLARED
       key) names that managed realization, and "text-matching" CONFLICTS with
@@ -72,7 +72,7 @@ cases:
 
   - name: extras_task_without_input_type_rides_untouched
     description: |
-      embed(config={extras: {task: "text-matching"}}) with NO input_type. The
+      embed(config: {extras: {task: "text-matching"}}) with NO input_type. The
       mapping produces no `task` (input_type absent), so `task` is UNMANAGED and
       the extras value rides the bag untouched onto the wire — the escape hatch
       that carries a model-specific task value (e.g. Jina's "text-matching") the

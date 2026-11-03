@@ -49,7 +49,7 @@ cohere_embedding_provider:
 cases:
   - name: conflicting_extras_truncate_rejected_pre_send
     description: |
-      embed(config={extras: {truncate: "END"}}) — the caller supplies an
+      embed(config: {extras: {truncate: "END"}}): the caller supplies an
       extras `truncate` that CONFLICTS with the mapping's managed
       `truncate: "NONE"`. Honoring "END" would make Cohere silently truncate an
       over-length input the §8.4 mapping deliberately fails loud on, defeating
@@ -89,7 +89,7 @@ cases:
 
   - name: matching_extras_truncate_is_noop
     description: |
-      embed(config={extras: {truncate: "NONE"}}) — the caller supplies an
+      embed(config: {extras: {truncate: "NONE"}}): the caller supplies an
       extras `truncate` EQUAL to the mapping's managed `truncate: "NONE"`. Per
       §6's reject arm, a value equal to the managed value is a redundant no-op:
       the mapping does NOT reject, and the normal /v2/embed request goes out

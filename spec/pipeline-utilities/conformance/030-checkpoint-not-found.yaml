@@ -8,7 +8,7 @@ cases:
   - name: resume_against_empty_checkpointer
     description: |
       Trivial single-node graph; in-memory Checkpointer attached but never
-      populated (no prior invocation). Call invoke(resume_invocation="ghost")
+      populated (no prior invocation). Call invoke(resume_invocation: "ghost")
       directly without a successful first run. Assert checkpoint_not_found
       raised.
     state:
@@ -35,9 +35,9 @@ cases:
     description: |
       Run two unrelated invocations to populate the checkpointer with two
       records (each with its own invocation_id). Then call
-      invoke(resume_invocation="never-existed") with a fabricated id that
+      invoke(resume_invocation: "never-existed") with a fabricated id that
       doesn't match either saved record. Assert checkpoint_not_found —
-      the load returned None for that specific id even though OTHER
+      the load returned null for that specific id even though OTHER
       records exist.
     state:
       fields:

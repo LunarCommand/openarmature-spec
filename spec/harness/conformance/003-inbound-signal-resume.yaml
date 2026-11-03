@@ -12,7 +12,7 @@ cases:
       synthetic signal subscription. Second transmission carries the
       resume signal (with the paused invocation_id); the harness
       classifies as §3.3 and invokes
-      invoke(resume_invocation=<id>, signal_payload=<payload>).
+      invoke(resume_invocation: <id>, signal_payload: <payload>).
     harness:
       mode: sessioned
       signal_coordinator: in_memory

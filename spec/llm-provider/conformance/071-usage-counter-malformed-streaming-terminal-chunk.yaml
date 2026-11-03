@@ -17,7 +17,7 @@
 cases:
   - name: malformed_terminal_chunk_counter_nulled_sound_counters_stand_verbatim_on_raw
     description: |
-      A complete(stream=True) call. The mocked SSE stream yields one content
+      A complete(stream: true) call. The mocked SSE stream yields one content
       chunk ("Hi.", finish_reason stop), then a terminal empty-choices usage
       chunk carrying {prompt_tokens: "abc", completion_tokens: 3,
       total_tokens: 10}, then [DONE]. The malformed terminal-chunk prompt_tokens

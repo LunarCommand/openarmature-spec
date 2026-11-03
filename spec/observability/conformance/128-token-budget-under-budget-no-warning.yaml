@@ -20,7 +20,7 @@ cases:
       One LLM-calling node that renders a budgeted prompt (input_max_tokens
       40, no total bound) and then calls the LLM. The mock returns usage
       {prompt 20, completion 1, total 21}; prompt_tokens 20 <= input_max_tokens
-      40, so NO bound is exceeded. enable_metrics=True. The harness asserts:
+      40, so NO bound is exceeded. enable_metrics: true. The harness asserts:
       - LlmCompletionEvent.token_budget populated {input_max_tokens 40,
         total_max_tokens null}
       - openarmature.llm.token_budget.exceeded = false span attribute

@@ -14,7 +14,7 @@
 cases:
   - name: token_events_dispatched_in_chunk_order_concatenate_to_content
     description: |
-      One LLM-calling node invoked with stream=True. The mock yields three
+      One LLM-calling node invoked with stream: true. The mock yields three
       content chunks ("Hel", "lo ", "world") then a terminal usage chunk. The
       harness asserts:
       - exactly three LlmTokenEvents, delta_kind="content", chunk_index 0,1,2

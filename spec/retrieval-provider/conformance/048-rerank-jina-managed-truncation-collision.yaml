@@ -37,7 +37,7 @@ jina_rerank_provider:
 cases:
   - name: conflicting_extras_truncation_rejected_pre_send
     description: |
-      rerank(config={extras: {truncation: true}}) against Jina /v1/rerank,
+      rerank(config: {extras: {truncation: true}}) against Jina /v1/rerank,
       which sends the managed `truncation: false` fail-loud flag. The extras
       `truncation: true` CONFLICTS with the managed `false`: honoring it would
       make Jina silently truncate an over-length (query, document) pair,
@@ -78,7 +78,7 @@ cases:
 
   - name: matching_extras_truncation_is_noop
     description: |
-      rerank(config={extras: {truncation: false}}) — the caller supplies an
+      rerank(config: {extras: {truncation: false}}): the caller supplies an
       extras `truncation` EQUAL to the mapping's managed `truncation: false`.
       Per §6's reject arm, a matching value is a redundant no-op: the mapping
       does NOT reject, and the normal /v1/rerank request goes out with

@@ -58,7 +58,7 @@ cohere_embedding_provider:
 cases:
   - name: extras_embedding_types_merged_with_managed_float
     description: |
-      embed(config={extras: {embedding_types: ["int8"]}}) — the caller wants
+      embed(config: {extras: {embedding_types: ["int8"]}}): the caller wants
       the int8 precision alongside the float vectors OA consumes. The §8.4
       mapping MUST MERGE the extras value with its mandatory "float": the
       /v2/embed wire request carries embedding_types: ["float", "int8"] —
@@ -152,7 +152,7 @@ cases:
 
   - name: extras_embedding_types_multiple_precisions_merged
     description: |
-      embed(config={extras: {embedding_types: ["int8", "uint8"]}}) — MORE
+      embed(config: {extras: {embedding_types: ["int8", "uint8"]}}): MORE
       than one extra precision, proving the merge is a general union and not
       a two-element special case. The wire request MUST carry
       embedding_types: ["float", "int8", "uint8"] — the managed "float" plus
@@ -247,7 +247,7 @@ cases:
 
   - name: extras_embedding_types_naming_float_is_deduplicated
     description: |
-      embed(config={extras: {embedding_types: ["float", "int8"]}}) — the
+      embed(config: {extras: {embedding_types: ["float", "int8"]}}): the
       caller names "float" EXPLICITLY, alongside a precision. §8.4's merge is
       de-duplicating: the wire request MUST carry embedding_types:
       ["float", "int8"] — "float" appears ONCE, not twice. This pins the

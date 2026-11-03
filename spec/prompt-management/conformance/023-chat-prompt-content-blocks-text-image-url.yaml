@@ -27,7 +27,7 @@ cases:
     description: |
       Two-segment chat_template; the user segment uses content-blocks
       content (text block + URL-source image block). Render with
-      variables={product: "widget", photo_url:
+      variables: {product: "widget", photo_url:
       "https://example.com/widget.png"}. Asserts the PromptResult has
       two Messages; the user Message's content is a content-block
       sequence of length 2 mirroring llm-provider §3.1 shapes — a text

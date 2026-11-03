@@ -36,7 +36,7 @@ cases:
 
   - name: disable_state_payload_off_raw_state_emitted
     description: |
-      Lever 2. `disable_state_payload=False`; no hooks. The observer
+      Lever 2. `disable_state_payload: false`; no hooks. The observer
       serializes `initial_state` → `trace.input` and final state →
       `trace.output`, subject to the existing payload-byte-cap truncation
       (§5.5.5).

@@ -10,7 +10,7 @@
 cases:
   - name: otel_one_llm_span_no_per_token_children_under_stream
     description: |
-      A stream=True call with the default OTel observer (payload enabled here so
+      A stream: true call with the default OTel observer (payload enabled here so
       the assembled output is asserted). The mock streams "Hel"/"lo "/"world".
       The harness asserts exactly one openarmature.llm.complete span parented
       under the node span, with NO per-token child spans (children: []) and
@@ -64,7 +64,7 @@ cases:
   - name: langfuse_one_generation_no_per_token_observations_under_stream
     description: |
       The same streamed call with the bundled Langfuse observer
-      (disable_provider_payload=False). The harness asserts exactly one
+      (disable_provider_payload: false). The harness asserts exactly one
       Generation observation under the node span, with the full assembled
       output ("Hello world") and NO per-token child observations.
     state:

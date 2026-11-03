@@ -36,7 +36,7 @@ cases:
     description: |
       One LLM call that fails at the wire (mock_llm status: 503 ->
       provider_unavailable §7 category), with disable_provider_payload at its
-      default True. The failed Generation MUST emit at ERROR level with
+      default true. The failed Generation MUST emit at ERROR level with
       statusMessage = "provider_unavailable" (the error category is not
       payload and is always retained), MUST carry error_type (a classification
       token, not gated), and MUST NOT carry error_message: the payload flag
@@ -96,7 +96,7 @@ cases:
 
   - name: llm_failure_error_message_emitted_with_payload_flag_off
     description: |
-      The same LLM failure with disable_provider_payload=False. Now the
+      The same LLM failure with disable_provider_payload: false. Now the
       harvested exception text IS permitted, so the failed Generation carries
       error_type / error_message in metadata (asserted by format, since the
       values are impl-sourced). The request-side `input` populates, but

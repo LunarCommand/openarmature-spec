@@ -22,7 +22,7 @@ cases:
     description: |
       Truncation failure (mock returns truncated JSON, finish_reason
       "length", usage with completion_tokens at the max_tokens ceiling)
-      through the OTel observer with disable_provider_payload=False. The
+      through the OTel observer with disable_provider_payload: false. The
       openarmature.llm.complete span MUST be ERROR with status_description
       "structured_output_invalid" + a recorded exception, AND carry
       openarmature.llm.output.content (the raw bytes),
@@ -95,7 +95,7 @@ cases:
   - name: otel_error_span_payload_disabled_redacts_output_keeps_usage_finish_reason
     description: |
       The same truncation failure through the OTel observer with the
-      default disable_provider_payload=True. openarmature.llm.output.content
+      default disable_provider_payload: true. openarmature.llm.output.content
       is absent (the payload-gated attribute), while
       openarmature.llm.finish_reason, the openarmature.llm.usage.*
       attributes, the ERROR status, and the recorded exception are

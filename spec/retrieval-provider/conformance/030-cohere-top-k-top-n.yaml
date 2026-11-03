@@ -31,7 +31,7 @@ cohere_rerank_provider:
 cases:
   - name: top_k_maps_to_wire_top_n
     description: |
-      rerank(top_k=2) over 3 documents. The wire request MUST carry
+      rerank(top_k: 2) over 3 documents. The wire request MUST carry
       top_n: 2 (top_k -> Cohere's top_n parameter), alongside {model,
       query, documents: [...3...]} with NO return_documents / truncation
       keys and the Authorization: Bearer <api_key> header. The mocked

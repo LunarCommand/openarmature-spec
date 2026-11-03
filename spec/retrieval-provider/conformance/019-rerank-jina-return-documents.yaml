@@ -52,9 +52,9 @@ cases:
   - name: return_documents_default_false_overrides_jina_wire_default
     description: |
       3 documents, DEFAULT config (no return_documents field => OA default
-      False). The wire request MUST carry return_documents: false
+      false). The wire request MUST carry return_documents: false
       EXPLICITLY — overriding Jina's `true` wire default — so OA's
-      default-False is honored on the wire. The mocked Jina response omits
+      default false is honored on the wire. The mocked Jina response omits
       `document` on each result (Jina echoes nothing when return_documents
       is false), so every ScoredDocument.document MUST be null. Response
       UNSORTED ([{0, 0.42}, {1, 0.91}, {2, 0.08}]) => sorted descending.
@@ -125,7 +125,7 @@ cases:
 
   - name: return_documents_true_populates_document_echo
     description: |
-      Same 3 documents with config return_documents=True. The wire request
+      Same 3 documents with config return_documents: true. The wire request
       MUST carry return_documents: true. The mocked Jina response echoes
       `document` per result; the adapter MUST surface it verbatim on
       ScoredDocument.document (§6 — the provider's echo, NOT the input
@@ -198,7 +198,7 @@ cases:
 
   - name: document_echo_textdoc_object_unwraps_to_text
     description: |
-      Same 3 documents with config return_documents=True, but Jina echoes
+      Same 3 documents with config return_documents: true, but Jina echoes
       each `document` as a TextDoc OBJECT ({"text": str}) — the shape the
       text reranker typically returns (§8.2). Realizing §6's object-echo
       rule, the mapping MUST surface the object's `text` string on
@@ -273,7 +273,7 @@ cases:
 
   - name: document_echo_imagedoc_object_maps_to_null
     description: |
-      Same 3 documents with config return_documents=True, but Jina echoes
+      Same 3 documents with config return_documents: true, but Jina echoes
       each `document` as an ImageDoc OBJECT ({"image": str}) — a documented
       Jina member shape with no string `text` (§8.2). Per §6's object-echo
       rule, an object without a string `text` surfaces null on
@@ -349,7 +349,7 @@ cases:
 
   - name: document_echo_mixed_shapes_per_result
     description: |
-      ONE response, 4 documents with config return_documents=True, whose
+      ONE response, 4 documents with config return_documents: true, whose
       results echo DIFFERENT `document` shapes per result — exercising §6's
       per-result shape variance: index 0 = bare STRING, index 1 = TextDoc
       object, index 2 = ImageDoc object, index 3 = ABSENT (no `document`
@@ -434,7 +434,7 @@ cases:
 
   - name: document_echo_empty_string_present_distinct_from_absent
     description: |
-      Same query with config return_documents=True over 2 documents. One
+      Same query with config return_documents: true over 2 documents. One
       result echoes an EMPTY STRING (document: "") — present, zero-length —
       the other OMITS `document` (absent). Per §6 an empty string is
       *present* and MUST surface as "" (NOT folded to null), while an absent
@@ -506,7 +506,7 @@ cases:
 
   - name: document_echo_non_object_scalar_raises_provider_invalid_response
     description: |
-      config return_documents=True, but Jina echoes `document` as a bare
+      config return_documents: true, but Jina echoes `document` as a bare
       NUMBER (123) on a result — a value outside document: anyOf[string,
       TextDoc, ImageDoc, null] (§8.2), i.e. neither a string, an object,
       nor null. Per §6 / §8.2 that is not a valid document shape and is a

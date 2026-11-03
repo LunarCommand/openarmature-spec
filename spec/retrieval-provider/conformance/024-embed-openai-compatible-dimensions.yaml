@@ -29,7 +29,7 @@ openai_embedding_provider:
 cases:
   - name: dimensions_maps_to_wire_dimensions_field
     description: |
-      embed(config={dimensions: 4}) — the §8.3 mapping sends OpenAI's
+      embed(config: {dimensions: 4}): the §8.3 mapping sends OpenAI's
       `dimensions` field (Matryoshka truncation) alongside {model, input}.
       No input_type, so there is NO query/document field on the wire (the
       OpenAI wire has none regardless). Single input; the response is a

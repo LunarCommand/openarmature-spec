@@ -41,7 +41,7 @@ openai_embedding_provider:
 cases:
   - name: base64_encoding_decodes_to_float_vectors_in_input_order
     description: |
-      embed() over 3 inputs with config={extras: {encoding_format:
+      embed() over 3 inputs with config: {extras: {encoding_format:
       "base64"}}. The wire request carries encoding_format: "base64" (the
       extras key rides untouched). The mocked OpenAI response returns
       data[].embedding as base64 STRINGS, emitted out of order (index 2,

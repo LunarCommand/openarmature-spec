@@ -22,7 +22,7 @@ cases:
     description: |
       Truncation failure (mock returns truncated JSON, finish_reason
       "length", usage with completion_tokens at the max_tokens ceiling)
-      through the Langfuse observer with disable_provider_payload=False.
+      through the Langfuse observer with disable_provider_payload: false.
       The failed Generation MUST carry level "ERROR" + statusMessage
       "structured_output_invalid" AND generation.output = the raw truncated
       bytes, generation.usage = the token counts, and
@@ -95,7 +95,7 @@ cases:
   - name: failed_generation_payload_disabled_redacts_output_keeps_usage_finish_reason
     description: |
       The same truncation failure through the Langfuse observer with
-      disable_provider_payload=True (the §5.5.4 default). generation.output
+      disable_provider_payload: true (the §5.5.4 default). generation.output
       is redacted (null — the payload-gated field), while generation.usage,
       generation.metadata.finish_reason, the ERROR level, and the
       statusMessage are UNCHANGED (those four are not payload-gated per

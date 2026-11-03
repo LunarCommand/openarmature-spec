@@ -27,7 +27,7 @@ cases:
   - name: single_empty_placeholder_raises
     description: |
       The chat_template's only segment is a placeholder slot;
-      placeholders={"history": []} contributes zero Messages. Per the
+      placeholders: {"history": []} contributes zero Messages. Per the
       §4 non-empty invariant and §11 empty-rendered-messages trigger,
       render MUST raise prompt_render_error. Contrast with fixture
       019 (placeholder empty-list valid when other segments contribute

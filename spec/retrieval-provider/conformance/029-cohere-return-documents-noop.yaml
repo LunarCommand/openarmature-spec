@@ -47,14 +47,14 @@ cohere_rerank_provider:
 cases:
   - name: return_documents_true_is_noop_on_wire
     description: |
-      3 documents with config return_documents=True. The wire request MUST
+      3 documents with config return_documents: true. The wire request MUST
       NOT carry a return_documents field — the Cohere v2 wire has no such
       parameter, so the OA knob is a silent no-op (§8.4). The body is
       exactly {model, query, documents: [...3...]} — byte-identical to the
       no-config request (case return_documents_absent_same_body below).
       The mapping MUST NOT error. The mocked Cohere response echoes NO
       document (Cohere v2 never echoes), so EVERY ScoredDocument.document
-      MUST be null even though return_documents=True was requested — the
+      MUST be null even though return_documents: true was requested: the
       mapping MUST NOT fabricate the echo from the input documents (§6).
       Response UNSORTED ([{0, 0.42}, {1, 0.91}, {2, 0.08}]) => sorted
       descending.
@@ -121,9 +121,9 @@ cases:
   - name: return_documents_absent_same_body
     description: |
       Same 3 documents with NO config (return_documents absent => OA
-      default False). The wire body MUST be exactly {model, query,
+      default false). The wire body MUST be exactly {model, query,
       documents: [...3...]} — establishing the byte-identical baseline the
-      return_documents=True case is compared against (proving
+      return_documents: true case is compared against (proving
       return_documents is a true wire no-op on Cohere, not merely "also
       sent"). The Cohere response again echoes NO document, so every
       ScoredDocument.document is null. Response UNSORTED to exercise the

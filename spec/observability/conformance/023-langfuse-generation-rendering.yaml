@@ -8,7 +8,7 @@ cases:
   - name: generation_rendering
     description: |
       Single LLM call with a two-turn conversation. Langfuse observer
-      with disable_provider_payload=False. The Generation observation MUST
+      with disable_provider_payload: false. The Generation observation MUST
       carry input/output/model/modelParameters/usage and the metadata
       fields specified in §8.4.3 (system, response_model, finish_reason).
     state:

@@ -12,7 +12,7 @@ cases:
       inner_suspend calls suspend(). The whole outer invocation
       suspends. On resume, the engine re-enters inner_post (since
       inner_suspend is in completed_positions under the default
-      mark_node_completed=True), then exits the subgraph, then runs
+      mark_node_completed: true), then exits the subgraph, then runs
       after_subgraph in the outer graph.
     subgraph:
       name: leaf

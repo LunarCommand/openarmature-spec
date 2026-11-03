@@ -13,7 +13,7 @@ cases:
   - name: serial_node_augmentation_updates_open_context_spans
     description: |
       Single-node graph. The `ask` node's body calls
-      set_invocation_metadata(requestId="req-xyz") before its LLM call.
+      set_invocation_metadata(requestId: "req-xyz") before its LLM call.
       The harness asserts requestId lands on the invocation span (the
       Trace), the `ask` node span, AND the LLM generation — all in the
       outermost async context, the first two updated in place because

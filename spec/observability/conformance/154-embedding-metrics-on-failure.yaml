@@ -10,7 +10,7 @@
 cases:
   - name: errored_embedding_records_duration_with_error_type
     description: |
-      One embedding-calling node, enable_metrics=True; the mock provider returns
+      One embedding-calling node, enable_metrics: true; the mock provider returns
       503 => provider_unavailable, so EmbeddingProvider.embed() raises
       (EmbeddingFailedEvent dispatched, exception propagates). Per §11 the
       duration histogram records exactly one observation carrying

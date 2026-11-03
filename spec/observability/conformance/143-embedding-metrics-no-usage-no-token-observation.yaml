@@ -16,7 +16,7 @@
 cases:
   - name: embedding_no_usage_records_duration_but_no_token_observation
     description: |
-      One embedding-calling node, enable_metrics=True. The mock body drops the
+      One embedding-calling node, enable_metrics: true. The mock body drops the
       usage block => EmbeddingResponse.usage = null — a harness stand-in for a
       no-usage embedding provider (TEI /embed is the real-world archetype),
       NOT a claim that this is any vendor's exact wire. Per §11 the

@@ -6,7 +6,7 @@ cases:
   - name: abort_in_b_resume_skips_a
     description: |
       Three nodes A → B → C. Node B raises on first run, after node A's
-      completed event has fired and saved. Call invoke(resume_invocation=...)
+      completed event has fired and saved. Call invoke(resume_invocation: ...)
       with a fresh mock that lets B succeed; assert A is NOT re-run, B and C
       run normally, final state matches an uninterrupted run.
     state:

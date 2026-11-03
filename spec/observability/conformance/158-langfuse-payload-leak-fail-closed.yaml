@@ -51,7 +51,7 @@ cases:
       Detection-capable adapter, no opt-out. A same-credential Langfuse client
       already exists on the global provider, so openarmature's fresh isolated
       provider is discarded (the singleton returns the cached client). The OTel
-      observer suppresses payload (its §5.5.4 default True) while the Langfuse
+      observer suppresses payload (its §5.5.4 default true) while the Langfuse
       observer emits it. openarmature establishes that its payload-bearing
       observations would reach the global (shared) provider and MUST raise
       langfuse_provider_isolation_unavailable before emitting any payload-bearing

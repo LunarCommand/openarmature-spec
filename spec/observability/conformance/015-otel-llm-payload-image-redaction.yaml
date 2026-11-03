@@ -8,7 +8,7 @@ cases:
     description: |
       Single LLM call with a user message containing one text block followed
       by one inline image block (image/png, base64-encoded). Observer has
-      disable_provider_payload=False. The openarmature.llm.input.messages
+      disable_provider_payload: false. The openarmature.llm.input.messages
       attribute MUST replace the inline image's source with the redacted
       placeholder shape carrying byte_count; media_type stays at the
       image-block level per llm-provider §3.1.2. No base64 bytes appear

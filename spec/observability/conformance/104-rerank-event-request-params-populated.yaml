@@ -6,7 +6,7 @@
 cases:
   - name: request_params_populates_return_documents_when_supplied
     description: |
-      rerank() called with config.return_documents=True. The harness
+      rerank() called with config.return_documents: true. The harness
       asserts the typed event's request_params carries
       {return_documents: true} and no other keys.
     state:

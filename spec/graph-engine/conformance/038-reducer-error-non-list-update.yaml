@@ -7,7 +7,7 @@
 cases:
   - name: bounded_append_non_list_update_raises_reducer_error
     description: |
-      Declare a field with bounded_append(max_len=3). A node returns
+      Declare a field with bounded_append(max_len: 3). A node returns
       a non-list update value. The reducer MUST raise ReducerError per
       §4 at merge time (the engine surfaces the offending field, the
       reducer name, and a root-cause naming the non-list value).

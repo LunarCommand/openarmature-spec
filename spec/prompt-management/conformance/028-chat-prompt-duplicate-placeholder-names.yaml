@@ -22,8 +22,8 @@ cases:
   - name: duplicate_placeholder_name_raises
     description: |
       The chat_template has two `{placeholder: examples}` segments —
-      a §3.1 uniqueness violation. Render with placeholders={"examples":
-      [<msg>]} and variables={"question": "..."}. Per §11 the duplicate-
+      a §3.1 uniqueness violation. Render with placeholders: {"examples":
+      [<msg>]} and variables: {"question": "..."}. Per §11 the duplicate-
       name case MUST raise prompt_render_error at render time. The
       validation is intrinsic to the chat_template (does not depend on
       what `placeholders` contains); supplying the placeholder mapping

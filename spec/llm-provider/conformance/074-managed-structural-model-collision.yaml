@@ -28,7 +28,7 @@
 cases:
   - name: extras_model_conflicts_with_bound_model_rejected_pre_send
     description: |
-      complete(config={extras: {model: "other-model"}}). The mapping sets the
+      complete(config: {extras: {model: "other-model"}}). The mapping sets the
       wire `model` from its bound identifier (test-model, §3 / §5 per-instance
       binding); the caller's extras `model` — an UNDECLARED key — collides with
       it at the request-body root. Per §6's managed-field collision reject arm

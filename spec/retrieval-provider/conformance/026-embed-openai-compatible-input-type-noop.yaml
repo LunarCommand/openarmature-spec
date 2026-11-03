@@ -50,7 +50,7 @@ openai_embedding_provider:
 cases:
   - name: input_type_query_is_noop_on_symmetric_wire
     description: |
-      embed(config={input_type: "query"}) against a SYMMETRIC
+      embed(config: {input_type: "query"}) against a SYMMETRIC
       openai_embedding_provider (no prefixes bound). The wire request MUST
       NOT carry any query/document/input_type/task field and MUST send the
       `input` VERBATIM ("how tall is the eiffel tower?", un-prefixed). The

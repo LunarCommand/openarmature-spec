@@ -8,7 +8,7 @@
 cases:
   - name: llm_completion_records_token_and_duration
     description: |
-      One LLM-calling node, enable_metrics=True. The mock returns usage
+      One LLM-calling node, enable_metrics: true. The mock returns usage
       {input 5, output 1}. The metric-capture primitive records token.usage
       input=5 and output=1 (dimensions: operation "chat", model, token.type),
       and one operation.duration observation (dimensions only — value not

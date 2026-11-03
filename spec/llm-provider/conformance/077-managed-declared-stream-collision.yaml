@@ -28,7 +28,7 @@
 cases:
   - name: streaming_call_conflicting_extras_stream_false_rejected_pre_send
     description: |
-      complete(stream=True, config={extras: {stream: false}}). The streaming
+      complete(stream: true, config: {extras: {stream: false}}). The streaming
       mapping fixes the mode to streaming and would emit wire `stream: true`; the
       caller's extras `stream` (an UNDECLARED key naming that wire field)
       supplies `false`, which CONFLICTS: honoring it would tell the server not to
@@ -58,8 +58,8 @@ cases:
 
   - name: unary_call_conflicting_extras_stream_true_rejected_pre_send
     description: |
-      complete(config={extras: {stream: true}}) with the call in unary mode
-      (stream unset / False). The mapping fixes the mode to unary and consumes an
+      complete(config: {extras: {stream: true}}) with the call in unary mode
+      (stream unset / false). The mapping fixes the mode to unary and consumes an
       atomic Response; the caller's extras `stream: true` CONFLICTS — honoring it
       would make the server stream while the mapping expects an atomic body. Per
       §6 clause (b), and because `stream` is ALWAYS managed (there is no absent
@@ -85,7 +85,7 @@ cases:
 
   - name: unary_call_matching_extras_stream_false_is_no_op
     description: |
-      complete(config={extras: {stream: false}}) in unary mode. The extras
+      complete(config: {extras: {stream: false}}) in unary mode. The extras
       `stream: false` MATCHES the call's unary mode, so it is a redundant no-op:
       the mapping absorbs it (does NOT forward it) and the atomic call proceeds.
       The wire body carries NO `stream` key — proving the matching extras is

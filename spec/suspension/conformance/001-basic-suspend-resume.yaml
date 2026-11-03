@@ -17,8 +17,8 @@ cases:
     description: |
       Two-node graph (gate, next). The gate node calls suspend() with a
       descriptor; the engine returns suspended. Resume invoke supplies
-      signal_payload={approved: true}; the engine merges the payload,
-      skips re-running gate (mark_node_completed=True), and runs the
+      signal_payload: {approved: true}; the engine merges the payload,
+      skips re-running gate (mark_node_completed: true), and runs the
       next node with the merged state.
     state:
       fields:

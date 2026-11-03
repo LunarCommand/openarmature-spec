@@ -9,7 +9,7 @@
 cases:
   - name: tool_call_deltas_reassemble_only_content_token_events
     description: |
-      A streamed call (stream=True) whose mock yields a short content preamble
+      A streamed call (stream: true) whose mock yields a short content preamble
       ("Looking ") followed by tool-call argument deltas (the OpenAI streamed
       tool-call shape: an opening delta carrying index/id/function.name, then
       argument-string fragments), then a terminal finish_reason=tool_calls

@@ -7,7 +7,7 @@ cases:
   - name: genai_opt_out
     description: |
       Single LLM call with the observer configured with
-      disable_genai_semconv=True. The §5.5.2 request-parameter attributes
+      disable_genai_semconv: true. The §5.5.2 request-parameter attributes
       and the §5.5.3 response-attribute set MUST NOT emit. The v0.7.0
       OA-namespaced baseline attributes (openarmature.llm.*) continue to
       emit normally — the GenAI opt-out only suppresses the GenAI

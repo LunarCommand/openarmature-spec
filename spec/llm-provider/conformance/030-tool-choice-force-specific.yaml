@@ -7,7 +7,7 @@
 cases:
   - name: tool_choice_force_specific_named_tool
     description: |
-      `tool_choice={type: "tool", name: "search"}`. Wire body maps to
+      `tool_choice: {type: "tool", name: "search"}`. Wire body maps to
       OpenAI's `{type: "function", function: {name: "search"}}` shape
       (rename from spec `tool` → wire `function` per §8.1.1). Mock
       returns a tool_calls response naming "search" (constraint-

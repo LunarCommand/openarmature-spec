@@ -27,7 +27,7 @@ cases:
       One LLM-calling node that renders a budgeted prompt (input_max_tokens
       10, no total bound) and then calls the LLM. The mock returns usage
       {prompt 20, completion 1, total 21}; prompt_tokens 20 > input_max_tokens
-      10, so the input bound is exceeded. enable_metrics=True. The harness
+      10, so the input bound is exceeded. enable_metrics: true. The harness
       asserts:
       - LlmCompletionEvent.token_budget populated {input_max_tokens 10,
         total_max_tokens null}

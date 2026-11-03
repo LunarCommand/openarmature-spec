@@ -8,7 +8,7 @@ cases:
   - name: fan_out_instances_augment_metadata_independently
     description: |
       Three fan-out instances each process one product. The body of
-      each instance calls set_invocation_metadata(productId=<id>)
+      each instance calls set_invocation_metadata(productId: <id>)
       before its LLM call. The harness asserts:
         - Each instance's spans (the fan-out instance span, the LLM
           provider span within it) carry the BASELINE caller metadata

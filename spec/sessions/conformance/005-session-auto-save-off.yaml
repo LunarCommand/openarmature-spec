@@ -5,7 +5,7 @@
 cases:
   - name: auto_save_off_skips_save_at_end
     description: |
-      Single-node graph; in-memory SessionStore registered with auto_save=False.
+      Single-node graph; in-memory SessionStore registered with auto_save: false.
       invoke() is called with session_id="s5". The graph runs to END normally;
       the engine MUST NOT save at exit. The store remains empty for s5 after
       the invocation completes.

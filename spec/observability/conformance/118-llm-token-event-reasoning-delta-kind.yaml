@@ -13,7 +13,7 @@
 cases:
   - name: reasoning_content_field_yields_reasoning_kind_then_content
     description: |
-      Case A — DeepSeek-style extension. A stream=True call whose mock yields two
+      Case A: DeepSeek-style extension. A stream: true call whose mock yields two
       reasoning deltas via choices[].delta.reasoning_content ("Let me ", "think.")
       then two content deltas ("The answer ", "is 42.") then a usage chunk. The
       harness asserts, in order:

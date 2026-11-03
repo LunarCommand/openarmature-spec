@@ -13,7 +13,7 @@
 cases:
   - name: partial_token_events_then_failed_event_no_token_failed_event
     description: |
-      A stream=True call whose mock yields two content chunks ("Par", "tial ")
+      A stream: true call whose mock yields two content chunks ("Par", "tial ")
       then a mid-stream failure marker (503 -> provider_unavailable). The
       harness asserts:
       - the two partial LlmTokenEvents fired (delta_kind="content",

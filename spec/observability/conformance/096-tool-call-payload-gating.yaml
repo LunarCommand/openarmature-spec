@@ -6,7 +6,7 @@
 cases:
   - name: payload_off_default_suppresses_arguments_and_result
     description: |
-      Default observer config (disable_provider_payload True). The
+      Default observer config (disable_provider_payload true). The
       openarmature.tool.call span carries the identity attributes but NOT the
       arguments / result payload attributes.
     state:
@@ -47,7 +47,7 @@ cases:
 
   - name: payload_on_populates_arguments_and_result
     description: |
-      disable_provider_payload False. The openarmature.tool.call span additionally
+      disable_provider_payload false. The openarmature.tool.call span additionally
       carries the JSON-encoded arguments and result payload attributes.
     otel_observer:
       disable_provider_payload: false

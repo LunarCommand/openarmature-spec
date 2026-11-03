@@ -26,7 +26,7 @@ mapping: anthropic
 cases:
   - name: extras_stream_true_on_atomic_mapping_rejected_pre_send
     description: |
-      complete(config={max_tokens: 64, extras: {stream: true}}) in unary mode
+      complete(config: {max_tokens: 64, extras: {stream: true}}) in unary mode
       (declared stream unset). §5 does not reject (the declared stream param is
       not set), but the extras `stream: true` names Anthropic's body `stream`
       field and selects streaming — which would break §8.2's atomic consumer.
@@ -53,7 +53,7 @@ cases:
 
   - name: extras_stream_false_on_atomic_mapping_no_op
     description: |
-      complete(config={max_tokens: 64, extras: {stream: false}}) in unary mode.
+      complete(config: {max_tokens: 64, extras: {stream: false}}) in unary mode.
       The extras `stream: false` MATCHES the mapping's atomic (non-streaming)
       mode, so it is a redundant no-op: the mapping absorbs it (does NOT forward
       it) and the atomic call proceeds. The wire body carries no `stream` key.

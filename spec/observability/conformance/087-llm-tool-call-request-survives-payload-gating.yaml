@@ -8,7 +8,7 @@
 cases:
   - name: identity_survives_payload_disabled
     description: |
-      disable_provider_payload=True (the default). The identity projections
+      disable_provider_payload: true (the default). The identity projections
       (count / names / ids) still render — they are identifiers, not payload —
       while the gated openarmature.llm.output.tool_calls (the full
       [{id, name, arguments}] serialization, which carries the arguments) is
@@ -68,7 +68,7 @@ cases:
 
   - name: full_serialization_present_when_payload_enabled
     description: |
-      disable_provider_payload=False. The same identity projections render
+      disable_provider_payload: false. The same identity projections render
       identically (flag-independent), and the gated
       openarmature.llm.output.tool_calls (the full [{id, name, arguments}]
       serialization) is additionally present.

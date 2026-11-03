@@ -44,7 +44,7 @@ tei_embedding_provider:
 cases:
   - name: conflicting_extras_truncate_rejected_pre_send
     description: |
-      embed(config={extras: {truncate: true}}) against TEI /embed, which
+      embed(config: {extras: {truncate: true}}) against TEI /embed, which
       normally sends NO truncate (relies on TEI's false default). The extras
       `truncate: true` CONFLICTS with that relied-upon `false`: honoring it
       would flip the default at the wire and make TEI silently truncate an
@@ -85,7 +85,7 @@ cases:
 
   - name: matching_extras_truncate_is_noop_body_stays_minimal
     description: |
-      embed(config={extras: {truncate: false}}) against TEI /embed. The extras
+      embed(config: {extras: {truncate: false}}) against TEI /embed. The extras
       `truncate: false` EQUALS the relied-upon default. Per §6's reject arm, a
       matching value is a redundant no-op: the mapping does NOT reject, and the
       normal /embed request goes out with the body still MINIMAL — `truncate`

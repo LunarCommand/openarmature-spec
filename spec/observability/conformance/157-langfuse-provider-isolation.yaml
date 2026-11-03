@@ -28,8 +28,8 @@ cases:
     description: |
       Mode (b): the implementation constructs the Langfuse client from
       credentials, so it owns the provider. The OTel observer suppresses
-      provider payload (disable_provider_payload True, the §5.5.4 default)
-      while the Langfuse observer emits it (disable_provider_payload False) —
+      provider payload (disable_provider_payload true, the §5.5.4 default)
+      while the Langfuse observer emits it (disable_provider_payload false):
       the §6 payload-leak invariant's isolate-by-default path. openarmature
       constructs first (no pre-existing same-credential client), so its isolated
       TracerProvider takes effect and its Generation observation does NOT reach
