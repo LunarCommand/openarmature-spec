@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Author:** Chris Colinsky
 - **Created:** 2026-10-29
-- **Accepted:** 2026-11-01
+- **Accepted:** 2026-11-05
 - **Targets:**
   - spec/conformance-adapter/spec.md: rewrites §8.4 (the matching rules every assertion follows); adds §4.5 (what a
     fixture may assert), §5.16 (wire-request assertions, moved out of §5.15) and §5.17 (capability gates,
