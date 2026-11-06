@@ -23,8 +23,7 @@ no change to harness §10's abstract error set).
 
 - `send()` returns `ChatTurnOutcome.errored` without invoking the graph
   body.
-- `.error_category` is `"user_correctable"`.
-- `.error_diagnostic` is `"chat_message_shape_invalid"`.
+- `.error_bucket` is `user_correctable`.
 - `.reply` is a `role: system` message including the user-correctable
   "adjust your message" framing.
 - No session-store load is attempted (validation runs at the API boundary
@@ -34,9 +33,9 @@ no change to harness §10's abstract error set).
 
 - The graph body executes despite the malformed input — would mean §3.1's
   pre-session-load validation timing is broken.
-- `.error_category` is `session_terminating` — would mean the
+- `.error_bucket` is `session_terminating`. That would mean the
   user-correctable routing for chat-specific errors is broken.
-- The error surfaces as a different category (e.g., raw
-  `chat_message_shape_invalid` exposed as `.error_category` directly,
-  bypassing harness §7.3) — would mean the new category isn't routing
-  through the abstract harness error surface.
+- `.error_bucket` carries the raw category `chat_message_shape_invalid`
+  in place of `user_correctable`, bypassing harness §7.3. That would mean
+  the new category isn't routing through the abstract harness error
+  surface.

@@ -42,9 +42,9 @@ calls:
           completion_tokens: null   # §6 null-together fires; the record is
           total_tokens: null        # still PRESENT (never a null usage)
         raw_check:
-          # required_keys asserts raw.usage is PRESENT (key presence only — it
-          # does NOT pin the values). The verbatim malformed values are asserted
-          # by the adapter-enforced invariant below.
+          # Listing `usage` asserts that raw.usage equals the mock's usage
+          # exactly, so all three malformed values are pinned here too. The
+          # invariant below states the same claim.
           required_keys: [id, object, created, model, choices, usage]
       invariants:
         # raw.usage preserves all three malformed values byte-for-value — the

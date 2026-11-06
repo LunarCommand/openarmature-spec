@@ -10,6 +10,28 @@
 #   - `calls` lists operations to perform against the backend or manager.
 #     Each entry specifies the target (`backend: <name>` or `manager`),
 #     operation (`fetch`, `render`, `get`), inputs, and expected outcome.
+#   - `prompt`, `prompt_result`: in a call's `expected:`, the `Prompt` or
+#     `PromptResult` the call returned, matched by named keys
+#     (conformance-adapter §8.4). `template` compares as its source text.
+#     `messages` is complete and ordered. Absence is written
+#     `prompt_absent_keys` or `prompt_result_absent_keys`.
+#   - Capture-label assertions: `expected.<label>` asserts on the value the
+#     call carrying `capture_as: <label>` returned, matched by named keys,
+#     with `<label>_absent_keys` for absence.
+#   - `result_equivalence: {of, fields_must_match, fields_may_differ}`: each
+#     field in `fields_must_match` is deeply equal across the captured
+#     results named in `of`. Fields in `fields_may_differ` are not compared.
+#   - `prompt_group: {of, group_name, member_names}`: the captured group's
+#     name and member names. `member_names` is complete and ordered.
+#   - `rendered_hash_equal`, `rendered_hash_different`: pairs of capture
+#     labels whose `rendered_hash` values are equal, or differ.
+#   - `backend_call_counts: {<backend>: <n>}`: in a call's `expected:`, the
+#     `fetch()` calls each named mock backend received during the call.
+#   - `expected_shared_prefix`, `expected_message_equal`: case level, beside
+#     `expected:`. The first asserts that each `between` result's message at
+#     `message_index` starts with `prefix`, byte for byte. The second asserts
+#     that the messages at `message_indices` are equal across the `between`
+#     results.
 
 backends:
   - name: local

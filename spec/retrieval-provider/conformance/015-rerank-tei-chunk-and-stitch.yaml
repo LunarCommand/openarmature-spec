@@ -21,18 +21,16 @@
 # the GLOBAL re-sort. top_k: 4 keeps the four highest globally.
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 013's header (mapping: tei,
-# expected_wire_request, the TEI /rerank request + response shapes) and
-# 014's header (tei_rerank_provider construction block). For the
-# chunk-and-stitch path:
+# Per-directory harness directives: see 014's header (tei_rerank_provider
+# construction block, the TEI /rerank request + response shapes).
+# `mapping:` is defined in conformance-adapter §5.15 and the wire-request
+# assertions in §5.16. For the chunk-and-stitch path:
 #
 # - expected_wire_request here is a LIST of /rerank request bodies, one
-#   per chunk, in arrival order. The harness MUST capture every outbound
-#   /rerank request, assert the count matches the list length, and
-#   compare each captured body key-by-key against the corresponding list
-#   entry. expected_wire_request_count pins the request count explicitly.
+#   per chunk, in chunk order: the list form conformance-adapter §5.16
+#   defines. expected_wire_request_count pins the request count.
 #
-# - mock_rerank entries are dispatched one per /rerank request in arrival
+# - mock_rerank entries are dispatched one per /rerank request in chunk
 #   order (same as the base directive). Each entry is a TEI response array
 #   [{index, score, text?}] with CHUNK-LOCAL indices for that chunk.
 
@@ -90,7 +88,7 @@ cases:
     edges:
       - {from: rerank_node, to: END}
     initial_state: {}
-    # One /rerank body per chunk, in arrival order. texts sizes 4, 4, 1.
+    # One /rerank body per chunk, in chunk order. texts sizes 4, 4, 1.
     expected_wire_request:
       - query: "which animal is the fastest land mammal?"
         texts:
@@ -114,7 +112,7 @@ cases:
         truncate: false
         return_text: false
     expected_wire_request_count: 3
-    # One TEI response per chunk, CHUNK-LOCAL indices, in arrival order.
+    # One TEI response per chunk, CHUNK-LOCAL indices, in chunk order.
     # Returned unsorted within each chunk too, for good measure.
     mock_rerank:
       - status: 200

@@ -36,15 +36,16 @@ analogue of fixture 007 (per-attempt sibling node spans disambiguated by
    (`max_attempts` 2, transient classifier on `provider_rate_limit`). Attempt 0's `vector` callable
    raises a transient, failing the whole node under `fail_fast`; the node-level retry re-dispatches
    both branches on attempt 1, where `vector` succeeds. The OTel observer renders two sibling
-   `retrieve` NODE spans (attempt 0 ERROR, attempt 1 OK), each with callable-branch dispatch spans
-   carrying that attempt's `openarmature.node.attempt_index`.
+   `retrieve` NODE spans (attempt 0 ERROR, attempt 1 OK). The attempt-1 span's callable-branch
+   dispatch spans carry `openarmature.node.attempt_index = 1`. The attempt-0 span's children are not
+   asserted: pipeline-utilities §11.5 does not say whether a branch cancelled under `fail_fast` before
+   it ran dispatches `started`, so that attempt's set of dispatch spans is not fixed.
 
 **What passes:**
 
 - Two sibling `retrieve` parallel-branches NODE spans, one per attempt, disambiguated by
   `openarmature.node.attempt_index` (0 then 1).
-- The attempt-0 `vector` dispatch span carries `attempt_index = 0` and ERROR; the attempt-1
-  `vector`/`fts` dispatch spans carry `attempt_index = 1` and OK.
+- The attempt-1 `vector`/`fts` dispatch spans carry `attempt_index = 1` and OK.
 - The synthetic callable-branch `started` AND `completed` events on the retry attempt both report
   `attempt_index = 1` (sourced from the node's current attempt counter, not hard-coded).
 

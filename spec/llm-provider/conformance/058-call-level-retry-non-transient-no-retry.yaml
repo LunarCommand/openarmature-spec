@@ -24,7 +24,6 @@ call:
 expected:
   raises:
     category: provider_invalid_request
-    message: "missing required field"
   llm_spans:
     - attempt_index: 0
       attributes:

@@ -12,7 +12,8 @@ graph-engine §4 `node_exception` with `recoverable_state` populated.
 
 **What passes:**
 
-- Engine raises `node_exception` after the third failure.
+- The engine raises after the third failure. The raised error's category is the final attempt's
+  `provider_rate_limit`, read through the `node_exception` carrier.
 - Error message matches the third (final) attempt's exception (`"throttle 3"`).
 - `recoverable_state` is the pre-merge state at node entry (`{v: 5, trace: []}`).
 

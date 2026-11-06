@@ -90,20 +90,28 @@ That section is organized by category:
 | §5.2 State / schema | Field types, defaults, reducers |
 | §5.3 Edges | Static + conditional edges |
 | §5.4 Composition | `fan_out`, `parallel_branches`, `subgraph` |
-| §5.5 Observers | `observers[]` (behavior enum `record` / `accumulate` / `raise`, pacing, phase filters), plus `typed_observers` / `contains_event` typed-event assertions (with the present-but-null vs absent rule), the per-observer flag and `payload_byte_cap` directives, `metadata_truncation` on a Langfuse observation entry, the `mock_llm` mapping form with `capabilities`, `otel_observer: {attached: false}`, when a case composes a Langfuse observer, and the log-record assertions (`log_records` with `count`, and `log_records_absent`) |
-| §5.6 Persistence | `session_store`, `checkpointer`, per-invocation backend assertions |
-| §5.7 Invocation shape | Single-invocation vs `invocations[]` multi-invoke (sessions, resume, suspension cycles) |
-| §5.8 Expected outcomes | `final_state`, `execution_order`, `outcome`, `error.category`, `caught_exception` cause-chains, `drain_summary`, `observer_events`, OTel + Langfuse assertion shapes |
+| §5.5 Observers | `observers[]` (behavior enum `record` / `accumulate` / `raise`, pacing, phase filters), plus `typed_observers` and the typed-event assertions (`contains_event`, `event_count`, `contains_events_in_order` and the rest), the per-observer flag and `payload_byte_cap` directives, `metadata_truncation` on a Langfuse observation entry, the `mock_llm` mapping form with `capabilities`, `otel_observer: {attached: false}`, when a case composes a Langfuse observer, and the log-record assertions (`log_records` with `count`, and `log_records_absent`) |
+| §5.6 Persistence | `session_store`, `checkpointer`, session and checkpointer assertions, `migrations_run`, and the resume directives (`first_run_expected_error`, `first_run_expected`, `resume`, `crash_injection`) |
+| §5.7 Invocation shape | Single-invocation vs `invocations[]` multi-invoke (sessions, resume, suspension cycles), and `run_count`, which runs a case's graph several times |
+| §5.8 Expected outcomes | Where each assertion sits; `final_state` and the other state snapshots, `execution_order`, the raised-error assertions and their one category rule, `observer_events` and `delivery_order`, drain and accumulator assertions, `span_tree` and `traces`, `metrics`, checkpoint-record assertions, and the harness turn outcomes |
 | §5.9 Invariants | Name-keyed boolean predicates for nondeterministic-ordering cases |
-| §5.10 Value matchers | Format tokens (`<uuid>`, `<any-string>`, …) and first-occurrence bindings usable in any assertion value |
+| §5.10 Value matchers | Format tokens (`<uuid>`, `<any-string>`, `<timestamp>`, …) and binding tokens usable in any assertion value, with the binding-token rules |
 | §5.11 Provider call-retry | Adaptive-retry directives — `per_attempt_override` schedules, caller `reask` builders, per-attempt wire assertions (llm-provider §7.1) — plus `attribute_truncation`, the span-attribute byte-cap assertion (observability §5.5.5), `mock_provider.capabilities`, the mock's capability flags, and `expected.llm_spans`, the per-attempt span assertion |
 | §5.12 Structured-output error | The `structured_output_invalid` failure assertion and its `carries`-keyed error fields (llm-provider §7) |
 | §5.13 `carries` | Raised-error field assertion — pins named fields on a *raised* error by value / presence / substring |
 | §5.14 `chunk_size` | Construction override of a provider's per-call input cap, to exercise batch-chunking deterministically |
-| §5.15 Retrieval-provider | Construction blocks (`*_provider`, `mapping:`), `calls_embed` / `calls_rerank`, `mock_embedding` / `mock_rerank` (+ `raises`), wire-request / header assertions, and pre-send-reject invariants |
+| §5.15 Retrieval-provider | Construction blocks (`*_provider`, `mapping:`), `calls_embed` / `calls_rerank`, `mock_embedding` / `mock_rerank` (+ `raises`), and pre-send-reject invariants |
+| §5.16 Wire requests | `expected_wire_request` (exact) and `expected_wire_request_includes` (named keys), absent keys, headers, request count and URL, shared by the llm-provider and retrieval-provider fixtures |
+| §5.17 Capability gates | `adapter_capabilities` / `requires_capability`, for behavior the spec only recommends, and the capabilities more than one directory uses |
 
 Each directive entry in §5 specifies its YAML location, parameters, the runtime behavior the
 adapter MUST honor, and the spec section(s) the directive exists to exercise.
+
+How an assertion's written value is compared with what happened is stated once, in
+[§8.4](capabilities/conformance-adapter.md#84-assertion): a list of observed items is complete, a mapping
+asserts the keys it names apart from a few exact positions, `null` means not set, and every written assertion
+is checked. [§4.5](capabilities/conformance-adapter.md#45-what-a-fixture-may-assert) limits a fixture to what
+the spec requires.
 
 ## Harness primitives
 
@@ -128,7 +136,8 @@ The required harness primitives are enumerated in
 - **Langfuse mock** for observability fixtures
 - **Suspend / resume wiring** — the spec mandates these are **real** primitive calls, not simulations
 - **Drain wiring** — same, real `drain()` / `drain_events_for()` calls
-- **Middleware wiring** — real middleware execution, markers recorded into a state log
+- **Middleware wiring** — real middleware execution, markers recorded into a middleware-log
+  accumulator, one per call
 
 The "real, not simulated" rule is load-bearing. The adapter constructs a real compiled graph and
 calls real `invoke()`. The fixture describes what shape that graph takes and what outcome to
@@ -149,8 +158,10 @@ Two worked examples:
   with a `transmissions:` list (each entry is a simulated inbound request / event with
   `dispatch_intent`, optional `session_id`, optional `signal_payload`), a `harness:` block
   configuring mode (sessioned / stateless) and signal coordinator, and per-transmission assertion
-  shapes (`dispatch_path`, `invoke_args`, `invoke_outcome`, `outbound_shape`, `error_bucket`,
-  etc.). The fixture-header in `001-inbound-new-session.yaml` is the suite's documentation.
+  shapes (`invoke_args`, `invoke_outcome`, `outbound_shape`, etc.). The fixture-header in
+  `001-inbound-new-session.yaml` is the suite's documentation. The turn outcomes it shares with
+  harness-chat (`dispatch_path`, `error_bucket`, `error_category`) are defined in
+  conformance-adapter §5.8.
 
 The pattern keeps the capability spec maintainable (it documents the general surface) while
 letting specialized suites grow the scaffolding they need without bloating the general
@@ -220,11 +231,12 @@ implementation-private test infrastructure that satisfies the contract in
    in-memory backends, OTel + Langfuse mocks, suspend / drain / middleware wiring. These are
    typically substantially smaller than the production implementations of the same primitives —
    they exist for tests, not for production load.
-4. **Assertion translation.** For each assertion shape in
-   [§5.8 / §5.9](capabilities/conformance-adapter.md#58-expected-outcome-directives), implement a
-   host-language assertion. Exact-equality shapes map directly to the host language's
-   `assertEqual`-style operations; invariant shapes (per §5.9) require named-predicate logic that
-   each adapter MUST implement.
+4. **Assertion translation.** For each assertion directive defined in
+   [§5](capabilities/conformance-adapter.md#5-directive-vocabulary) or in a directory's harness
+   note, implement a host-language assertion that follows the matching rules in
+   [§8.4](capabilities/conformance-adapter.md#84-assertion): how single values, lists, mappings,
+   absence and nulls compare. Named claims, such as `invariants:` keys (§5.9), need predicate logic
+   that each adapter MUST implement.
 5. **Test-runner integration.** Wire the adapter into the host language's idiomatic test framework
    (pytest for Python, vitest for TypeScript, etc.). Each fixture becomes a test case; failures
    surface through the host runner.

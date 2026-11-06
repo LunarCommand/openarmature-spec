@@ -14,10 +14,10 @@
 #     provider-faithful default), priming the singleton so openarmature is not first.
 #   - langfuse_client: {accept_shared_provider: <bool>} — the single shared-provider
 #     caller opt-out on openarmature's Langfuse observer construction.
-#   - requires_capability: {langfuse_bound_provider_detection: <bool>} — the case is
-#     asserted only against adapters whose declared adapter_capabilities match. Raise
-#     cases require detection; the suppress case requires its absence; the opt-out
-#     case applies to all.
+#   - requires_capability: {langfuse_bound_provider_detection: <bool>}
+#     (conformance-adapter §5.17): the case is asserted only against adapters whose
+#     declared adapter_capabilities match. Raise cases require detection; the
+#     suppress case requires its absence; the opt-out case applies to all.
 #   - expected_construction_error: {category} — asserts the case raises the categorized
 #     error at observer/client construction or first use.
 #   - expected.no_payload_bearing_langfuse_observations_on_global /

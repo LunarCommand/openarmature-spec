@@ -2,6 +2,7 @@
 # records two openarmature.gen_ai.client.token.usage observations (input + output)
 # and one openarmature.gen_ai.client.operation.duration observation. Token values
 # come from the fixed-usage mock; the duration value is NOT asserted (§11.4).
+# Under call-level retry the duration records once per attempt (case 2).
 # Captured via the conformance-adapter §6.9 metric-capture primitive.
 
 cases:
@@ -60,3 +61,79 @@ cases:
         two_token_usage_observations_input_and_output: true
         one_duration_observation_per_call: true
         duration_value_not_asserted: true
+
+  - name: retried_call_records_each_attempt
+    description: |
+      The same call under call-level retry: two 503 responses, then a
+      success with usage {input 5, output 1}. The duration instrument
+      records once per attempt (§11.2), so the failed attempts give two
+      identical recordings, each with error.type provider_unavailable, and
+      the successful attempt one without error.type. Token usage records
+      once, for the attempt that returned a usage record. The metrics list
+      is complete, so a capture that merges the two identical recordings,
+      or an implementation that records a measurement twice, fails.
+    state:
+      fields:
+        msg: {type: string, default: ""}
+    entry: ask_llm
+    nodes:
+      ask_llm:
+        calls_llm:
+          messages: [{role: user, content: "hi"}]
+          stores_response_in: msg
+          retry:
+            max_attempts: 3
+            backoff: {type: deterministic, seconds: 0}
+    edges:
+      - {from: ask_llm, to: END}
+    initial_state: {}
+    enable_metrics: true
+    mock_llm:
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+      - status: 503
+        body:
+          error: {message: "service unavailable"}
+      - status: 200
+        body:
+          id: cc-088-retry
+          object: chat.completion
+          created: 1700000000
+          model: test-model
+          choices:
+            - {index: 0, message: {role: assistant, content: "hello"}, finish_reason: stop}
+          usage: {prompt_tokens: 5, completion_tokens: 1, total_tokens: 6}
+    expected:
+      metrics:
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+            error.type: "provider_unavailable"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+            error.type: "provider_unavailable"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 5
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "input"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 1
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"

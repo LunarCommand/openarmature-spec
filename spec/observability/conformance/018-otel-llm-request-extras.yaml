@@ -54,4 +54,6 @@ cases:
                   attribute_parses_as_object:
                     openarmature.llm.request.extras:
                       repetition_penalty: 1.05
+                  attributes_absent:
+                    - "gen_ai.request.repetition_penalty"
                   children: []

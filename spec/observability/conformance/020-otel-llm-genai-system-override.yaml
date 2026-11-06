@@ -49,4 +49,6 @@ cases:
                   attributes:
                     gen_ai.system: "vllm"
                     gen_ai.request.model: "test-model"
+                  attributes_absent:
+                    - "openarmature.llm.system"
                   children: []

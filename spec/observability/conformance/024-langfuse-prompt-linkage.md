@@ -31,7 +31,8 @@ PromptBackend produced the prompt. When no reference is exposed, identity surfac
     Langfuse-compatible reference).
 - `prompt_entity_link` — the expected reference value the harness verifies was passed to the
   Langfuse SDK's Generation prompt-link mechanism.
-- `prompt_entity_link_absent` — the harness verifies no prompt-link was passed to the SDK.
+- `absent_keys: [prompt_entity_link]` on an observation entry: the harness verifies no prompt-link was
+  passed to the SDK.
 - `renders_prompt` (in node spec) — the prompt name to fetch + render via the configured
   backend before the LLM call.
 - `render_variables` — the variables to inject into the rendered template.
@@ -43,7 +44,7 @@ PromptBackend produced the prompt. When no reference is exposed, identity surfac
   version, label, template_hash, rendered_hash). Both link and metadata are present (the
   redundant-metadata rule per §8.4.4).
 - Case 2 (`no_langfuse_prompt_reference`): no Prompt-entity link is established
-  (`prompt_entity_link_absent`); `generation.metadata.prompt` is the only identity surface.
+  (`absent_keys: [prompt_entity_link]`); `generation.metadata.prompt` is the only identity surface.
 
 **What fails:**
 

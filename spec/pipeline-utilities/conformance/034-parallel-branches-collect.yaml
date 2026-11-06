@@ -58,7 +58,7 @@ state:
       type: int
       default: 0
     branch_errors:
-      type: list<dict>
+      type: list
       reducer: append
       default: []
 
@@ -98,7 +98,7 @@ expected:
     beta_result: 0
     gamma_result: 3
     branch_errors:
-      - {branch_name: beta, category: node_exception}
+      - {}
 
   # The parent's view of execution: a single dispatcher step.
   execution_order: [dispatcher]

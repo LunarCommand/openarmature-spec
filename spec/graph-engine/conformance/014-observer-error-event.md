@@ -4,7 +4,8 @@ Verifies that a node event for a *failing* node is dispatched to observers with 
 `post_state` absent, and that the engine then propagates the error to the caller unchanged from its §4
 contract.
 
-The fixture format used here is documented in fixture 012's `.md`.
+The observer fixture format is defined in conformance-adapter §5.5 (`observers:`) and §5.8
+(`observer_events`, `delivery_order`).
 
 **Spec sections exercised:**
 
@@ -17,11 +18,12 @@ The fixture format used here is documented in fixture 012's `.md`.
 
 **What passes:**
 
-- The observer receives exactly two events:
-  1. `ok_node` — successful, with `post_state` populated and no `error`.
-  2. `fail_node` — failed, with `error: node_exception` populated and no `post_state`.
-- The engine raises a `node_exception` to the caller after the second event has been dispatched. The
-  raised error carries recoverable state per §4.
+- The observer receives exactly four events, a `started` and a `completed` event per node, each with
+  an empty `parent_states`. Of the two `completed` events:
+  1. `ok_node`'s is successful, with `post_state` populated and no `error`.
+  2. `fail_node`'s is failed, with `error.category: node_exception` and no `post_state`.
+- The engine raises a `node_exception` to the caller after `fail_node`'s `completed` event has been
+  dispatched. The raised error carries recoverable state per §4: `{v: "ok", trace: ["ok_node"]}`.
 - `pre_state` for the failing node reflects the state the node received before raising — the engine
   does not invent a post-update state for a node that never returned.
 

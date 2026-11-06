@@ -28,6 +28,8 @@ cases:
       - NO token_budget.exceeded counter observation (no bound breached)
       - a token_budget.utilization observation at 0.5 (20 / 40), kind "input"
         — the distribution records even under budget
+      - the ordinary token.usage (20 input, 1 output) and duration
+        observations, and no other measurement
     state:
       fields:
         msg:
@@ -109,12 +111,32 @@ cases:
             openarmature.gen_ai.token_budget.kind: "input"
             gen_ai.request.model: "test-model"
             gen_ai.system: "openai"
+        # The completion's ordinary token-usage and duration recordings (§11.2),
+        # as fixture 088 records them. The list names every recorded measurement.
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 20
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "input"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 1
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
       invariants:
         # No bound was breached, so the exceeded counter records NO
         # observation (it increments per breached bound, §11.2). The
-        # captured measurement set contains the one utilization observation
-        # above and zero token_budget.exceeded observations. This is an
-        # absence predicate the `metrics:` list shape cannot express; see
-        # the .md §3.2 note.
+        # metrics: list above names every recorded measurement and holds no
+        # token_budget.exceeded observation, so it asserts this absence;
+        # this predicate restates it. See the .md §3.2 note.
         no_token_budget_exceeded_observation_when_under_budget: true
         utilization_records_under_budget: true

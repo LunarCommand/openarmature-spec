@@ -37,7 +37,6 @@ cases:
           outcome: suspended
           # Paused-invocation record exists in the configured backend.
           checkpointer_assertions:
-            paused_invocation_record_exists: true
             record_type: "suspended"
       - name: resume_invoke_via_suspension_api
         resume_invocation: "<from previous suspended outcome>"

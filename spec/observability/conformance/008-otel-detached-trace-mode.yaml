@@ -120,15 +120,14 @@ cases:
     expected:
       # Parent trace contains the invocation + fan-out node span; the node
       # span carries one Link per instance trace.
-      parent_trace:
-        span_tree:
-          - name: "openarmature.invocation"
-            status: OK
-            children:
-              - name: "per_document_scoring"
-                status: OK
-                children: []
-                link_count: 3   # one Link per detached instance trace
+      span_tree:
+        - name: "openarmature.invocation"
+          status: OK
+          children:
+            - name: "per_document_scoring"
+              status: OK
+              children: []
+              link_count: 3   # one Link per detached instance trace
       # Three detached traces, one per instance.
       detached_trace_count: 3
       invariants:

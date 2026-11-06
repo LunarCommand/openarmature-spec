@@ -2,8 +2,9 @@
 # conformance-adapter §5.1 `cause`; pipeline-utilities §6.3 / proposal 0068).
 # A flaky mock raises a categorized error CAUSED BY another categorized error
 # (via the new `cause` field). At an instance (non-node) placement the engine
-# adds one node_exception carrier, so the chain has THREE links: the carrier,
+# adds one or more node_exception carriers, so the chain is the carrier run,
 # the surface (re-categorized) non-carrier, and the originating non-carrier.
+# The chain's single carrier entry matches the whole carrier run.
 # The derived `category` is the OUTERMOST non-carrier with a category — the
 # surface re-categorization — NOT the originating cause. This is the
 # two-non-carrier-link case fixture 066 left out for lack of mock chaining.

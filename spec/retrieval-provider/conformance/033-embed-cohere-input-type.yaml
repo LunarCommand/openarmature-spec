@@ -32,10 +32,10 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 001's header (calls_embed /
 # mock_embedding), 013's header (typed_observers / contains_event asserting
-# EmbeddingEvent.request_params), and 032's header (mapping: cohere,
-# cohere_embedding_provider, the Cohere /v2/embed request + keyed-by-type
-# response shapes, expected_wire_request / expected_wire_request_absent_keys
-# / expected_wire_headers).
+# EmbeddingEvent.request_params), and 032's header (cohere_embedding_provider,
+# the Cohere /v2/embed request + keyed-by-type response shapes). `mapping:` is
+# defined in conformance-adapter §5.15 and the wire-request assertions in
+# §5.16.
 
 mapping: cohere
 
@@ -96,9 +96,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.10, 0.20, 0.30, 0.40]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: cohere-embed-test
       observers:
         collector:
@@ -164,9 +164,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.50, 0.60, 0.70, 0.80]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: cohere-embed-test
       observers:
         collector:
@@ -238,9 +238,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.21, 0.22, 0.23, 0.24]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: cohere-embed-test
       observers:
         collector:
@@ -308,9 +308,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.31, 0.32, 0.33, 0.34]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: cohere-embed-test
       observers:
         collector:
@@ -382,9 +382,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.50, 0.60, 0.70, 0.80]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: cohere-embed-test
       observers:
         collector:

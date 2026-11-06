@@ -1,8 +1,8 @@
 # Node raises; middleware does not catch. Verifies the exception propagates
 # as node_exception per graph-engine §4, with recoverable_state populated and
-# __cause__ preserved.
+# the node's own message.
 #
-# Chain: [outer_recorder] → node `failing` (raises RuntimeError).
+# Chain: [outer_recorder] → node `failing` (raises an uncategorized error).
 
 state:
   fields:

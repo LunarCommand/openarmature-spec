@@ -29,5 +29,6 @@ proposal.
 
 - Implementations SHOULD detect this at compile / registration time
   when feasible (the configuration is known statically); runtime
-  detection is the spec-mandated minimum, which this fixture
-  exercises.
+  detection is the spec-mandated minimum. The fixture's
+  `outcome: errored` holds either way, since conformance-adapter §5.8
+  lets an error raised at compile or registration time satisfy it.

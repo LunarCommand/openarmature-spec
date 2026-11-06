@@ -71,9 +71,8 @@ expected:
   # Per-attempt event pairs from inner instances carry both attempt_index
   # and fan_out_index. For each instance, 2 attempts (failure then success)
   # × 2 phases = 4 events. Three instances = 12 inner-node events plus the
-  # fan-out node's own pair = 14 events total. The harness MAY assert on a
-  # subset (e.g., that every inner event has a populated `fan_out_index`
-  # matching its instance index AND attempt_index 0 or 1).
+  # fan-out node's own pair = 14 events total. The invariants below assert
+  # properties of these events.
   observer_event_invariants:
     inner_events_have_fan_out_index: true
     inner_events_attempt_indices_seen: [0, 1]

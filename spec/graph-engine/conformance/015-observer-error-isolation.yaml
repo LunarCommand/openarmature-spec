@@ -69,15 +69,19 @@ expected:
   # received the full pair sequence despite obs_raiser failing on each phase.
   observer_events:
     obs_recorder:
-      - {step: 0, phase: started,   node_name: a, namespace: [a], pre_state: {v: 0, trace: []}}
+      - {step: 0, phase: started,   node_name: a, namespace: [a],
+         pre_state: {v: 0, trace: []}, parent_states: []}
       - {step: 0, phase: completed, node_name: a, namespace: [a],
-         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}}
-      - {step: 1, phase: started,   node_name: b, namespace: [b], pre_state: {v: 1, trace: ["a"]}}
+         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}, parent_states: []}
+      - {step: 1, phase: started,   node_name: b, namespace: [b],
+         pre_state: {v: 1, trace: ["a"]}, parent_states: []}
       - {step: 1, phase: completed, node_name: b, namespace: [b],
-         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}}
-      - {step: 2, phase: started,   node_name: c, namespace: [c], pre_state: {v: 2, trace: ["a", "b"]}}
+         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
+      - {step: 2, phase: started,   node_name: c, namespace: [c],
+         pre_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
       - {step: 2, phase: completed, node_name: c, namespace: [c],
-         pre_state: {v: 2, trace: ["a", "b"]}, post_state: {v: 3, trace: ["a", "b", "c"]}}
+         pre_state: {v: 2, trace: ["a", "b"]},
+         post_state: {v: 3, trace: ["a", "b", "c"]}, parent_states: []}
 
   # Per-event delivery order. obs_raiser is delivered first (registration order),
   # raises, the engine catches and warns, then obs_recorder is delivered for the

@@ -103,7 +103,8 @@ cases:
     expected:
       langfuse_trace:
         id: "<uuid-hex>"
-        name: "dispatcher"
+        # §8.6 only RECOMMENDS the entry-node default for the trace name.
+        name: "<any-string>"
         metadata:
           correlation_id: "<corr_id_1>"
           entry_node: "dispatcher"
@@ -111,25 +112,29 @@ cases:
         observations:
           # Parallel-branches NODE span -> Span observation (contains the
           # per-branch dispatch Spans); carries the §5.7 node-level attributes
-          # flattened with the `parallel_branches_` prefix per §8.4.2.
+          # flattened with the `parallel_branches_` prefix per §8.4.2. The
+          # dispatch-span key is absent from it.
           - type: span
             name: "dispatcher"
             metadata:
               parallel_branches_branch_count: 2
               parallel_branches_error_policy: "fail_fast"
               correlation_id: "<corr_id_1>"
+            metadata_absent: [parallel_branches_parent_node_name]
             level: DEFAULT
             children:
               # Synthesized per-branch dispatch Span; observation.name = the
               # branch_name (§8.3 / §8.4.8). Carries the §5.7 dispatch-span
               # attributes per §8.4.2: parallel_branches_parent_node_name +
-              # branch_name (the latter per proposal 0042).
+              # branch_name (the latter per proposal 0042). The node-span keys
+              # are absent from it.
               - type: span
                 name: "fraud_check"
                 metadata:
                   branch_name: "fraud_check"
                   parallel_branches_parent_node_name: "dispatcher"
                   correlation_id: "<corr_id_1>"
+                metadata_absent: [parallel_branches_branch_count, parallel_branches_error_policy]
                 level: DEFAULT
                 children:
                   # Inner node beneath the dispatch Span; branch_name
@@ -154,6 +159,7 @@ cases:
                   branch_name: "policy_audit"
                   parallel_branches_parent_node_name: "dispatcher"
                   correlation_id: "<corr_id_1>"
+                metadata_absent: [parallel_branches_branch_count, parallel_branches_error_policy]
                 level: DEFAULT
                 children:
                   - type: span

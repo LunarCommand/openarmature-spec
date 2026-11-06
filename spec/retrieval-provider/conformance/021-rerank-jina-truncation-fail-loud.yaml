@@ -16,11 +16,11 @@
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 006's header (calls_rerank /
-# mock_rerank), 013's / 014's headers (mapping: <name>,
-# expected_wire_request), 016's header (expected_error error-assertion
-# shape, non-2xx mock_rerank entries), and 018's header (mapping: jina,
-# jina_rerank_provider, expected_wire_headers, Jina's /v1/rerank request
-# shape). Error-assertion shape recap:
+# mock_rerank), 016's header (expected_error error-assertion shape, non-2xx
+# mock_rerank entries), and 018's header (mapping: jina,
+# jina_rerank_provider, Jina's /v1/rerank request shape). `mapping:` is
+# defined in conformance-adapter §5.15 and the wire-request assertions in
+# §5.16. Error-assertion shape recap:
 #
 # - expected_error: {category, raised_from} — the conformance-adapter
 #   §5.8 compact error-assertion shape (as used by retrieval fixtures

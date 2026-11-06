@@ -8,7 +8,8 @@ in 002–016.
 Also documents the **conformance fixture format** for pipeline-utilities, including the test-only
 middleware types (`trace_recorder`, `short_circuit`, `error_recovery`, `error_raiser`,
 `state_inspector`) the harness exposes. Subsequent fixtures reuse this format. See the comment
-header in the YAML file for the format reference.
+header in the YAML file for the format reference and the assertion directives this directory
+defines.
 
 **Spec sections exercised:**
 

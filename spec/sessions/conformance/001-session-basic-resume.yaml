@@ -2,6 +2,19 @@
 # the final state to the registered SessionStore; a second invoke under the SAME
 # session_id loads that saved state and merges it into the initial state, so the
 # graph observes the accumulated value.
+#
+# Conformance harness contract for sessions fixtures:
+#
+#   - `entry_state`: the invoke state after the session load and projection
+#     merge, before the first node runs. It is exact (conformance-adapter §8.4).
+#   - `store_after: {<session_id>: null | {state, schema_version}}`: what the
+#     store's `load()` returns for each named session after the call ends.
+#     `null` asserts there is no record. `state` is exact over the
+#     projection's fields.
+#   - `inner_pre_state`: a subgraph's state at entry, after input projection.
+#     It is exact.
+#   - `instance_pre_states`: each fan-out instance's state at entry, ordered
+#     by fan-out index. The list is complete, and each entry is exact.
 
 cases:
   - name: second_invoke_loads_first_invoke_state
@@ -31,18 +44,20 @@ cases:
     invocations:
       - session_id: "s1"
         initial_state: {}
-        # No prior record in the store; the loaded session state is None.
-        loaded_session_state: null
-        expected_final_state: {history: ["x"]}
-        saved_session_assertions:
-          state: {history: ["x"]}
+        expected:
+          # No prior record in the store, so no session state was loaded.
+          loaded_session_state: null
+          final_state: {history: ["x"]}
+          saved_session_assertions:
+            state: {history: ["x"]}
       - session_id: "s1"
         initial_state: {}
-        # Loads invoke #1's saved record before the node runs.
-        loaded_session_state: {history: ["x"]}
-        expected_final_state: {history: ["x", "x"]}
-        saved_session_assertions:
-          state: {history: ["x", "x"]}
+        expected:
+          # Loads invoke #1's saved record before the node runs.
+          loaded_session_state: {history: ["x"]}
+          final_state: {history: ["x", "x"]}
+          saved_session_assertions:
+            state: {history: ["x", "x"]}
     invariants:
       second_invoke_loads_first_invoke_state: true
       saved_record_overwrites_prior: true

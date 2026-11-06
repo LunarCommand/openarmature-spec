@@ -58,7 +58,7 @@ calls:
     config: {max_tokens: 64, temperature: 0.7}
     expected:
       response:
-        message: {role: assistant, content: "OK", tool_calls: null}
+        message: {role: assistant, content: [{type: text, text: "OK"}], tool_calls: null}
         finish_reason: stop
 
   # Call B: same OA semantics, alternate insertion orders throughout.
@@ -89,7 +89,7 @@ calls:
     config: {temperature: 0.7, max_tokens: 64}
     expected:
       response:
-        message: {role: assistant, content: "OK", tool_calls: null}
+        message: {role: assistant, content: [{type: text, text: "OK"}], tool_calls: null}
         finish_reason: stop
 
 expected_wire_bytes_identical:

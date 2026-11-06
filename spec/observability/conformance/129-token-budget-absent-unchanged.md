@@ -30,11 +30,10 @@ present.
 **no** `token_budget` object — the contrast that isolates the budget surface from the always-present
 `active_prompt` identity surface.
 
-**Harness note (absence assertion):** as in fixture 128, the absence of token-budget *metric*
-observations (amid the token-usage / duration observations that the `metrics:` list does assert) is
-expressed as the fixture-specific invariant `no_token_budget_instrument_observations_when_no_budget`
-(§5.9) — the `metrics:` directive asserts recorded observations and has no per-instrument absence form
-short of `metrics: []`, which would wrongly demand zero token-usage observations too. The absent span
+**Harness note (absence assertion):** as in fixture 128, the `metrics:` list names every measurement
+the capture recorded. It holds only the token-usage and duration observations, so it asserts that
+neither token-budget instrument recorded one. The fixture-specific invariant
+`no_token_budget_instrument_observations_when_no_budget` (§5.9) restates that absence. The absent span
 attributes use the established `attributes_absent:` directive (fixtures 012 / 124).
 
 **What passes:**

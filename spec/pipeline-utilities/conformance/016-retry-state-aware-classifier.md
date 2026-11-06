@@ -19,16 +19,16 @@ non-transient. Two sub-cases differ only in the initial value of `max_retries_re
 1. `state_permits_retry` — `max_retries_remaining=3`. Classifier returns true on first failure;
    node retries; success on second attempt. Final state reflects success.
 2. `state_blocks_retry` — `max_retries_remaining=0`. Classifier returns false on first failure;
-   exception propagates immediately. Engine raises `node_exception`. The flaky_node call counter
-   is exactly 1.
+   exception propagates immediately, and the raised error's category is the node's own
+   `provider_invalid_request`. The flaky_node call counter is exactly 1.
 
 **What passes:**
 
 - `state_permits_retry`: final state is `{max_retries_remaining: 3, v: 1, trace: ["target"]}`.
-- `state_blocks_retry`: engine raises `node_exception`; `flaky_call_count == 1` (classifier
-  blocked retry).
-- The classifier received both arguments in both cases (the harness MAY add internal assertions
-  on this).
+- `state_blocks_retry`: the raised error's category is `provider_invalid_request`;
+  `flaky_call_count == 1` (classifier blocked retry).
+- The classifier received the state in both cases: the two cases' outcomes differ only through
+  the state it reads.
 
 **What fails:**
 

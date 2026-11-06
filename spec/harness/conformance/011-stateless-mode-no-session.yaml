@@ -37,9 +37,7 @@ cases:
         # mode classifies every transmission into §3.0.
         expected:
           dispatch_path: "3.0"
-          invoke_args:
-            session_id_present: false
-            session_id_absent_verified: true   # adapter MUST verify the call site DID NOT pass session_id
+          invoke_args_absent_keys: [session_id]   # the call site passed no session_id
           invoke_outcome: completed
           final_state: {v: 42}
           # Critical assertion: the SessionStore received ZERO calls

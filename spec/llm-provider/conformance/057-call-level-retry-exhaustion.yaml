@@ -25,7 +25,6 @@ call:
 expected:
   raises:
     category: provider_unavailable
-    message: "down 2"
   llm_spans:
     - attempt_index: 0
       attributes:

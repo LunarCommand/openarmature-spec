@@ -108,6 +108,7 @@ cases:
         metadata:
           tenantId: "acme-corp"
         # Trace metadata does NOT carry either branch's branchName.
+        metadata_absent: [branchName]
         observations:
           - type: span
             name: "dispatcher"

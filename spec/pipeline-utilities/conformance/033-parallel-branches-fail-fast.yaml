@@ -88,16 +88,15 @@ edges:
 
 initial_state: {}
 
-expected:
-  # The graph run does NOT complete successfully.
-  expected_error:
-    category: parallel_branches_branch_failed
+# The graph run does NOT complete successfully.
+expected_error:
+  category: parallel_branches_branch_failed
+  carries:
     branch_name: beta
-    cause_message: "branch beta failed"
-
+  cause_message: "branch beta failed"
   # Per §11.4 + §11.5 fail_fast: NO branch contributions are visible in
   # recoverable_state, including the first branch's successful work. This is
-  # the buffer-and-apply semantic — buffered contributions are discarded on
+  # the buffer-and-apply semantic: buffered contributions are discarded on
   # fail_fast.
   recoverable_state:
     alpha_result: 0

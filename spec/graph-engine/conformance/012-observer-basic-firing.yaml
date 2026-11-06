@@ -5,7 +5,8 @@
 #   - obs_invoke: invocation-scoped (passed to the single invoke() call)
 #
 # Verifies:
-#   - Each observer is invoked exactly once per node (three events each).
+#   - Each observer receives a started and a completed event per node (six
+#     events each).
 #   - `step` values are 0, 1, 2 in execution order.
 #   - `namespace` is [node_name] for each event in the outermost graph.
 #   - `pre_state` reflects pre-merge state; `post_state` reflects post-merge state.
@@ -59,25 +60,33 @@ expected:
   # Both observers default-subscribe to both phases.
   observer_events:
     obs_graph:
-      - {step: 0, phase: started,   node_name: a, namespace: [a], pre_state: {v: 0, trace: []}}
+      - {step: 0, phase: started,   node_name: a, namespace: [a],
+         pre_state: {v: 0, trace: []}, parent_states: []}
       - {step: 0, phase: completed, node_name: a, namespace: [a],
-         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}}
-      - {step: 1, phase: started,   node_name: b, namespace: [b], pre_state: {v: 1, trace: ["a"]}}
+         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}, parent_states: []}
+      - {step: 1, phase: started,   node_name: b, namespace: [b],
+         pre_state: {v: 1, trace: ["a"]}, parent_states: []}
       - {step: 1, phase: completed, node_name: b, namespace: [b],
-         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}}
-      - {step: 2, phase: started,   node_name: c, namespace: [c], pre_state: {v: 2, trace: ["a", "b"]}}
+         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
+      - {step: 2, phase: started,   node_name: c, namespace: [c],
+         pre_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
       - {step: 2, phase: completed, node_name: c, namespace: [c],
-         pre_state: {v: 2, trace: ["a", "b"]}, post_state: {v: 3, trace: ["a", "b", "c"]}}
+         pre_state: {v: 2, trace: ["a", "b"]},
+         post_state: {v: 3, trace: ["a", "b", "c"]}, parent_states: []}
     obs_invoke:
-      - {step: 0, phase: started,   node_name: a, namespace: [a], pre_state: {v: 0, trace: []}}
+      - {step: 0, phase: started,   node_name: a, namespace: [a],
+         pre_state: {v: 0, trace: []}, parent_states: []}
       - {step: 0, phase: completed, node_name: a, namespace: [a],
-         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}}
-      - {step: 1, phase: started,   node_name: b, namespace: [b], pre_state: {v: 1, trace: ["a"]}}
+         pre_state: {v: 0, trace: []}, post_state: {v: 1, trace: ["a"]}, parent_states: []}
+      - {step: 1, phase: started,   node_name: b, namespace: [b],
+         pre_state: {v: 1, trace: ["a"]}, parent_states: []}
       - {step: 1, phase: completed, node_name: b, namespace: [b],
-         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}}
-      - {step: 2, phase: started,   node_name: c, namespace: [c], pre_state: {v: 2, trace: ["a", "b"]}}
+         pre_state: {v: 1, trace: ["a"]}, post_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
+      - {step: 2, phase: started,   node_name: c, namespace: [c],
+         pre_state: {v: 2, trace: ["a", "b"]}, parent_states: []}
       - {step: 2, phase: completed, node_name: c, namespace: [c],
-         pre_state: {v: 2, trace: ["a", "b"]}, post_state: {v: 3, trace: ["a", "b", "c"]}}
+         pre_state: {v: 2, trace: ["a", "b"]},
+         post_state: {v: 3, trace: ["a", "b", "c"]}, parent_states: []}
 
   # Per-event delivery order. The harness records (observer, step, phase) tuples in the
   # order they are delivered and compares to this list. For a given step, started events

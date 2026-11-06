@@ -45,8 +45,7 @@ cases:
             - role: assistant
               content: "Got your image. Looks like a sunset."
           final_state:
-            messages_count: 2
-            messages_history_contains:
+            messages:
               - role: user
                 content:
                   - {type: text, text: "What's in this picture?"}

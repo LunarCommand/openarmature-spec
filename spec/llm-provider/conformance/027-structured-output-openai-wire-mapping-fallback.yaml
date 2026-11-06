@@ -1,58 +1,57 @@
 # Structured output — prompt-augmentation fallback for providers without
 # native response_format. The provider is configured as NOT supporting
-# response_format; the implementation MUST fall back per §8.1.5.1.
+# response_format; the implementation SHOULD fall back per §8.1.5.1.
 #
 # The fallback constructs a MODIFIED COPY of the message list with a
 # JSON-only directive appended; sends without response_format; parses
 # and validates the response against the user's schema. The caller's
 # original messages MUST NOT be mutated.
+#
+# Two cases on the same inputs. The fallback case is gated on
+# llm_prompt_augmentation_fallback. It leaves the messages unasserted,
+# since §8.1.5.1 lets the directive be appended as a system message or
+# merged into an existing one. Without the fallback, the native request
+# (§8.1.5) is the default and the mock's response is the same, so the
+# ungated case asserts what holds on either path.
 
-mock_provider:
-  capabilities:
-    supports_native_response_format: false
-  responses:
-    - status: 200
-      body:
-        id: chatcmpl-test-027
-        object: chat.completion
-        created: 1700000000
-        model: test-model
-        choices:
-          - index: 0
-            message: {role: assistant, content: '{"value":42}'}
-            finish_reason: stop
-        usage: {prompt_tokens: 50, completion_tokens: 4, total_tokens: 54}
-
-calls:
-  - operation: complete
-    messages:
-      - {role: user, content: "Generate."}
-    response_schema:
-      type: object
-      properties:
-        value: {type: integer}
-      required: [value]
-      additionalProperties: false
-    # Literal wire shape: the fallback constructs a modified copy of the
-    # message list with a system directive prepended (or an existing
-    # system message extended). The directive's content is
-    # implementation-defined — the "*" wildcard (per the convention
-    # introduced in fixtures 021/026) asserts presence and non-empty
-    # string but exempts the content from literal comparison.
-    expected_wire_request:
-      model: test-model
+cases:
+  - name: prompt_augmentation_fallback
+    description: |
+      Adapters declaring llm_prompt_augmentation_fallback. The mock's
+      capability metadata says the server lacks response_format, so the
+      implementation falls back and the request carries no
+      response_format.
+    requires_capability:
+      llm_prompt_augmentation_fallback: true
+    mock_provider:
+      capabilities:
+        supports_native_response_format: false
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-test-027
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"value":42}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 50, completion_tokens: 4, total_tokens: 54}
+    call:
+      operation: complete
       messages:
-        - {role: "system", content: "*"}
-        - {role: "user", content: "Generate."}
-    # Sibling assertion block for facts the literal comparison can't
-    # express. The harness applies these alongside the literal compare.
-    expected_wire_request_checks:
-      # The native path is bypassed: no response_format key on the wire.
-      response_format_absent: true
-      # The system-directive content (wildcarded above) MUST reference
-      # the schema in some form — e.g., include the schema's title,
-      # type, or serialized JSON. Implementation-defined wording.
-      system_message_content_references_schema: true
+        - {role: user, content: "Generate."}
+      response_schema:
+        type: object
+        properties:
+          value: {type: integer}
+        required: [value]
+        additionalProperties: false
+    expected_wire_request_includes:
+      model: test-model
+    # The native path is bypassed: no response_format key on the wire.
+    expected_wire_request_absent_keys: [response_format]
     expected:
       response:
         message: {role: assistant, content: '{"value":42}', tool_calls: null}
@@ -60,4 +59,45 @@ calls:
         # parsed is still populated — fallback validates post-receive.
         parsed: {value: 42}
       # The caller's original messages list MUST NOT have been mutated.
+      caller_messages_unmodified: true
+
+  - name: response_holds_on_either_path
+    description: |
+      Every adapter, on the same inputs. Whether the implementation falls
+      back or sends the native request, one request goes out for the
+      bound model, the response and its parsed value are the same, and
+      the caller's messages are left unmodified.
+    mock_provider:
+      capabilities:
+        supports_native_response_format: false
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-test-027
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: '{"value":42}'}
+                finish_reason: stop
+            usage: {prompt_tokens: 50, completion_tokens: 4, total_tokens: 54}
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate."}
+      response_schema:
+        type: object
+        properties:
+          value: {type: integer}
+        required: [value]
+        additionalProperties: false
+    expected_wire_request_includes:
+      model: test-model
+    expected:
+      response:
+        message: {role: assistant, content: '{"value":42}', tool_calls: null}
+        finish_reason: stop
+        # parsed is populated on either path: validation is post-receive.
+        parsed: {value: 42}
       caller_messages_unmodified: true

@@ -15,8 +15,10 @@ identical final state AND identical observer event sequences (including per-atte
 **What passes:**
 
 - Both runs produce the same `final_state == {v: 100, trace: ["target"]}`.
-- Both runs produce the same 3-event observer sequence with `attempt_index` 0, 1, 2.
-- The first two events have `error == node_exception`; the third has `post_state` populated.
+- Both runs produce the same 6-event observer sequence: a `started` and a `completed` event for
+  each of `attempt_index` 0, 1, 2.
+- The `completed` events of attempts 0 and 1 have `error.category == node_exception`;
+  attempt 2's `completed` event has `post_state` populated.
 
 **What fails:**
 

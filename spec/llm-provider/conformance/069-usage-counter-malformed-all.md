@@ -15,7 +15,7 @@ The mock returns `usage: {prompt_tokens: "abc", completion_tokens: -5, total_tok
 
 - `Response.usage` is `{prompt_tokens: null, completion_tokens: null, total_tokens: null}` — a present record.
 - `complete()` does not raise.
-- `raw.usage` preserves all three malformed values verbatim (the string, the negative, and the boolean). `raw_check.required_keys` asserts only that `usage` is **present** on `raw`; the verbatim values are pinned by the adapter-enforced invariant `raw_usage_all_counters_verbatim_malformed`.
+- `raw.usage` preserves all three malformed values verbatim (the string, the negative, and the boolean). `raw_check.required_keys` lists `usage`, so `raw.usage` must equal the mock body's `usage` exactly; the invariant `raw_usage_all_counters_verbatim_malformed` states the same claim.
 
 **What fails:**
 

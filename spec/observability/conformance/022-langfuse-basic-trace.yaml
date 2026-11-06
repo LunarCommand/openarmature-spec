@@ -21,20 +21,51 @@
 #       * `disable_provider_payload: bool` (default true)
 #     * `mock_llm` — canned responses for an OpenAI-compatible mock
 #       provider (per llm-provider §8 wire format).
+#   - Capability, gated with `requires_capability` (conformance-adapter
+#     §5.17):
+#     * `langfuse_token_budget_warning_level`: on a token-budget exceedance
+#       the implementation sets the Langfuse generation's level to `WARNING`
+#       with a `statusMessage` (observability §5.5.15 and §8.4.3, a SHOULD).
 #   - Expected output:
-#     * `expected.langfuse_trace` — top-level Trace shape (id pattern,
-#       name, metadata) with a nested `observations` tree of
-#       observation records. Each observation has `type` (span /
-#       generation / event), `name`, `metadata` (subset assertions),
-#       `level`, optional Generation-specific fields (input, output,
-#       model, modelParameters, usage, prompt), and `children`.
+#     * `expected.langfuse_trace`: the one Langfuse Trace the call produced,
+#       read from the conformance-adapter §6.4 recorder. A case that
+#       produces more than one Trace uses `langfuse_traces`. The mapping
+#       asserts the Trace fields it names (conformance-adapter §8.4), and
+#       `input` and `output` are exact. `metadata` matches by the keys it
+#       names, with `metadata_absent` for keys that must be absent.
+#       `observations` lists the top-level observations, complete and
+#       unordered. Trace-field absence is written
+#       `langfuse_trace_absent_keys`, beside `langfuse_trace`.
+#     * `expected.langfuse_traces`: every Trace in the block's scope, the
+#       invocation's own and each detached one. The list is complete and
+#       unordered, and each entry matches as `langfuse_trace` does.
+#     * Observation entries, in `observations` and `children`: `type`
+#       (`span`, `generation`, `event`, `embedding`, `retriever`, `tool`),
+#       `name`, `level`, `statusMessage`, `input`, `output`, `model`,
+#       `usage` (with `usage_absent_keys`), `usageDetails` (with
+#       `usageDetails_absent_keys`), `modelParameters`, `metadata`,
+#       `metadata_absent`, `metadata_truncation`, `input_parses_as_messages`,
+#       `prompt_entity_link`, `children` and `absent_keys`. An entry asserts
+#       the keys it names. `children` lists every child observation,
+#       complete and unordered. `metadata_absent` and `metadata_truncation`
+#       are as conformance-adapter §5.5 defines them.
+#       `input_parses_as_messages` parses a string `input` as JSON; the
+#       message list is complete and ordered, and each message matches by
+#       the keys it names.
+#     * Unset fields (conformance-adapter §8.4): on a Trace or an
+#       observation, an unset top-level field reads as Langfuse's default.
+#       That is null for `input`, `output`, `statusMessage`, `userId` and
+#       `sessionId`, and `DEFAULT` for `level`. A mapping held in a field,
+#       such as `metadata` or `usage`, is a JSON document, where `null` and
+#       a missing key differ.
 #
 # Attribute placeholder strings (same as OTel fixtures):
 #   - `<uuid>` matches any canonical UUIDv4 (36 chars, hyphenated).
 #   - `<any-string>` matches any non-empty string.
-#   - `<corr_id_X>` matches an opaque correlation id used for
-#     cross-observation correlation (harness binds X to the actual id on
-#     first occurrence and asserts equality on later occurrences).
+#   - `<corr_id_X>` is a binding token for an opaque correlation id shared
+#     across observations. It matches any present, non-null value, and
+#     every occurrence of the same token in a case holds the same value
+#     (conformance-adapter §5.10).
 
 state:
   fields:
@@ -64,12 +95,14 @@ edges:
 initial_state: {}
 
 # No caller_correlation_id — verify auto-generation per §3.1.
-# No caller_invocation_label — verify §8.6 entry-node-name fallback.
+# No caller_invocation_label. §8.6 requires a trace name but only
+# RECOMMENDS the entry-node-name default, so the name is asserted as
+# any non-empty string.
 
 expected:
   langfuse_trace:
     id: "<uuid-hex>"
-    name: "a"
+    name: "<any-string>"
     metadata:
       correlation_id: "<corr_id_1>"
       entry_node: "a"

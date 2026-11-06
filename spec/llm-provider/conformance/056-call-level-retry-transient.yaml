@@ -42,6 +42,9 @@ expected:
         "openarmature.llm.attempt_index": 1
         "openarmature.llm.finish_reason": stop
         "openarmature.llm.model": gpt-test
+        "openarmature.llm.usage.prompt_tokens": 4
+        "openarmature.llm.usage.completion_tokens": 1
+        "openarmature.llm.usage.total_tokens": 5
       error_category: null
   invariants:
     call_returns_successful_response_after_transient_retry: true

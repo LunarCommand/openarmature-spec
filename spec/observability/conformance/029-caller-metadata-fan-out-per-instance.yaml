@@ -22,6 +22,9 @@ cases:
           observations).
     state:
       fields:
+        products:
+          type: list<dict>
+          default: []
         results:
           type: list<dict>
           reducer: append
@@ -92,6 +95,7 @@ cases:
         metadata:
           tenantId: "acme-corp"
         # The Trace metadata does NOT include per-instance productId.
+        metadata_absent: [productId]
         observations:
           - type: span
             name: "fan_out_node"

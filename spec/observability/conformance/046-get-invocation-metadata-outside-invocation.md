@@ -30,8 +30,8 @@ spec-public read primitive.
 
 **What fails:**
 
-- The call raises (e.g., a `RuntimeError("no active invocation")` or similar) — the spec
-  requires silent no-op.
-- The call returns `None` instead of an empty mapping — the return type contract MUST be the
+- The call raises, for example with an error saying there is no active invocation. The spec
+  requires a silent no-op.
+- The call returns null instead of an empty mapping. The return type contract MUST be the
   immutable-mapping shape on every call path.
 - The call returns a mutable mapping — the immutability contract applies uniformly.

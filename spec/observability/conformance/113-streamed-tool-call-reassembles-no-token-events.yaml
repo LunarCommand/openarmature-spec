@@ -3,7 +3,7 @@
 # (surfaced on LlmCompletionEvent.output_tool_calls) but are NOT emitted as
 # token events. LlmTokenEvent carries answer CONTENT only; tool-call deltas are
 # provider-internal reassembly. Locks the "reassemble into the atomic Response,
-# don't emit as token events" contract. (Streaming directives in fixture 111's
+# don't emit as token events" contract. (Streaming inputs in fixture 001's
 # header.)
 
 cases:
@@ -32,6 +32,7 @@ cases:
         calls_llm:
           stream: true
           messages: [{role: user, content: "weather in Paris?"}]
+          model: gpt-test
           tools:
             - name: get_weather
               description: "Get current weather for a city."

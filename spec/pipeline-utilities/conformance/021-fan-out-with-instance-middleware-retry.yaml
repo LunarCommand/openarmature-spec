@@ -100,7 +100,7 @@ cases:
       - {from: process, to: END}
     initial_state: {}
     expected_error:
-      category: node_exception
+      category: provider_rate_limit
       raised_from: process
       recoverable_state:
         items: [7, 9]

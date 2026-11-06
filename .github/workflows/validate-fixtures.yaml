@@ -4,13 +4,19 @@ on:
   pull_request:
     paths:
       - "spec/**/conformance/*.yaml"
+      - "spec/**/conformance/README.md"
+      - "spec/conformance-adapter/spec.md"
       - "scripts/validate_fixtures.py"
+      - "scripts/validate_fixture_vocabulary.py"
       - ".github/workflows/validate-fixtures.yaml"
   push:
     branches: [main]
     paths:
       - "spec/**/conformance/*.yaml"
+      - "spec/**/conformance/README.md"
+      - "spec/conformance-adapter/spec.md"
       - "scripts/validate_fixtures.py"
+      - "scripts/validate_fixture_vocabulary.py"
       - ".github/workflows/validate-fixtures.yaml"
 
 jobs:
@@ -23,3 +29,5 @@ jobs:
           python-version: "3.12"
       - run: pip install pyyaml
       - run: python scripts/validate_fixtures.py
+      - run: python scripts/validate_fixture_vocabulary.py --self-test
+      - run: python scripts/validate_fixture_vocabulary.py

@@ -10,7 +10,7 @@
 # the wire `input` carries the PREFIXED text (there is still no
 # input_type / task field on the wire). This is the §8.3 realization of
 # 0077's client-side-prefix fallback, which no prior fixture exercised
-# (013-017 use TEI's server-side prompt_name; 020 uses Jina's task).
+# (013 and 017 use TEI's server-side prompt_name; 020 uses Jina's task).
 #
 # This fixture binds query_prefix / document_prefix on the
 # openai_embedding_provider and asserts:
@@ -31,9 +31,9 @@
 # Per-directory harness directives: see 023's header (mapping: openai,
 # openai_embedding_provider construction block INCLUDING the optional
 # query_prefix / document_prefix, the OpenAI /v1/embeddings request +
-# response shapes, expected_wire_request / expected_wire_headers) and
-# 013's header (typed_observers / contains_event asserting
-# EmbeddingEvent.request_params). The query_prefix / document_prefix
+# response shapes) and 013's header (typed_observers / contains_event
+# asserting EmbeddingEvent.request_params). The wire-request assertions
+# are defined in conformance-adapter §5.16. The query_prefix / document_prefix
 # construction keys are the §8.1 client-side prefix strings (operator-
 # supplied, model-specific; the spec does NOT enumerate per-model
 # prefixes — 0077 §8.1). The literal prefixes here ("query: " /
@@ -100,9 +100,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.10, 0.20, 0.30, 0.40]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: e5-base-en-test
           response_id: null
       observers:
@@ -167,9 +167,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.50, 0.60, 0.70, 0.80]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: e5-base-en-test
           response_id: null
       observers:

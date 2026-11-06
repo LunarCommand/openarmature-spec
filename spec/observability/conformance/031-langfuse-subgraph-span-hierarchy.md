@@ -33,7 +33,7 @@ Langfuse Trace / Observation tree rather than the OTel span tree.
   `openarmature.subgraph.name` on the subgraph span itself per §5.3).
   The inner-node observations (`inner_x`, `inner_y`) do NOT carry
   `subgraph_name` — that attribute is subgraph-span-scoped, not
-  inner-node-scoped.
+  inner-node-scoped. Each asserts it with `metadata_absent: [subgraph_name]`.
 - `metadata.namespace` on each observation reflects the subgraph nesting:
   `["outer_in"]`, `["outer_sub"]`, `["outer_sub", "inner_x"]`, `["outer_sub", "inner_y"]`,
   `["outer_out"]`.

@@ -98,4 +98,10 @@ cases:
               children: []
       log_records:
         - body: "node a executing"
-          attributes_absent: [openarmature.session_id]
+      # No record carries the attribute: <any-string> covers every non-empty
+      # value, and the second entry covers the empty string.
+      log_records_absent:
+        - attributes:
+            openarmature.session_id: "<any-string>"
+        - attributes:
+            openarmature.session_id: ""

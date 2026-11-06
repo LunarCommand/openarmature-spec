@@ -14,11 +14,10 @@
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 006's header (calls_rerank /
-# mock_rerank), 013's / 014's / 018's headers (mapping: <name>,
-# expected_wire_request, expected_wire_request_absent_keys,
-# expected_wire_request_count, expected_wire_headers), and 028's header
-# (mapping: cohere, the cohere_rerank_provider construction block, and
-# Cohere's /v2/rerank request + response shapes). No new directive — top_n
+# mock_rerank) and 028's header (mapping: cohere, the cohere_rerank_provider
+# construction block, and Cohere's /v2/rerank request + response shapes).
+# `mapping:` is defined in conformance-adapter §5.15 and the wire-request
+# assertions in §5.16. No new directive: top_n
 # is asserted via expected_wire_request (present-with-value), mirroring the
 # 018 family's wire-key assertions.
 

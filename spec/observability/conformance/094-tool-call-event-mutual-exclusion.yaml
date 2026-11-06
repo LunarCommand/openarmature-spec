@@ -48,7 +48,7 @@ cases:
         calls_tool:
           tool_name: "lookup"
           arguments: {q: "x"}
-          mock_tool: {raises: {error_type: "ValueError", message: "bad query"}}
+          mock_tool: {raises: {error_type: "MockToolError", message: "bad query"}}
     edges:
       - {from: run_tool, to: END}
     initial_state: {}

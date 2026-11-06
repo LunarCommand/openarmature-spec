@@ -1,6 +1,6 @@
 # 060 — Streaming-unsupported mapping rejects a `stream`-set call
 
-Verifies the llm-provider §5 *Provider streaming support* rejection contract. A wire mapping that does not implement streaming MUST reject a `stream`-set call at pre-send validation, raising `provider_invalid_request` (§7), with no token events emitted and no silent atomic fallback — the same mold as `tool_choice` pre-send validation. This is the defined (not undefined) behavior for the §8.2 Anthropic and §8.3 Gemini mappings until their streaming follow-ons land. The fixture introduces the synthetic `mapping: streaming_unsupported_stub` directive (documented in its YAML header per conformance-adapter §3.2) so the contract is tested independently of any one vendor's wire details.
+Verifies the llm-provider §5 *Provider streaming support* rejection contract. A wire mapping that does not implement streaming MUST reject a `stream`-set call at pre-send validation, raising `provider_invalid_request` (§7), with no token events emitted and no silent atomic fallback. It is the same mold as `tool_choice` pre-send validation. This is the defined (not undefined) behavior for the §8.2 Anthropic and §8.3 Gemini mappings until their streaming follow-ons land. The fixture uses the synthetic `mapping: streaming_unsupported_stub` directive, defined in the harness note in fixture 001's header, so the contract is tested independently of any one vendor's wire details.
 
 **Spec sections exercised:**
 

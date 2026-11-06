@@ -122,7 +122,7 @@ cases:
               - type: generation
                 name: "openarmature.llm.complete"
                 # NO Prompt-entity link MUST be established.
-                prompt_entity_link_absent: true
+                absent_keys: [prompt_entity_link]
                 metadata:
                   prompt:
                     name: "greet"

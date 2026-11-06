@@ -6,11 +6,7 @@
 # Both MUST raise the canonical configuration-time category
 # `checkpoint_state_migration_chain_ambiguous` (per §10.10).
 #
-# The `expected_chain_ambiguity_error` primitive accepts the named
-# category surfacing at either build time or during resume — preserves
-# §10.12.2's compile-time-SHOULD / load-time-acceptable carve-out so
-# implementations that detect ambiguity at either point pass the same
-# fixture.
+# `expected_chain_ambiguity_error` is defined in fixture 001's header.
 
 cases:
   - name: duplicate_pair_at_registration

@@ -78,12 +78,12 @@ infrastructure beyond the bare graph engine — in-memory observer implementatio
 backends, slow-observer simulation, OTel collector capture, etc. The directive names the primitive; the
 adapter provides it.
 
-**Assertion shape.** A field under a fixture's `expected:` block specifying what the adapter MUST
-verify about the executed graph's outcome. Exact-equality shapes (`final_state`, `execution_order`) check
-literal equality; invariant shapes (`observer_event_invariants`, `invariants`) check named boolean
-predicates suitable for nondeterministic-ordering cases.
+**Assertion shape.** A key at an assertion position (§5 *Assertion positions*) specifying what the adapter
+MUST verify about the executed graph's outcome. §8.4 states how the written value is compared with what the
+adapter reads. Invariant shapes (`observer_event_invariants`, `invariants`) check named boolean predicates
+suitable for nondeterministic-ordering cases.
 
-**Invariant.** A name-keyed boolean predicate the adapter checks beyond the exact-equality assertions,
+**Invariant.** A name-keyed boolean predicate the adapter checks beyond the other assertions (§8.4),
 used when ordering is observable but not uniquely determined (fan-out instance scheduling, parallel-
 branches branch scheduling, observer event dispatch within one phase).
 
@@ -127,12 +127,13 @@ comment block documenting the observability fixture suite's per-capability harne
   (per observability §6 isolation).
 - Optional config blocks the fixtures accept: `caller_correlation_id`, `detached_subgraphs`,
   `detached_fan_outs`, `disable_llm_spans`, `mock_llm`, `caller_global_otel_active`.
-- Expected-outcome shapes specific to observability: `expected.span_tree`, `expected.log_records`,
-  `expected.no_openarmature_spans_on_global`.
+- Expected-outcome shapes specific to observability: `expected.span_tree_private`,
+  `expected.span_tree_global`, `expected.no_openarmature_spans_on_global`. The general `span_tree` and
+  `log_records` shapes it uses are defined in §5.8 and §5.5.
 - Attribute placeholder syntax: `<uuid>` matches any canonical UUIDv4, `<any-string>` matches any
-  non-empty string, `<trace_id_X>` matches an opaque trace_id with first-occurrence binding for
-  cross-reference. (These inline value-tokens are normatively enumerated in §5.10 *Value matchers*,
-  alongside the assertion sub-keys and the exact-value+derivation idiom; this list is the
+  non-empty string, `<trace_id_X>` matches an opaque trace_id, and every occurrence of the same token in a
+  case matches the same value. (These inline value-tokens are normatively enumerated in §5.10 *Value
+  matchers*, alongside the assertion sub-keys and the exact-value+derivation idiom; this list is the
   observability-suite example of them.)
 
 That comment block is normative for the observability fixture suite even though it isn't part of this
@@ -317,6 +318,17 @@ conformance-adapter version is compatible. The version-mismatch rule per §9 *Er
   `conformance_version > vX.Y.Z`. The adapter does NOT have the directive vocabulary the fixture
   requires; silent fallback would mask conformance gaps.
 
+### 4.5 What a fixture may assert
+
+A fixture asserts only what the spec requires. It **MUST NOT** pin a value the spec only recommends
+(SHOULD) or leaves to the implementation, one of several outcomes the spec allows, or an order the spec
+does not fix (§7). Where such behavior matters, the fixture asserts the part the spec fixes, or gates a case
+on a capability the adapter declares (§5.17).
+
+Gating **MUST NOT** take a check away from an adapter. Where the spec fixes what a gated case's inputs
+produce without the capability, every assertion in the case that holds either way **MUST** also be made, on
+the same inputs, by an ungated case or by a case gated on the capability's other value.
+
 ## 5. Directive vocabulary
 
 This section is the authoritative home for the **general** directive surface, and is authoritative for
@@ -350,11 +362,23 @@ treat §5 naming a directive as voiding a note that specifies its shape.
 
 A body of directives currently in use has a definition in neither home. Such a directive sits outside the
 recognized vocabulary, and this rule is stated prospectively rather than retroactively invalidating it.
-§5.9's fixture-specific invariant predicates are deliberately outside this rule: where the corpus
-documents such a predicate at all it does so in the prose of the fixture that uses it, which is neither
-home, and most are documented nowhere. Settling that surface is left to a proposal that can measure it.
-Until then such a predicate remains outside the recognized vocabulary, so §8.2's unknown-name rule and
-§5.9's obligation to implement it remain in conflict.
+
+**Assertion positions.** An assertion directive's definition states where it sits, and §5.8's preamble names
+the two families that cover most of them. Every key at an assertion position **MUST** be a defined assertion
+directive, with two exceptions:
+
+- **`capture_as` labels.** A label is an author-chosen name that a prompt-management call binds and an
+  `expected:` key in the same scope then asserts. The labels are an open name space by design. A label
+  **MUST NOT** reuse a directive name valid at that position.
+- **Named claims.** These are keys whose name is the whole claim, wherever they sit: keys inside an
+  `invariants:` block, keys under `expected:` such as `no_spans_emitted: true`, and claim sub-keys inside a
+  directive's mapping, such as `saved_record_assertions.parent_states_present`. They include §5.9's
+  fixture-specific invariant predicates. Their meaning comes from the fixture that uses them, and an adapter
+  **MUST** implement each named claim it meets, as §5.9 requires, rather than rejecting it under §8.2.
+
+**Reserved absence keys.** `absent_keys` and every key ending in `_absent_keys` are the absence forms §8.4
+defines. A state field, data key or `capture_as` label **MUST NOT** be named `absent_keys` or end in
+`_absent_keys`.
 
 ### 5.1 Node behavior directives
 
@@ -390,10 +414,11 @@ These directives appear under `nodes.<node_name>:` and define what the node does
 - **`invoke_drain_events_for: {timeout_seconds: <float>, snapshot_observer: <observer_name>}`** —
   before this node returns, the adapter MUST invoke
   `graph.drain_events_for(state.invocation_id, timeout=<timeout_seconds>)` then snapshot the named
-  observer's accumulator bucket for that `invocation_id`. Both the drain summary and the snapshot
-  are recorded for per-node assertion. Exercises graph-engine §6 *Per-invocation drain*.
+  observer's accumulator bucket for the current `invoke()` call (§6.1). Both the drain summary and the
+  snapshot are recorded for per-node assertion. Exercises graph-engine §6 *Per-invocation drain*.
 - **`wrap_with_middleware: [{name: <name>, <middleware_config>}, ...]`** — the node body executes
-  inside the named middleware(s), pre / post markers recorded as state-log entries for assertion.
+  inside the named middleware(s), and each records its pre / post markers in the §6.7 middleware-log
+  accumulator, which `middleware_log_captured` (§5.8) reads.
   Standard middleware configs the adapter MUST support:
   - `{name: <name>, pre_log: <marker>, post_log: <marker>}` — middleware logs `pre_log` before
     `next()` and `post_log` after; verifies pre / post execution patterns.
@@ -530,16 +555,18 @@ node mocks (each under `nodes.<node_name>:`), keyed on the failure axis each mod
   - **Compact form:** `{fail_first_invocation_only: <bool>, on_success: {<field>: <value>}}` — fails
     the **first whole invocation** only (raised as `node_exception`), succeeding (returning
     `on_success`) on any resume.
-- **`flaky_by_index`** — fan-out mock with `success_compute` and an **optional** `category` (defaults
-  to `provider_unavailable`; meaningful only for the retrying form, where it drives retry
-  classification), in one of two forms: `{fail_when_idx: <int>}` — the instance whose **item value**
-  equals `<int>` fails **deterministically** (no retry; a collect-mode seam, `category` typically
-  omitted) — or `{fail_count_per_idx: <int>}` — every instance fails its first `<int>` **attempts**,
-  then succeeds (retry).
+- **`flaky_by_index`**: a fan-out mock with `success_compute`, in one of two forms. Under
+  `{fail_when_idx: <int>}`, the instance whose **item value** equals `<int>` fails **deterministically**
+  with an uncategorized error (no retry; a collect-mode seam). Under `{fail_count_per_idx: <int>}`, every
+  instance fails its first `<int>` **attempts**, then succeeds (retry). The **optional** `category`
+  (default `provider_unavailable`) applies only to `fail_count_per_idx`, where it drives retry
+  classification.
 - **`flaky_per_index`** — fan-out mock, **invocation**-keyed, with `success_compute`, in one of two
   forms: `{fail_first_run_indices: [<int>, ...]}` (those indices fail the **first invocation** only,
   then succeed on resume) or `{always_fail_indices: [<int>, ...]}` (those indices fail **every**
-  invocation — a deterministic failure, e.g. for collect-mode error-contribution resume).
+  invocation: a deterministic failure, e.g. for collect-mode error-contribution resume). An **optional**
+  `category` gives each failure it raises that category, which drives retry classification under retry
+  middleware. Without one, each failure is uncategorized.
 - **`flaky_instance_only`** — `{fail_count_per_instance: <int>, category: <category>,
   success_compute: {...}}` — each fan-out instance fails its first `fail_count_per_instance`
   **whole-instance invocations** (the subgraph re-runs from scratch on retry), then succeeds.
@@ -705,8 +732,9 @@ it names the binding explicitly.
 
 ### 5.5 Observer / observability directives
 
-These directives appear at top level as `observers:` and configure observer attachment for the
-fixture.
+These directives configure observers and assert what they received. Each entry states its position:
+configuration directives such as `observers:` sit at the top level of a case, and assertion directives inside
+or beside `expected:`.
 
 - **`observers[]`** — list of observer registrations. Each entry:
   - **`name: <observer_name>`** — identifier for cross-reference from assertions.
@@ -718,8 +746,8 @@ fixture.
   - **`behavior: record | accumulate | raise`** — what the observer does on each event:
     - `record` — records the event into a per-observer event log for assertion via
       `observer_events` / `observer_event_invariants`.
-    - `accumulate` — accumulates events into per-`invocation_id` buckets exposed via a read API
-      the adapter MUST provide (consumed by `invoke_drain_events_for`'s `snapshot_observer` and
+    - `accumulate`: accumulates events into one bucket per `invoke()` call (§6.1), exposed via a read
+      API the adapter MUST provide (consumed by `invoke_drain_events_for`'s `snapshot_observer` and
       by `node_accumulator_snapshots` assertions).
     - `raise` — observer raises on every event it receives. Used to test observer-error isolation
       (graph-engine §6: observer errors MUST NOT interrupt the graph or affect other observers).
@@ -781,7 +809,7 @@ fixture.
 - **`langfuse_client` isolation-outcome directives + assertions** (observability §6, [proposal 0116](../../proposals/0116-langfuse-isolation-fail-loud.md)). Extend the `langfuse_client` directive and add the assertions that gate the mode-(b) payload-leak invariant's arms:
   - `langfuse_client: {preexisting_same_key_client: <bool>}` (default `false`) — when `true`, the harness constructs a Langfuse client for the **same credential** *before* the implementation constructs its own, priming the SDK's per-credential singleton so the implementation is not first; the primed client binds the global provider (the provider-faithful default, §6.4), reproducing the discarded-isolation path deterministically. Meaningful only with `mode: credentials`.
   - `langfuse_client: {accept_shared_provider: <bool>}` (default `false`) — sets the single shared-provider caller opt-out on the implementation's Langfuse observer construction. Default `false` exercises the fail-closed path.
-  - `adapter_capabilities: {langfuse_bound_provider_detection: <bool>}` — declared **by the adapter**, not per-case: whether the implementation's Langfuse SDK surface lets it establish the client's bound provider. Because that introspection is non-portable (§6; observability §6 makes the mode-(a) warn a MAY for the same reason), it is a per-adapter property, not a universal capability, so fixture 158 gates its arms on it — a **detection-capable** adapter MUST satisfy the *raise* cases, a **non-capable** adapter the *suppress* case; both satisfy the opt-out case. This prevents an adapter from passing raise-behavior (verified only against the §6.4 fake's accessor) that its real SDK cannot portably perform. An **undeclared** `langfuse_bound_provider_detection` defaults to `false` (a minimal adapter is treated as non-capable). A case selects its audience with `requires_capability: {langfuse_bound_provider_detection: <bool>}` — asserted only against adapters whose declaration (defaulted as above) matches; a case with no `requires_capability` applies to all. A case gated out by `requires_capability` is a **recognized skip**, not a silently-omitted case (§8.1 / §8.2 / §9): the raise floor and the suppress floor are each covered by whichever adapter class its gate selects.
+  - **The `langfuse_bound_provider_detection` capability** (§5.17) decides which of fixture 158's arms an adapter is held to. A **detection-capable** adapter MUST satisfy the *raise* cases, a **non-capable** adapter the *suppress* case, and both satisfy the opt-out case. This prevents an adapter from passing raise-behavior (verified only against the §6.4 fake's accessor) that its real SDK cannot portably perform. The raise floor and the suppress floor are each covered by whichever adapter class its gate selects.
   - `expected_construction_error: {category: <token>}` — a **top-level case-level** raised-error assertion (the observer/client-construction analogue of `expected_compile_error`, and catalogued alongside it in §5.8), placed as a sibling of `nodes` / `edges` / `expected`, **not** nested under `expected:`: asserts that standing up and running the case raises the categorized error at construction or first use. Fixture 158's raise cases use `{category: langfuse_provider_isolation_unavailable}`, the observability-native category observability §6 defines; like other raised-error categories it is referenced by `{category}` per §5.8's per-capability rule (a category is not a `carries` field key, so §5.13 does not govern it).
   - `expected.no_payload_bearing_langfuse_observations_on_global` / `expected.payload_bearing_langfuse_observations_on_global` — payload-scoped variants of the 0115 leak assertions (the §6.4 fake distinguishes a payload-bearing observation from a payload-free one). The raise cases assert **no payload-bearing** observation reached the global exporter (a metadata-only span reaching it before a first-use raise does not violate the payload invariant); the suppress case asserts an observation reached it but **payload-free**; the opt-out case asserts a **payload-bearing** one did (the acknowledged leak). Proposal 0117 broadens **payload-bearing** to any harvested payload — provider `input` / `output`, a Trace-level state `input` / `output` (raw state or a `trace_input_from_state` / `trace_output_from_state` hook value), **or** a failed observation's `error_type` / `error_message` — with the §8.4.1 minimal stub and a category-only failed observation as **payload-free**; the state channel uses the existing `langfuse_observer.disable_state_payload` / `trace_*_from_state` directives (proposal 0043 / fixture 037) and a failure is induced with the existing mock-failure directives (proposal 0107), so no new directive is added. Proposal 0118 **narrows** the error half of that classification to the `error_message` alone: a failed observation's `error_type` is a classification token rather than harvested text, so it does not make an observation payload-bearing (and is ungated by `disable_provider_payload`, observability §5.5.4).
   - `expected.log_records` entries gain a `level` key (e.g. `level: WARNING`) alongside `body` / `attributes`. OTel severity is a first-class `LogRecord` field, not an attribute, so without it a mandated `WARNING` cannot be asserted (an implementation emitting at `INFO` would pass). An entry matches by the **subset** of fields it specifies: an entry with only `level` asserts that a log record of that severity **exists** (body / attributes unconstrained), non-exhaustively (other records may be present). Fixture 158's opt-out and suppress cases assert `level: WARNING` this way.
@@ -790,8 +818,9 @@ fixture.
   - `expected.log_records` entries **MAY** carry **`event_name: <string>`** alongside `level`, `body` and `attributes`, asserting the record's OTel `LogRecord` `EventName` field equals the given value (observability §7 *Diagnostic event names*). Severity alone cannot distinguish one mandated diagnostic from another, or from an unrelated `WARNING`; the event name can. Matching remains a subset over the fields an entry specifies and the list remains non-exhaustive.
   - `expected.log_records` entries **MAY** carry **`count: <int>`**, asserting that the number of captured records the entry matches equals it ([proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)). Without `count`, an entry asserts at least one match, as before. A count is what lets a fixture assert a diagnostic is emitted exactly once, which a non-exhaustive subset match cannot.
   - **`expected.log_records_absent: [<entry>, ...]`** asserts that no captured log record matches any listed entry, where an entry matches by the same subset rule as `log_records` (an entry naming only `event_name` matches any record with that event name) ([proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)). It is the log-record analogue of `attributes_absent` and `metadata_absent`, which exist because a subset match can pin a value but never an absence. For any case carrying `log_records_absent`, or a `log_records` entry with `count`, the adapter **MUST** capture log records for the whole case and **MUST** wait until observer delivery has completed before asserting; an adapter that cannot capture log records **MUST** fail the case rather than pass it.
+  - **`expected.log_records` is an existence list** (§8.4). Each entry asserts that some captured record matches the fields it names, entries may match the same record, and the list is not exhaustive; `count` and `log_records_absent` carry exact counts and absence. An entry **MAY** also carry **`trace_id`** and **`span_id`**, compared against the record's OTel trace context, which observability §7 keeps apart from the record's attributes. An all-zero trace or span id, OpenTelemetry's invalid context, counts as absent. §6.3 captures log records for any case asserting `log_records`.
   - **`otel_observer: {disable_provider_payload: <bool>, disable_genai_semconv: <bool>}`** configures the composed OTel observer's flags for the case, the OTel-side counterpart of `langfuse_observer`. Both keys are optional; omitted, the observer keeps that flag's observability §5.5.4 default. An adapter **MUST** honor the directive when present: a case that sets a flag and an adapter that ignores it produce the same observable result as a case that does not set it, so silently dropping it makes the case vacuous rather than failing it.
-  - **`otel_observer: {attached: false}`** composes **no** OTel observer for the case (default `true`) ([proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)). Spans then have nothing to record them, while log records and typed events are still captured. It is how a case asserts that a diagnostic the implementation MUST emit does not depend on an OTel observer being attached; without it every observability case runs with one (§6.3). An adapter **MUST** honor the directive when present.
+  - **`otel_observer: {attached: false}`** composes **no** OTel observer for the case (default `true`) ([proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)). Spans then have nothing to record them, while log records and typed events are still captured. It is how a case asserts that a diagnostic the implementation MUST emit does not depend on an OTel observer being attached; without it every observability case runs with one (§6.3). An adapter **MUST** honor the directive when present, except that a case asserting `span_tree`, `traces` or `llm_spans` **MUST NOT** set it (§6.3).
   - **Langfuse observer composition.** A case composes a Langfuse observer when it carries a `langfuse_observer` or `langfuse_client` block, an empty `langfuse_observer: {}` included, or an expected-outcome assertion on Langfuse output, such as `expected.langfuse_trace` or the Langfuse-observation assertions above. Otherwise it composes none ([proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)). Unlike the OTel observer, a Langfuse observer is not composed by default, so a case shows that a diagnostic does not depend on one by leaving these keys out. An adapter **MUST** compose exactly as this rule says: composing one where the rule says none, or none where it says one, can turn an absence or count assertion vacuous.
 
   - **`langfuse_observer: {payload_byte_cap: <int>}`** / **`otel_observer: {payload_byte_cap: <int>}`** configure that observer's truncation cap, the byte bound observability §5.5.5 applies to each payload-classified value the observer writes. Omitted, the observer keeps §5.5.5's default of **65,536 bytes**. The cap is **per observer**, so a case MAY set it on one observer and leave the other at the default; that asymmetry is the only way a fixture can separate an implementation applying the correct observer's cap from one reading its sibling's, which observability §8.7 makes a **MUST NOT**. Setting neither leaves both at the same default and no such fixture can discriminate. An adapter **MUST** honor the directive when present. Fixture 023 sets the Langfuse cap alone; fixture 160 does the same to gate §8.7's direct-application arm.
@@ -813,61 +842,95 @@ graph-engine §6 **typed event families** via a dedicated collector:
   event it receives in **observer-internal storage** (observers MUST NOT mutate state per graph-engine §6; the
   harness reads the events back via introspection, with no state-field round-trip). The optional
   `filter_event_type` narrows a collector to a single family. The captured families are the graph-engine §6
-  typed events: `LlmCompletionEvent`, `LlmFailedEvent`, `LlmTokenEvent`, `LlmTokenFailedEvent`, `EmbeddingEvent`,
+  typed events: `LlmCompletionEvent`, `LlmFailedEvent`, `LlmTokenEvent`, `EmbeddingEvent`,
   `EmbeddingFailedEvent`, `RerankEvent`, `RerankFailedEvent`, `ToolCallEvent`, `ToolCallFailedEvent`, and
   `NodeEvent`.
-- **`contains_event: {event_type: <EventType>, fields: {<field>: <expected>, ...}}`** — appears under
-  `expected.observers.<collector>` and asserts the collector's storage holds an event of `event_type` whose
-  `fields` match by value (each per the §5.10 *Value matchers* vocabulary — format tokens, first-occurrence
-  bindings, assertion sub-keys, or a literal scalar / nested mapping). Sibling assertion forms on the same slot:
-  **`contains_event_of_type: <EventType>`** and **`contains_exactly_one_event_of_type: <EventType>`** (presence
-  / exactly-one, no field match), and per-family counts as either a single **`event_count: {event_type: <T>,
-  count: <N>}`** (one mapping) or a list **`event_counts: [{event_type: <T>, count: <N>}, ...]`** — `count: 0`
-  asserts a family is **absent**, the mutual-exclusion form.
+- **`observers: {<collector>: <slot>}`**: the container under `expected:` that the collector directives sit in.
+  Each slot holds directives evaluated against the events that `typed_observers` collector retained from the
+  call the block belongs to.
+- **`contains_event: {event_type: <EventType>, fields?: {<field>: <expected>, ...}}`**: an existence check:
+  some retained event of `event_type` matches. Without `fields` it asserts only that an event of the type
+  exists. `fields` matches by named keys and the §8.4 null rule, each value per the §5.10 *Value matchers*
+  vocabulary. **`fields_absent_keys`**, beside `fields`, lists event fields that MUST be absent, and inside
+  `fields`, `<field>_absent_keys` does the same one level down. An event's `request_params` and
+  `request_extras` are exact positions.
+- **`contains_event_of_type: <EventType>`** and **`contains_exactly_one_event_of_type: <EventType>`**:
+  presence, or exactly one, with no field match.
+- **`event_count: {event_type: <T>, count: <N>}`** and **`event_counts: [{event_type: <T>, count: <N>}, ...]`**:
+  parameter lists. Each entry counts the retained events of one family, and families a list does not name
+  are unconstrained; `count: 0` asserts a family is absent. An event type is matched by name against the
+  families graph-engine §6 defines. They replace `contains_exactly_n_events_of_type` and
+  `does_not_contain_event_of_type`, which are retired.
+- **`contains_events_in_order: {event_type: <EventType>, events: [<fields>, ...]}`**: reads every retained
+  event of the type in delivery order. `events` is complete and ordered, and each entry matches as
+  `contains_event.fields` does.
+- **`every_captured_event_has: {<field>: <value>, ...}`**: every retained event matches. It is vacuously true
+  for an empty collector, so a fixture pairs it with a count.
+- **`captured_event_field_values_cover: {field: <field>, values: [...]}`**: each listed value appears on at
+  least one retained event. `values` is a parameter set.
+- **`relative_order_of_events_matching: {filter: {...}, expected_order: [...]}`**: keeps the retained events
+  that match `filter`, in arrival order, and asserts that the `expected_order` matchers occur among them as a
+  subsequence.
+- **`node_completed_event_carries_error: {node_name: <node>, error_category: <category>}`**: under
+  `expected:`, not in a collector slot. It reads the node events the call dispatched: exactly one completed
+  node event from `node_name`, whose error's category, read by §5.8's category rule, equals `error_category`.
 
-  **Present-but-null vs absent in `contains_event.fields`.** The distinction is expressed **structurally**, not
-  via a suffix: a `fields:` entry written as a literal `null` matches only a field that is **present and null**
-  (distinct from a field the event omits); a `fields:` entry written as a **nested mapping** (e.g.
-  `usage: {prompt_tokens: null, ...}`) requires the field to be a **present record** — a null-valued or omitted
-  field cannot satisfy a nested-mapping expectation; and **omitting** a key from `fields:` asserts **nothing**
-  about that field. This three-way distinction (present-and-null / present-record / no-assertion) is
-  load-bearing — it is what lets a fixture assert an event mirrors a present-record-of-null-counters rather than
-  a null record, or a nulled figure rather than a verbatim wire value.
+  **Null and nested mappings in `contains_event.fields`.** A `fields:` entry written as `null` asserts that the
+  field is not set, which on an event matches a field that is null or missing (§8.4). A `fields:` entry written
+  as a **nested mapping** (e.g. `usage: {prompt_tokens: null, ...}`) requires the field to be a **present
+  record**: a null or missing field cannot satisfy it. **Omitting** a key from `fields:` asserts nothing about
+  that field. That is what lets a fixture assert an event mirrors a present record of null counters rather than
+  a null record.
 
 ### 5.6 Persistence directives
 
-These directives appear at top level and configure persistence backends.
+These directives configure persistence backends and assert what they hold. Each entry states its position.
 
-- **`session_store: <store_name>`** — names the SessionStore backend the adapter MUST instantiate
-  for this fixture. The adapter MUST provide at minimum `in_memory` (per sessions §5.5). Exercises
-  sessions §3 (identity scoping) + §5 (SessionStore protocol) + §6 (lifecycle hooks).
-- **`checkpointer: <checkpointer_name>`** — names the Checkpointer backend the adapter MUST
-  instantiate for this fixture. The adapter MUST provide at minimum `in_memory` (per
+- **`session_store: <store_name>`**: at the case level. Names the SessionStore backend the adapter MUST
+  instantiate for this fixture. The adapter MUST provide at minimum `in_memory` (per sessions §5.5).
+  Exercises sessions §3 (identity scoping) + §5 (SessionStore protocol) + §6 (lifecycle hooks).
+- **`checkpointer: <checkpointer_name>`**: at the case level. Names the Checkpointer backend the adapter
+  MUST instantiate for this fixture. The adapter MUST provide at minimum `in_memory` (per
   pipeline-utilities §10.13). Exercises pipeline-utilities §10 (checkpointing).
-- **`loaded_session_state: <mapping_or_null>`** — appears under per-invocation expected blocks.
-  Asserts the session state the engine loaded at invoke entry (`null` if no record existed).
-  Exercises sessions §6.1 (auto-save / auto-load lifecycle).
-- **`saved_session_assertions: {state: { ... }, ...}`** — appears under per-invocation expected
-  blocks. Asserts the session state written to the SessionStore at invoke exit. Exercises sessions
-  §6.1.
-- **`checkpointer_assertions: { ... }`** — appears under per-invocation expected blocks. Asserts
-  the checkpointer backend's state at invocation completion (e.g., `paused_invocation_record_exists`,
-  `record_type`). Exercises pipeline-utilities §10 + suspension §8.5.
-- **`populate_checkpointer_via_runs: <int>`** — appears at the per-invocation level. Tells the
+- **`loaded_session_state: <mapping_or_null>`**: appears under an `expected:` block. Asserts the session
+  state the engine loaded at invoke entry. It is exact over the projection's fields (sessions §4.2), and
+  `null` asserts that no record existed. Exercises sessions §6.1 (auto-save / auto-load lifecycle).
+- **`saved_session_assertions: {state: { ... }, schema_version?: <version>}`**: appears under an
+  `expected:` block. It reads the session record the store holds for the call's session after the call
+  returns, whichever save wrote it. Its `state` is exact over the projection's fields, and `schema_version`
+  compares as a single value. It takes no other sub-key: an exact `state` already excludes a field, so there
+  is no `excludes_fields`. Exercises sessions §6.1.
+- **`checkpointer_assertions: { ... }`**: appears under an `expected:` block. Asserts the checkpointer
+  backend's state at invocation completion. Exercises pipeline-utilities §10 + suspension §8.5. Its
+  **`record_type`** is the kind of record the backend holds for the call, as the adapter determines it:
+  `suspended` or `checkpoint`. It is not the value of an implementation field, because pipeline-utilities
+  §10.15 leaves the discriminator to the implementation.
+- **`migrations_run: [...]`**: appears under an `expected:` block. It lists every application of a
+  migration function during the load the call performed, repeats included, and a migration that raised
+  counts as applied. Applications are in order within one entry's chain. Across the record's state and its
+  `parent_states` entries the list is a multiset, because pipeline-utilities §10.12.2 does not fix the
+  interleaving. Exercises sessions §7 and pipeline-utilities §10.12.
+- **`session_store_load_calls: <int>`** and **`session_store_save_calls: <int>`**: appear under an
+  `expected:` block. The `load()` and `save()` calls the in-memory SessionStore (§6.2) received during the
+  call. Exercises sessions §6.
+- **`populate_checkpointer_via_runs: <int>`**: appears at the case level. Tells the
   adapter to run the graph the specified number of times BEFORE the test invocation, seeding the
   checkpointer with N completed invocation records. Used by fixtures that need to verify
   checkpoint resume behavior against a populated backend (e.g., "resume with a fake id when other
   records DO exist" — fixture 030). Exercises pipeline-utilities §10.
-- **`first_run_expected_error: {category: <category>, raised_from: <node_name>}`** — at the invocation level. The
+- **`first_run_expected_error: {category: <category>, raised_from: <node_name>}`**: at the case level. The
   error expected to end the **first** run before a resume: a failure mock fails, propagates under
-  `fail_fast`, and the engine surfaces this category from the named node. Pairs with `resume:`.
-  Exercises pipeline-utilities §10 (resume).
-- **`resume: {from_first_run: <bool>, expected: { ... }, invariants: { ... }}`** — at the invocation level. After
+  `fail_fast`, and the engine surfaces this category from the named node. `category` follows §5.8's category
+  rule. Pairs with `resume:`. Exercises pipeline-utilities §10 (resume).
+- **`first_run_expected: { ... }`**: at the case level, beside `first_run_expected_error` and `resume:`. It
+  asserts on the first run of a resume case, read from that run's call, and takes the same directives as an
+  `expected:` block.
+- **`resume: {from_first_run: <bool>, expected: { ... }, invariants: { ... }}`**: at the case level. After
   the first run ends (via `first_run_expected_error` or `crash_injection`), the adapter resumes the
   invocation from the saved checkpoint (`from_first_run: true` resumes the same invocation id) and
   asserts the resumed run's `expected` block plus any resume-specific `invariants`. Exercises
   pipeline-utilities §10.4 (resume model).
-- **`crash_injection: {<boundary>}`** — at the invocation level; an alternative to `first_run_expected_error` for
+- **`crash_injection: {<boundary>}`**: at the case level; an alternative to `first_run_expected_error` for
   triggering a resume **without** an instance failure. The adapter runs the graph until the named
   checkpoint boundary's save has fired, then abandons the in-flight run, retaining only the
   persisted checkpoint; the first run has **no** asserted outcome (it "crashed"), and `resume:`
@@ -926,124 +989,309 @@ the adapter MUST resolve `"<from previous suspended outcome>"` or `"<invocation_
 placeholders by inspecting prior invocations' returned outcomes. The exact placeholder syntax is
 implementation-defined; the spec requires only that the adapter support some such resolution.
 
+**`run_count: <int>`**: at the case level. The adapter runs the case's graph that many times, each run one
+`invoke()` call, and checks the case's `expected:` block against each run (§8.4).
+
 ### 5.8 Expected-outcome directives
 
-These directives appear under per-invocation or per-case `expected:` blocks and configure assertions.
+Each directive's definition states where it sits. Two families cover most of them:
 
-- **`final_state: { ... }`** — exact-equality assertion on the invocation's final state.
-- **`execution_order: [<node_name>, ...]`** — ordered list of node names that ran (used for
-  deterministic-flow fixtures).
-- **`outcome: completed | errored | suspended`** — discriminator on the invoke return type. The
-  three values correspond to graph-engine §3 *Invocation outcomes*.
-- **`error.category: <category_name>`** — when `outcome: errored`, the error category that surfaced.
-  Categories enumerated by graph-engine §4 (`node_exception`, `reducer_error`, `routing_error`,
-  `state_validation_error`, `edge_exception`), pipeline-utilities §10.10 (`checkpoint_record_invalid`,
-  etc.), sessions §10 (`session_load_failed`, etc.), suspension §9
+- **Bare-named assertions sit inside an `expected:` block**, such as `final_state`, `execution_order`,
+  `outcome`, `error`, `observer_events`, `span_tree` and `checkpointer_assertions`.
+- **The `expected_*` assertions** this section and §5.16 define sit **beside `expected:`** at its level: the
+  case, an invocation, a resume block, or the document root in the single-case form. These are
+  `expected_error`, `expected_compile_error`, `expected_construction_error`, `expected_compile_warning`, and
+  the wire-request assertions.
+
+The definitions that place a directive elsewhere:
+
+| Directive | Position |
+|---|---|
+| `saved_record_assertions`, `every_save_assertions` | Case level, beside `expected:` (this section and pipeline-utilities' note). |
+| `first_run_expected_error`, `first_run_expected` | Case level, beside `resume:` (§5.6). |
+| `expected_backend_state` | The document root (§6.8). |
+| `expected_wire_bytes_identical` | The document root of an llm-provider `calls:` document (llm-provider's note). |
+| `expected_chain_ambiguity_error` | Beside `expected:`, or inside `resume:` (pipeline-utilities' note). |
+| `expected_failure_isolation_event`, `expected_attempt_events`, `expected_observer_event` | Inside `expected:` (pipeline-utilities' note). |
+| `expected_shared_prefix`, `expected_message_equal` | Beside `expected:` (prompt-management's note). |
+| `expected_listener_callback` | Inside a signal arrival (harness-chat's note). |
+
+What a block reads, and how the written value is compared with it, is §8.4.
+
+**State.**
+
+- **`final_state: { ... }`**: the invocation's final state. It is exact (§8.4):
+  - It names every field the state schema declares, and no other key. A key that names no field, such as
+    `vectors_length`, fails.
+  - Plain data under a field compares exactly at every depth.
+  - A record the engine or a provider wrote, whose type a capability spec defines, matches by the keys the
+    fixture names. An `EmbeddingResponse` stored by `calls_embed` is an example, and inside such a record
+    `raw` is exact.
+  - A record whose shape the spec leaves to the implementation, such as a collect-mode errors-field entry, is
+    asserted by count, each entry written `{}` (§8.4).
+- **The other state snapshots are exact on the same terms.** They are `suspended_state`,
+  `final_state_at_error` and `expected_error.recoverable_state`; an observer event's `pre_state` and
+  `post_state`, and each element of its `parent_states`; a failure-isolation event's `pre_state`; a
+  checkpoint record's `state` and its `parent_states` elements; and sessions' `entry_state`,
+  `inner_pre_state` and `instance_pre_states`.
+- **Two snapshot-like values are exact differently.** A failure-isolation event's `post_state` is the
+  degraded update (pipeline-utilities §6.3), not a full state, and is exact as a mapping equal to that
+  update. A session's stored state (`loaded_session_state`, `saved_session_assertions.state`, §5.6) is the
+  session's projection (sessions §4.2) and is exact over the projection's fields.
+- **`final_state_bounds: {<field>: {min: <number>, max: <number>}, ...}`**: reads the named fields of the
+  final state and asserts `min <= value <= max`, inclusive, with either bound optional. It constrains only
+  the fields it names.
+- **`execution_order: [<node_name>, ...]`**: one entry per execution of a node of the outermost graph, in
+  the order the executions began. The list is complete and ordered.
+  - A node is executed when the engine invokes its wrapped function. A subgraph, fan-out or
+    parallel-branches node is executed when the engine dispatches it.
+  - Nodes inside such a node are not listed. A node whose middleware returned without calling `next` was
+    never executed and is not listed.
+  - Retry attempts within one execution are one entry. A node that raised was executed, and a node executed
+    twice, for example around a loop edge, appears twice.
+- **`suspended_state: { ... }`**: when `outcome: suspended`, the state at the suspension point per
+  suspension §5.
+- **`final_state_at_error: { ... }`**: when `outcome: errored`, the state at the point of error.
+
+**Raised errors.** Each of these reads a raised error's category the same way: `expected_error.category`,
+`first_run_expected_error.category`, `error.category` under `outcome: errored`, the harness turn outcome's
+`error_category`, `expected_attempt_events`' `error_category`, and `node_completed_event_carries_error`.
+
+- **The category comes from pipeline-utilities §6.4's classification primitive**, the one pipeline-utilities
+  §6.3's `caught_exception` and the failure-isolation catch decision already use. It gives the category of the
+  outermost link in the error's cause chain that is not a carrier and has a category.
+- **A carrier** is a graph-engine §4 `node_exception` wrapper, or a subtype of one such as
+  `parallel_branches_branch_failed` (pipeline-utilities §6.3).
+- **The fallback.** Where §6.4 gives null because no non-carrier link has a category, the assertion reads
+  the outermost carrier's own category instead: `node_exception`, or the subtype's category.
+- **The exception.** An observer event entry's `error.category` reads the event's own graph-engine §6 `error`
+  field, which carries the engine's §4 category.
+
+The raised-error directives:
+
+- **`outcome: completed | errored | suspended`**: the outcome of the call the block belongs to,
+  corresponding to graph-engine §3 *Invocation outcomes*. Where a capability spec lets an implementation
+  detect an error at compile or registration time, `outcome: errored` with that category is also satisfied
+  when compiling or registering raises the same category before the call starts. suspension §9 is such a
+  case: collect-mode suspension SHOULD be detected at compile or registration time.
+- **`error.category: <category_name>`**: when `outcome: errored`, the error category that surfaced, by the
+  category rule above. Categories are enumerated by graph-engine §4 (`node_exception`, `reducer_error`,
+  `routing_error`, `state_validation_error`, `edge_exception`), pipeline-utilities §10.10
+  (`checkpoint_record_invalid`, etc.), sessions §10 (`session_load_failed`, etc.), suspension §9
   (`suspension_persistence_failed`, etc.), and others per-capability.
-- **`expected_error: {category: <name>, raised_from: <node_name>}`** — alternative shape used in
-  fixtures that expect the entire invocation to fail at construction or first-node entry. Equivalent
-  to `outcome: errored` + `error.category:` but more compact.
+- **`expected_error: { ... }`**: a sibling of `expected:` at its level. It asserts that the case raised a
+  categorized error instead of completing or suspending. The error comes from the `invoke()` call at any
+  point in the run, or from registration or compilation where `raised_at` says so. Each sub-key asserts only
+  when present:
+  - **`category`** follows the category rule above.
+  - **`message`** is the message pipeline-utilities §6.3 derives alongside the category: the message of the
+    link the category came from, or of the outermost non-carrier link when no non-carrier link has a
+    category.
+  - **`cause_message`** is the message of the innermost link in the chain. It differs from `message` where a
+    non-carrier error wraps another, as a reducer error wraps the exception its reducer raised
+    (graph-engine §4).
+  - **`raised_from`** names the node whose execution produced the error. That is the node that raised,
+    except that a node which wraps a failure from inside it names itself: a fan-out node, a
+    parallel-branches node, or the node whose reducer merge raised. A subgraph node that lets an inner
+    node's error through is not named; the inner node is.
+  - **`recoverable_state`** is the state graph-engine §4 requires to be recoverable from the error. It is a
+    state snapshot, so it is exact.
+  - **`cause: {raised_by_mock: <mock>}`** asserts that the raised error's cause, linked per the language's
+    idiom, is the exception the named fixture mock raised.
+  - **`raised_at: registration`** asserts that the error was raised while registering or compiling, before
+    any `invoke()` call.
+  - **`carries`** follows §5.13.
+- **`raises: {category: <category>, carries: { ... }}`**: under a call's `expected:` in llm-provider and
+  prompt-management fixtures. It asserts that the operation raised instead of returning. `category` compares
+  with the error's category identifier and `carries` follows §5.13; no other sub-key is defined. It excludes
+  `response` at the same position.
 - **`expected_compile_error: <category>`** — a scalar asserting that **compilation** (not invocation)
   fails with the named graph-engine §2 compile-error category (e.g. `no_declared_entry`,
   `mapping_references_undeclared_field`, `conflicting_projection_forms`, `reducer_configuration_invalid`).
   The adapter compiles the graph definition and asserts a compile-time error of that category is raised
-  before any node body runs. (Established by the graph-engine compile-error fixtures; documented here for
-  completeness.)
+  before any node body runs.
 - **`expected_construction_error: {category: <category>}`** — the observer/client-**construction** analogue
-  of `expected_compile_error`: a top-level case-level assertion (sibling of `nodes` / `edges` / `expected`)
-  that standing up the case's observers/client and running it raises a categorized error of the named
-  category at construction or first use. Defined by proposal 0116 for observability §6's mode-(b) payload-leak
-  invariant; fixture 158's raise cases use `{category: langfuse_provider_isolation_unavailable}` (an
-  observability-native category, observability §6). The per-case audience gate `requires_capability`
-  (§5.5) selects which adapter class a case applies to.
+  of `expected_compile_error`: a case-level assertion beside `expected:` that standing up the case's
+  observers/client and running it raises a categorized error of the named category at construction or first
+  use. Defined by proposal 0116 for observability §6's mode-(b) payload-leak invariant; fixture 158's raise
+  cases use `{category: langfuse_provider_isolation_unavailable}` (an observability-native category,
+  observability §6). The capability gate `requires_capability` (§5.17) selects which adapter class a case
+  applies to.
 - **`expected_compile_warning: <category> | [<category>, ...]`** — asserts that **compilation succeeds**
   while emitting compile-time **warnings** — non-fatal diagnostics, distinct from the `expected_compile_error`
-  compile-*failure* assertion. The adapter captures the warnings raised during compilation. Two forms:
-  a bare **scalar** asserts the named warning is **among** those emitted (presence only); a **list** asserts
-  the **exhaustive** set of warnings emitted (order-insensitive) — so `expected_compile_warning: []` asserts
-  **no** compile-time warnings, and `[projection_reducer_round_trip]` asserts exactly that one and no other.
-  The list form is what lets a fixture assert a warning MUST **not** fire (catching an over-warning
-  implementation). Used for graph-engine §2's `projection_reducer_round_trip` (the reducer round-trip
-  warning): a round-trip into a non-round-trip-idempotent **canonical** reducer is MUST-level (asserted with
-  the warning present); a SHOULD-level warning an implementation may omit (custom reducers) is not asserted
-  by absence, so those cases stay out of the exhaustive-list fixtures.
-- **`suspended_state: { ... }`** — when `outcome: suspended`, the state at suspension point per
-  suspension §5.
-- **`descriptor: {signal_id: <id>, metadata: { ... }} OR {signal_id: <id>, metadata_includes: { ... }}`**
-  — when `outcome: suspended`, the signal descriptor on the suspended outcome. The `metadata:`
-  variant asserts exact equality; the `metadata_includes:` variant asserts the descriptor's metadata
-  contains at least the listed keys (used for fan-out / parallel-branches cases where the engine
-  annotates `fan_out_index` / `branch_name` into the bubbled descriptor's metadata).
-- **`suspending_node: <node_name>`** — when `outcome: suspended`, the bare node-name field on the
-  suspended outcome per suspension §5.
-- **`final_state_at_error: { ... }`** — when `outcome: errored`, the state at the point of error.
-- **`drain_summary: {timeout_reached: <bool>, undelivered_count: <int> OR undelivered_count_min: <int>}`**
-  — assertion on the process-wide drain's return shape (graph-engine §6).
-- **`observer_events: {<observer_name>: [<event>, ...]}`** — exact ordered list of events the named
-  observer received. Each event is a mapping with at least `phase`, `node_name`, `namespace`, plus
-  any optional fields the fixture cares about.
-- **`observer_event_invariants: {<predicate_name>: <value>, ...}`** — name-keyed invariant predicates
-  the adapter MUST verify against the observer's recorded events. Used for nondeterministic-ordering
-  cases (see §7). §5.9 documents common predicate names; the full set is per-fixture and grows per
-  proposal. Adapter authors implement predicates as fixtures demand — the originating fixture's
-  prose names the predicates and describes their semantics.
-- **`otel_spans: {<observer_name>: {name: <span_name>, status: <status>, attributes: { ... }, children: [ ... ]}}`**
-  — hierarchical span-tree assertion for OTel observers (observability fixtures only).
-- **`langfuse_*: { ... }`** — Langfuse-specific assertion shapes (observability fixtures only).
-  Per-shape definitions live in observability fixture headers (per §3.2).
-- **`node_drain_summaries: {<node_name>: {timeout_reached: <bool>, undelivered_count: <int>}}`** —
-  assertion on the drain summary returned by a node's `invoke_drain_events_for` directive
-  (graph-engine §6 *Per-invocation drain*).
-- **`node_accumulator_snapshots: {<node_name>: {<observer_name>: [<event>, ...]}}`** — exact
-  accumulator snapshot taken at the node's drain-return moment.
-- **`node_accumulator_snapshot_invariants: {<node_name>: {<observer_name>: {<predicate_name>: <value>, ...}}}`**
-  — invariant predicates against the accumulator snapshot (for nondeterministic-ordering cases).
-- **`final_accumulator_state: {<observer_name>: [<event>, ...]}`** — exact accumulator state after
-  the invocation completes (post-drain delivery).
-- **`saved_record_assertions: { ... }`** — a block of named assertions against the saved checkpoint
-  record at first-run end (e.g. before a `resume:`); the adapter checks each listed sub-assertion
-  against the persisted record. This proposal formalizes the `fan_out_progress` sub-assertion;
-  existing checkpoint-resume fixtures also carry `fan_out_node_in_completed_positions` (bool),
-  `completed_positions`, and `parent_states_present` / `parent_states_outermost_first` (subgraph /
-  parent-state resume), documented per those fixtures.
-  - **`fan_out_progress: {<node_name>: {instance_count: <int>, instances: [<instance_assertion>, ...]}}`**
-    — the saved per-instance fan-out progress. Each `<instance_assertion>` is
-    `{state: <not_started|in_flight|completed> | state_one_of: [<state>, ...], result: <value>,
-    result_is_error: <bool>, completed_inner_positions: [{node_name, attempt_index}, ...]}` (fields
-    optional; assert what the fixture cares about). `state_one_of` accommodates dispatch-timing
-    nondeterminism (e.g. a sibling `in_flight` vs `not_started` under concurrent execution). Exercises
-    pipeline-utilities §10.11.
-- **`instances_executed_during_resume: [<int>, ...]`** / **`instances_skipped_during_resume: [<int>, ...]`**
-  — appear under a `resume:` block. Assert which fan-out instances re-ran on resume (failed /
-  cancelled / not-yet-started) vs. were skipped (completed-and-rolled-forward, including degraded
-  instances). Exercises pipeline-utilities §10.11.
-- **`metrics: [{instrument: <name>, dimensions: { ... }, value: <number>}, ...]`** — assertion on the
-  measurements captured by the §6.9 in-memory metric-capture primitive (observability §11.5). Each
-  entry asserts a recorded observation on the named instrument
-  (`openarmature.gen_ai.client.token.usage` / `.operation.duration`) carrying the given dimensions;
-  `value` asserts the recorded value (used for the fixed-usage mock's token counts) and is omitted for
-  duration observations (value not asserted, per observability §11.4). Per proposal 0083 the directive
-  also covers the token-budget instruments — `.token_budget.exceeded` (counter; the §11.3 dimensions plus
-  the `openarmature.gen_ai.token_budget.kind` dimension, with `value` asserting the per-breach increment
-  count per observability §11.2) and `.token_budget.utilization` (histogram; `value` asserts the
-  deterministic ratio, plus `kind`, per §11.4). With the observer's
-  `enable_metrics` off, no measurements are recorded — a `metrics: []` assertion confirms the opt-in
-  gate. See §6.9 for the primitive and the `enable_metrics` configuration.
-- **`caught_exception: {category: <category|null>, message: <str>, chain: [{category, message?, carrier}, ...]}`**
-  — the failure-isolation event **cause-chain assertion** (pipeline-utilities §6.3). Asserts the structured
+  compile-*failure* assertion. The adapter captures the warnings raised during compilation, counting only
+  warnings that carry a graph-engine §2 warning category, so a host-language deprecation warning cannot fail
+  `[]`. Two forms: a bare **scalar** asserts the named warning is **among** those emitted (presence only); a
+  **list** is a set, the exhaustive set of warning categories emitted. Neither order nor repeats count,
+  because graph-engine §2 does not fix how many times a warning is emitted for one round-trip. So
+  `expected_compile_warning: []` asserts **no** compile-time warnings, and
+  `[projection_reducer_round_trip]` asserts exactly that one and no other. The list form is what lets a
+  fixture assert a warning MUST **not** fire (catching an over-warning implementation). Used for graph-engine
+  §2's `projection_reducer_round_trip` (the reducer round-trip warning): a round-trip into a
+  non-round-trip-idempotent **canonical** reducer is MUST-level (asserted with the warning present); a
+  SHOULD-level warning an implementation may omit (custom reducers) is not asserted by absence (§4.5).
+- **`caught_exception: {category: <category|null>, message: <str>, chain: [{category, message?, carrier}, ...]}`**:
+  the failure-isolation event **cause-chain assertion** (pipeline-utilities §6.3). Asserts the structured
   `caught_exception` on a failure-isolation outcome: an ordered `chain` of `{category, message?, carrier}` links
-  (outermost→innermost), plus the **derived** top-level `category` / `message` — the `category` is the outermost non-carrier
+  (outermost→innermost), plus the **derived** top-level `category` / `message`: the `category` is the outermost non-carrier
   link with a non-empty category (else `null`); the `message` is that link's message, or (when no non-carrier
   link has a category) the outermost non-carrier link's message. A **carrier** link is a graph-engine §4
   `node_exception` wrapper (`carrier: true`) whose engine-internal `message` is not pinned (subset match on
   `{carrier, category}` only). Distinct from the §5.1 mock-**input** `cause:` directive (which *constructs* the
   chained error a failure mock raises); this asserts the *resulting* chain.
 
+**Suspension.**
+
+- **`descriptor: {signal_id: <id>, metadata: { ... }} OR {signal_id: <id>, metadata_includes: { ... }}`**:
+  when `outcome: suspended`, the signal descriptor on the suspended outcome. `metadata` is an exact
+  position; `metadata_includes` matches the descriptor's metadata by named keys (used for fan-out /
+  parallel-branches cases where the engine annotates `fan_out_index` / `branch_name` into the bubbled
+  descriptor's metadata).
+- **`suspending_node: <node_name>`** — when `outcome: suspended`, the bare node-name field on the
+  suspended outcome per suspension §5.
+
+**Observer events and drains.**
+
+- **`observer_events: {<observer_name>: [<entry>, ...]}`**: for each observer it names, the node events that
+  observer received from the call the block belongs to: the events that carry a `phase`. Typed events are
+  asserted through §5.5's collector directives.
+  - The list is complete and ordered by delivery, which graph-engine §6 fixes, and `[]` asserts that none
+    were received. A fixture **MUST NOT** use the directive where §7 says the order is not determined.
+  - Each entry matches one event by the graph-engine §6 fields it names, such as `phase`, `step`,
+    `node_name`, `namespace`, `pre_state`, `post_state`, `error` and `parent_states`. `namespace` and
+    `parent_states` compare as whole lists, and the state snapshots inside an entry are exact. `descriptor`
+    matches as the `descriptor` directive above does. `error` is written `{category: <id>}`, the engine's §4
+    category of the event's error.
+  - Absence of a field, such as `post_state` on a failed node's event, is written with `absent_keys`.
+- **`delivery_order: [{observer, step, phase, ...}, ...]`**: every delivery of a node event to an observer
+  declared in the case's `observers:` list, `raise` observers included, for the call the block belongs to.
+  The list is complete and ordered by when each delivery began, which graph-engine §6 fixes. An entry matches
+  by named keys, and **MAY** also name `attempt_index`, `fan_out_index` or `branch_name` where `step` and
+  `phase` do not single out an event.
+- **`observer_event_invariants: {<predicate_name>: <value>, ...}`** — name-keyed invariant predicates
+  the adapter MUST verify against the observer's recorded events. Used for nondeterministic-ordering
+  cases (see §7). §5.9 documents common predicate names; the full set is per-fixture and grows per
+  proposal. Adapter authors implement predicates as fixtures demand — the originating fixture's
+  prose names the predicates and describes their semantics.
+- **`middleware_log_captured: [<marker>, ...]`**: the §6.7 middleware-log accumulator: the markers
+  `wrap_with_middleware` middlewares recorded during the call, in recording order. The list is complete and
+  ordered.
+- **`drain_summary: {timeout_reached: <bool>, undelivered_count: <int> OR undelivered_count_min: <int>}`**:
+  the process-wide drain's return shape (graph-engine §6), matched by named keys, because graph-engine §6
+  lets a summary carry more detail.
+- **`node_drain_summaries: {<node_name>: {timeout_reached: <bool>, undelivered_count: <int> OR undelivered_count_min: <int>}}`**:
+  the drain summary returned by a node's `invoke_drain_events_for` directive (graph-engine §6
+  *Per-invocation drain*), matched by named keys. An entry carries `undelivered_count` or
+  `undelivered_count_min`, not both.
+- **`node_accumulator_snapshots: {<node_name>: {<observer_name>: [<event>, ...]}}`**: an `accumulate`
+  observer's bucket for the call the block belongs to, as captured when the node's drain returned. The list
+  is complete and ordered, and entries match as `observer_events` entries do.
+- **`node_accumulator_snapshot_invariants: {<node_name>: {<observer_name>: {<predicate_name>: <value>, ...}}}`**
+  — invariant predicates against the accumulator snapshot (for nondeterministic-ordering cases).
+- **`final_accumulator_state: {<observer_name>: [<event>, ...]}`**: the same bucket after the call returned
+  and delivery completed. The list is complete and ordered, and entries match as `observer_events` entries
+  do.
+
+**Spans, traces and metrics.**
+
+- **`span_tree: [<span entry>, ...]`**: the spans openarmature exported to its private exporter (§6.3) for
+  the call the block belongs to, restricted to the trace rooted in that call's invocation span. Detached
+  traces (observability §4.4) are not part of it; `traces` covers them.
+  - The spans are joined into a forest by parent span id. The top-level list names every root, and `children`
+    names every child of an entry. Both are complete and unordered, and an entry without `children` asserts
+    nothing about its children.
+  - A case asserting `span_tree`, in any directory, composes the OTel observer and its in-memory exporter
+    (§6.3) without declaring an observer of its own.
+
+A span entry's sub-keys each assert only when present:
+
+| Sub-key | Asserts |
+|---|---|
+| `name` | The span name. |
+| `status` | The OTel status code: `OK`, `ERROR` or `UNSET`. |
+| `status_description` | The OTel status description. |
+| `exception_recorded` | `true`: at least one OTel exception event is recorded on the span. `false`: none is. |
+| `attributes` | A mapping over the span's attributes, with span-attribute typing (§8.4). |
+| `attributes_absent` | None of the listed keys is present (§5.11's meaning, stated for every span entry). |
+| `attributes_present` | Each listed key is present, with any value. A parameter list. |
+| `attribute_truncation` | As §5.11 defines it. |
+| `attribute_parses_as_messages` | The attribute parses as JSON to a message list. The list is complete and ordered, and each message matches by named keys. |
+| `attribute_parses_as_object` | The attribute parses as a JSON object equal to the written mapping. Exact, since the object is the caller's extras. |
+| `attribute_does_not_contain` | `{<key>: {forbidden_substring_kind: synthetic_base64_prefix}}`: the attribute does not contain the first 64 characters of the base64 data the case synthesized. |
+| `links` | Every OTel link on the span (complete, unordered), each entry matched on `target_trace_id`. |
+| `link_count` | The number of OTel links on the span. |
+| `children` | Every child span (complete, unordered). |
+| `absent_keys` | Span fields that must be absent. |
+
+- **`traces: [{trace_id, span_tree}, ...]`**: every trace holding spans from the call: the invocation's own
+  trace and each detached trace. The list is complete and unordered. `trace_id` compares as a single value,
+  usually through a `<trace_id_X>` binding token, and `span_tree` is that trace's forest.
+- **`otel_spans`** and observability's **`parent_trace`** are retired. `span_tree` covers both.
+- **`langfuse_*: { ... }`**: Langfuse-specific assertion shapes (observability fixtures only).
+  Per-shape definitions live in observability's Langfuse note (per §3.2).
+- **`metrics: [{instrument: <name>, dimensions: { ... }, value: <number>}, ...]`**: the measurements the §6.9
+  in-memory metric-capture primitive (observability §11.5) recorded in the block's scope.
+  - The list is complete and unordered, a multiset, and `[]` asserts that none was recorded, because
+    observability §11 fixes which measurements are recorded but not their order.
+  - Each entry matches one recording. `instrument` compares as a single value; `value`, when written,
+    compares by numeric value; and `dimensions` is exact, since observability §11.3 fixes the complete set.
+  - One entry is one recording: one histogram record or one counter add. A counter add of 0 is not a
+    recording, because observability §11.2 does not fix whether an implementation makes one.
+  - The instruments are `openarmature.gen_ai.client.token.usage` and `.operation.duration`, where `value`
+    asserts the fixed-usage mock's token counts and is omitted for duration (per observability §11.4), and
+    the token-budget instruments: `.token_budget.exceeded` (a counter; the §11.3 dimensions plus the
+    `openarmature.gen_ai.token_budget.kind` dimension, with `value` asserting the per-breach increment per
+    observability §11.2) and `.token_budget.utilization` (a histogram; `value` asserts the deterministic
+    ratio, plus `kind`, per §11.4).
+  - With the observer's `enable_metrics` off, no measurements are recorded, and `metrics: []` confirms the
+    opt-in gate. See §6.9 for the primitive and the `enable_metrics` configuration.
+
+**Checkpoint records.**
+
+- **`saved_record_assertions: { ... }`**: at the case level, beside `expected:`. It reads the record that
+  `Checkpointer.load` returns for the first run's invocation id once that run has ended. That is the record a
+  resume with `from_first_run: true` loads; with a batching backend, it is the last flushed record. It matches
+  by named keys, and absence is written `saved_record_assertions_absent_keys`. Exercises pipeline-utilities
+  §10.
+- **Record sub-assertions.** `saved_record_assertions` and the record directives of pipeline-utilities'
+  note (`latest_record_assertions`, `checkpoint_saves` entries and `every_save_assertions`) share one
+  vocabulary. Each sub-assertion reads the like-named pipeline-utilities §10.2 field:
+  - `invocation_id` and `correlation_id` compare as single values, against a literal or a §5.10 token.
+  - `schema_version` compares as a single value, and `last_saved_at` matches `<timestamp>`.
+  - `state` is a state snapshot, so it is exact.
+  - `completed_positions` is complete and ordered, and each `NodePosition` matches by named keys.
+  - `parent_states` is a complete, ordered list of state snapshots.
+  - **`fan_out_progress: {<node_name>: {instance_count: <int>, instances: [<instance_assertion>, ...]}}`** is
+    a mapping, matched by named keys, from a fan-out node's name to its saved per-instance progress.
+    `instances` is complete and positional by fan-out index. Each `<instance_assertion>` has the sub-keys
+    `state` (`not_started`, `in_flight` or `completed`) and `state_one_of: [<state>, ...]`, which accommodates
+    dispatch-timing nondeterminism; `result`, the value the instance contributes, decoded by the adapter from
+    whatever representation the implementation stores (pipeline-utilities §10.11 leaves the representation
+    to the implementation); `result_is_error` and `result_present`; and `completed_inner_positions`, complete
+    and ordered. Exercises pipeline-utilities §10.11.
+  - The boolean sub-keys fixtures also carry, such as `fan_out_node_in_completed_positions`,
+    `parent_states_present` and `parent_states_outermost_first`, are named claims (§5 *Assertion
+    positions*).
+- **`instances_executed_during_resume: [<int>, ...]`** / **`instances_skipped_during_resume: [<int>, ...]`**:
+  under a `resume:` block's `expected:`. `executed` lists every instance of the case's top-level fan-out
+  that the resumed call dispatched, once each. `skipped` lists the instances it did not dispatch because their
+  saved entry was completed and rolled forward, including degraded instances. The two are complete and
+  unordered, and together they partition the instances. They are not defined for a nested fan-out. Exercises
+  pipeline-utilities §10.11.
+
+**Harness turn outcomes.** harness and harness-chat fixtures both use these:
+
+- **`dispatch_path`**: the inbound dispatch path the harness classified the transmission or turn into
+  (harness §3.0 to §3.3), compared as a string: `"3.0"` to `"3.3"`.
+- **`error_bucket`**: the harness §7 bucket of an errored turn: `session_terminating`,
+  `retryable_transient` or `user_correctable`, the tokens harness-chat §5.2 writes.
+- **`error_category`**: the errored turn's concrete category, read by the category rule above.
+
 ### 5.9 Invariant assertions
 
 The top-level `invariants:` block (and the per-section `observer_event_invariants`,
 `node_accumulator_snapshot_invariants` blocks) name boolean predicates the adapter MUST verify as
-additional checks beyond exact-equality assertions. Predicate names are declarative; the adapter MUST
+additional checks beyond the other assertions (§8.4). Predicate names are declarative; the adapter MUST
 ship logic that interprets each predicate name and runs the corresponding check against the executed
 outcome.
 
@@ -1079,10 +1327,10 @@ either matching it against a pattern, or deriving / injecting the expected value
 spans three idioms; adapters MUST interpret each uniformly so a fixture means the same thing across
 implementations.
 
-**Inline value-tokens** — a token written in an `expected:` mapping where a literal scalar value
+**Inline value-tokens** — a token written in any assertion where a literal scalar value
 would go; the adapter matches the runtime field value against the token rather than comparing it to a
 literal. They are of two kinds — **format matchers** (match any value of a given shape) and
-**first-occurrence-binding tokens** (cross-reference an opaque id within a case):
+**binding tokens** (cross-reference an opaque value within a case):
 
 - **`<uuid>`** — (format) matches any canonical UUIDv4.
 - **`<uuid-hex>`** — (format) matches a 32-character lowercase hex string — a UUID's dashes-stripped
@@ -1091,14 +1339,28 @@ literal. They are of two kinds — **format matchers** (match any value of a giv
   each labeled form independently matches any value of the format (the suffix does not assert
   cross-equality).
 - **`<any-string>`** — (format) matches any **non-empty** string. The empty string `""` does NOT match.
-- **`<name_X>` first-occurrence-binding tokens** — an **opaque** id (no fixed format) whose `<name>`
-  identifies the id being cross-referenced and whose suffix distinguishes independent bindings. It
-  binds to the value at its first occurrence within a case; every later occurrence of the **exact
-  same token string** MUST equal that bound value, and distinct token strings bind independently.
-  Used for id consistency within one case. The concrete `<name>` set is **suite-defined**, documented
-  in the suite's fixture-header notes (the §3.2 per-directory mechanism): the observability suite uses
-  `<trace_id_X>` (`<trace_id_parent>`, `<trace_id_instance_0>`, …), `<corr_id_N>`, `<span_id_X>`,
-  `<invocation_id_X>`, and `<call_id_X>` (fixture 161).
+  A bare `"*"` is not a value matcher; `<any-string>` is the form for any non-empty string.
+- **`<timestamp>`**: (format) matches any non-null value of the implementation's timestamp type, or a
+  string in RFC 3339 form. It asserts presence and form only.
+- **`<name_X>` binding tokens**: an **opaque** value (no fixed format) whose `<name>` identifies what is
+  being cross-referenced and whose suffix distinguishes independent bindings. Used for consistency within
+  one case. Their rules:
+  - **One binding scope covers a whole case**, every assertion block included: `expected:`,
+    `first_run_expected:`, `resume.expected:` and `invariants:`.
+  - **A token matches only a present, non-null value**, at every occurrence. A token that occurs once in a
+    case asserts no more than that.
+  - **A repeated token also asserts equality** with every other occurrence of the **exact same token
+    string**. It never asserts that two different tokens hold different values.
+  - **The case passes if some assignment of values to its tokens makes every assertion hold.** First
+    occurrence in document order does not decide a token's value: inside an existence list or an unordered
+    list, the first candidate need not be the one the rest of the case needs.
+  - **Tokens are resolved at assertion time only.** An input that needs a value from an earlier call uses
+    the input placeholders §5.7 and the directory notes define, which are resolved before the input is sent.
+
+  The concrete `<name>` set is **suite-defined**, documented in the suite's harness note (the §3.2
+  per-directory mechanism): the observability suite uses `<trace_id_X>` (`<trace_id_parent>`,
+  `<trace_id_instance_0>`, …), `<corr_id_N>`, `<span_id_X>`, `<invocation_id_X>`, `<call_id_X>` and
+  `<path_X>` (fixture 161).
 
 **Assertion sub-keys** — appear as *keys inside a field's assertion mapping*, not as a bare value
 (used where a field's expected value is a mapping of assertions rather than a scalar):
@@ -1166,8 +1428,8 @@ an ordered list — one entry per attempt the retry loop issued — asserting th
 provider request. Each entry asserts only the fields it names (`{}` asserts nothing for that
 attempt):
 
-- **`sampling: { ... }`** — the effective sampling fields on the attempt's wire request (e.g.
-  `{temperature: 0.3}`), for verifying `per_attempt_override`.
+- **`sampling: { ... }`**: declared `RuntimeConfig` fields (llm-provider §6), read from the attempt's
+  realized wire request (e.g. `{temperature: 0.3}`), for verifying `per_attempt_override`.
 - **`appended_messages: [<msg>, ...]`** — the messages the loop appended to the working transcript
   **after** the caller's original messages, in order — for verifying reask (llm-provider §7.1). A
   reask retry appends the pair `{role: assistant, content: <the model's raw output>}` then
@@ -1190,7 +1452,10 @@ provider span the call produced, in attempt order, so its length is the number o
 **MAY** carry `attempt_index` (the span's `openarmature.llm.attempt_index`), `attributes` (a subset match
 on the span's attributes), `attributes_absent` (below), and `error_category`: the llm-provider §7
 category that attempt failed with, or null for an attempt that succeeded. An entry asserts only the keys
-it carries, so an entry without `error_category` asserts neither failure nor success.
+it carries, so an entry without `error_category` asserts neither failure nor success. For a bare
+`complete()` call made outside any graph, as llm-provider fixtures make, the harness runs the call inside a
+one-node invocation with an OTel observer and the §6.3 exporter attached, and the directive reads the spans
+that call produced.
 
 **Span attribute assertions.** The per-attempt `openarmature.llm.retry_reason` span attribute
 (llm-provider §7.1) is asserted via `expected.llm_spans[*].attributes` on retry attempts. Because those attribute assertions are a subset match, asserting an attribute is **absent**
@@ -1223,11 +1488,11 @@ result as a case that never carried it, which makes the case vacuous rather than
 
 ### 5.12 Provider structured-output error assertion (llm-provider §7)
 
-llm-provider call fixtures assert a raised `structured_output_invalid` error (llm-provider §7, its
-diagnostics surface per 0082) via an `expected.raises` block with `category: structured_output_invalid`
-and a `carries` mapping. The `carries` block asserts the error's exposed fields. The 0016 structured-output
-fixtures (022 / 023), the 0095 reask fixtures (063 / 064) and the 0126 fixtures (082 / 083) use them; the
-other 0095 fixtures are success-path and raise nothing.
+llm-provider call fixtures assert a raised `structured_output_invalid` error (llm-provider §7, its diagnostics
+surface per 0082) via an `expected.raises` block (§5.8) with `category: structured_output_invalid` and a `carries`
+mapping. The `carries` block asserts the error's exposed fields. The 0016 structured-output fixtures (022 / 023),
+the 0095 reask fixtures (063 / 064) and the 0126 fixtures (082 / 083) use them; the other 0095 fixtures are
+success-path and raise nothing.
 
 **Key naming.** These keys follow the general raised-error `carries` convention (§5.13); this block is the
 llm-provider `structured_output_invalid` **instance** of it. Each key names an llm-provider §7 error field,
@@ -1252,7 +1517,7 @@ with the flavor suffixes (`_present` / `_mentions`) and the mapping-valued subse
 
 ### 5.13 Raised-error field assertion (`carries`)
 
-A `carries` block appears under a raised-error assertion (`expected.raises` / `expected_error`) and asserts
+A `carries` block appears under a raised-error assertion (`expected.raises` / `expected_error`, §5.8) and asserts
 the fields the raised error exposes. It is used across capabilities — the llm-provider `structured_output_invalid`
 block (§5.12), and the state-migration (pipeline-utilities §10.10 / sessions) and prompt render
 (prompt-management §11) error fixtures, among others. This section defines the convention for all of them;
@@ -1280,8 +1545,8 @@ flavor suffix, so a key parses unambiguously to exactly one (field, flavor) pair
 other tokens — `registered_migrations_count` (pipeline-utilities §10.10) is a **bare field name** (`_count` is
 not a flavor), asserted by exact-equality, not a count-flavor on `registered_migrations`.
 
-The sibling `cause` directive (`cause: { exception_type: … }`, used by the migration-failed fixtures) is a
-**separate** directive, not a `carries` flavor; it is out of scope here.
+The sibling `cause` directive is a **separate** directive, not a `carries` flavor. §5.8 defines it under
+`expected_error` as `cause: {raised_by_mock: <mock>}`.
 
 ### 5.14 Provider batch-chunking cap (`chunk_size`)
 
@@ -1314,8 +1579,9 @@ coverage of a fixed-cap mapping's chunking path would be unreachable.
 
 ### 5.15 Retrieval-provider directives
 
-The retrieval-provider fixtures (embedding + rerank) use a construction / call / mock / wire-assertion
-vocabulary that parallels the llm-provider fixture directives; this subsection gives it a normative home. Some
+The retrieval-provider fixtures (embedding + rerank) use a construction / call / mock vocabulary that
+parallels the llm-provider fixture directives; this subsection gives it a normative home, and §5.16 defines
+the wire-request assertions both suites use. Some
 retrieval assertions reuse directives documented elsewhere — `expected_error: {category, raised_from}` (§5.8),
 the `chunk_size` provider cap (§5.14), and the `typed_observers` / `contains_event` typed-event assertions
 (§5.5); those are cross-referenced, not redefined here.
@@ -1353,7 +1619,8 @@ the harness-internal stand-in shape used by the pre-wire-mapping fixtures applie
   stores_response_in: <field>}`** — the node calls `RerankProvider.rerank()` and stores the `RerankResponse`;
   `top_k`, `config` (`return_documents`, and the `extras` bag), and `model` are optional.
 
-**Response mocks** (suite-level lists; one `{status, body?}` entry dispatched per call in arrival order):
+**Response mocks** (suite-level lists; one `{status, body?}` entry dispatched per request, in call order, and in
+chunk order within a chunked call):
 
 - **`mock_embedding: [{status, body?}, ...]`** / **`mock_rerank: [{status, body?}, ...]`** — the mock provider's
   responses; `status` is required and `body` is optional. When present, `body` is the vendor's real wire shape
@@ -1379,19 +1646,7 @@ the harness-internal stand-in shape used by the pre-wire-mapping fixtures applie
   adapter **MUST** reject an entry carrying both with **`fixture_schema_invalid`** (§9), since the intended
   message would be ambiguous.
 
-**Wire-request assertions** (case-level):
-
-- **`expected_wire_request: {...}`** — the request body the mapping MUST produce. The harness captures the
-  outbound body and compares **key-by-key** (key order not significant); a field **absent** from
-  `expected_wire_request` MUST be absent on the wire. For a chunk-and-stitch call it is a **list** of bodies,
-  one per request in arrival order.
-- **`expected_wire_request_count: <int>`** — the number of outbound requests the call MUST issue (pins the
-  chunk count).
-- **`expected_wire_request_absent_keys: [<key>, ...]`** — each named key MUST be **absent** from the outbound
-  body (an explicit, positive absence assertion, complementing the absent-field rule above).
-- **`expected_wire_headers: {<name>: <value>, ...}`** — a **subset** match: each listed HTTP request header MUST
-  be present with the given value (other headers MAY be present; header names case-insensitive). Primary use:
-  `Authorization: "Bearer <api_key>"` from the provider block's `api_key`.
+**Wire-request assertions** are defined in §5.16.
 
 **Pre-send-reject invariants** (under `expected.invariants`):
 
@@ -1401,6 +1656,77 @@ the harness-internal stand-in shape used by the pre-wire-mapping fixtures applie
   `mock_rerank` entry and **no** `expected_wire_request` (nothing leaves, so nothing to mock), while
   `expected_error` (§5.8) still asserts the category and `raised_from` node.
 
+### 5.16 Wire-request assertions
+
+llm-provider and retrieval-provider fixtures assert the outbound provider requests with these directives. They
+read the JSON body of each outbound request the case or call sent, parsed from the captured bytes.
+
+**`expected_wire_request`** sits beside `expected:` on a case or on an llm-provider `calls[]` entry.
+
+- **List form.** It names every request and is complete. Entries follow call order, and chunk order within a
+  chunked call. Each entry is compared with the request that carries its slice of inputs or documents, not
+  with the request that arrived in its position. Mock responses are dispatched the same way (§5.15), and a
+  chunked call's stitched `raw` follows chunk order, the order retrieval-provider §8 calls request order. The
+  capability specs require one request per chunk but do not order their issue.
+- **Mapping form.** It is a one-element list, so it asserts that exactly one request was sent.
+- **Each body is exact** (§8.4). Member order is not significant, and arrays compare in order. A value the
+  mapping defines as a JSON-encoded string compares after decoding. For `mapping: gemini`, the `model` key is
+  compared with the request URL's `{model}` path segment, as llm-provider §8.3.1 places it.
+- **A repeated member name fails.** A body with a repeated member name fails every wire assertion on that
+  request, so the adapter parses with duplicate detection. A parsed JSON body cannot show a repeated member,
+  and several llm-provider and retrieval-provider cases exist to prove a member is sent once.
+
+**`expected_wire_request_includes`** is the named-keys form, for a request whose spec fixes some members and
+leaves others to the implementation. The synthetic tool of the Anthropic coercion fallback is an example: its
+name and description are the implementation's to choose.
+
+- **Position and count.** It sits where `expected_wire_request` does, and asserts that exactly one request was
+  sent.
+- **Matching.** It matches the body by the keys it names (§8.4), with `<key>_absent_keys` for absence below the
+  top level. The §8.4 exact positions copied from the case's inputs, such as a schema copy, stay exact inside
+  it.
+- **Shared rules.** It takes the exact form's Gemini `model` rule, decoding rule and repeated-member rule.
+- **Top-level absence** **MUST** be written with `expected_wire_request_absent_keys`. An `absent_keys` key at
+  the top level of an includes body is `fixture_schema_invalid` (§9).
+- **Exclusivity.** Writing both forms at one position, on a case or on one `calls[]` entry, is
+  `fixture_schema_invalid`.
+
+**`expected_wire_request_absent_keys: [<key>, ...]`** sits where `expected_wire_request` does. It is a parameter
+list of top-level member names, none of which may appear in any request the case or call sent. Beside an exact
+body it restates absences, which is harmless.
+
+**`expected_wire_headers: {<name>: <value>, ...}`** is a mapping over HTTP headers, matched by named keys. Every
+request **MUST** carry each named header exactly once, with the written value, and header names compare
+case-insensitively. Primary use: `Authorization: "Bearer <api_key>"` from the provider block's `api_key`.
+
+**`expected_wire_request_count: <int>`** is the number of requests sent, and `0` asserts that none was. When
+`expected_wire_request` or `expected_wire_request_includes` is also written, the count **MUST** agree with it;
+a mismatch is `fixture_schema_invalid`.
+
+**`expected_wire_url: <url>`** is the full resolved URL of every request, compared as an exact string.
+
+### 5.17 Capability gates
+
+Some behavior the spec only recommends is worth asserting where an implementation has it. A fixture asserts
+such behavior through a capability gate (§4.5):
+
+- An adapter declares named capabilities, `adapter_capabilities: {<capability>: <bool>, ...}`. The
+  declaration belongs to the adapter, not to a case.
+- A case states the capabilities it requires, `requires_capability: {<capability>: <bool>, ...}`. A case with
+  no `requires_capability` applies to every adapter.
+- A case whose requirement an adapter does not meet is a **recognized skip**, not a silently omitted case
+  (§8.1, §8.2, §9).
+- An undeclared capability defaults to `false`.
+
+A capability only one directory uses **MUST** be defined in that directory's harness note. One that several
+directories use, or that §5 already defines, **MUST** be defined here:
+
+| Capability | The implementation |
+|---|---|
+| `langfuse_bound_provider_detection` | can establish a Langfuse client's bound provider from its SDK surface. That introspection is non-portable (observability §6, which makes the mode-(a) warn a MAY for the same reason), so it is a per-adapter property rather than a universal one. §5.5 states which of fixture 158's arms each class of adapter must satisfy. |
+| `llm_strict_native_schema` | sends `strict: true` for a schema that meets OpenAI's strict-mode constraints (llm-provider §8.1.5, a SHOULD). |
+| `llm_prompt_augmentation_fallback` | falls back to prompt augmentation when the provider's capability metadata says the server lacks `response_format`, the static arm of llm-provider §8.1.5.1's SHOULD. The mocks can signal only through that metadata, so dynamic detection is outside the capability. |
+
 ## 6. Harness primitives
 
 Adapters MUST provide the following runtime primitives to satisfy directives in §5.
@@ -1409,9 +1735,10 @@ Adapters MUST provide the following runtime primitives to satisfy directives in 
 
 - **`record` observer.** Maintains a per-observer FIFO list of every event received; exposes a read
   API the adapter uses to fulfill `observer_events` / `observer_event_invariants` assertions.
-- **`accumulate` observer.** Maintains per-`invocation_id` buckets keyed by the event's
-  `invocation_id`; exposes a read API consumed by `invoke_drain_events_for`'s `snapshot_observer`
-  parameter and by `node_accumulator_snapshots` / `final_accumulator_state` assertions.
+- **`accumulate` observer.** Maintains one bucket per `invoke()` call, holding the events that call
+  dispatched. A suspension resume reuses the suspended call's invocation id (suspension §7), so a bucket is
+  keyed by the call rather than by the id. It exposes a read API consumed by `invoke_drain_events_for`'s
+  `snapshot_observer` parameter and by `node_accumulator_snapshots` / `final_accumulator_state` assertions.
 - **`raise` observer.** Raises on every event received. Validates the graph-engine §6 observer-error
   isolation contract (raises do not interrupt the graph or affect other observers).
 - **Slow / paced behavior.** Any observer behavior MAY be configured with `sleep_ms_per_event` to
@@ -1422,7 +1749,8 @@ Adapters MUST provide the following runtime primitives to satisfy directives in 
 
 - **In-memory SessionStore.** Single-process, ephemeral, satisfying the sessions §5.1–§5.4
   protocol. The adapter MUST ship this at minimum; production SessionStore backends are
-  out-of-scope sibling packages.
+  out-of-scope sibling packages. It counts the `load()` and `save()` calls it receives during each call,
+  for `session_store_load_calls` and `session_store_save_calls` (§5.6).
 - **In-memory Checkpointer.** Single-process, ephemeral, satisfying the pipeline-utilities
   §10.1 protocol. The adapter MUST ship this at minimum.
 - **Shared persistence per pipeline-utilities §10.15.** The adapter MAY use one backend store for
@@ -1436,12 +1764,17 @@ Adapters MUST provide the following runtime primitives to satisfy directives in 
 
 Observability fixtures exercise OTel span emission. The adapter MUST provide an in-memory OTel
 `SpanExporter` + private `TracerProvider` (per observability §6 isolation) for the observability
-fixture suite. The exporter records every emitted span for structured assertion via the `otel_spans`
-expected-outcome shape.
+fixture suite. The exporter records every emitted span for structured assertion via the `span_tree` and
+`traces` expected-outcome shapes (§5.8).
 
 The OTel-collector-capture primitive is invoked automatically for fixtures under
 `spec/observability/conformance/` per the per-directory harness contract in those fixtures' header
-comments. The adapter MUST honor that contract when running observability fixtures.
+comments. The adapter MUST honor that contract when running observability fixtures. It is also invoked for
+any case, in any directory, that asserts `span_tree`, `traces` or `llm_spans`: the adapter composes the OTel
+observer and the exporter without the case declaring an observer. Such a case **MUST NOT** set
+`otel_observer: {attached: false}`; an adapter rejects the combination with `fixture_schema_invalid` (§9).
+Likewise, the adapter captures log records for any case that asserts `log_records` or `log_records_absent`
+(§5.5).
 
 ### 6.4 Langfuse mock
 
@@ -1506,8 +1839,8 @@ adapter exercises the real primitive and asserts on the returned summary.
 
 The `wrap_with_middleware` directive on a node MUST compile to a real middleware that the
 implementation's middleware system runs around the wrapped node. The standard pre / post logging
-behavior (`pre_log` / `post_log` markers) is recorded into a per-fixture middleware-log accumulator
-the adapter exposes for assertion.
+behavior (`pre_log` / `post_log` markers) is recorded into a middleware-log accumulator, one per call, which
+the adapter exposes for `middleware_log_captured` (§5.8).
 
 The `pre_next_calls_suspend_with_descriptor` middleware-config variant MUST cause the middleware's
 pre-`next()` block to call `suspend()` from within itself (rather than the wrapped node doing so).
@@ -1557,10 +1890,10 @@ fixture schema as:
 ### 6.9 Metric capture
 
 observability §11 *Metrics* fixtures assert the measurements an observer records when `enable_metrics`
-is on. The adapter MUST provide an in-memory **metric-capture** primitive — an in-memory OTel
-`MetricReader` attached to the `MeterProvider` the metrics-emitting observer uses, sibling to the §6.3
-OTel collector capture for spans — that records every observation (instrument name, value, dimensions)
-for assertion.
+is on. The adapter MUST provide an in-memory **metric-capture** primitive, sibling to the §6.3 OTel collector
+capture for spans and attached to the `MeterProvider` the metrics-emitting observer uses. It records each
+measurement individually, as a recording hook sees it (instrument name, value, dimensions), so that an
+aggregating reader's merge of two identical recordings cannot hide a repeat.
 
 - A case enables metrics via an observer-level `enable_metrics: <bool>` flag (observability §11.1,
   default off), configured on the in-memory observer (§6.1) the same way the span opt-out flags are.
@@ -1647,9 +1980,156 @@ therefore produce a deterministic result fixed by their document order. (`update
 
 ### 8.4 Assertion
 
-Verify each `expected:` block via the host language's idiomatic test framework. The adapter's
-assertion layer translates spec-defined assertion shapes (per §5.8) into host-language test
-assertions. Failures surface through the test runner.
+The adapter verifies each assertion a fixture writes through the host language's idiomatic test framework,
+and failures surface through the test runner. A directive's definition (§5, or a directory's harness note)
+says what an assertion reads; the rules below say how the written value is compared with what was read. A
+definition **MAY** vary a rule only in the ways these rules allow: declaring a list unordered, a set, or an
+existence list; declaring a mapping position exact; or stating a directive-specific comparison where the
+capability spec makes two values equivalent or leaves an order partly open. Examples of the last kind are
+`tool_calls: null` matching an empty list, a carrier link matching a run of carriers, and a migration list
+ordered only within each chain.
+
+**Single values.**
+
+- A single value (a string, number, boolean or `null`) compares equal to the observed value, after the
+  §5.10 value matchers are applied.
+- Numbers compare by numeric value: `1` matches `1.0`. A boolean never matches a number, and a string never
+  matches a number.
+- **Span attributes are the exception.** observability fixes each attribute's OpenTelemetry type, so the
+  type is part of the value there: a YAML integer matches only an integer attribute, and a YAML float only a
+  double. On a host whose attribute model has a single numeric type, an integer-valued double cannot be told
+  apart from an integer, so a whole-number value compares by value there.
+- A value that a wire mapping defines as a JSON-encoded string, such as a tool call's `arguments`, is
+  compared after decoding both sides as JSON. Two implementations may serialize the same arguments with
+  different separators, and the capability specs require only that the string be JSON.
+- Strings compare case-sensitively, and so do the substring matchers: `_mentions`, `content_contains`
+  and `content_includes`.
+- Floating-point values compare exactly, as binary64 values.
+
+**Lists.**
+
+- **A list of observed items is complete.** A list written as the expected value of something observed
+  names every observed item in the directive's scope: spans, observations, events, requests, saves, metric
+  recordings, executed nodes, migrations and the like. `[]` asserts there are none. Leaving the key out
+  asserts nothing.
+- **Completeness applies only where the spec fixes the whole set of items.** A directive over an open stream,
+  where other items may legitimately appear, is an **existence list**: each entry asserts that some observed
+  item matches it. `log_records` is an existence list (§5.5).
+- **Order.** A list is compared in order unless its definition declares it unordered. An unordered list
+  matches when there is a one-to-one pairing of entries to observed items in which every pair matches. The
+  adapter **MUST** search for such a pairing and **MUST NOT** assign greedily, because a general entry can
+  take an item that a more specific entry needs. Binding tokens are resolved together with the pairing.
+- **Repeats count.** An item observed twice **MUST** appear twice, unless the definition declares the list a
+  set.
+- **A parameter list is not an observed list.** A list that a directive takes as a parameter, such as an
+  `_absent_keys` list, `attributes_present` or `event_counts`, means whatever its definition says.
+- **A list inside data compares as a value:** complete and in order. A vector, an attribute array and a list
+  held in state are examples.
+
+The lists declared unordered are named in their definitions: span and observation `children`, a span's `links`, the
+top-level span and trace lists, a Langfuse trace's top-level `observations`, `metrics`, `traces` and
+`langfuse_traces`, the instance lists of a resume, and `nodes_skipped_during_resume`. The spec fixes which span is
+whose parent, and which traces a span links to, but not the order of siblings or of links, and §7 forbids an adapter
+from imposing an order the spec does not fix. Where order matters, a fixture asserts it through attributes such as
+the step or attempt index. `expected_compile_warning` is declared a set.
+
+**Mappings.**
+
+- **A mapping asserts the keys it names, at every depth.** A key it does not name is unconstrained.
+- **A position is exact only where an extra key would be a defect rather than an addition**, and only where
+  its definition declares it. At an exact position the written mapping is the whole value: an omitted key
+  **MUST** be absent, and nested values compare exactly at every depth. The exact positions are:
+  - **Whole-state positions:** `final_state` and the other state snapshots (§5.8). The state is declared by
+    the case, so a key outside its schema is a defect.
+  - **Values copied from the case's own inputs:** an event's `request_params` and `request_extras`, a
+    `RuntimeConfig` or sampling `extras` mapping, a tool call's `arguments`, a response's `parsed` value,
+    `descriptor.metadata`, an appended message written `{role, content}`, `attribute_parses_as_object`, a
+    Langfuse trace's `input` and `output`, `raw`, the provider's response body verbatim, and every wire copy
+    of a value the capability specs send verbatim from the case's inputs. Among them are the copies of a
+    `response_schema` (`response_format.json_schema.schema`, `output_config.format.schema`, a synthetic
+    tool's `input_schema`, `responseJsonSchema`) and of a caller tool's parameter schema. These stay exact
+    wherever they appear, inside an `expected_wire_request_includes` body too.
+  - **Wire request bodies** asserted with `expected_wire_request` (§5.16). For unchanged inputs the spec keeps
+    the wire shape fixed, so a new optional wire field never reaches an existing fixture. Where the spec
+    leaves part of a body to the implementation, `expected_wire_request_includes` matches by named keys
+    instead.
+  - **Metric `dimensions`**, whose complete set observability §11.3 fixes per instrument and outcome.
+- **A record inside an exact position still matches by named keys.** That applies to a record in the
+  implementation's own language that the engine or a provider wrote and whose type a capability spec
+  defines, such as a provider response stored by `calls_embed` or a `ChatMessage`. It is compared by the
+  keys the fixture names, because the spec may add optional fields to it. `raw` stays exact, and a message
+  inside a wire body is JSON, not such a record, so it stays exact too.
+- **A record whose shape the spec leaves to the implementation is asserted by count.** A collect-mode
+  errors-field entry is the example. pipeline-utilities §9.7 and §11.1 leave its shape open, and §10.11 types
+  it by the field the case declares. A fixture therefore **MUST** declare that field as a bare `list` (§5.2),
+  which constrains no element, and **MUST** write each entry as `{}`. There `{}` matches any non-null entry,
+  and the complete list asserts how many there are.
+
+Exact matching is kept to those positions because GOVERNANCE.md counts a new optional field among the
+backwards-compatible additions a MINOR version may make. If nested mappings compared exactly, every new
+optional field on a record would break each fixture that writes that record.
+
+**Absence.**
+
+- **`<key>_absent_keys: [...]`**, beside a mapping-valued key, lists keys that **MUST** be absent from that
+  mapping. `attributes_absent` and `metadata_absent` are instances of this form, spelled as they are.
+- **`absent_keys: [...]`**, inside the mapping of a list entry, lists fields of that entry that **MUST** be
+  absent.
+- Both spellings are reserved (§5 *Reserved absence keys*).
+- On a record in the implementation's own language, a field that is null counts as absent, matching the
+  null rule below.
+
+**Null.**
+
+- **A written `null` asserts that a field is not set.**
+- **On a record or event in the implementation's own language**, it matches a field that is null or missing,
+  which is how the capability specs describe an unset field wherever they define one (llm-provider §6,
+  graph-engine §6).
+- **On a JSON document**, null and missing are distinct: `null` matches only null, and `_absent_keys` asserts
+  that a member is missing. The JSON documents are:
+  - wire request bodies and `raw`;
+  - a span attribute parsed as JSON (`attribute_parses_as_messages`, `attribute_parses_as_object`);
+  - a Langfuse observation's `input` parsed as JSON (`input_parses_as_messages`);
+  - every mapping a recorded Langfuse trace or observation holds in a field, such as `metadata`, `usage`,
+    `usageDetails` and `modelParameters`.
+- **A Langfuse trace's or observation's own top-level fields are the exception.** A field the observer leaves
+  unset reads as Langfuse's default, so how a recorder stores it cannot change the result.
+  - For `input`, `output`, `statusMessage`, `userId` and `sessionId` the default is null. An unset field and
+    one recorded as null are the same state, and `null` and `_absent_keys` both match either.
+  - For `level` the default is `DEFAULT`. An unset or null level matches only `level: DEFAULT`.
+- **A nested mapping still requires a present record**, as §5.5 says for `contains_event`. A null or missing
+  value cannot satisfy it.
+
+**Binding tokens** follow §5.10: one scope per case, a present non-null value at every occurrence, equality
+across occurrences of the same token, joint resolution, and resolution at assertion time only.
+
+**What an assertion reads.**
+
+- **What a block reads depends on where it sits.** A block in an invocation's or a resume block's
+  `expected:` reads what that `invoke()` call produced: the events it dispatched, the spans and records it
+  emitted, and the requests it sent. `first_run_expected` reads the first run's call. A case-level
+  `expected:` reads what every call in the case produced. In a single-invocation case that is the one call.
+  In a multi-invocation case it is all of them, as observability fixture 084's case-level `langfuse_traces`
+  lists both calls' traces.
+- **A directive's own stated scope governs.** Where a definition says a directive reads one call's output, as
+  `span_tree`, `observer_events`, the accumulator assertions and `langfuse_trace` do, it belongs in a block
+  scoped to one call. A case-level block in a multi-invocation case **MUST NOT** use it, and an adapter
+  rejects one that does with `fixture_schema_invalid` (§9).
+- **The unit is the call, not the invocation id.** A suspension resume reuses the suspended call's invocation
+  id (suspension §7), so an event is attributed to the call that dispatched it.
+- **A case with `run_count`** (§5.7) runs its graph that many times, each run one call, and its `expected:`
+  block applies to each run.
+- **When state is read.** Observer and backend state is read after delivery for the call has completed.
+  Where the case's own drain timed out, it is read when that drain returned.
+
+**Every written assertion is checked.**
+
+- An adapter **MUST** check every assertion a fixture writes. No assertion is optional.
+- A fixture **MUST NOT** write an assertion an adapter MAY skip. A capability gate (§5.17) does not make an
+  assertion optional: a gated case either applies to an adapter, which then checks every assertion in it, or
+  is a recognized skip.
+- A fixture's comments, sidecar and notes **MUST NOT** claim the fixture checks something that no written key
+  asserts.
 
 ### 8.5 Version pinning
 
@@ -1775,3 +2255,4 @@ rule rather than an independent sanction: both are homes in the recognized vocab
 - §5.11 documented the existing **`attribute_truncation`** directive and all four of its sub-keys beside `attributes_absent`; §5.5 gained **`metadata_truncation`** on a Langfuse observation entry and a **`raises: {error_type, message | message_repeat}`** form on `mock_llm`; §5.15 gained **`message_repeat`** on the retrieval mocks' `raises`; and §5.1 documented the existing **`content_repeat`** and **`base64_data_synthetic`** synthesis primitives beside `calls_llm`. §5.5 also documented the existing **`payload_byte_cap`** on both observer directives, the per-observer cap a fixture must set asymmetrically to gate observability §8.7's MUST NOT. Both truncation assertions gained an adapter **MUST**-honor rule, a key-presence requirement and an at-least-one-sub-key requirement, so a silently-skipping adapter fails rather than passing vacuously; `utf8_valid` gained the multi-byte-filler requirement without which it cannot fail. §5.11's scope sentence and §5.1's `base64_data_synthetic` field name (`source.base64_data`, not `source.data`) were corrected in the same pass by [proposal 0119](../../proposals/0119-error-message-cap-and-reserved-keys.md)
 - §5.1 *Node behavior directives* gained **`await_event_delivery`** on `calls_llm_from_wrapper` (named for the contract rather than 0124's prescribed `yield_after_call`, since §5.1 states a scheduler yield is insufficient and a yield-shaped name invites the implementation the prose forbids): when `true` the adapter MUST ensure observer delivery **through this call's provider event** has completed **before the wrapper proceeds past the call site**, which for `phase: pre` is before invoking `next()` rather than before the wrapper returns; a deadline at the wrapper's return would sit after the node body had run and let its `started` event synthesize the span first, satisfying the rule while producing the interleaving it forbids. Delivery is complete when every registered observer has finished receiving the event, graph-engine §6's own unit, rather than at handoff to the queue; work an observer callback detaches is excluded, the callback itself is not. An adapter MUST honor the directive or fail the case. Stated as a barrier rather than as the yield 0124 prescribed, because graph-engine §6's strictly serial delivery queue means conceding one turn hands the queue one event with nothing binding it to this call. Without it no fixture can distinguish an implementation that resolves an orphan's parent structurally (observability §5.5) from one that passes because the wrapper span happened to be materialized already, which is a difference of observer architecture rather than of conformance. Set on all five directive blocks across observability fixtures 133, 134, 152 and 153, every fixture carrying the primitive; no assertion changed by [proposal 0124](../../proposals/0124-orphan-provider-span-parent-resolution.md)
 - §5.1 `calls_llm` gains general definitions of four keys fixtures already used: `model`, `response_schema`, `config` (declared fields plus an optional `extras` mapping) and `retry` (§5.11's `call.retry` mapping, including `per_attempt_override` and `reask`). §5.5: `mock_llm` gains a mapping form `{capabilities, responses}` mirroring `mock_provider`, with each wire request taking the next entry; `expected.log_records` entries gain `count`; `expected.log_records_absent` asserts that no captured record matches, with the adapter required to capture the whole case, wait for observer delivery, and fail a case it cannot capture; `otel_observer: {attached: false}` composes no OTel observer for a case; and a case composes a Langfuse observer only when it carries a `langfuse_observer` or `langfuse_client` block or asserts Langfuse output. §5.10 adds `<call_id_X>` to the observability suite's binding tokens. §5.11 defines `mock_provider.capabilities` and the three flags already in use (`supports_native_response_format`, `supports_native_structured_output`, `supports_image_input`), with what `false` means for each, and `expected.llm_spans`, the per-attempt span assertion, as an exhaustive list in attempt order whose entries assert only the keys they carry. §5.12 retypes `error_message_mentions` to a string or a non-empty list and describes `output_content` as the message content as the mapping produced it, and §5.13's `_mentions` flavor accepts a non-empty list asserting every substring, an empty list being `fixture_schema_invalid` by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)
+- §8.4 *Assertion* states the matching rules every assertion follows: single values, complete lists with unordered and existence lists named in their definitions, mappings that assert the keys they name with a few exact positions, the `<key>_absent_keys` and `absent_keys` absence forms, the null rule, the call a block reads, and that every written assertion is checked. New §4.5 limits a fixture to what the spec requires, with capability gates that never take a check away from an adapter, and new §5.17 generalizes §5.5's capability mechanism. New §5.16 moves the wire-request assertions out of §5.15 and adds `expected_wire_request_includes`. §5's preamble requires every key at an assertion position to be a defined directive, apart from `capture_as` labels and named claims, which an adapter implements, and reserves the absence keys. §5.5, §5.6, §5.8, §5.10 and §5.11 define the assertion directives in use, including one category rule for raised errors through pipeline-utilities §6.4, `span_tree` and `traces`, `delivery_order`, `final_state_bounds`, `middleware_log_captured`, `<timestamp>` and the binding-token rules. §6.1's `accumulate` observer and §6.7's middleware log keep one bucket per call, §6.2's session store counts its calls, §6.3 composes span and log capture for any case asserting them and rejects one that also sets `otel_observer: {attached: false}`, and §6.9 records each measurement individually. §5.1's `flaky_by_index` deterministic form raises uncategorized errors, as `flaky_per_index` does without its new optional `category`, and §5.7 defines `run_count` by [proposal 0127](../../proposals/0127-assertion-matching-rules.md)

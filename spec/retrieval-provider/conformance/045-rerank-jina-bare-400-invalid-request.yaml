@@ -22,7 +22,8 @@
 # jina_rerank_provider / jina_embedding_provider construction blocks, the Jina
 # /v1/rerank request shape + Authorization: Bearer header) and 016's / 022's
 # headers (expected_error: {category, raised_from} error-assertion shape;
-# non-2xx mock_rerank entries under `mapping: jina`).
+# non-2xx mock_rerank entries under `mapping: jina`). The wire-request
+# assertions are defined in conformance-adapter §5.16.
 
 mapping: jina
 

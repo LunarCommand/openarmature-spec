@@ -59,5 +59,4 @@ expected_error:
     results: []
 
 # Sibling cancellations don't produce additional node_exception per cancelled
-# instance; cancellations are infrastructure. The harness MAY assert that
-# observer events from cancelled instances did NOT have post_state populated.
+# instance; cancellations are infrastructure.

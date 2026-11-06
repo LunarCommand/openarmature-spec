@@ -27,16 +27,13 @@ cases:
             approver_pool: "finance"
     edges:
       - {from: gate, to: END}
-    observers:
-      - {name: otel_obs, attach: graph, target: outer, behavior: otel}
     invocations:
       - name: initial_invoke
         initial_state: {}
         expected:
           outcome: suspended
-          otel_spans:
-            otel_obs:
-              name: "openarmature.invocation"
+          span_tree:
+            - name: "openarmature.invocation"
               status: OK
               attributes:
                 openarmature.outcome: "suspended"

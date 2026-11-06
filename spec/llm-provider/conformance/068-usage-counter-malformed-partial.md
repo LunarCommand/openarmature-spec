@@ -17,7 +17,7 @@ The mock returns a completion whose `usage` is `{prompt_tokens: "abc", completio
 - `Response.usage.prompt_tokens` is `null`; `completion_tokens` is `50`; `total_tokens` is `150`; the record is present.
 - `message` and `finish_reason` are unchanged — the completion succeeded.
 - `complete()` does not raise.
-- `raw.usage` preserves the malformed `"abc"` verbatim. `raw_check.required_keys` asserts only that `usage` is **present** on `raw`; the verbatim value is pinned by the adapter-enforced invariant `raw_usage_prompt_tokens_verbatim_malformed`.
+- `raw.usage` preserves the malformed `"abc"` verbatim. `raw_check.required_keys` lists `usage`, so `raw.usage` must equal the mock body's `usage` exactly; the invariant `raw_usage_prompt_tokens_verbatim_malformed` states the same claim.
 
 **What fails:**
 

@@ -52,7 +52,8 @@ reaches every span / observation.
   `branchName: "policy_audit"`.
 - `policy_audit` branch's observations carry `branchName: "policy_audit"`, NOT
   `branchName: "fraud_check"`.
-- The Trace's `metadata` carries only `tenantId` (no `branchName` from either branch).
+- The Trace's `metadata` carries `tenantId` and no `branchName` from either branch
+  (`metadata_absent: [branchName]`).
 
 **What fails:**
 

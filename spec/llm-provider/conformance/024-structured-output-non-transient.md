@@ -18,7 +18,8 @@ the prompt/model/schema typically fails the same way and wastes tokens.
 **What passes:**
 
 - `complete()` raises `structured_output_invalid`.
-- The provider mock is invoked exactly once (no retry).
+- Exactly one request reaches the provider mock
+  (`expected_wire_request_count: 1`), so there was no retry.
 
 **What fails:**
 

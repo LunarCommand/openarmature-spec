@@ -12,12 +12,13 @@
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 023's/024's header (mapping: openai,
-# openai_embedding_provider, calls_embed, the /v1/embeddings {model, input,
-# dimensions} request + {object, data, model, usage} response,
-# expected_wire_request / expected_wire_headers), 034's header (the
+# openai_embedding_provider, the /v1/embeddings {model, input, dimensions}
+# request + {object, data, model, usage} response), 034's header (the
 # pre-send-reject convention: NO mock_embedding + NO expected_wire_request, the
-# no_embed_request_issued invariant), 016's header (expected_error:
-# {category, raised_from}), and 039's header (calls_*.config.extras bag).
+# no_embed_request_issued invariant), 016's header (expected_error: {category,
+# raised_from}), and 039's header (calls_*.config.extras bag). calls_embed is
+# defined in conformance-adapter §5.15 and the wire-request assertions in
+# §5.16.
 
 mapping: openai
 
@@ -105,9 +106,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.01, 0.02, 0.03, 0.04]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: text-embedding-test
       invariants:
         matching_extras_dimensions_no_op: true

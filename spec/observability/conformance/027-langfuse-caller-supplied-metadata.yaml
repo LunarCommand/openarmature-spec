@@ -79,6 +79,9 @@ cases:
                   seatCount: 42
                   isCanary: true
                 children: []
+      # No caller entry is a `userId` key and the invocation is not
+      # session-bound, so §8.4.1 leaves both grouping fields unset.
+      langfuse_trace_absent_keys: [userId, sessionId]
       invariants:
         # Caller metadata entries MUST appear at trace.metadata top
         # level (not nested under "user") AND on every observation's

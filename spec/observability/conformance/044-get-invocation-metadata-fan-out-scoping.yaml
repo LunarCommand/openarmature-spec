@@ -14,6 +14,9 @@ cases:
       (tenantId) is visible everywhere.
     state:
       fields:
+        products:
+          type: list<dict>
+          default: []
         per_instance_metadata:
           type: list<dict>
           reducer: append
@@ -57,6 +60,9 @@ cases:
       tenantId: "T1"
     expected:
       final_state:
+        products:
+          - {id: "A"}
+          - {id: "B"}
         per_instance_metadata:
           # Order matches fan-out instance iteration order. Each entry
           # carries the baseline (tenantId) + its own item_id only.

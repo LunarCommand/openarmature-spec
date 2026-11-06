@@ -29,16 +29,17 @@
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 015's header (the chunk-and-stitch
-# path — expected_wire_request as a LIST of request bodies one per chunk in
-# arrival order, expected_wire_request_count pinning the request count,
-# mock_* entries dispatched one per request in arrival order) and 032's
-# header (mapping: cohere, cohere_embedding_provider, the Cohere /v2/embed
-# request + keyed-by-type response shapes). The harness MUST capture every
-# outbound /v2/embed request, assert the count matches the list length, and
-# compare each captured body key-by-key against the corresponding list
-# entry; mock_embedding entries are dispatched one per /v2/embed request in
-# arrival order, each a Cohere /v2/embed response with that chunk's
-# embeddings.float vectors.
+# path, mock_* entries dispatched one per request in chunk order) and 032's
+# header (cohere_embedding_provider, the Cohere /v2/embed request +
+# keyed-by-type response shapes). `mapping:` is defined in conformance-adapter
+# §5.15 and the wire-request assertions in §5.16. Here expected_wire_request is
+# a LIST of request bodies, one per chunk in chunk order, with the count pinned
+# by expected_wire_request_count. The harness MUST capture every outbound
+# /v2/embed request, assert the count matches the list length, and compare each
+# captured body with its list entry as conformance-adapter §5.16 defines;
+# mock_embedding entries are dispatched one per /v2/embed request in chunk
+# order, each a Cohere /v2/embed response with that chunk's embeddings.float
+# vectors.
 
 mapping: cohere
 
@@ -179,7 +180,7 @@ cases:
     edges:
       - {from: embed_node, to: END}
     initial_state: {}
-    # One /v2/embed body per chunk, in arrival order. texts sizes 96, 4;
+    # One /v2/embed body per chunk, in chunk order. texts sizes 96, 4;
     # identical per-call params on each; output_dimension absent on both.
     expected_wire_request:
       - model: cohere-embed-test
@@ -522,9 +523,7 @@ cases:
             - [0.097, 0.5]
             - [0.098, 0.5]
             - [0.099, 0.5]
-          vectors_length: 100
           dimensions: 2
-          inner_vector_lengths_all_equal: 2
           model: cohere-embed-test
           response_id: cohere-embed-037-chunk-a-id
           usage:

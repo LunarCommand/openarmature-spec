@@ -18,12 +18,12 @@ fields and well-formed `messages`.
 - `PromptResult` has `name == "greeting"`, `label == "production"`,
   `version == "v1"`, `template_hash` matching source.
 - `messages == [{role: "user", content: "Hello, Alice!"}]`.
-- `rendered_hash` is a non-empty string in the same format as
-  `template_hash` (SHA-256 hex prefix).
+- `rendered_hash` is a non-empty string. §4 leaves the hash algorithm to
+  the implementation, so its format is not asserted.
 - `variables == {user: "Alice"}`.
 
 **What fails:**
 
 - Identity fields are missing or don't match the source `Prompt`.
 - Messages don't reflect variable substitution.
-- `rendered_hash` is empty or in a different format from `template_hash`.
+- `rendered_hash` is missing or empty.

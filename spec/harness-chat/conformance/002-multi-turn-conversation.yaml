@@ -40,7 +40,9 @@ cases:
             - role: assistant
               content: "echo"
           final_state:
-            messages_count: 2
+            messages:
+              - {role: user, content: "First message"}
+              - {role: assistant, content: "echo"}
       - name: turn_2
         session_id: "conv-002"
         user_message:
@@ -53,8 +55,7 @@ cases:
             - role: assistant
               content: "echo"
           final_state:
-            messages_count: 4
-            messages_history_contains:
+            messages:
               - {role: user, content: "First message"}
               - {role: assistant, content: "echo"}
               - {role: user, content: "Second message"}

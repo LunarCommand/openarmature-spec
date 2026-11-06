@@ -1,6 +1,6 @@
 # 111 — `LlmTokenEvent` dispatch on a streamed call
 
-Verifies graph-engine §6's *Typed LLM token event* together with llm-provider §5 *Streaming* and §6 *Streaming assembly*. When `complete()` is called with `stream` set, the provider emits one `LlmTokenEvent` per streamed content chunk, in `chunk_index` order, all before the terminal `LlmCompletionEvent` for the same call. The ordered concatenation of the content deltas equals the terminal event's assembled content, and every token event shares the terminal event's `call_id`. This fixture also introduces the streaming harness directives (`calls_llm.stream`, `mock_llm_stream`, `contains_events_in_order`) documented in its YAML header per conformance-adapter §3.2.
+Verifies graph-engine §6's *Typed LLM token event* together with llm-provider §5 *Streaming* and §6 *Streaming assembly*. When `complete()` is called with `stream` set, the provider emits one `LlmTokenEvent` per streamed content chunk, in `chunk_index` order, all before the terminal `LlmCompletionEvent` for the same call. The ordered concatenation of the content deltas equals the terminal event's assembled content, and every token event shares the terminal event's `call_id`. It uses the streaming inputs `calls_llm.stream` and `mock_llm_stream`, defined in fixture 001's header, this directory's harness note (conformance-adapter §3.2). `contains_events_in_order` is defined in conformance-adapter §5.5.
 
 **Spec sections exercised:**
 

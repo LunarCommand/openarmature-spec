@@ -12,9 +12,9 @@ Observation's `metadata` map as top-level keys (sibling to existing OA-emitted k
   `trace.metadata.<key>` at the top level.
 - §8.4.2 — observation-level mapping: each entry becomes `observation.metadata.<key>` at the
   top level of every Observation (Span and Generation observations alike).
-- §8.4 (Langfuse-Sessions distinction note): the propagation rules NOT promote keys to
-  `trace.userId` / `trace.sessionId`; those are separately-spec'd surfaces (deferred to a
-  future sessions capability).
+- §8.4 (Langfuse-Sessions distinction note) and §8.4.1: caller metadata is not promoted to
+  `trace.userId` / `trace.sessionId`. §8.4.1 promotes only a recognized `userId` caller key and
+  the session id of a session-bound invocation. This case has neither, so both fields are unset.
 
 **Cases:**
 
@@ -39,6 +39,7 @@ Observation's `metadata` map as top-level keys (sibling to existing OA-emitted k
 - Every Observation's `metadata` carries the three caller entries at top level, alongside the
   OA-emitted `correlation_id` and the per-observation OA fields (`namespace`, `step`, etc.).
 - Value types are preserved (string / int / bool).
+- The Trace carries neither `userId` nor `sessionId` (`langfuse_trace_absent_keys`).
 
 **What fails:**
 
@@ -47,6 +48,6 @@ Observation's `metadata` map as top-level keys (sibling to existing OA-emitted k
 - Caller entries appear on the Trace but not on Observations — implementation missed §8.4.2's
   per-observation propagation rule (the rule is critical for detached subgraph / fan-out
   filtering per the rationale in §8.4.2).
-- Caller entries promoted to `trace.userId` or `trace.sessionId` — violates §8.4's
-  Langfuse-Sessions-distinction note (those fields are deferred).
+- A caller entry is promoted to `trace.userId` or `trace.sessionId`. §8.4.1 promotes only a
+  `userId` key and a session-bound invocation's session id, and this case supplies neither.
 - Value types coerced.

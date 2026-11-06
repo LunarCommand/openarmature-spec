@@ -8,33 +8,48 @@
 # no stop sequence on its request. It MUST NOT emit in any other case.
 #
 # Harness notes for this fixture:
-#   - Every case except case 14 carries `otel_observer: {}` and
-#     `langfuse_observer: {}`, so both backend observers are composed
-#     (conformance-adapter §5.5). An absence case therefore covers a check placed
-#     in either observer, and each record count catches one that emits once per
-#     observer. Case 14 carries `otel_observer: {attached: false}` and no
-#     Langfuse key, so it composes neither, and a record that depends on an
-#     observer being attached is caught too.
+#   - Every case except case 14 and its twin, case 24, carries
+#     `otel_observer: {}` and `langfuse_observer: {}`, so both backend
+#     observers are composed (conformance-adapter §5.5). An absence case
+#     therefore covers a check placed in either observer, and each record
+#     count catches one that emits once per observer. Cases 14 and 24 carry
+#     `otel_observer: {attached: false}` and no Langfuse key, so they compose
+#     neither, and a record that depends on an observer being attached is
+#     caught too.
 #   - Log records are captured for the whole case and asserted after observer
 #     delivery completes (conformance-adapter §5.5).
-#   - `<call_id_X>` is a first-occurrence-binding token (conformance-adapter
-#     §5.10) for a call's graph-engine §6 `call_id`. A record's
-#     `openarmature.llm.call_id` and the call's typed event bind the same token,
-#     so the record joins to its call.
-#   - The schema satisfies OpenAI's strict-mode rules, so the request carries
-#     `strict: true` and the path is "native" (llm-provider §8.1.5; llm-provider
-#     fixture 026 already pins strict: true on the wire for such a schema).
+#   - `<call_id_X>` is a binding token (conformance-adapter §5.10) for a
+#     call's graph-engine §6 `call_id`. A record's `openarmature.llm.call_id`
+#     and the call's typed event bind the same token, so the record joins to
+#     its call.
+#   - `<path_X>` is a binding token (conformance-adapter §5.10) for a call's
+#     `structured_output_path`. Where more than one path can be right, the
+#     event and the span's path attribute bind the same token, so the two
+#     must agree.
+#   - The schema satisfies OpenAI's strict-mode rules. llm-provider §8.1.5
+#     says an implementation SHOULD then send `strict: true`, which makes the
+#     path "native"; without it the path is "native_unenforced". The cases
+#     that expect the record are gated on `llm_strict_native_schema: true`
+#     (conformance-adapter §5.17). Cases 20 to 27 are their twins, gated on
+#     `false`: the same inputs and assertions, with the "native_unenforced"
+#     path and no record. The native cases that expect no record hold on
+#     either path, so they are ungated. llm-provider fixture 026 pins
+#     `strict: true` on the wire in its case gated on the same capability.
+#   - Case 8 is gated on `llm_prompt_augmentation_fallback: true`, since
+#     llm-provider §8.1.5.1's fallback is a SHOULD. Case 28 runs its inputs
+#     ungated and asserts what holds with or without the fallback.
 #   - Under call-level retry each wire attempt takes the next `mock_llm` entry.
 #     A caught attempt emits no typed event (graph-engine §6, as in fixture
-#     116), so the retry cases assert the call's single terminal event, the
-#     per-attempt records, and each attempt's span through `llm_spans`.
+#     116), so the retry cases assert the call's single terminal event, each
+#     attempt's span through `llm_spans`, and the per-attempt records or, in
+#     the twins, their absence.
 #   - Every case that expects the record sets `caller_correlation_id`, so the
 #     record's `openarmature.correlation_id` is asserted as that literal value.
-#   - Case 17 streams, using fixture 111's `calls_llm.stream`,
-#     `mock_llm_stream` and `contains_events_in_order` (the collected events of
-#     one type, in delivery order, matched positionally and length-exact). Its
-#     chunks carry `delta: {refusal: ...}`, OpenAI's refusal delta
-#     (llm-provider §8.1.6), a chunk shape fixture 111's list does not show.
+#   - Case 17 streams, using `calls_llm.stream` and `mock_llm_stream` (this
+#     directory's harness note, fixture 001's header) and
+#     `contains_events_in_order` (conformance-adapter §5.5). Its chunks carry
+#     `delta: {refusal: ...}`, OpenAI's refusal delta (llm-provider §8.1.6), a
+#     chunk shape the note's list does not show.
 
 
 cases:
@@ -76,6 +91,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "Sure, the person is Alice, aged 30."}, finish_reason: stop}
           usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
+    requires_capability:
+      llm_strict_native_schema: true
     otel_observer: {}
     langfuse_observer: {}
     typed_observers:
@@ -161,7 +178,7 @@ cases:
       llm_spans:
         - attempt_index: 0
           attributes:
-            "openarmature.llm.structured_output.path": native
+            "openarmature.llm.structured_output.path": "<path_a>"
           error_category: structured_output_invalid
       observers:
         collector:
@@ -169,7 +186,7 @@ cases:
             event_type: LlmFailedEvent
             fields:
               error_category: structured_output_invalid
-              structured_output_path: native
+              structured_output_path: "<path_a>"
               finish_reason: stop
       log_records_absent:
         - event_name: openarmature.structured_output.schema_not_honored
@@ -210,6 +227,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: '["Alice", 30]'}, finish_reason: stop}
           usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    requires_capability:
+      llm_strict_native_schema: true
     otel_observer: {}
     langfuse_observer: {}
     typed_observers:
@@ -291,7 +310,7 @@ cases:
       llm_spans:
         - attempt_index: 0
           attributes:
-            "openarmature.llm.structured_output.path": native
+            "openarmature.llm.structured_output.path": "<path_a>"
           error_category: structured_output_invalid
       observers:
         collector:
@@ -299,7 +318,7 @@ cases:
             event_type: LlmFailedEvent
             fields:
               error_category: structured_output_invalid
-              structured_output_path: native
+              structured_output_path: "<path_a>"
               finish_reason: length
       log_records_absent:
         - event_name: openarmature.structured_output.schema_not_honored
@@ -350,7 +369,7 @@ cases:
       llm_spans:
         - attempt_index: 0
           attributes:
-            "openarmature.llm.structured_output.path": native
+            "openarmature.llm.structured_output.path": "<path_a>"
           error_category: structured_output_invalid
       observers:
         collector:
@@ -358,7 +377,7 @@ cases:
             event_type: LlmFailedEvent
             fields:
               error_category: structured_output_invalid
-              structured_output_path: native
+              structured_output_path: "<path_a>"
               finish_reason: content_filter
       log_records_absent:
         - event_name: openarmature.structured_output.schema_not_honored
@@ -412,7 +431,7 @@ cases:
       llm_spans:
         - attempt_index: 0
           attributes:
-            "openarmature.llm.structured_output.path": native
+            "openarmature.llm.structured_output.path": "<path_a>"
           error_category: structured_output_invalid
       observers:
         collector:
@@ -420,7 +439,7 @@ cases:
             event_type: LlmFailedEvent
             fields:
               error_category: structured_output_invalid
-              structured_output_path: native
+              structured_output_path: "<path_a>"
               finish_reason: stop
               request_params: {stop_sequences: ["END"]}
       log_records_absent:
@@ -477,7 +496,7 @@ cases:
       llm_spans:
         - attempt_index: 0
           attributes:
-            "openarmature.llm.structured_output.path": native
+            "openarmature.llm.structured_output.path": "<path_a>"
           error_category: structured_output_invalid
       observers:
         collector:
@@ -485,19 +504,18 @@ cases:
             event_type: LlmFailedEvent
             fields:
               error_category: structured_output_invalid
-              structured_output_path: native
+              structured_output_path: "<path_a>"
               finish_reason: stop
       log_records_absent:
         - event_name: openarmature.structured_output.schema_not_honored
 
   - name: prompt_augmentation_path_absent
     description: |
-      The mock presents as lacking native structured output, so the
-      implementation takes the prompt-augmentation fallback. Prose on "stop"
-      there is not evidence of a dropped constraint, so no record is emitted.
-      The event's input_messages are the list as sent: the schema directive
-      as a leading system message, in the wire shape fixture 027 asserts, and
-      the caller's message.
+      The mock presents as lacking native structured output, so an
+      implementation that takes the prompt-augmentation fallback
+      (llm_prompt_augmentation_fallback: true) uses that path. Prose on
+      "stop" there is not evidence of a dropped constraint, so no record is
+      emitted. Case 28 runs the same inputs without the gate.
     state:
       fields:
         answer: {type: string, default: ""}
@@ -531,6 +549,8 @@ cases:
             choices:
               - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
             usage: {prompt_tokens: 40, completion_tokens: 4, total_tokens: 44}
+    requires_capability:
+      llm_prompt_augmentation_fallback: true
     otel_observer: {}
     langfuse_observer: {}
     typed_observers:
@@ -553,16 +573,14 @@ cases:
               error_category: structured_output_invalid
               structured_output_path: prompt_augmentation
               finish_reason: stop
-              input_messages:
-                - {role: system, content: "<any-string>"}
-                - {role: user, content: "Generate a person record."}
       log_records_absent:
         - event_name: openarmature.structured_output.schema_not_honored
 
   - name: native_valid_content_completion_absent
     description: |
-      Valid content on the native path. The call completes, the completion
-      event and the span report the native path, and no record is emitted.
+      Valid content on a native path, strict or not. The call completes,
+      the completion event and the span report the same path, and no
+      record is emitted.
     state:
       fields:
         answer: {type: string, default: ""}
@@ -602,14 +620,14 @@ cases:
       llm_spans:
         - attempt_index: 0
           attributes:
-            "openarmature.llm.structured_output.path": native
+            "openarmature.llm.structured_output.path": "<path_a>"
           error_category: null
       observers:
         collector:
           contains_event:
             event_type: LlmCompletionEvent
             fields:
-              structured_output_path: native
+              structured_output_path: "<path_a>"
               finish_reason: stop
       log_records_absent:
         - event_name: openarmature.structured_output.schema_not_honored
@@ -617,7 +635,7 @@ cases:
   - name: no_schema_no_path
     description: |
       A free-form call with no response_schema. The completion event's
-      structured_output_path is present and null, the span carries no path
+      structured_output_path is not set (null), the span carries no path
       attribute, and no record is emitted.
     state:
       fields:
@@ -667,7 +685,7 @@ cases:
       A schema is supplied, but the call's extras carry a conflicting
       response_format, which llm-provider §8.1.5 rejects before sending with
       provider_invalid_request. No request was sent, so the failure event's
-      structured_output_path is present and null, and no record is emitted.
+      structured_output_path is not set (null), and no record is emitted.
       Whether a call rejected before sending gets an LLM span is not
       specified, so this case asserts only the event.
     state:
@@ -775,6 +793,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":30}'}, finish_reason: stop}
           usage: {prompt_tokens: 40, completion_tokens: 9, total_tokens: 49}
+    requires_capability:
+      llm_strict_native_schema: true
     otel_observer: {}
     langfuse_observer: {}
     typed_observers:
@@ -871,6 +891,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
           usage: {prompt_tokens: 40, completion_tokens: 4, total_tokens: 44}
+    requires_capability:
+      llm_strict_native_schema: true
     otel_observer: {}
     langfuse_observer: {}
     typed_observers:
@@ -954,6 +976,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "Sure, the person is Alice, aged 30."}, finish_reason: stop}
           usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
+    requires_capability:
+      llm_strict_native_schema: true
     otel_observer: {attached: false}
     typed_observers:
       - name: collector
@@ -1021,6 +1045,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
           usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+    requires_capability:
+      llm_strict_native_schema: true
     otel_observer: {}
     langfuse_observer: {}
     typed_observers:
@@ -1058,7 +1084,7 @@ cases:
 
   - name: native_refusal_reported_as_stop_absent
     description: |
-      An OpenAI refusal on the native path: the message carries the refusal
+      An OpenAI refusal on a native path: the message carries the refusal
       text in `refusal`, no content, and OpenAI reports "stop". llm-provider
       §8.1.2 makes the refusal text the content and the finish_reason
       "content_filter", so the failure is a refusal, not a malformed reply on a
@@ -1106,7 +1132,7 @@ cases:
       llm_spans:
         - attempt_index: 0
           attributes:
-            "openarmature.llm.structured_output.path": native
+            "openarmature.llm.structured_output.path": "<path_a>"
           error_category: structured_output_invalid
       observers:
         collector:
@@ -1114,7 +1140,7 @@ cases:
             event_type: LlmFailedEvent
             fields:
               error_category: structured_output_invalid
-              structured_output_path: native
+              structured_output_path: "<path_a>"
               finish_reason: content_filter
               output_content: "I can't help with that."
       log_records_absent:
@@ -1122,7 +1148,7 @@ cases:
 
   - name: native_streamed_refusal_streams_content_tokens_absent
     description: |
-      A streamed OpenAI refusal on the native path: the chunks carry the
+      A streamed OpenAI refusal on a native path: the chunks carry the
       refusal in `delta.refusal` pieces and the last one reports "stop". Each
       piece is a content delta, emitted as a content token event, and the
       pieces form the content (llm-provider §8.1.6). The mapped finish_reason
@@ -1164,7 +1190,7 @@ cases:
       llm_spans:
         - attempt_index: 0
           attributes:
-            "openarmature.llm.structured_output.path": native
+            "openarmature.llm.structured_output.path": "<path_a>"
           error_category: structured_output_invalid
       observers:
         collector:
@@ -1177,7 +1203,7 @@ cases:
             event_type: LlmFailedEvent
             fields:
               error_category: structured_output_invalid
-              structured_output_path: native
+              structured_output_path: "<path_a>"
               finish_reason: content_filter
               output_content: "I can't help with that."
       log_records_absent:
@@ -1222,6 +1248,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
           usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+    requires_capability:
+      llm_strict_native_schema: true
     otel_observer: {}
     langfuse_observer: {}
     typed_observers:
@@ -1308,6 +1336,8 @@ cases:
           choices:
             - {index: 0, message: {role: assistant, content: "Alice, thirty"}, finish_reason: stop}
           usage: {prompt_tokens: 40, completion_tokens: 4, total_tokens: 44}
+    requires_capability:
+      llm_strict_native_schema: true
     otel_observer: {}
     langfuse_observer: {}
     typed_observers:
@@ -1359,3 +1389,677 @@ cases:
             "openarmature.llm.call_id": "<call_id_a>"
             "openarmature.llm.attempt_index": 1
             "openarmature.correlation_id": "corr-161-s"
+
+  - name: native_unenforced_not_json_on_stop_absent
+    description: |
+      Case 1 for an implementation that does not send `strict: true` for a
+      schema meeting OpenAI's strict-mode rules
+      (llm_strict_native_schema: false). The request still carries the schema
+      natively, so the event and the span report the "native_unenforced" path.
+      observability §5.5.7 forbids the record on that path, so none is
+      emitted. Case 1's other assertions hold unchanged.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-a"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161a
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test-2026-01-01
+          choices:
+            - {index: 0, message: {role: assistant, content: "Sure, the person is Alice, aged 30."}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
+    requires_capability:
+      llm_strict_native_schema: false
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native_unenforced
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native_unenforced
+              finish_reason: stop
+              model: gpt-test
+              response_model: gpt-test-2026-01-01
+              call_id: "<call_id_a>"
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_unenforced_json_array_on_stop_absent
+    description: |
+      Case 3 for an implementation that does not send `strict: true` for a
+      schema meeting OpenAI's strict-mode rules
+      (llm_strict_native_schema: false). The request still carries the schema
+      natively, so the event and the span report the "native_unenforced" path.
+      observability §5.5.7 forbids the record on that path, so none is
+      emitted. Case 3's other assertions hold unchanged.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-c"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161c
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: '["Alice", 30]'}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 6, total_tokens: 26}
+    requires_capability:
+      llm_strict_native_schema: false
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native_unenforced
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native_unenforced
+              finish_reason: stop
+              call_id: "<call_id_a>"
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_unenforced_reask_recovers_absent
+    description: |
+      Case 12 for an implementation that does not send `strict: true` for a
+      schema meeting OpenAI's strict-mode rules
+      (llm_strict_native_schema: false). The request still carries the schema
+      natively, so the completion event and each attempt's span report the
+      "native_unenforced" path. observability §5.5.7 forbids the record on
+      that path, so none is emitted for attempt 0. Case 12's other assertions
+      hold unchanged.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          retry:
+            max_attempts: 2
+            backoff: {type: deterministic, seconds: 0}
+            reask: {template: "Return only the JSON object."}
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-l"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161l-0
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+      - status: 200
+        body:
+          id: cc-161l-1
+          object: chat.completion
+          created: 1700000001
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: '{"name":"Alice","age":30}'}, finish_reason: stop}
+          usage: {prompt_tokens: 40, completion_tokens: 9, total_tokens: 49}
+    requires_capability:
+      llm_strict_native_schema: false
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native_unenforced
+          error_category: structured_output_invalid
+        - attempt_index: 1
+          attributes:
+            "openarmature.llm.structured_output.path": native_unenforced
+          error_category: null
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmCompletionEvent
+            fields:
+              structured_output_path: native_unenforced
+              attempt_index: 0
+              call_id: "<call_id_a>"
+              input_messages:
+                - {role: user, content: "Generate a person record."}
+                - {role: assistant, content: "Alice is thirty"}
+                - {role: user, content: "Return only the JSON object."}
+          event_counts:
+            - {event_type: LlmCompletionEvent, count: 1}
+            - {event_type: LlmFailedEvent, count: 0}
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_unenforced_reask_with_override_stop_sequence_absent
+    description: |
+      Case 13 for an implementation that does not send `strict: true` for a
+      schema meeting OpenAI's strict-mode rules
+      (llm_strict_native_schema: false). The request still carries the schema
+      natively, so the failure event and each attempt's span report the
+      "native_unenforced" path. observability §5.5.7 forbids the record on
+      that path, so neither attempt emits one. Case 13's other assertions hold
+      unchanged.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          retry:
+            max_attempts: 2
+            backoff: {type: deterministic, seconds: 0}
+            reask: {template: "Return only the JSON object."}
+            per_attempt_override:
+              - {stop_sequences: ["END"]}
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-m"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161m-0
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+      - status: 200
+        body:
+          id: cc-161m-1
+          object: chat.completion
+          created: 1700000001
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 40, completion_tokens: 4, total_tokens: 44}
+    requires_capability:
+      llm_strict_native_schema: false
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native_unenforced
+          attributes_absent:
+            - "gen_ai.request.stop_sequences"
+          error_category: structured_output_invalid
+        - attempt_index: 1
+          attributes:
+            "openarmature.llm.structured_output.path": native_unenforced
+            "gen_ai.request.stop_sequences": ["END"]
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native_unenforced
+              attempt_index: 0
+              call_id: "<call_id_a>"
+              request_params: {stop_sequences: ["END"]}
+          event_counts:
+            - {event_type: LlmFailedEvent, count: 1}
+            - {event_type: LlmCompletionEvent, count: 0}
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_unenforced_no_backend_observer_absent
+    description: |
+      Case 14 for an implementation that does not send `strict: true` for a
+      schema meeting OpenAI's strict-mode rules
+      (llm_strict_native_schema: false). The request still carries the schema
+      natively, so the event reports the "native_unenforced" path.
+      observability §5.5.7 forbids the record on that path, so none is
+      emitted. Case 14's other assertions hold unchanged.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-n"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161n
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Sure, the person is Alice, aged 30."}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
+    requires_capability:
+      llm_strict_native_schema: false
+    otel_observer: {attached: false}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native_unenforced
+              finish_reason: stop
+              call_id: "<call_id_a>"
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_unenforced_not_json_with_empty_stop_list_absent
+    description: |
+      Case 15 for an implementation that does not send `strict: true` for a
+      schema meeting OpenAI's strict-mode rules
+      (llm_strict_native_schema: false). The request still carries the schema
+      natively, so the event and the span report the "native_unenforced" path.
+      observability §5.5.7 forbids the record on that path, so none is
+      emitted. Case 15's other assertions hold unchanged.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          config:
+            stop_sequences: []
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-o"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161o
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+    requires_capability:
+      llm_strict_native_schema: false
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native_unenforced
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native_unenforced
+              finish_reason: stop
+              call_id: "<call_id_a>"
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_unenforced_not_json_with_empty_extras_stop_absent
+    description: |
+      Case 18 for an implementation that does not send `strict: true` for a
+      schema meeting OpenAI's strict-mode rules
+      (llm_strict_native_schema: false). The request still carries the schema
+      natively, so the event and the span report the "native_unenforced" path.
+      observability §5.5.7 forbids the record on that path, so none is
+      emitted. Case 18's other assertions hold unchanged.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          config:
+            extras:
+              stop: []
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-r"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161r
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+    requires_capability:
+      llm_strict_native_schema: false
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native_unenforced
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native_unenforced
+              finish_reason: stop
+              call_id: "<call_id_a>"
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: native_unenforced_reask_both_attempts_absent
+    description: |
+      Case 19 for an implementation that does not send `strict: true` for a
+      schema meeting OpenAI's strict-mode rules
+      (llm_strict_native_schema: false). The request still carries the schema
+      natively, so the failure event and each attempt's span report the
+      "native_unenforced" path. observability §5.5.7 forbids the record on
+      that path, so neither attempt emits one. Case 19's other assertions hold
+      unchanged.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          retry:
+            max_attempts: 2
+            backoff: {type: deterministic, seconds: 0}
+            reask: {template: "Return only the JSON object."}
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    caller_correlation_id: "corr-161-s"
+    mock_llm:
+      - status: 200
+        body:
+          id: cc-161s-0
+          object: chat.completion
+          created: 1700000000
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+      - status: 200
+        body:
+          id: cc-161s-1
+          object: chat.completion
+          created: 1700000001
+          model: gpt-test
+          choices:
+            - {index: 0, message: {role: assistant, content: "Alice, thirty"}, finish_reason: stop}
+          usage: {prompt_tokens: 40, completion_tokens: 4, total_tokens: 44}
+    requires_capability:
+      llm_strict_native_schema: false
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": native_unenforced
+          error_category: structured_output_invalid
+        - attempt_index: 1
+          attributes:
+            "openarmature.llm.structured_output.path": native_unenforced
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: native_unenforced
+              finish_reason: stop
+              attempt_index: 0
+              call_id: "<call_id_a>"
+              output_content: "Alice, thirty"
+          event_counts:
+            - {event_type: LlmFailedEvent, count: 1}
+            - {event_type: LlmCompletionEvent, count: 0}
+      log_records_absent:
+        - event_name: openarmature.structured_output.schema_not_honored
+
+  - name: server_lacks_response_format_path_agrees
+    description: |
+      Case 8's inputs, ungated. Falling back to prompt augmentation is a
+      SHOULD (llm-provider §8.1.5.1), so the call may take that path or a
+      native one. On any of them the prose fails the schema, so this case
+      asserts what holds either way: the structured_output_invalid error,
+      its category on the span and the failed event, the event's
+      finish_reason, and one path shared by the event and the span. Whether
+      the record is emitted on a native path depends on strict mode, so it
+      is not asserted.
+    state:
+      fields:
+        answer: {type: string, default: ""}
+    entry: ask
+    nodes:
+      ask:
+        calls_llm:
+          messages: [{role: user, content: "Generate a person record."}]
+          model: gpt-test
+          stores_response_in: answer
+          response_schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    edges:
+      - {from: ask, to: END}
+    initial_state: {}
+    mock_llm:
+      capabilities:
+        supports_native_response_format: false
+      responses:
+        - status: 200
+          body:
+            id: cc-161h
+            object: chat.completion
+            created: 1700000000
+            model: gpt-test
+            choices:
+              - {index: 0, message: {role: assistant, content: "Alice is thirty"}, finish_reason: stop}
+            usage: {prompt_tokens: 40, completion_tokens: 4, total_tokens: 44}
+    otel_observer: {}
+    langfuse_observer: {}
+    typed_observers:
+      - name: collector
+        kind: typed_event_collector
+    expected_error:
+      category: structured_output_invalid
+      raised_from: ask
+    expected:
+      llm_spans:
+        - attempt_index: 0
+          attributes:
+            "openarmature.llm.structured_output.path": "<path_a>"
+          error_category: structured_output_invalid
+      observers:
+        collector:
+          contains_event:
+            event_type: LlmFailedEvent
+            fields:
+              error_category: structured_output_invalid
+              structured_output_path: "<path_a>"
+              finish_reason: stop

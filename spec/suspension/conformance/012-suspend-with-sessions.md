@@ -12,22 +12,33 @@ resuming the suspension sees consistent session state.
   category; future fixture coverage may exercise the atomic-rollback
   case).
 
+**Cases:**
+
+1. `resume_sees_consistent_session_state` applies to every adapter. The
+   invocation suspends and resumes, and the session record holds the
+   final state. These assertions hold whether or not the session saves
+   at suspend time.
+2. `session_saves_at_suspend_time` is gated on `session_save_at_suspend`
+   (fixture 001's note), since §8.6 makes the suspend-time save a
+   SHOULD. Once the suspended call returns, the store holds the
+   pre-suspend session state.
+
 **What passes:**
 
-- After the initial suspend, the SessionStore has a record under
+- Case 1: the resume invoke continues from the paused-invocation
+  record; the post-resume node sees consistent state and completes
+  normally.
+- Case 1: after resume completes, the SessionStore has the updated final
+  state.
+- Case 2: after the initial suspend, the SessionStore has a record under
   `session_id = "session-suspend-1"` carrying the pre-suspend session
   state (`session_counter: 5`).
-- The resume invoke loads the saved session state alongside the
-  paused-invocation record; the post-resume node sees consistent state
-  and completes normally.
-- After resume completes, the SessionStore has the updated final
-  state.
 
 **What fails:**
 
-- No session record exists after the initial suspend — would mean the
-  session save did not fire at suspend time (would leave a fresh
-  worker without the session context needed to resume).
-- The resume sees stale session state — would mean the
+- Case 1: the resume sees stale session state. That would mean the
   paused-invocation record and the session record diverged, breaking
   the atomic-suspend rule.
+- Case 2: no session record exists after the initial suspend. That would
+  mean the session save did not fire at suspend time, leaving a fresh
+  worker without the session context needed to resume.

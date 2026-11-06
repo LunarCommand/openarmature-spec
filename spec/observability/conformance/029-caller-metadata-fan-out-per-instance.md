@@ -49,6 +49,7 @@ reach every instance's spans + observations.
 - The Trace's top-level `metadata` carries the baseline `tenantId` but NOT any
   `productId` (the augmentations were applied inside fan-out instances, in their separate
   per-async-context copies; they don't bubble back up to the parent invocation context).
+  The Trace asserts the absence with `metadata_absent: [productId]`.
 
 **What fails:**
 

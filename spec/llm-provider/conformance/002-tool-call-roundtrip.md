@@ -29,7 +29,7 @@ The fixture format is documented in fixture 001's `.md`.
   final assistant text.
 - The tool-call id `call_abc123_with_underscores` flows through unchanged: same string in the
   first response's `tool_calls[0].id`, same string in the second call's `tool_call_id`, same
-  string in the wire format the implementation sends.
+  string in the wire format the implementation sends (the second call's `expected_wire_request`).
 
 **What fails:**
 

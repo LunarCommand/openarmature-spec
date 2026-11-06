@@ -3,7 +3,7 @@
 # events carry THAT call's call_id, distinct across the two calls, each matching
 # its own terminal LlmCompletionEvent's call_id. This is the linkage observers
 # use to associate a token stream with its eventual completion.
-# (Streaming directives in fixture 111's header.)
+# (Streaming inputs in fixture 001's header, this directory's harness note.)
 
 cases:
   - name: each_streams_token_events_share_their_own_completion_call_id

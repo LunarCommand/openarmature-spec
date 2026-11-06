@@ -29,10 +29,11 @@ are omitted from the wire body per §6's null-skip contract.
    two declared fields the caller set; the five unset declared fields are absent (no `null`-valued
    entries), including both `stop` and `stop_sequences`.
 
-**Harness extensions:**
+**Wire absence:**
 
-- `expected_wire_request_checks.<key>_absent` — boolean assertion that the named key is not
-  present in the outbound wire body. (Pattern already established by fixtures 027 / 029.)
+- `expected_wire_request_absent_keys` (conformance-adapter §5.16) lists keys that MUST NOT be
+  present in the outbound wire body: `stop_sequences` in case 1, and the five unset declared fields
+  plus `stop` in case 2.
 
 **What passes:**
 

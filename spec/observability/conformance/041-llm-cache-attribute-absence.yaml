@@ -48,9 +48,10 @@ cases:
         total_tokens: 105
         cached_tokens: null
         cache_creation_tokens: null
-      llm_span_attributes_absent:
-        - "openarmature.llm.cache_read.input_tokens"
-        - "openarmature.llm.cache_creation.input_tokens"
+      llm_spans:
+        - attributes_absent:
+            - "openarmature.llm.cache_read.input_tokens"
+            - "openarmature.llm.cache_creation.input_tokens"
       invariants:
         cache_attribute_absent_when_field_unpopulated: true
         absent_distinct_from_zero: true

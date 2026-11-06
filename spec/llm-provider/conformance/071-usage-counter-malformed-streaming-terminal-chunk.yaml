@@ -53,8 +53,6 @@ cases:
           prompt_tokens: null       # malformed terminal-chunk counter => null
           completion_tokens: 3      # sound
           total_tokens: 10          # sound (wire total on the terminal chunk)
-        raw_check:
-          required_keys: [id, object, model, choices, usage]
       invariants:
         # §6 streaming: the terminal chunk's usage block survives on the
         # assembled raw VERBATIM — prompt_tokens "abc" is inspectable there

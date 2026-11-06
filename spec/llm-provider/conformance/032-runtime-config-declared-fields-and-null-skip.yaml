@@ -50,10 +50,9 @@ cases:
       # Undeclared extras land at the request-body root, sibling to
       # the declared fields.
       repetition_penalty: 1.05
-    expected_wire_request_checks:
-      # The OA declared name (stop_sequences) MUST NOT appear in the
-      # outbound body — only OpenAI's renamed key (stop).
-      stop_sequences_absent: true
+    # The OA declared name (stop_sequences) MUST NOT appear in the
+    # outbound body, only OpenAI's renamed key (stop).
+    expected_wire_request_absent_keys: [stop_sequences]
     mock_provider:
       responses:
         - status: 200
@@ -95,15 +94,15 @@ cases:
         - {role: user, content: "hi"}
       temperature: 0.0
       max_tokens: 32
-    expected_wire_request_checks:
-      # Each unset declared field MUST be absent from the wire body
-      # (NOT serialized as null) per §6 null-skip.
-      top_p_absent: true
-      seed_absent: true
-      frequency_penalty_absent: true
-      presence_penalty_absent: true
-      stop_absent: true
-      stop_sequences_absent: true
+    # Each unset declared field MUST be absent from the wire body
+    # (NOT serialized as null) per §6 null-skip.
+    expected_wire_request_absent_keys:
+      - top_p
+      - seed
+      - frequency_penalty
+      - presence_penalty
+      - stop
+      - stop_sequences
     mock_provider:
       responses:
         - status: 200

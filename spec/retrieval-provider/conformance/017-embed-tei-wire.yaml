@@ -17,9 +17,10 @@
 #     mapping MUST NOT fabricate a usage record).
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 013's header (mapping: tei,
-# expected_wire_request, the TEI /embed request + vector-array response
-# shapes, tei_embedding_provider construction block).
+# Per-directory harness directives: see 013's header (mapping: tei, the
+# TEI /embed request + vector-array response shapes, tei_embedding_provider
+# construction block). The wire-request assertions are defined in
+# conformance-adapter §5.16.
 
 mapping: tei
 
@@ -69,9 +70,7 @@ cases:
             - [0.01, 0.02, 0.03, 0.04]
             - [0.11, 0.12, 0.13, 0.14]
             - [0.21, 0.22, 0.23, 0.24]
-          vectors_length: 3
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: tei-embed-test
           response_id: null
           usage: null
@@ -125,9 +124,7 @@ cases:
         embedding_response:
           vectors:
             - [0.01, 0.02, 0.03, 0.04]
-          vectors_length: 1
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: tei-embed-test
           response_id: null
           usage: null

@@ -36,7 +36,12 @@ rather than as OTel-native Links between span contexts.
    fan-out node's dispatch Span observation; the dispatch observation carries
    `metadata.detached_child_trace_ids` with three entries (one per per-instance Trace).
    Three additional Traces are minted (one per instance), all four Traces share the
-   same `correlation_id`.
+   same `correlation_id`. The case lists all four Traces. Each instance Trace holds the
+   instance's Span observation over the inner `score` node, and its id is one of the
+   parent's `detached_child_trace_ids` entries.
+
+Both cases supply a caller `invocation_id`, so each detached Trace's
+`metadata.detached_from_invocation_id` is asserted against that literal id.
 
 **What passes:**
 
@@ -46,6 +51,8 @@ rather than as OTel-native Links between span contexts.
 - No detached-side observations appear inside the parent Trace.
 - `correlation_id` is identical across all Traces in the invocation (both on Trace
   metadata and on every Observation metadata).
+- Every detached Trace carries `metadata.detached_from_invocation_id` equal to the
+  caller-supplied `invocation_id`, the shared run identity (§8.4.1).
 - Inner observations in the detached Trace carry `metadata.namespace` using the
   wrapper NODE NAME (e.g., `["dispatch", "step"]`), not the subgraph identity.
   `namespace` is wrapper-node-name-scoped across detached and non-detached modes
@@ -67,6 +74,8 @@ rather than as OTel-native Links between span contexts.
 - `metadata.detached_child_trace_ids` is a single string rather than an array, or its
   entries don't match the minted detached Trace ids — the array shape is the
   spec-normative form.
+- A detached Trace's `metadata.detached_from_invocation_id` is missing, or names an id other
+  than the parent invocation's.
 - Inner observations in the detached Trace have `metadata.namespace` using the
   subgraph IDENTITY (e.g., `["long_running_workflow", "step"]`) — implementation
   conflated `subgraph_name` (identity, per §5.3 / §8.4.2) with `namespace` (wrapper

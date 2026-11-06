@@ -36,6 +36,8 @@ cases:
         (and total_max_tokens absent — the prompt declared no total bound)
       - the token_budget.exceeded counter records once, kind "input"
       - a token_budget.utilization observation at 2.0 (20 / 10), kind "input"
+      - the ordinary token.usage (20 input, 1 output) and duration
+        observations, and no other measurement
     state:
       fields:
         msg:
@@ -132,5 +134,26 @@ cases:
           dimensions:
             openarmature.gen_ai.operation: "chat"
             openarmature.gen_ai.token_budget.kind: "input"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        # The completion's ordinary token-usage and duration recordings (§11.2),
+        # as fixture 088 records them. The list names every recorded measurement.
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 20
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "input"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.token.usage"
+          value: 1
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
+            openarmature.gen_ai.token.type: "output"
+            gen_ai.request.model: "test-model"
+            gen_ai.system: "openai"
+        - instrument: "openarmature.gen_ai.client.operation.duration"
+          dimensions:
+            openarmature.gen_ai.operation: "chat"
             gen_ai.request.model: "test-model"
             gen_ai.system: "openai"

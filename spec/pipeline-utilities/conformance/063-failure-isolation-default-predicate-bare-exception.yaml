@@ -1,7 +1,7 @@
-# §6.3 Failure isolation — default predicate (always-true) catches a
-# bare ValueError that does NOT carry a category. The framework-
-# emitted event's caught_exception.category is null;
-# caught_exception.message captures str(exc).
+# §6.3 Failure isolation: the default predicate (always true) catches an
+# uncategorized error, one that does NOT carry a category. The framework-
+# emitted event's caught_exception.category is null, and
+# caught_exception.message is the error's message.
 
 state:
   fields:
@@ -13,12 +13,9 @@ entry: failing
 
 nodes:
   failing:
-    raises:
-      # Bare ValueError — no category attribute. The harness's
-      # `raises:` form (existing convention from fixture 006) raises
-      # a non-categorized exception.
-      message: "bad input"
-      exception_kind: ValueError
+    # conformance-adapter §5.1's string form raises an uncategorized error
+    # with this message, as fixture 006 does.
+    raises: "bad input"
 
 edges:
   - {from: failing, to: END}

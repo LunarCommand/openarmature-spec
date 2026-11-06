@@ -16,11 +16,12 @@ to them.
 
 **What passes:**
 
-- Observer receives exactly 3 events.
+- Observer receives exactly 6 events: a `started` and a `completed` event per attempt.
 - `attempt_index` values are `0`, `1`, `2` in order.
-- Events 0 and 1 have `error == node_exception`, `post_state` absent.
-- Event 2 has `post_state == {v: 7, trace: ["target"]}`, `error` absent.
-- All three events share the same `node_name == "target"`, `namespace == ["target"]`,
+- The `completed` events of attempts 0 and 1 have `error.category == node_exception` and
+  `post_state` absent.
+- Attempt 2's `completed` event has `post_state == {v: 7, trace: ["target"]}` and `error` absent.
+- All six events share the same `node_name == "target"`, `namespace == ["target"]`,
   `step == 0`, `pre_state == {v: 0, trace: []}`, `parent_states == []`.
 
 **What fails:**

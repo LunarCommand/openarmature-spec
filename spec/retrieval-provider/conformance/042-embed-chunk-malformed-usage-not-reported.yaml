@@ -27,14 +27,15 @@
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 037's header (the Cohere embed
-# chunk-and-stitch path — expected_wire_request as a LIST of request bodies one
-# per chunk in arrival order, expected_wire_request_count, mock_embedding
-# dispatched one per request in arrival order, and the chunked `raw` as the
-# list of per-chunk verbatim response objects), 032's header (mapping: cohere,
-# cohere_embedding_provider, the Cohere /v2/embed request + keyed-by-type
-# response shapes), and 033's header (typed_observers + contains_event
-# asserting an EmbeddingEvent's fields — reused here to assert the event
-# mirrors the nulled stitched usage).
+# chunk-and-stitch path, mock_embedding dispatched one per request in
+# chunk order), 037's cases (the chunked `raw` as the list of per-chunk
+# verbatim response objects), and 032's header (cohere_embedding_provider, the
+# Cohere /v2/embed request + keyed-by-type response shapes). The typed-event
+# collector directives (typed_observers + contains_event asserting an
+# EmbeddingEvent's fields) are defined in conformance-adapter §5.5. They are
+# reused here to assert the event mirrors the nulled stitched usage. `mapping:`
+# is defined in conformance-adapter §5.15 and the wire-request assertions in
+# §5.16.
 
 mapping: cohere
 
@@ -175,7 +176,7 @@ cases:
     edges:
       - {from: embed_node, to: END}
     initial_state: {}
-    # One /v2/embed body per chunk, in arrival order. texts sizes 96, 4;
+    # One /v2/embed body per chunk, in chunk order. texts sizes 96, 4;
     # identical per-call params on each; output_dimension absent on both.
     expected_wire_request:
       - model: cohere-embed-test
@@ -520,9 +521,7 @@ cases:
             - [0.097, 0.5]
             - [0.098, 0.5]
             - [0.099, 0.5]
-          vectors_length: 100
           dimensions: 2
-          inner_vector_lengths_all_equal: 2
           model: cohere-embed-test
           # First chunk's id, sound — response_id is the first chunk's id.
           response_id: cohere-embed-042-chunk-a-id
@@ -809,7 +808,7 @@ cases:
     edges:
       - {from: embed_node, to: END}
     initial_state: {}
-    # One /v2/embed body per chunk, in arrival order. texts sizes 96, 4;
+    # One /v2/embed body per chunk, in chunk order. texts sizes 96, 4;
     # identical per-call params on each; output_dimension absent on both.
     expected_wire_request:
       - model: cohere-embed-test
@@ -1156,9 +1155,7 @@ cases:
             - [0.097, 0.5]
             - [0.098, 0.5]
             - [0.099, 0.5]
-          vectors_length: 100
           dimensions: 2
-          inner_vector_lengths_all_equal: 2
           model: cohere-embed-test
           # response_id is the FIRST chunk's id, which is malformed => null.
           # NOT chunk B's sound id (cohere-embed-042b-chunkB-id) — a mapping

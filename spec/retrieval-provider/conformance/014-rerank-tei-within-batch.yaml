@@ -17,9 +17,9 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives (per conformance-adapter §3.2). Base
 # calls_rerank / mock_rerank directives are defined in 006's header; the
-# §8.X wire-mapping vocabulary (mapping: tei, expected_wire_request, the
-# TEI response shape) is defined in 013's header. New for the rerank
-# wire path:
+# §8.X wire-mapping vocabulary is defined in conformance-adapter §5.15
+# (mapping: tei) and §5.16 (the wire-request assertions). New for the
+# rerank wire path:
 #
 # - tei_rerank_provider: {base_url, model, chunk_size} — suite-level
 #   construction block for the bound TEI RerankProvider (§8.1
@@ -27,13 +27,10 @@
 #   (default 32 per §8.1 *Mandatory rerank batch chunking*). base_url is
 #   a generic placeholder.
 #
-# - expected_wire_request (case-level), under `mapping: tei`, is the
-#   request body the mapping MUST POST to TEI's /rerank:
-#   {"query": str, "texts": [str], "truncate": false, "return_text": bool}.
-#   The harness captures the outbound body and compares key-by-key
-#   (mapping key order not significant). For the chunk-and-stitch path
-#   (015) this is a LIST of bodies, one per /rerank request in arrival
-#   order; here it is a single body (one request).
+# - expected_wire_request (conformance-adapter §5.16), under
+#   `mapping: tei`, is the request body the mapping MUST POST to TEI's
+#   /rerank: {"query": str, "texts": [str], "truncate": false,
+#   "return_text": bool}. Here it is a single body (one request).
 #
 # - mock_rerank entries under `mapping: tei` use TEI's real /rerank
 #   response shape: a bare JSON array [{"index": int, "score": float,

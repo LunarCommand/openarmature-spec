@@ -58,6 +58,4 @@ expected:
   prompt_group:
     of: group
     group_name: "multi_stage_classification"
-    member_count: 3
-    member_order_preserved: true     # m1 first, m2 second, m3 third
-    member_names: [classify, refine, answer]
+    member_names: [classify, refine, answer]     # m1 first, m2 second, m3 third

@@ -24,24 +24,26 @@ the baseline-of-the-signal case: a budget that is observed but not breached.
    `enable_metrics = True`. `prompt_tokens` 20 <= `input_max_tokens` 40, so no bound is exceeded. The
    span carries `openarmature.prompt.token_budget.input_max_tokens = 40` and
    `openarmature.llm.token_budget.exceeded = false`; the utilization histogram records `20 / 40 = 0.5`
-   with `kind = "input"`; the exceeded counter records nothing.
+   with `kind = "input"`; the exceeded counter records nothing. The completion's ordinary token-usage
+   (20 / `"input"`, 1 / `"output"`) and duration observations record too.
 
 **Harness extensions:** same as fixtures 126 / 127 (`renders_prompt:` + the prompt's `token_budget`
 config, `enable_metrics:`, the `metrics:` assertion shape).
 
 **Harness note (absence assertion):** the `metrics:` expected-outcome directive (conformance-adapter
-§5.8) asserts each *recorded* observation; its only documented whole-set form is `metrics: []` (the
-`enable_metrics`-off gate). "The exceeded counter recorded no observation, while a utilization
-observation *was* recorded" is therefore expressed as the fixture-specific invariant
+§5.8) names every measurement the capture recorded. Its list holds the utilization, token-usage and
+duration observations and no `token_budget.exceeded` one, so it asserts that the exceeded counter
+recorded nothing while a utilization observation *was* recorded. The fixture-specific invariant
 `no_token_budget_exceeded_observation_when_under_budget` (per §5.9, fixture-specific predicates are
-documented in the originating fixture's prose) — it is a genuine absence predicate over the captured
-measurement set, not a restatement of the `exceeded = false` span-attribute assertion.
+documented in the originating fixture's prose) restates that absence over the captured measurement
+set. It is not a restatement of the `exceeded = false` span-attribute assertion.
 
 **What passes:**
 
 - `openarmature.llm.token_budget.exceeded == false`; `openarmature.prompt.token_budget.input_max_tokens
   == 40` present.
 - The utilization histogram records `0.5`, `kind = "input"`.
+- The token-usage observations (20 / `"input"`, 1 / `"output"`) and one duration observation record.
 - No `openarmature.gen_ai.client.token_budget.exceeded` observation is recorded.
 
 **What fails:**

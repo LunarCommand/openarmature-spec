@@ -46,17 +46,12 @@ cases:
           contains_event:
             event_type: LlmCompletionEvent
             fields:
+              # request_params is compared exactly (conformance-adapter
+              # §8.4): it holds the two keys the call supplies and no
+              # other, so the other five §5.5.2 parameters are absent.
               request_params:
                 temperature: 0.7
                 max_tokens: 512
-            # `fields_absent_keys` (per-fixture directive, per
-            # conformance-adapter §3.2): adapter MUST assert that the
-            # named field is a mapping AND that none of the listed
-            # keys appear in it. Distinct from asserting key presence
-            # with a null value; absence asserts "key not supplied at
-            # all" — the absence-is-meaningful rule for request_params.
-            fields_absent_keys:
-              request_params: [top_p, seed, frequency_penalty, presence_penalty, stop_sequences]
       invariants:
         request_params_carries_only_caller_supplied_keys: true
         absence_distinct_from_zero_value: true

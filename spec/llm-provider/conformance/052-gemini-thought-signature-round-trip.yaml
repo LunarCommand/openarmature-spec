@@ -45,7 +45,7 @@ calls:
           role: assistant
           content:
             # thought:true summary -> ThinkingBlock.text (the summary carries no signature).
-            - {type: thinking, text: "Let me check the weather."}
+            - {type: thinking, text: "Let me check the weather.", absent_keys: [signature]}
           tool_calls:
             # thoughtSignature on the functionCall part -> ToolCall.signature.
             - {id: call_1, name: get_weather, arguments: {location: "SF"}, signature: "sig-g1"}
@@ -84,5 +84,5 @@ calls:
         maxOutputTokens: 256
     expected:
       response:
-        message: {role: assistant, content: "It's 72F in SF.", tool_calls: null}
+        message: {role: assistant, content: [{type: text, text: "It's 72F in SF."}], tool_calls: null}
         finish_reason: stop

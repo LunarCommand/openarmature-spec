@@ -14,7 +14,8 @@ is testable: `flaky_call_count` MUST be 1 even though `max_attempts` is 5.
 
 **What passes:**
 
-- Engine raises `node_exception` carrying the original `bad key` exception.
+- The engine raises an error whose category is `provider_authentication` and whose message is
+  `bad key`, both read from the node's own error through the `node_exception` carrier.
 - The flaky node's call counter is exactly 1 (no retries despite `max_attempts: 5`).
 
 **What fails:**

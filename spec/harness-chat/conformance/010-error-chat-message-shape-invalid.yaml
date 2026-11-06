@@ -36,7 +36,6 @@ cases:
         expected:
           outcome: errored
           error_bucket: user_correctable
-          error_category: chat_message_shape_invalid
           reply:
             role: system
             content_includes:

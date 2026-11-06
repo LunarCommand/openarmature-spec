@@ -21,10 +21,11 @@
 # header (mapping: jina, jina_rerank_provider, the Jina /v1/rerank request +
 # Authorization: Bearer header), 016's header (expected_error: {category,
 # raised_from}), 034's header (the pre-send-reject convention: NO mock_rerank
-# and NO expected_wire_request when the rejection is client-side, the
-# no_rerank_request_issued invariant), and 039's header (calls_*.config.extras
-# — the §2 extras-pass-through bag; a collision with a mapping-managed wire key
-# is governed by the §6 collision rule).
+# and NO expected_wire_request when the rejection is client-side), and 039's
+# header (calls_*.config.extras: the §2 extras-pass-through bag; a collision
+# with a mapping-managed wire key is governed by the §6 collision rule). The
+# no_rerank_request_issued invariant is defined in conformance-adapter §5.15
+# and the wire-request assertions in §5.16.
 
 mapping: jina
 
@@ -125,7 +126,10 @@ cases:
     expected:
       final_state:
         rerank_response:
-          results_length: 3
+          results:
+            - {index: 1, relevance_score: 0.91, document: null}
+            - {index: 0, relevance_score: 0.42, document: null}
+            - {index: 2, relevance_score: 0.08, document: null}
       invariants:
         exactly_one_rerank_request_issued: true
         matching_extras_truncation_is_noop: true

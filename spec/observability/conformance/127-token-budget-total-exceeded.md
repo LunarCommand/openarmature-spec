@@ -24,6 +24,8 @@ evaluated as over budget on the total bound. The exceeded counter and utilizatio
    span carries `openarmature.prompt.token_budget.total_max_tokens = 25` and
    `openarmature.llm.token_budget.exceeded = true`; the exceeded counter records once with
    `kind = "total"`; a utilization observation is recorded at `50 / 25 = 2.0` with `kind = "total"`.
+   The completion's ordinary token-usage (40 / `"input"`, 10 / `"output"`) and duration observations
+   record too, and the `metrics:` list names every recorded measurement.
 
 **Harness extensions:** same as fixture 126 — `renders_prompt:` / `prompt_backend:` with the prompt's
 `token_budget` config (prompt-management §3), `enable_metrics:`, and the `metrics:` assertion shape.
@@ -35,6 +37,8 @@ evaluated as over budget on the total bound. The exceeded counter and utilizatio
   == 25`; `openarmature.prompt.token_budget.input_max_tokens` absent.
 - The exceeded counter records once, `kind = "total"`; the utilization histogram records `2.0`,
   `kind = "total"`.
+- The token-usage observations (40 / `"input"`, 10 / `"output"`) and one duration observation record,
+  and no other measurement does.
 
 **What fails:**
 

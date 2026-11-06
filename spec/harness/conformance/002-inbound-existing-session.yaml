@@ -34,8 +34,7 @@ cases:
         expected:
           dispatch_path: "3.1"
           invoke_args:
-            session_id: "conv-001"
-            session_id_caller_supplied: true   # from payload, not auto-generated
+            session_id: "conv-001"   # from payload, not auto-generated
           invoke_outcome: completed
           final_state: {message_count: [1]}
       - name: tx_continuation
@@ -45,7 +44,6 @@ cases:
           dispatch_path: "3.2"
           invoke_args:
             session_id: "conv-001"
-            session_id_caller_supplied: true
           invoke_outcome: completed
           # Second invoke loads the prior record (one prior message) and
           # appends another; final state has both.

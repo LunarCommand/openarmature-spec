@@ -16,6 +16,9 @@ cases:
         x:
           type: int
           default: 0
+        target_node_name:
+          type: string
+          default: ""
     entry: a
     nodes:
       a:
@@ -26,7 +29,7 @@ cases:
       - from: a
         condition:
           callable: state_field_read
-          field: target_node_name   # field doesn't exist; resolves to a missing destination
+          field: target_node_name   # its value names no declared node
         to: b
     initial_state: {target_node_name: "nonexistent_node"}
     expected_error:
@@ -39,7 +42,7 @@ cases:
           # error populated to RoutingError; post_state absent.
           - {step: 0, phase: started,   node_name: a, namespace: [a], pre_state: {x: 0, target_node_name: "nonexistent_node"}, parent_states: []}
           - {step: 0, phase: completed, node_name: a, namespace: [a], pre_state: {x: 0, target_node_name: "nonexistent_node"},
-             error: {category: routing_error}, parent_states: []}
+             error: {category: routing_error}, parent_states: [], absent_keys: [post_state]}
       invariants:
         # Node b never runs — no events for it.
         no_events_for_node: b
@@ -79,7 +82,7 @@ cases:
         obs:
           - {step: 0, phase: started,   node_name: a, namespace: [a], pre_state: {x: 0}, parent_states: []}
           - {step: 0, phase: completed, node_name: a, namespace: [a], pre_state: {x: 0},
-             error: {category: edge_exception}, parent_states: []}
+             error: {category: edge_exception}, parent_states: [], absent_keys: [post_state]}
       invariants:
         no_events_for_node: b
         edge_resolution_failure_in_completed_event: true

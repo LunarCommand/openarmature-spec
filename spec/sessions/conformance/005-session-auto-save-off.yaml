@@ -28,4 +28,4 @@ cases:
       final_state: {x: 1}
       no_session_save: true
       store_after:
-        load_returns_none_for_session_id: "s5"
+        "s5": null

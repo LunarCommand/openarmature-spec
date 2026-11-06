@@ -21,7 +21,7 @@ entities at all (case B, absent semantic).
    `observability_entities = {"langfuse_prompt": "<sentinel>"}`; both Prompt and
    PromptResult carry it unchanged after render.
 2. `observability_entities_absent` — backend supplies no observability entities; both
-   Prompt and PromptResult carry `observability_entities = None`.
+   Prompt and PromptResult have `observability_entities` absent (null or missing).
 
 **Harness extensions:**
 
@@ -29,14 +29,16 @@ entities at all (case B, absent semantic).
   the typed mapping on the returned Prompt. Values are opaque sentinel strings for
   fixture-level equality assertion (no real Langfuse SDK objects are constructed at
   fixture time).
-- `expected.rendered.observability_entities_absent: true` — harness asserts the field is
-  null / None / undefined per language idiom.
+- `expected.prompt_absent_keys` and `expected.rendered_absent_keys`, each
+  `[observability_entities]`, assert the field is absent, null or missing
+  (conformance-adapter §8.4).
 
 **What passes:**
 
 - Case A: `Prompt.observability_entities['langfuse_prompt'] == "lf-prompt-sentinel-7a3e"`;
   same value on `PromptResult.observability_entities['langfuse_prompt']` after render.
-- Case B: both Prompt and PromptResult have `observability_entities == None`.
+- Case B: `observability_entities` is absent, null or missing, on both Prompt and
+  PromptResult.
 - Rendering does NOT modify the mapping (case A's after-render value equals the
   before-render value).
 

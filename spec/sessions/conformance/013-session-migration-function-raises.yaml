@@ -9,7 +9,7 @@
 cases:
   - name: buggy_migration_routes_to_failed_category
     description: |
-      A user-supplied v1 → v2 session migration function raises KeyError mid-
+      A user-supplied v1 → v2 session migration function raises an error mid-
       execution (simulating a buggy migration). Per §7 + §10, the engine wraps
       the exception as `session_state_migration_failed` and propagates it. The
       graph's entry node MUST NOT be invoked.
@@ -33,15 +33,15 @@ cases:
     session_migrations:
       - from_version: "v1"
         to_version: "v2"
-        # Harness mock that raises KeyError mid-execution.
-        migrate: raises_keyerror
+        # Harness mock that raises an error mid-execution.
+        migrate: raises_during_migration
     expected_error:
       category: session_state_migration_failed
       carries:
         from_version: "v1"
         to_version: "v2"
       cause:
-        exception_type: KeyError
+        raised_by_mock: raises_during_migration
     invariants:
       node_never_invoked: true
       # The engine routes to the dedicated migration-failed category, not to

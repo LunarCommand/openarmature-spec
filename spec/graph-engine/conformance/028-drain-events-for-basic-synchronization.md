@@ -1,7 +1,7 @@
 # 028 — drain_events_for Basic Synchronization
 
 The canonical use case for the per-invocation drain primitive: an
-accumulating observer records events into a per-`(invocation_id)` bucket
+accumulating observer records events into one bucket per `invoke()` call
 as they are delivered; a terminal node calls
 `drain_events_for(state.invocation_id, ...)` and then reads the
 accumulator. After the drain returns, the accumulator MUST contain
@@ -21,7 +21,7 @@ every event the prior nodes emitted.
 
 - The drain returns with `timeout_reached == false` and
   `undelivered_count == 0`.
-- The accumulator's per-invocation bucket at drain return contains
+- The accumulator's bucket for the call at drain return contains
   every event emitted before the drain call (a's started + completed
   pair, plus b's own started event — b's `completed` event has not yet
   fired at the moment of the drain call, per the snapshot semantic).
@@ -47,6 +47,6 @@ every event the prior nodes emitted.
 - The harness primitive `invoke_drain_events_for` on a node spec
   means: from inside that node's body, invoke
   `drain_events_for(state.invocation_id, timeout=...)`, then capture
-  the named observer's accumulator bucket for that invocation_id.
+  the named observer's accumulator bucket for the current call.
   Both the drain summary and the snapshot are exposed under the
   node's name in the expected section.

@@ -37,6 +37,8 @@ cases:
       - {from: dispatch, to: after}
       - {from: after,    to: END}
     initial_state: {}
+    # Harness primitive: supply the invocation_id at invoke() (per §5.1).
+    caller_invocation_id: "7d3f1c2a-9b4e-4f6a-8c1d-2e5b6a7c8d90"
     detached_subgraphs: ["long_running_workflow"]
     expected:
       # Two distinct Langfuse Traces; the parent's `dispatch` Span
@@ -44,7 +46,7 @@ cases:
       # exactly one entry referencing the detached Trace's id.
       langfuse_traces:
         - id: "<trace_id_parent>"
-          name: "dispatch"
+          name: "<any-string>"
           metadata:
             correlation_id: "<corr_id_1>"
             entry_node: "dispatch"
@@ -74,8 +76,9 @@ cases:
             correlation_id: "<corr_id_1>"
             # detached_from_invocation_id points back to the parent
             # invocation per §8.4.1 (proposal 0042). Per proposal 0061 this is
-            # the SHARED run invocation_id, not a distinct child invocation_id.
-            detached_from_invocation_id: "<invocation_id_parent>"
+            # the SHARED run invocation_id, not a distinct child invocation_id:
+            # here the caller-supplied one.
+            detached_from_invocation_id: "7d3f1c2a-9b4e-4f6a-8c1d-2e5b6a7c8d90"
           observations:
             - type: span
               name: "long_running_workflow"
@@ -137,6 +140,8 @@ cases:
     edges:
       - {from: per_document_scoring, to: END}
     initial_state: {}
+    # Harness primitive: supply the invocation_id at invoke() (per §5.1).
+    caller_invocation_id: "4a8e2b6c-1d3f-4e5a-9b7c-0f2d4e6a8b13"
     detached_fan_outs: ["per_document_scoring"]
     expected:
       # Parent Trace contains only the invocation-level Trace and the
@@ -146,7 +151,7 @@ cases:
       # Traces are minted, each rooting its own observation tree.
       langfuse_traces:
         - id: "<trace_id_parent>"
-          name: "per_document_scoring"
+          name: "<any-string>"
           metadata:
             correlation_id: "<corr_id_1>"
           observations:
@@ -162,8 +167,69 @@ cases:
                 detached: true
               level: DEFAULT
               children: []
-      # Three additional Traces — one per instance.
-      detached_trace_count: 3
+        # Three additional Traces, one per instance. Each holds the
+        # instance's Span observation, named after the fan-out node
+        # (§4.4), over the inner `score` node. The entries leave out
+        # `fan_out_index`: with it, each id token would tie one position
+        # in `detached_child_trace_ids` to one instance, an order §8.5
+        # does not fix.
+        - id: "<trace_id_instance_0>"
+          name: "<any-string>"
+          metadata:
+            correlation_id: "<corr_id_1>"
+            detached_from_invocation_id: "4a8e2b6c-1d3f-4e5a-9b7c-0f2d4e6a8b13"
+          observations:
+            - type: span
+              name: "per_document_scoring"
+              metadata:
+                fan_out_parent_node_name: "per_document_scoring"
+                correlation_id: "<corr_id_1>"
+              level: DEFAULT
+              children:
+                - type: span
+                  name: "score"
+                  metadata:
+                    correlation_id: "<corr_id_1>"
+                  level: DEFAULT
+                  children: []
+        - id: "<trace_id_instance_1>"
+          name: "<any-string>"
+          metadata:
+            correlation_id: "<corr_id_1>"
+            detached_from_invocation_id: "4a8e2b6c-1d3f-4e5a-9b7c-0f2d4e6a8b13"
+          observations:
+            - type: span
+              name: "per_document_scoring"
+              metadata:
+                fan_out_parent_node_name: "per_document_scoring"
+                correlation_id: "<corr_id_1>"
+              level: DEFAULT
+              children:
+                - type: span
+                  name: "score"
+                  metadata:
+                    correlation_id: "<corr_id_1>"
+                  level: DEFAULT
+                  children: []
+        - id: "<trace_id_instance_2>"
+          name: "<any-string>"
+          metadata:
+            correlation_id: "<corr_id_1>"
+            detached_from_invocation_id: "4a8e2b6c-1d3f-4e5a-9b7c-0f2d4e6a8b13"
+          observations:
+            - type: span
+              name: "per_document_scoring"
+              metadata:
+                fan_out_parent_node_name: "per_document_scoring"
+                correlation_id: "<corr_id_1>"
+              level: DEFAULT
+              children:
+                - type: span
+                  name: "score"
+                  metadata:
+                    correlation_id: "<corr_id_1>"
+                  level: DEFAULT
+                  children: []
       invariants:
         # Each per-instance Trace has its own id, distinct from the parent.
         all_instance_trace_ids_distinct: true

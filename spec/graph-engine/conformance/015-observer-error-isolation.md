@@ -5,7 +5,8 @@ receiving the same event, (b) prevent any observer from receiving subsequent eve
 to the graph caller. The §6 isolation contract is what makes observers safe to attach in production
 without taking on a graph-killing failure mode.
 
-The fixture format used here is documented in fixture 012's `.md`.
+The observer fixture format is defined in conformance-adapter §5.5 (`observers:`) and §5.8
+(`observer_events`, `delivery_order`).
 
 **Spec sections exercised:**
 
@@ -17,7 +18,8 @@ The fixture format used here is documented in fixture 012's `.md`.
 
 **What passes:**
 
-- `obs_recorder` receives all three node events (`a`, `b`, `c`) in monotonic-step order.
+- `obs_recorder` receives all six node events, a `started` and a `completed` event for each of `a`,
+  `b` and `c`, in monotonic-step order.
 - `obs_raiser` is delivered each event before `obs_recorder` (registration order); each delivery
   raises; the engine catches each, surfaces a warning, and continues to deliver the same event to
   `obs_recorder`.
@@ -28,7 +30,7 @@ The fixture format used here is documented in fixture 012's `.md`.
 
 **What fails:**
 
-- `obs_recorder` receives fewer than three events — `obs_raiser`'s failure prevented delivery of the
+- `obs_recorder` receives fewer than six events — `obs_raiser`'s failure prevented delivery of the
   same event or of subsequent events to other observers.
 - `invoke()` propagates `obs_raiser`'s exception to the caller — observer errors must not be visible at
   the invocation boundary.

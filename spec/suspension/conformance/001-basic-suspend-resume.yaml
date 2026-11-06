@@ -4,6 +4,13 @@
 # descriptor. A second invoke() with resume_invocation + signal_payload
 # loads the paused record, merges the payload into state, and continues
 # from the node AFTER the suspending node.
+#
+# Conformance harness contract for suspension fixtures:
+#
+#   - Capability `session_save_at_suspend`: the implementation saves a
+#     session bound to the invocation at suspend time (suspension §8.6, a
+#     SHOULD). An adapter declares it, and a case gates on it with
+#     `requires_capability` (conformance-adapter §5.17).
 
 cases:
   - name: suspend_then_resume_continues_after_suspending_node

@@ -13,9 +13,10 @@ pipeline-utilities §6.3 (`caught_exception.chain` and the derived `category`).
 1. `outermost_non_carrier_wins_over_originating_cause` — a single-instance
    fan-out with `instance_middleware: [failure_isolation]`. The `flaky` mock
    raises `provider_invalid_response` **caused by** `provider_unavailable`
-   (via `cause`). The engine wraps the instance failure as one `node_exception`
-   carrier, so the chain is `[{carrier, node_exception}, {non-carrier,
-   provider_invalid_response}, {non-carrier, provider_unavailable}]`. The
+   (via `cause`). The engine wraps the instance failure in one or more
+   `node_exception` carriers, so the asserted chain is `[{carrier,
+   node_exception}, {non-carrier, provider_invalid_response}, {non-carrier,
+   provider_unavailable}]`, whose carrier entry matches the whole run. The
    derived `category` is `provider_invalid_response` — the **outermost**
    non-carrier link — so a deliberate surface re-categorization wins over the
    originating cause.

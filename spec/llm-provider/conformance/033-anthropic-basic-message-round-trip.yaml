@@ -3,10 +3,7 @@
 # user/assistant-only `messages` array, max_tokens on the wire, and
 # response parsing into a §6 Response with text content.
 #
-# `mapping: anthropic` selects the §8.2 Anthropic Messages wire mapping.
-# This is a harness extension introduced with proposal 0037; fixtures
-# WITHOUT this key target the §8.1 OpenAI-compatible mapping (the
-# pre-0037 default).
+# `mapping` is defined in the harness note in fixture 001's header.
 
 mapping: anthropic
 
@@ -39,6 +36,6 @@ calls:
         - {role: user, content: "Hello."}
     expected:
       response:
-        message: {role: assistant, content: "Hello back.", tool_calls: null}
+        message: {role: assistant, content: [{type: text, text: "Hello back."}], tool_calls: null}
         finish_reason: stop
         usage: {prompt_tokens: 12, completion_tokens: 3, total_tokens: 15}

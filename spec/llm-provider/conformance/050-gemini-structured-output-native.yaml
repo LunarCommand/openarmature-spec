@@ -45,6 +45,6 @@ calls:
           additionalProperties: false
     expected:
       response:
-        message: {role: assistant, content: '{"value":42}', tool_calls: null}
+        message: {role: assistant, content: [{type: text, text: '{"value":42}'}], tool_calls: null}
         finish_reason: stop
         parsed: {value: 42}

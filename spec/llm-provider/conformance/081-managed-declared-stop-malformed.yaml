@@ -18,9 +18,10 @@
 # / non-list value is malformed here.
 #
 # ---------------------------------------------------------------------
-# Per-directory harness directives: see 005's header (mapping: openai default),
-# 032's header (config declared fields + config.extras bag), 013's header
-# (mock_provider 200 + expected_wire_request), and 076's header (stop merge).
+# Per-directory harness directives: see 001's header (mapping: openai default),
+# 032's header (config declared fields + config.extras bag), 001's header
+# (mock_provider) and conformance-adapter §5.16 (expected_wire_request), and
+# 076's header (stop merge).
 
 cases:
   - name: partially_malformed_extras_stop_treated_as_absent

@@ -45,6 +45,7 @@ cases:
         expected:
           dispatch_path: "3.1"
           invoke_outcome: suspended
+          invocation_id: "<invocation_id_paused>"
           descriptor:
             signal_id: "roundtrip-approval-001"
           signal_subscription_registered: true
@@ -59,9 +60,9 @@ cases:
           # Signal coordinator looked up the paused invocation by
           # signal_id (the subscription's correlation key).
           signal_correlation_resolved: true
-          resolved_to_invocation_id: "<from tx_initial_suspends suspended outcome>"
+          resolved_to_invocation_id: "<invocation_id_paused>"
           invoke_args:
-            resume_invocation: "<from tx_initial_suspends suspended outcome>"
+            resume_invocation: "<invocation_id_paused>"
             signal_payload: {approved: true}
           invoke_outcome: completed
           final_state: {approved: true, completed_flag: true}

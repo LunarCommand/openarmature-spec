@@ -49,16 +49,16 @@
 #
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 015's header (the chunk-and-stitch
-# path — expected_wire_request as a LIST of request bodies one per chunk in
-# arrival order, expected_wire_request_count pinning the request count,
-# mock_* entries dispatched one per request in arrival order) and 017's
-# header (mapping: tei, tei_embedding_provider construction block, the TEI
-# /embed request `{"inputs": [str]}` + BARE vector-array response shapes,
-# expected_wire_request_absent_keys for prompt_name / dimensions). The
-# harness MUST capture every outbound /embed request, assert the count
-# matches the list length, and compare each captured body key-by-key
-# against the corresponding list entry; mock_embedding entries are
-# dispatched one per /embed request in arrival order, each a bare TEI vector
+# path, mock_* entries dispatched one per request in chunk order) and 017's
+# header (the TEI /embed request `{"inputs": [str]}` + BARE vector-array
+# response shapes). `mapping:` and the tei_embedding_provider construction
+# block are defined in conformance-adapter §5.15 and the wire-request
+# assertions in §5.16. Here expected_wire_request is a LIST of request bodies,
+# one per chunk in chunk order, and expected_wire_request_count pins the
+# request count. The harness MUST capture every outbound /embed request, assert
+# the count matches the list length, and compare each captured body with its
+# list entry as conformance-adapter §5.16 defines; mock_embedding entries are
+# dispatched one per /embed request in chunk order, each a bare TEI vector
 # array for that chunk.
 
 mapping: tei
@@ -104,7 +104,7 @@ cases:
     edges:
       - {from: embed_node, to: END}
     initial_state: {}
-    # One /embed body per chunk, in arrival order. `inputs` sizes 2, 2, 1;
+    # One /embed body per chunk, in chunk order. `inputs` sizes 2, 2, 1;
     # identical per-call params on each (bare array form, prompt_name and
     # dimensions absent on every chunk).
     expected_wire_request:
@@ -113,7 +113,7 @@ cases:
       - inputs: ["e4"]
     expected_wire_request_count: 3
     expected_wire_request_absent_keys: [prompt_name, dimensions]
-    # One bare TEI vector array per chunk, in arrival order. First component
+    # One bare TEI vector array per chunk, in chunk order. First component
     # == absolute input index / 10 so a mis-ordered stitch surfaces a wrong
     # vector at a chunk boundary.
     mock_embedding:
@@ -144,9 +144,7 @@ cases:
             - [0.2, 0.5]
             - [0.3, 0.5]
             - [0.4, 0.5]
-          vectors_length: 5
           dimensions: 2
-          inner_vector_lengths_all_equal: 2
           model: tei-embed-test
           # TEI surfaces no response id; the §8 "first chunk's id" is null.
           response_id: null

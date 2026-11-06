@@ -4,51 +4,114 @@
 # response_schema, with tool_choice set to that tool. The response's
 # tool_use.input becomes Response.parsed.
 #
-# The synthetic tool name and description are implementation-derived
-# (per §8.2.5.1); the literal "*" is the harness wildcard for
-# "present, non-empty string, value exempt from literal comparison".
+# §8.2.5.1 makes tool-call coercion the fallback an implementation SHOULD
+# prefer, so the first case is gated on anthropic_fallback_tool_coercion.
+# The synthetic tool's name is implementation-derived: the
+# <tool_name_synthetic> binding token ties it to tool_choice.name. Its
+# description is not asserted, since §8.2.5.1 does not require one. The mock
+# answers with the synthetic tool through <request_tool_choice_name>. The
+# harness note in fixture 001's header defines the capability, the token
+# and the echo.
+#
+# Falling back at all is not a SHOULD, so the second case, gated on the
+# capability's false value, asserts what holds without coercion: the request
+# carries no output_config and no synthetic tool, the text answer is parsed,
+# and the caller's messages are left unchanged. That path is prompt
+# augmentation, which may put its directive in the system field or the
+# messages, so neither is asserted.
 
 mapping: anthropic
 
-mock_provider:
-  capabilities:
-    supports_native_structured_output: false
-  responses:
-    - status: 200
-      body:
-        type: message
-        id: msg_041
-        model: claude-legacy
-        role: assistant
-        content:
-          - {type: tool_use, id: toolu_so, name: "*", input: {value: 42}}
-        stop_reason: tool_use
-        usage: {input_tokens: 10, output_tokens: 5}
-
-calls:
-  - operation: complete
-    messages: [{role: user, content: "Generate."}]
-    response_schema:
-      type: object
-      properties:
-        value: {type: integer}
-      required: [value]
-      additionalProperties: false
-    config: {max_tokens: 64}
-    expected_wire_request:
+cases:
+  - name: tool_call_coercion_fallback
+    description: |
+      Adapters declaring anthropic_fallback_tool_coercion. The mock's
+      capability metadata says the model lacks native structured output,
+      so the request carries a synthetic tool and a tool_choice forcing
+      it, and no output_config.
+    requires_capability:
+      anthropic_fallback_tool_coercion: true
+    mock_provider:
+      capabilities:
+        supports_native_structured_output: false
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_041
+            model: claude-legacy
+            role: assistant
+            content:
+              - {type: tool_use, id: toolu_so, name: "<request_tool_choice_name>", input: {value: 42}}
+            stop_reason: tool_use
+            usage: {input_tokens: 10, output_tokens: 5}
+    call:
+      operation: complete
+      messages: [{role: user, content: "Generate."}]
+      response_schema:
+        type: object
+        properties:
+          value: {type: integer}
+        required: [value]
+        additionalProperties: false
+      config: {max_tokens: 64}
+    expected_wire_request_includes:
       model: claude-legacy
       max_tokens: 64
       messages: [{role: user, content: "Generate."}]
       tools:
-        - name: "*"
-          description: "*"
+        # The input_schema copy is exact (conformance-adapter §8.4).
+        - name: "<tool_name_synthetic>"
           input_schema:
             type: object
             properties:
               value: {type: integer}
             required: [value]
             additionalProperties: false
-      tool_choice: {type: tool, name: "*"}
+      tool_choice: {type: tool, name: "<tool_name_synthetic>"}
+    expected_wire_request_absent_keys: [output_config]
     expected:
       response:
         parsed: {value: 42}
+
+  - name: fallback_without_coercion_sends_no_native_field
+    description: |
+      Adapters that do not declare anthropic_fallback_tool_coercion. The
+      model still lacks native structured output, so the mapping falls back
+      (§8.2.5.1). The request carries no output_config, no tools and no
+      tool_choice, and the text answer is parsed and validated.
+    requires_capability:
+      anthropic_fallback_tool_coercion: false
+    mock_provider:
+      capabilities:
+        supports_native_structured_output: false
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_041b
+            model: claude-legacy
+            role: assistant
+            content:
+              - {type: text, text: '{"value":42}'}
+            stop_reason: end_turn
+            usage: {input_tokens: 10, output_tokens: 5}
+    call:
+      operation: complete
+      messages: [{role: user, content: "Generate."}]
+      response_schema:
+        type: object
+        properties:
+          value: {type: integer}
+        required: [value]
+        additionalProperties: false
+      config: {max_tokens: 64}
+    expected_wire_request_includes:
+      model: claude-legacy
+      max_tokens: 64
+    expected_wire_request_absent_keys: [output_config, tools, tool_choice]
+    expected:
+      response:
+        parsed: {value: 42}
+      # §8.2.5.1: the caller's original messages MUST be left unchanged.
+      caller_messages_unmodified: true

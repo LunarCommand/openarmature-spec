@@ -23,8 +23,8 @@ The fixture format is the table-style shape: each `cases:` entry has its own `mo
    distinction from `provider_invalid_model` is operationally important: warmup-polling callers
    retry on `provider_model_not_loaded` but not on `provider_invalid_model`.
 4. `rate_limit_429` — HTTP 429 → `provider_rate_limit`. Implementations SHOULD also expose
-   `retry_after` from the `Retry-After` header (the YAML's `retry_after_seconds` field is
-   asserted when the implementation supports it; otherwise it's informational).
+   `retry_after` from the `Retry-After` header (§7). That is a SHOULD, so the case does not
+   assert it.
 5. `server_error_500` — HTTP 500 → `provider_unavailable`.
 6. `malformed_response_200` — HTTP 200 but body can't be parsed (missing `choices`) →
    `provider_invalid_response`.
@@ -34,7 +34,6 @@ The fixture format is the table-style shape: each `cases:` entry has its own `mo
 **What passes:**
 
 - Each case raises an error whose `category` matches the expected value.
-- For `rate_limit_429`, the `retry_after` accessor (when implemented) returns 30 seconds.
 
 **What fails:**
 

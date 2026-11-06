@@ -16,8 +16,9 @@ the OTel `false` span attribute; this covers the Langfuse `false` metadata flag.
 **Case:**
 
 1. `langfuse_generation_under_budget_exceeded_flag_false` — budgeted prompt (`input_max_tokens 40`), successful
-   call with usage 20: the Generation renders as a normal success (no WARNING) and carries
-   `metadata.token_budget_exceeded = false` alongside `metadata.token_budget.input_max_tokens = 40`.
+   call with usage 20: the Generation renders as a normal success (`level: DEFAULT`, `statusMessage:
+   null`) and carries `metadata.token_budget_exceeded = false` alongside
+   `metadata.token_budget.input_max_tokens = 40`.
 
 **What fails:**
 

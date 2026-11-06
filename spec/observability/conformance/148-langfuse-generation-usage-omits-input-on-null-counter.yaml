@@ -67,12 +67,13 @@ cases:
                 name: "openarmature.llm.complete"
                 model: "test-model"
                 # `input` OMITTED (prompt_tokens not reported, §8.4.3); output
-                # and total present. Exact-map assertion — the missing `input`
-                # key IS the omission (140's usageDetails idiom, on the fixed
-                # Generation Usage record).
+                # and total present. usage matches by the keys it names, so the
+                # omission is asserted by usage_absent_keys (as 140 asserts its
+                # usageDetails omission).
                 usage:
                   output: 5
                   total: 15
+                usage_absent_keys: [input]
                 metadata:
                   finish_reason: "stop"
                   system: "openai"

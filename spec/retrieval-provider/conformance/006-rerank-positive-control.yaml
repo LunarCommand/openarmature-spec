@@ -17,14 +17,15 @@
 # Per-directory suite-level harness directive:
 #
 # - mock_rerank: [{status, body}, ...] — mock provider responses.
-#   Each entry is dispatched for one rerank() call in arrival order.
-#   The mock body is harness-internal: the v1 retrieval-provider spec
-#   does NOT pin the wire shape that produces results / response_id /
-#   usage. A forthcoming per-vendor wire-format mapping proposal
-#   (analogous to llm-provider §8.1 / §8.2 / §8.3) pins the actual
-#   wire-source per provider; this suite's body (top-level `id`,
-#   `results[].{index, relevance_score, document?}`,
-#   `meta.billed_units.search_units`) is a stand-in pending that work.
+#   Each entry is dispatched for one request, in call order, and chunk
+#   order within a chunked call.
+#   The mock body is the harness-internal stand-in used without a
+#   `mapping:` (conformance-adapter §5.15): top-level `id`,
+#   `results[].{index, relevance_score, document?}` and
+#   `meta.billed_units.search_units`. The per-vendor wire mappings in
+#   retrieval-provider §8.1 to §8.4 pin each provider's real wire shape
+#   for results, response_id and usage, and fixtures 014 onward
+#   exercise them.
 
 cases:
   - name: rerank_response_shape_invariants_satisfied

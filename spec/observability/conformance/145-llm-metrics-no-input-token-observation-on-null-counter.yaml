@@ -81,8 +81,8 @@ cases:
       invariants:
         # No "input" token.usage observation — prompt_tokens not reported, so
         # §11.2's per-counter LLM branch records nothing for that token type.
-        # An absence predicate over the captured measurement set (the metrics:
-        # list shape cannot express a NEGATIVE assertion); see 143 / 129.
+        # The metrics: list above names every recorded measurement, so it
+        # asserts this absence; this predicate restates it, as in 143 / 129.
         no_input_token_usage_observation_when_prompt_tokens_null: true
         output_token_usage_observation_recorded_when_completion_sound: true
         one_duration_observation_per_call: true

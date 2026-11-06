@@ -27,10 +27,9 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives: see 023's header (mapping: openai,
 # openai_embedding_provider, the OpenAI /v1/embeddings request + response
-# shapes, expected_wire_request / expected_wire_request_absent_keys /
-# expected_wire_headers) and 013's header (typed_observers /
-# contains_event asserting EmbeddingEvent.request_params). New
-# assertion vocabulary:
+# shapes) and 013's header (typed_observers / contains_event asserting
+# EmbeddingEvent.request_params). The wire-request assertions are defined
+# in conformance-adapter §5.16. New assertion vocabulary:
 #
 # - wire_body_byte_identical_to_symmetric_path: the with-input_type body
 #   is byte-identical to the no-input_type body (the symmetric-no-op
@@ -98,9 +97,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.10, 0.20, 0.30, 0.40]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: text-embedding-test
           response_id: null
       observers:
@@ -167,9 +166,9 @@ cases:
     expected:
       final_state:
         embedding_response:
-          vectors_length: 1
+          vectors:
+            - [0.10, 0.20, 0.30, 0.40]
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: text-embedding-test
           response_id: null
       observers:

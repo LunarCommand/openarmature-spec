@@ -35,7 +35,7 @@ subgraphs:
       work:
         flaky:
           # Categorized transient error on every attempt. The engine wraps each
-          # raise as a §4 node_exception whose __cause__ carries this category.
+          # raise as a §4 node_exception whose cause carries this category.
           failure_sequence:
             - {transient: true, category: provider_unavailable, message: "provider down"}
             - {transient: true, category: provider_unavailable, message: "provider down"}
@@ -146,7 +146,7 @@ cases:
         result: "(degraded)"
       execution_order: [dispatcher]
       # Branch middleware catches the branch's inner node_exception (a single
-      # carrier wrapper whose __cause__ is the originating failure); category
+      # carrier wrapper whose cause is the originating failure); category
       # resolves to provider_unavailable. parallel_branches_branch_failed is NOT
       # involved here — it is the parent-node site's wrapper (§11.6 / §11.9).
       expected_failure_isolation_event:

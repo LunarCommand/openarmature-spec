@@ -2,8 +2,8 @@
 
 Verifies the §6.2 timing middleware correctly handles the failure case: the wrapped node raises
 with a `category` attribute (here `provider_rate_limit`), the timing middleware records
-`outcome == "exception"` and `exception_category == "provider_rate_limit"`, then re-raises so
-the engine surfaces a `node_exception`.
+`outcome == "exception"` and `exception_category == "provider_rate_limit"`, then re-raises, so
+the invocation raises an error whose category is `provider_rate_limit`.
 
 **Spec sections exercised:**
 
@@ -16,7 +16,8 @@ the engine surfaces a `node_exception`.
 
 - One record captured with `outcome == "exception"` and `exception_category ==
   "provider_rate_limit"`.
-- Engine raises `node_exception` carrying the original `boom` exception as cause.
+- The invocation raises an error whose category is `provider_rate_limit` and whose message is
+  `boom`, both read from the node's own error.
 - `duration_ms == 5` (deterministic clock).
 
 **What fails:**

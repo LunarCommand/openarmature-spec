@@ -15,10 +15,10 @@ budget on resume — consistent with the "resume is a new execution attempt" fra
 **Cases:**
 
 1. `exhausted_retry_budget_resumes_with_fresh_budget` — node wrapped with `retry middleware`
-   (`max_attempts: 3`); fails 3 times on first invocation (budget exhausted; engine raises
-   `node_exception`); on resume, harness mock lets it succeed on the second attempt; assert
-   the successful attempt has `attempt_index == 1` (resume started fresh at 0, not carrying
-   over the prior 3 attempts).
+   (`max_attempts: 3`); fails 3 times on first invocation (budget exhausted; the first run
+   raises the node's `provider_rate_limit` error); on resume, harness mock lets it succeed
+   on the second attempt; assert the successful attempt has `attempt_index == 1` (resume
+   started fresh at 0, not carrying over the prior 3 attempts).
 
 **What passes:**
 

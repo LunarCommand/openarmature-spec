@@ -15,7 +15,8 @@
 # mock_rerank), 001's header (calls_embed / mock_embedding), 016's header
 # (expected_error error-assertion shape, non-2xx mock entries), and 018's
 # / 020's headers (mapping: jina, jina_rerank_provider /
-# jina_embedding_provider construction blocks). Error-assertion shape:
+# jina_embedding_provider construction blocks). The wire-request assertions are
+# defined in conformance-adapter §5.16. Error-assertion shape:
 #
 # - expected_error: {category, raised_from} — the conformance-adapter
 #   §5.8 compact error-assertion shape (retrieval fixtures 002, 007, 016,

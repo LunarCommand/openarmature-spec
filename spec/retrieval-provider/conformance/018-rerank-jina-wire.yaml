@@ -24,10 +24,9 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives (per conformance-adapter §3.2). Base
 # calls_rerank / mock_rerank directives are defined in 006's header; the
-# §8.X wire-mapping vocabulary (mapping: <name>, expected_wire_request,
-# expected_wire_request_absent_keys) is defined in 013's / 014's headers
-# (TEI). THIS fixture introduces the Jina (§8.2) realization of that
-# vocabulary. New directives:
+# §8.X wire-mapping vocabulary is defined in conformance-adapter §5.15
+# (mapping: <name>) and §5.16 (the wire-request assertions). THIS fixture
+# introduces the Jina (§8.2) realization of that vocabulary. New directives:
 #
 # - mapping: jina — selects the §8.2 Jina wire mapping for the fixture
 #   (parallel to 013's `mapping: tei`; mirrors llm-provider fixture 033's
@@ -44,15 +43,9 @@
 #   placeholder — no real Jina host or key). base_url is origin-only;
 #   the mapping appends /v1/rerank.
 #
-# - expected_wire_headers (case-level): a mapping of HTTP request-header
-#   names to expected values the mapping MUST send on the outbound
-#   request. The harness captures the outbound request headers and
-#   asserts each listed header is present with the given value (SUBSET
-#   match — other headers, e.g. content-type, MAY also be present; header
-#   names are case-insensitive per HTTP). Introduced here because §8.2 is
-#   the first hosted-vendor (API-key) mapping; no prior retrieval/TEI
-#   fixture asserts request headers. Used to lock the
-#   Authorization: Bearer <api_key> header from jina_rerank_provider.api_key.
+# - expected_wire_headers is defined in conformance-adapter §5.16. Here
+#   it locks the Authorization: Bearer <api_key> header from
+#   jina_rerank_provider.api_key.
 #
 # - mock_rerank entries under `mapping: jina` use Jina's real /v1/rerank
 #   response shape: {model, usage: {total_tokens}, results: [{index,

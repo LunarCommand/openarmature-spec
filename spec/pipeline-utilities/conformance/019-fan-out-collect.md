@@ -16,7 +16,8 @@ execute normally.
 **What passes:**
 
 - Final `results == [0, 2]` — successes only, in input order.
-- Final `errors` carries one entry: `{fan_out_index: "1", category: "node_exception"}`.
+- Final `errors` carries exactly one entry, written `{}`. The entry's shape is left to the
+  implementation, so the fixture asserts the count.
 - `downstream_ran == true` — the `after` node executed (fan-out didn't raise).
 - `execution_order == [process, after]` — confirms downstream proceeded.
 

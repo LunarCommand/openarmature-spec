@@ -31,11 +31,10 @@
 # ---------------------------------------------------------------------
 # Per-directory harness directives (per conformance-adapter §3.2). Base
 # calls_embed / mock_embedding directives are defined in 001's header; the
-# §8.X wire-mapping vocabulary (mapping: <name>, expected_wire_request,
-# expected_wire_request_absent_keys, expected_wire_request_count) is defined
-# in 013's / 015's headers (TEI), and expected_wire_headers in 020's header
-# (Jina). 028's header introduces the Cohere (§8.4) realization for rerank;
-# THIS fixture introduces the Cohere EMBEDDING realization. New directives:
+# §8.X wire-mapping vocabulary is defined in conformance-adapter §5.15
+# (mapping: <name>) and §5.16 (the wire-request assertions). 028's header
+# introduces the Cohere (§8.4) realization for rerank; THIS fixture
+# introduces the Cohere EMBEDDING realization. New directives:
 #
 # - cohere_embedding_provider: {base_url, model, api_key} — suite-level
 #   construction block for the bound Cohere EmbeddingProvider (§8.4
@@ -120,9 +119,7 @@ cases:
           vectors:
             - [0.01, 0.02, 0.03, 0.04]
             - [0.11, 0.12, 0.13, 0.14]
-          vectors_length: 2
           dimensions: 4
-          inner_vector_lengths_all_equal: 4
           model: cohere-embed-test
           response_id: cohere-embed-032-id
           usage:

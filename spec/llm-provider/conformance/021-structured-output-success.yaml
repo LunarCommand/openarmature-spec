@@ -2,34 +2,47 @@
 # the provider returns valid JSON matching the schema. Response.parsed
 # carries the parsed value; Response.message.content carries the raw
 # bytes; finish_reason is "stop".
+#
+# Two cases on the same inputs. §8.1.5 makes `strict: true` a SHOULD for a
+# schema that meets the strict-mode constraints, as this one does, so the
+# exact wire body that carries it is gated on llm_strict_native_schema.
+# The ungated case asserts the native response_format by named keys, with
+# `strict` left out, and the same response.
 
-mock_provider:
-  responses:
-    - status: 200
-      body:
-        id: chatcmpl-test-021
-        object: chat.completion
-        created: 1700000000
-        model: test-model
-        choices:
-          - index: 0
-            message:
-              role: assistant
-              content: '{"name":"Alice","age":30}'
-            finish_reason: stop
-        usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
-
-calls:
-  - operation: complete
-    messages:
-      - {role: user, content: "Generate a person record."}
-    response_schema:
-      type: object
-      properties:
-        name: {type: string}
-        age: {type: integer}
-      required: [name, age]
-      additionalProperties: false
+cases:
+  - name: strict_true_exact_wire_body
+    description: |
+      Adapters declaring llm_strict_native_schema. The request carries
+      response_format with strict: true, and the whole wire body is
+      asserted exactly.
+    requires_capability:
+      llm_strict_native_schema: true
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-test-021
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: '{"name":"Alice","age":30}'
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate a person record."}
+      response_schema:
+        type: object
+        properties:
+          name: {type: string}
+          age: {type: integer}
+        required: [name, age]
+        additionalProperties: false
     expected_wire_request:
       model: test-model
       messages:
@@ -37,12 +50,67 @@ calls:
       response_format:
         type: json_schema
         json_schema:
-          # `name` is implementation-derived per §8.1.5. The literal string
-          # "*" in expected_wire_request is a harness wildcard: the key
-          # MUST be present with a non-empty string value, but the
-          # specific value is exempted from literal comparison.
-          name: "*"
+          # `name` is implementation-derived per §8.1.5. `<any-string>`
+          # matches any non-empty string (conformance-adapter §5.10).
+          name: "<any-string>"
           strict: true
+          schema:
+            type: object
+            properties:
+              name: {type: string}
+              age: {type: integer}
+            required: [name, age]
+            additionalProperties: false
+    expected:
+      response:
+        message:
+          role: assistant
+          content: '{"name":"Alice","age":30}'
+          tool_calls: null
+        finish_reason: stop
+        parsed: {name: "Alice", age: 30}
+
+  - name: native_response_format_by_named_keys
+    description: |
+      Every adapter, on the same inputs. The request carries the native
+      response_format with the schema verbatim, whatever it sends for
+      strict, and the response is the same.
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-test-021
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: '{"name":"Alice","age":30}'
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 10, total_tokens: 30}
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate a person record."}
+      response_schema:
+        type: object
+        properties:
+          name: {type: string}
+          age: {type: integer}
+        required: [name, age]
+        additionalProperties: false
+    expected_wire_request_includes:
+      model: test-model
+      messages:
+        - {role: "user", content: "Generate a person record."}
+      response_format:
+        type: json_schema
+        json_schema:
+          # `strict` is left out, since §8.1.5 makes `strict: true` a SHOULD.
+          # The schema copy is still exact (conformance-adapter §8.4).
+          name: "<any-string>"
           schema:
             type: object
             properties:

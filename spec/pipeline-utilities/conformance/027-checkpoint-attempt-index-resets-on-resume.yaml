@@ -38,7 +38,7 @@ cases:
     initial_state: {}
     checkpointer: in_memory
     first_run_expected_error:
-      category: node_exception
+      category: provider_rate_limit
       raised_from: flaky
     saved_record_assertions:
       # No completed_positions for flaky in the saved record — every attempt

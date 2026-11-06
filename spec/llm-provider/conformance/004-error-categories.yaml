@@ -77,10 +77,6 @@ cases:
     expected:
       raises:
         category: provider_rate_limit
-        # Implementations SHOULD expose retry_after when the provider supplies
-        # it. The harness MAY assert this when the implementation supports it;
-        # not strictly mandatory per spec §7 (SHOULD).
-        retry_after_seconds: 30
 
   - name: server_error_500
     description: HTTP 500 → provider_unavailable

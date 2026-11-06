@@ -30,13 +30,14 @@ one-node `worker` subgraph (the `compute` node), non-detached, `concurrency: 2`,
   `metadata.fan_out_error_policy = "collect"`.
 - Three per-instance Span observations under the dispatch, each with a unique
   `metadata.fan_out_index` in `0..2` and `metadata.fan_out_parent_node_name = "process"`.
+  None carries a fan-out-node key: each asserts `metadata_absent` for `fan_out_item_count`,
+  `fan_out_concurrency` and `fan_out_error_policy`.
 - Each per-instance observation carries `metadata.subgraph_name = "worker"` per §5.3 +
   §8.4.2 (the per-instance dispatch IS a subgraph span — it dispatches the worker
   subgraph for one fan-out item, so it carries both fan-out-instance attributes and the
   subgraph wrapper's `subgraph.name`).
 - Each per-instance observation has a single child Span observation `compute` (the
-  worker subgraph's single inner node). `compute` is a regular node, so it does NOT
-  carry `subgraph_name`.
+  worker subgraph's single inner node).
 - The Trace's `metadata.correlation_id` matches every Observation's
   `metadata.correlation_id`.
 

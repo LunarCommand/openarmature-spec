@@ -5,7 +5,7 @@
 # case is normatively convergent to apply-recognized-and-ignore, and a
 # malformed/unrecognized token_budget config MUST NOT break the call (token_budget is
 # advisory / observability-only, §3). The fetch succeeds and Prompt.token_budget
-# carries only the recognized bound.
+# carries the recognized bound and not the unknown key.
 #
 # Harness note (per conformance-adapter §3.2): the backend's `token_budget:` object
 # is the RAW sourced config — it MAY carry keys beyond input_max_tokens /
@@ -37,10 +37,12 @@ calls:
 expected:
   # The unrecognized `unknown` key is dropped; only the recognized bound is
   # applied. The fetch succeeds — the advisory config never breaks the call
-  # (§5 / §3). token_budget carries exactly {input_max_tokens: 10}, no `unknown`.
+  # (§5 / §3). token_budget carries input_max_tokens: 10, and
+  # token_budget_absent_keys asserts that `unknown` is not carried.
   prompt:
     name: classify
     label: production
     version: v1
     token_budget:
       input_max_tokens: 10
+    token_budget_absent_keys: [unknown]

@@ -122,8 +122,8 @@ cases:
             gen_ai.system: "openai"
       invariants:
         # Neither token-budget instrument recorded an observation — no budget
-        # was declared, so §11.2's "every budgeted call" set is empty. An
-        # absence predicate over the captured measurement set (the `metrics:`
-        # list shape cannot express it); see the .md §3.2 note.
+        # was declared, so §11.2's "every budgeted call" set is empty. The
+        # metrics: list above names every recorded measurement, so it asserts
+        # this absence; this predicate restates it. See the .md §3.2 note.
         no_token_budget_instrument_observations_when_no_budget: true
         token_budget_null_on_completion_event: true

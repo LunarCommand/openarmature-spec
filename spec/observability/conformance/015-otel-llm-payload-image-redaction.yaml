@@ -70,6 +70,7 @@ cases:
                             source:
                               type: inline_redacted
                               byte_count: 4096
+                            source_absent_keys: [media_type]
                             media_type: "image/png"
                             detail: "auto"
                   attribute_does_not_contain:
