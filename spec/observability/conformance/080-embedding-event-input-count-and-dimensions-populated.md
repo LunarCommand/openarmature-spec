@@ -12,7 +12,7 @@ the event for cross-vendor ergonomics.
 **Cases:**
 
 1. `input_count_and_dimensions_populated_from_call` — `embed()` called with 4 input strings;
-   provider returns 4 vectors of dimension 5. Asserts `input_count=4` and `dimensions=5` on
+   provider returns 4 vectors of dimension 5. Asserts `input_count: 4` and `dimensions: 5` on
    the typed event.
 
 **What passes:**

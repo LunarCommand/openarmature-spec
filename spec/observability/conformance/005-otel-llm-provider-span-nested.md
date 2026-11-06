@@ -20,7 +20,7 @@ the caller's process may have configured for its own auto-instrumentation. Three
 
 1. `default` — single node calls a mock OpenAI-compatible provider. The LLM span emits as a
    child of the node span with the full §5.5 attribute set.
-2. `disable_llm_spans` — observer constructed with `disable_llm_spans=True`. Node span still
+2. `disable_llm_spans`: observer constructed with `disable_llm_spans: true`. Node span still
    emits; LLM span does not. The `no_llm_provider_span` invariant is asserted.
 3. `external_auto_instrumentation_active` — harness installs a SECOND in-memory exporter on the
    global TracerProvider and emits an `external.llm.call` span through it (simulating an
@@ -40,7 +40,7 @@ the caller's process may have configured for its own auto-instrumentation. Three
 
 - LLM span absent in case 1, or attached at the wrong parent (e.g., directly under
   `openarmature.invocation` instead of the node).
-- Case 2: an LLM span still emits despite `disable_llm_spans=True` — the opt-out wasn't honored.
+- Case 2: an LLM span still emits despite `disable_llm_spans: true`: the opt-out wasn't honored.
 - Case 3: any `openarmature.*` span appears on the global exporter — TracerProvider isolation
   is broken and external instrumentation will see duplicate signals for every node, fan-out
   instance, retry attempt, and LLM call.

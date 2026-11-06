@@ -5,7 +5,7 @@
 cases:
   - name: no_measurements_when_metrics_disabled
     description: |
-      One LLM-calling node with enable_metrics=False (the default). The mock
+      One LLM-calling node with enable_metrics: false (the default). The mock
       returns usage {input 5, output 1}, but because metrics are disabled no
       instrument is created and no observation is recorded — the metric-capture
       primitive (§6.9) captures an empty set.

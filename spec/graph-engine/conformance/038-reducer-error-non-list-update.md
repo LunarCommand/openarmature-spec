@@ -14,7 +14,7 @@ not a list — paralleling the same strictness the existing `append`, `concat_fl
 **Cases:**
 
 1. `bounded_append_non_list_update_raises_reducer_error` — Field declared with
-   `bounded_append(max_len=3)`. Node returns a string update where a list is required;
+   `bounded_append(max_len: 3)`. Node returns a string update where a list is required;
    `ReducerError` surfaces at merge time.
 
 **What passes:**

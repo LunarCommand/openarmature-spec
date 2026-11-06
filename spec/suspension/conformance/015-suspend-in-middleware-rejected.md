@@ -4,7 +4,7 @@ Middleware itself MUST NOT call `suspend()`. Attempting to suspend
 from middleware (before, around, or after the inner `next()` call)
 MUST raise `suspension_in_unsupported_context`. The rationale (§8.4):
 attribution ambiguity, pathological composition, gnarly re-entrancy
-under `mark_node_completed=False`.
+under `mark_node_completed: false`.
 
 **Spec sections exercised:**
 

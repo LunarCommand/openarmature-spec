@@ -1,5 +1,5 @@
 # §3 + §5 + §7: basic suspend/resume cycle. A single node calls
-# suspend(descriptor) with mark_node_completed=True (default). The
+# suspend(descriptor) with mark_node_completed: true (default). The
 # first invoke() returns the suspended outcome carrying the
 # descriptor. A second invoke() with resume_invocation + signal_payload
 # loads the paused record, merges the payload into state, and continues
@@ -17,8 +17,8 @@ cases:
     description: |
       Two-node graph (gate, next). The gate node calls suspend() with a
       descriptor; the engine returns suspended. Resume invoke supplies
-      signal_payload={approved: true}; the engine merges the payload,
-      skips re-running gate (mark_node_completed=True), and runs the
+      signal_payload: {approved: true}; the engine merges the payload,
+      skips re-running gate (mark_node_completed: true), and runs the
       next node with the merged state.
     state:
       fields:
@@ -56,7 +56,7 @@ cases:
         expected:
           outcome: completed
           final_state: {approved: true, completed_flag: true}
-          # gate NOT in the execution order — mark_node_completed=True
+          # gate NOT in the execution order, as mark_node_completed: true
           # means the engine continues at the node AFTER gate.
           execution_order: [next_node]
     invariants:

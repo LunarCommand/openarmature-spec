@@ -15,9 +15,9 @@ undeclared colliding key.
 
 **Cases:**
 
-1. `conflicting_extras_dimensions_rejected_pre_send` — `embed(config={dimensions: 4, extras: {dimensions: 8}})`
+1. `conflicting_extras_dimensions_rejected_pre_send`: `embed(config: {dimensions: 4, extras: {dimensions: 8}})`
    → `provider_invalid_request` pre-send, no request issued.
-2. `matching_extras_dimensions_is_no_op` — `embed(config={dimensions: 4, extras: {dimensions: 4}})` → wire
+2. `matching_extras_dimensions_is_no_op`: `embed(config: {dimensions: 4, extras: {dimensions: 4}})` → wire
    `dimensions: 4` once, call proceeds.
 
 **What fails:**

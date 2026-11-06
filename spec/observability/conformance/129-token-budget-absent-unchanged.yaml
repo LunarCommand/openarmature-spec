@@ -19,7 +19,7 @@ cases:
   - name: token_budget_absent_leaves_baseline_unperturbed
     description: |
       One LLM-calling node that renders a prompt with NO token_budget and
-      then calls the LLM. enable_metrics=True; mock usage {prompt 5,
+      then calls the LLM. enable_metrics: true; mock usage {prompt 5,
       completion 1, total 6}. The harness asserts:
       - LlmCompletionEvent.token_budget is null
       - active_prompt still populated (the identity surface is independent

@@ -3,7 +3,7 @@
 The harness receives a synthetic transmission with no session_id and
 classifies it as the new-session inbound path. The harness assigns a
 fresh session_id, constructs initial state from the payload, and
-calls `invoke(initial_state, session_id=<fresh_id>)`.
+calls `invoke(initial_state, session_id: <fresh_id>)`.
 
 **Spec sections exercised:**
 
@@ -24,7 +24,7 @@ calls `invoke(initial_state, session_id=<fresh_id>)`.
 
 - Harness classifies into §3.2 (existing-session) or §3.0 (stateless) —
   would mean path classification is broken.
-- Harness does NOT generate a session_id (passes None or omits) —
+- Harness does NOT generate a session_id (passes null or omits):
   would mean §3.1's "assigns a fresh one if absent" rule was skipped.
 - Engine receives no session_id — would mean threading from harness to
   engine broke.

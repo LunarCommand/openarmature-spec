@@ -10,11 +10,11 @@ Verifies graph-engine §6's *Typed LLM token event* together with llm-provider �
 
 **Cases:**
 
-1. `token_events_dispatched_in_chunk_order_concatenate_to_content` — A node calls `complete(stream=True)`; the mock yields content chunks `"Hel"` / `"lo "` / `"world"` then a terminal usage chunk. Asserts three `LlmTokenEvent`s with `delta_kind="content"` and `chunk_index` `0,1,2` in order, the terminal `LlmCompletionEvent` whose assembled content is `"Hello world"`, every token event's `call_id` equal to the terminal event's, and the full `LlmTokenEvent` identity / scoping field set (`node_name`, `namespace`, `attempt_index=0`, `fan_out_index=null`, `branch_name=null`, `provider`, `model`, `caller_invocation_metadata=null`) on the first token event.
+1. `token_events_dispatched_in_chunk_order_concatenate_to_content`: A node calls `complete(stream: true)`; the mock yields content chunks `"Hel"` / `"lo "` / `"world"` then a terminal usage chunk. Asserts three `LlmTokenEvent`s with `delta_kind: "content"` and `chunk_index` `0,1,2` in order, the terminal `LlmCompletionEvent` whose assembled content is `"Hello world"`, every token event's `call_id` equal to the terminal event's, and the full `LlmTokenEvent` identity / scoping field set (`node_name`, `namespace`, `attempt_index: 0`, `fan_out_index: null`, `branch_name: null`, `provider`, `model`, `caller_invocation_metadata: null`) on the first token event.
 
 **What passes:**
 
-- Exactly N `LlmTokenEvent`s for N streamed content chunks, `delta_kind="content"`, `chunk_index` monotonic from 0.
+- Exactly N `LlmTokenEvent`s for N streamed content chunks, `delta_kind: "content"`, `chunk_index` monotonic from 0.
 - The ordered concatenation of the token-event `delta`s equals the terminal `LlmCompletionEvent`'s assembled content.
 - Every token event's `call_id` matches the single terminal `LlmCompletionEvent`'s `call_id`.
 - Exactly one terminal `LlmCompletionEvent` is observed.

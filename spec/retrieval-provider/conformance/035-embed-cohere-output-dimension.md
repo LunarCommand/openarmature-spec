@@ -15,7 +15,7 @@ Matryoshka knob `output_dimension`, so the source field is OA's declared `dimens
 
 **Cases:**
 
-1. `dimensions_maps_to_output_dimension_field` — `embed(config={dimensions: 8})` ⇒ the wire request carries
+1. `dimensions_maps_to_output_dimension_field`: `embed(config: {dimensions: 8})` ⇒ the wire request carries
    `output_dimension: 8` alongside `{model, input_type: "search_document", texts, embedding_types:
    ["float"], truncate: "NONE"}`. The response carries one 8-d vector under `embeddings.float`;
    `EmbeddingResponse.dimensions` equals the inner-vector length.

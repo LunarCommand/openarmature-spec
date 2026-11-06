@@ -47,7 +47,7 @@ cohere_embedding_provider:
 cases:
   - name: input_type_query_sends_search_query
     description: |
-      embed(config={input_type: "query"}) against a Cohere
+      embed(config: {input_type: "query"}) against a Cohere
       EmbeddingProvider. The §8.4 mapping translates the recognized
       input_type "query" to Cohere's "search_query", so the wire request
       to /v2/embed MUST carry input_type "search_query" alongside {model,
@@ -118,7 +118,7 @@ cases:
 
   - name: input_type_document_sends_search_document
     description: |
-      embed(config={input_type: "document"}) against the same provider:
+      embed(config: {input_type: "document"}) against the same provider:
       document -> "search_document" per the §8.4 mapping, so the wire
       request MUST carry input_type "search_document". input_type MUST
       reach EmbeddingEvent.request_params as "document".
@@ -186,7 +186,7 @@ cases:
 
   - name: input_type_classification_sends_classification
     description: |
-      embed(config={input_type: "classification"}) against the same
+      embed(config: {input_type: "classification"}) against the same
       provider. Cohere's backend supports the classification purpose, so
       §8.4 RECOGNIZES the §2 well-known value (§2 — "additional well-known
       values MAY be recognized by mappings whose backend supports them")
@@ -261,7 +261,7 @@ cases:
 
   - name: input_type_clustering_sends_clustering
     description: |
-      embed(config={input_type: "clustering"}) against the same provider.
+      embed(config: {input_type: "clustering"}) against the same provider.
       Cohere's backend supports the clustering purpose, so §8.4 RECOGNIZES
       the §2 well-known value and MUST NOT reject it pre-send. Identity
       mapping again: the wire request MUST carry input_type "clustering".

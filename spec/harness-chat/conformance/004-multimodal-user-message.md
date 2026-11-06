@@ -7,7 +7,7 @@ graph and into history.
 
 **Spec sections exercised:**
 
-- harness-chat §3 — `ChatMessage` shape with `content: list[ContentBlock]`
+- harness-chat §3: `ChatMessage` shape with `content: list<ContentBlock>`
 - llm-provider §3.1 — content-block types (text, image)
 
 **What passes:**

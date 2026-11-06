@@ -22,12 +22,12 @@ success — via the generic §4.2 / §8.4.2 error mapping, mirroring §8.4.6's t
 **Cases:**
 
 1. `rerank_failure_renders_error_level_observation_payload_suppressed` — default config
-   (`disable_provider_payload=True`). The `Retriever` observation emits at `ERROR` with
+   (`disable_provider_payload: true`). The `Retriever` observation emits at `ERROR` with
    `statusMessage = "provider_unavailable"` and `error_type` in metadata, while `error_message` is
    **absent** (asserted via `metadata_absent`): it is harvested exception text gated by that flag
    (§5.5.4, proposal 0118), whereas `error_type` is a classification token and is not gated. Plus the
    request-side identity metadata; `input` is suppressed (null) and `output` is null (no response).
-2. `rerank_failure_no_output_even_with_payload_flag_off` — `disable_provider_payload=False`. The
+2. `rerank_failure_no_output_even_with_payload_flag_off`: `disable_provider_payload: false`. The
    request-side `input` (`{query, documents}`) populates as in 108's flag-off case, but `output`
    stays null — the absence is intrinsic (no response), not a payload-gating artifact. `ERROR`
    level + `statusMessage` + `error_type` are unchanged by the flag; `error_message` appears only in

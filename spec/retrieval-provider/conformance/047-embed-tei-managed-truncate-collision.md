@@ -18,12 +18,12 @@ keeping the body minimal. So its reject arm keys on a **relied-upon default the 
 
 **Cases:**
 
-1. `conflicting_extras_truncate_rejected_pre_send` — `embed(config={extras: {truncate: true}})`. `true`
+1. `conflicting_extras_truncate_rejected_pre_send`: `embed(config: {extras: {truncate: true}})`. `true`
    conflicts with the relied-upon `false`; honoring it would flip the default at the wire and silently
    truncate an over-length input. The mapping raises `provider_invalid_request` pre-send, issues **no** `/embed`
    request, and neither drops nor forwards the value. This is the reject with no wire field to intercept — the
    mapping special-cases a key it never otherwise sets.
-2. `matching_extras_truncate_is_noop_body_stays_minimal` — `embed(config={extras: {truncate: false}})`. `false`
+2. `matching_extras_truncate_is_noop_body_stays_minimal`: `embed(config: {extras: {truncate: false}})`. `false`
    equals the relied-upon default, so it is a redundant no-op: the normal `/embed` request goes out with the
    body still **minimal** — `truncate` is **not** added to the wire (asserted via `expected_wire_request_absent_keys`),
    byte-identical to a call with no extras `truncate`. This pins the matching-value wire outcome for a

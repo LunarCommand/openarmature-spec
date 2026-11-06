@@ -27,7 +27,7 @@
 cases:
   - name: extras_temperature_conflicts_with_declared_rejected_pre_send
     description: |
-      complete(config={temperature: 0.7, extras: {temperature: 0.2}}). The
+      complete(config: {temperature: 0.7, extras: {temperature: 0.2}}). The
       declared RuntimeConfig.temperature (0.7) is realized on the OpenAI wire
       under the same name; the caller's extras `temperature` — an UNDECLARED
       key of that wire name — collides with it at the request-body root, and
@@ -59,7 +59,7 @@ cases:
 
   - name: extras_temperature_matching_declared_is_no_op
     description: |
-      complete(config={temperature: 0.7, extras: {temperature: 0.7}}). The
+      complete(config: {temperature: 0.7, extras: {temperature: 0.7}}). The
       extras `temperature` EQUALS the declared value (0.7), so it is a redundant
       no-op: the mapping emits the single realized wire `temperature: 0.7` and
       the call proceeds normally. The wire body carries the declared value once

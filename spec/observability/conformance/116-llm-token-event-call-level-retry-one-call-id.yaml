@@ -1,4 +1,4 @@
-# graph-engine §6 + llm-provider §5/§7.1 — a streamed complete(retry=...) whose
+# graph-engine §6 + llm-provider §5/§7.1: a streamed complete(retry: ...) whose
 # first WIRE attempt fails transiently and whose second wire attempt succeeds.
 # Per the §7.1 interaction note, the retry loop runs INSIDE one complete() call:
 # it is ONE call with ONE call_id and ONE node-level attempt_index (the wire
@@ -24,7 +24,7 @@
 cases:
   - name: call_level_retry_token_events_share_one_call_id_and_attempt_index
     description: |
-      A stream=True node with retry={max_attempts:2} whose first wire attempt is
+      A stream: true node with retry: {max_attempts:2} whose first wire attempt is
       a transient 503 (caught internally by the §7.1 loop) and whose second wire
       attempt streams "Re"/"try"/"ok" successfully. The harness asserts:
       - exactly 3 LlmTokenEvents (only the successful attempt's chunks), all with

@@ -12,7 +12,7 @@ via `set_invocation_metadata` in the same context plus the original caller-suppl
 **Cases:**
 
 1. `get_invocation_metadata_reads_caller_baseline_plus_node_writes` — `invoke()` supplies
-   `{"tenantId": "T1"}`. A node calls `set_invocation_metadata(audit_kind="fraud")` followed by
+   `{"tenantId": "T1"}`. A node calls `set_invocation_metadata(audit_kind: "fraud")` followed by
    `get_invocation_metadata()`. The read returns a mapping containing BOTH `tenantId: "T1"` (the
    caller-supplied baseline) AND `audit_kind: "fraud"` (the in-node write).
 

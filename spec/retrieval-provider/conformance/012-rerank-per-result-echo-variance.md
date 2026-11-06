@@ -13,7 +13,7 @@ provider-side document transformations (deduplication, truncation).
 
 **Cases:**
 
-1. `rerank_preserves_per_result_echo_variance` — `return_documents=True` over 3 documents; mocked
+1. `rerank_preserves_per_result_echo_variance`: `return_documents: true` over 3 documents; mocked
    response echoes `document` for indices 0 and 2 but omits it for index 1. The adapter MUST return
    `document` populated for the two echoed results and `null` for the omitted one.
 

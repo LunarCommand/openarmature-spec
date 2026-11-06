@@ -1,4 +1,4 @@
-# §2 dedupe_append(key=None) reducer: append-unique. Verifies proposal
+# §2 dedupe_append(key?) reducer: append-unique. Verifies proposal
 # 0023's dedupe_append factory — extend a list with items from the
 # update whose key is not already present (either in prior OR earlier
 # in the same update).

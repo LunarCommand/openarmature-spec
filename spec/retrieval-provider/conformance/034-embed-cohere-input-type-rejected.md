@@ -23,7 +23,7 @@ value is rejected, not silently coerced to that default.
 
 **Cases:**
 
-1. `unrecognized_input_type_rejected_pre_send` — `embed(config={input_type: "summarization"})`, a value
+1. `unrecognized_input_type_rejected_pre_send`: `embed(config: {input_type: "summarization"})`, a value
    outside the recognized set. The mapping MUST raise `provider_invalid_request` at the pre-send validation
    layer and MUST NOT issue any `/v2/embed` request (no silent coercion to the `search_document` default —
    that default is only for the *absent* case). The exception raises out of the embed node.

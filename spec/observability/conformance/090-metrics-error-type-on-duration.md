@@ -16,7 +16,7 @@ records no token-usage observation.
 
 1. `errored_call_records_duration_with_error_type` — a 503 →
    `provider_unavailable` failure records one duration observation with
-   `error.type="provider_unavailable"` and zero token-usage observations; the
+   `error.type: "provider_unavailable"` and zero token-usage observations; the
    exception still propagates (`expected_error`).
 
 ## Anti-cases

@@ -10,14 +10,14 @@ Closes the embedding-path counterpart of the LLM failure-metrics fixture 090. §
 **Spec sections exercised:**
 
 - observability §11.2 / §11.3 — duration recorded on a failed attempt, `error.type` dimension from the typed
-  `EmbeddingFailedEvent`; `operation="embeddings"`.
+  `EmbeddingFailedEvent`; `operation: "embeddings"`.
 - observability §11 metric-capture — no `token.usage` observation when the call returns no usage record.
 
 **Case:**
 
-1. `errored_embedding_records_duration_with_error_type` — a `calls_embed` node with `enable_metrics=True`;
+1. `errored_embedding_records_duration_with_error_type`: a `calls_embed` node with `enable_metrics: true`;
    the mock returns 503 → `provider_unavailable`, `embed()` raises. The duration histogram records one
-   observation with `error.type="provider_unavailable"` (operation `embeddings`); no `token.usage` observation.
+   observation with `error.type: "provider_unavailable"` (operation `embeddings`); no `token.usage` observation.
 
 **What fails:**
 

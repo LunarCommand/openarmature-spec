@@ -41,7 +41,7 @@ cohere_embedding_provider:
 cases:
   - name: conflicting_extras_output_dimension_rejected_pre_send
     description: |
-      embed(config={dimensions: 4, extras: {output_dimension: 8}}). The declared
+      embed(config: {dimensions: 4, extras: {output_dimension: 8}}). The declared
       `dimensions` (4) is realized as the wire `output_dimension` field; the
       extras `output_dimension` (8) is an UNDECLARED key naming that same wire
       field and CONFLICTS. Per §6 clause (b), managed non-additive while
@@ -77,7 +77,7 @@ cases:
 
   - name: matching_extras_output_dimension_is_no_op
     description: |
-      embed(config={dimensions: 4, extras: {output_dimension: 4}}). The extras
+      embed(config: {dimensions: 4, extras: {output_dimension: 4}}). The extras
       value EQUALS the value the declared field realizes, so it is a redundant
       no-op: the wire carries a single `output_dimension: 4` and the call
       proceeds. An implementation that emitted the key twice, or that rejected a
@@ -134,7 +134,7 @@ cases:
 
   - name: extras_output_dimension_rides_untouched_when_declared_absent
     description: |
-      embed(config={extras: {output_dimension: 8}}) with the declared
+      embed(config: {extras: {output_dimension: 8}}) with the declared
       `dimensions` ABSENT. The mapping produces no `output_dimension` of its
       own, so per §6 clause (b) the key is NOT managed on this call and the
       extras value keeps the untouched pass-through: the wire carries
@@ -204,7 +204,7 @@ cases:
   # the mapping already wrote.
   - name: conflicting_extras_input_type_rejected_even_with_declared_absent
     description: |
-      embed(config={extras: {input_type: "search_query"}}) with no declared
+      embed(config: {extras: {input_type: "search_query"}}) with no declared
       input_type. The mapping still emits input_type: "search_document" (the
       mandatory default), so the extras value CONFLICTS with a key the mapping
       produces on this very call. Per §6 clause (b) applied to an
@@ -239,7 +239,7 @@ cases:
 
   - name: matching_extras_input_type_is_no_op
     description: |
-      embed(config={extras: {input_type: "search_document"}}) with no declared
+      embed(config: {extras: {input_type: "search_document"}}) with no declared
       input_type. The extras value EQUALS the value the mapping emits by
       default, so it is a redundant no-op: the wire carries a single
       input_type: "search_document" and the call proceeds. Pins that the

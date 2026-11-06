@@ -8,7 +8,7 @@ fundamental shape before testing nuances in 002-012.
 
 - §3 Prompt shape — `name`, `label`, `version`, `template`,
   `template_hash` populated correctly.
-- §5 PromptBackend protocol — `fetch(name, label="production")`
+- §5 PromptBackend protocol: `fetch(name, label: "production")`
   returns a `Prompt` on success.
 
 **What passes:**

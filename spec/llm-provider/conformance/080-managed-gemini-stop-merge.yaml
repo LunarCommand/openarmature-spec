@@ -24,7 +24,7 @@ mapping: gemini
 cases:
   - name: extras_stopSequences_merges_under_generationConfig
     description: |
-      complete(config={max_tokens: 64, stop_sequences: ["STOP"], extras:
+      complete(config: {max_tokens: 64, stop_sequences: ["STOP"], extras:
       {stopSequences: ["END"]}}). The declared `stop_sequences` (["STOP"]) is
       realized as `generationConfig.stopSequences`; the extras `stopSequences`
       (["END"], an UNDECLARED camelCase key placed under generationConfig)
@@ -60,7 +60,7 @@ cases:
 
   - name: matching_extras_stopSequences_collapses_dedup
     description: |
-      complete(config={max_tokens: 64, stop_sequences: ["STOP"], extras:
+      complete(config: {max_tokens: 64, stop_sequences: ["STOP"], extras:
       {stopSequences: ["STOP"]}}). The extras matches the declared value;
       de-duplication collapses it, so `generationConfig.stopSequences` MUST be
       the single-element ["STOP"].

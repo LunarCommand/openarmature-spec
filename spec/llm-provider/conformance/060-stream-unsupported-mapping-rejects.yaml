@@ -12,7 +12,7 @@ mapping: streaming_unsupported_stub
 cases:
   - name: stream_set_call_rejected_pre_send_no_token_events_no_fallback
     description: |
-      A complete(stream=True) call against the streaming-unsupported mapping.
+      A complete(stream: true) call against the streaming-unsupported mapping.
       The mapping MUST raise provider_invalid_request at pre-send validation —
       before contacting the provider — with a message identifying that the
       mapping does not support streaming. The mock provider's response list is

@@ -21,12 +21,12 @@ fixture-120 truncation case through the Langfuse observer.
 
 1. `failed_generation_renders_output_usage_finish_reason_payload_on` — Truncation failure
    (`finish_reason: "length"`, `usage.completion_tokens` at the `max_tokens` ceiling) with
-   `disable_provider_payload = False`. The failed Generation carries `level = "ERROR"` +
+   `disable_provider_payload = false`. The failed Generation carries `level = "ERROR"` +
    `statusMessage = "structured_output_invalid"` AND `generation.output` = the raw truncated bytes,
    `generation.usage` = the token counts (input 20 / output 16 / total 36), and
    `generation.metadata.finish_reason = "length"`.
 2. `failed_generation_payload_disabled_redacts_output_keeps_usage_finish_reason` — The same failure
-   with `disable_provider_payload = True` (the §5.5.4 default). `generation.output` is redacted
+   with `disable_provider_payload = true` (the §5.5.4 default). `generation.output` is redacted
    (`null`), while `generation.usage`, `generation.metadata.finish_reason`, the `ERROR` level, and
    the `statusMessage` are unchanged.
 

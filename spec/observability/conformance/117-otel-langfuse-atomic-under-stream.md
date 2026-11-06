@@ -11,8 +11,8 @@ This fixture's purpose is the atomic-collapse contract (span / observation count
 
 **Cases:**
 
-1. `otel_one_llm_span_no_per_token_children_under_stream` — A `stream=True` call (OTel observer, payload enabled) streaming `"Hel"`/`"lo "`/`"world"`. Asserts exactly one `openarmature.llm.complete` span with `children: []` and `openarmature.llm.output.content` = `"Hello world"` (the full assembled content).
-2. `langfuse_one_generation_no_per_token_observations_under_stream` — The same streamed call with the Langfuse observer (`disable_provider_payload=False`). Asserts exactly one Generation observation with `children: []`, assembled `output` = `"Hello world"`, and the assembled usage.
+1. `otel_one_llm_span_no_per_token_children_under_stream`: A `stream: true` call (OTel observer, payload enabled) streaming `"Hel"`/`"lo "`/`"world"`. Asserts exactly one `openarmature.llm.complete` span with `children: []` and `openarmature.llm.output.content` = `"Hello world"` (the full assembled content).
+2. `langfuse_one_generation_no_per_token_observations_under_stream`: The same streamed call with the Langfuse observer (`disable_provider_payload: false`). Asserts exactly one Generation observation with `children: []`, assembled `output` = `"Hello world"`, and the assembled usage.
 
 **What passes:**
 

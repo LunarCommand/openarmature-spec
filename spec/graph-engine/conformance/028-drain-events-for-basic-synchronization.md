@@ -46,7 +46,7 @@ every event the prior nodes emitted.
   `completed` event has been dispatched.
 - The harness primitive `invoke_drain_events_for` on a node spec
   means: from inside that node's body, invoke
-  `drain_events_for(state.invocation_id, timeout=...)`, then capture
+  `drain_events_for(state.invocation_id, timeout: ...)`, then capture
   the named observer's accumulator bucket for the current call.
   Both the drain summary and the snapshot are exposed under the
   node's name in the expected section.

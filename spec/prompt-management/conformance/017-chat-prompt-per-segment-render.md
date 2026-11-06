@@ -7,7 +7,7 @@ independently.
 
 **Spec sections exercised:**
 
-- §3.1 — Chat-prompt variant; `chat_template: list[ChatSegment]`; content segment with
+- §3.1: Chat-prompt variant; `chat_template: list<ChatSegment>`; content segment with
   text-template `content`.
 - §6.render — Chat-prompt render contract; one Message per content segment, role propagated,
   variable substitution per segment.

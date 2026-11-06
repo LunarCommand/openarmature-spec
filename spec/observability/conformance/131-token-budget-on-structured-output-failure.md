@@ -26,7 +26,7 @@ prompt-context binding, surfacing on the graph-engine §6 `LlmFailedEvent.token_
 1. `structured_output_failure_evaluates_token_budget_on_failure_event` — Budgeted prompt
    (`input_max_tokens: 10`) + `response_schema`; the mock returns truncated JSON (`finish_reason:
    "length"`) with usage `{prompt 20, completion 16, total 36}`, so `complete()` raises
-   `structured_output_invalid`. `enable_metrics = True`. The `LlmFailedEvent.token_budget` is populated
+   `structured_output_invalid`. `enable_metrics = true`. The `LlmFailedEvent.token_budget` is populated
    `{input_max_tokens: 10, total_max_tokens: null}`; `prompt_tokens` 20 > 10, so the ERROR span carries
    `openarmature.llm.token_budget.exceeded = true`, the exceeded counter records once (`kind =
    "input"`), and a utilization observation is recorded at `20 / 10 = 2.0` (`kind = "input"`) — all on

@@ -7,7 +7,7 @@
 cases:
   - name: embedding_records_input_token_and_duration
     description: |
-      One embedding-calling node, enable_metrics=True. The mock returns
+      One embedding-calling node, enable_metrics: true. The mock returns
       usage {prompt_tokens 4}. The metric-capture primitive records token.usage
       input=4 (operation "embeddings", model, token.type "input") and one
       operation.duration observation (dimensions only). No output-token

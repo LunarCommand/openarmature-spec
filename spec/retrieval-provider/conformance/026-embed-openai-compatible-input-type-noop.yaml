@@ -8,7 +8,7 @@
 # mapping does NOT realize input_type on the wire (§8.3 *input_type*). The
 # fixture asserts BOTH halves of the contract:
 #
-#   1. WIRE: embed(config={input_type: "query"}) against a SYMMETRIC
+#   1. WIRE: embed(config: {input_type: "query"}) against a SYMMETRIC
 #      provider (NO query_prefix / document_prefix bound) produces a wire
 #      request with NO query/document/input_type/task field, and the
 #      `input` is sent VERBATIM (not prefixed) — byte-identical to the
@@ -50,7 +50,7 @@ openai_embedding_provider:
 cases:
   - name: input_type_query_is_noop_on_symmetric_wire
     description: |
-      embed(config={input_type: "query"}) against a SYMMETRIC
+      embed(config: {input_type: "query"}) against a SYMMETRIC
       openai_embedding_provider (no prefixes bound). The wire request MUST
       NOT carry any query/document/input_type/task field and MUST send the
       `input` VERBATIM ("how tall is the eiffel tower?", un-prefixed). The

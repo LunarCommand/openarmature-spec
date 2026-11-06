@@ -16,7 +16,7 @@ on their wires.
 
 **Cases:**
 
-1. `dimensions_maps_to_wire_dimensions_field` — `embed(config={dimensions: 4})`. The wire request MUST
+1. `dimensions_maps_to_wire_dimensions_field`: `embed(config: {dimensions: 4})`. The wire request MUST
    carry `dimensions: 4` alongside `{model, input}` (no `input_type` / `task` / `encoding_format`), with
    `Authorization: Bearer` present. Single input; the response is a one-element `data` array of a
    length-4 vector; `EmbeddingResponse.dimensions` MUST equal the inner vector length.

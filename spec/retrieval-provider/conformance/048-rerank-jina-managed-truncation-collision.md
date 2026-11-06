@@ -15,12 +15,12 @@ rejected pre-send.
 
 **Cases:**
 
-1. `conflicting_extras_truncation_rejected_pre_send` — `rerank(config={extras: {truncation: true}})`. `true`
+1. `conflicting_extras_truncation_rejected_pre_send`: `rerank(config: {extras: {truncation: true}})`. `true`
    conflicts with the managed `false`; honoring it would silently truncate an over-length `(query, document)`
    pair, yielding a wrong relevance score the mapping fails loud on. The mapping raises
    `provider_invalid_request` pre-send, issues **no** `/v1/rerank` request, and neither drops nor forwards the
    value.
-2. `matching_extras_truncation_is_noop` — `rerank(config={extras: {truncation: false}})`. `false` **equals** the
+2. `matching_extras_truncation_is_noop`: `rerank(config: {extras: {truncation: false}})`. `false` **equals** the
    managed value, so it is a redundant no-op: the normal `/v1/rerank` request goes out with `truncation: false`
    (unduplicated), results returned normally. Discriminates an impl that over-rejects *any* extras `truncation`;
    the boolean `false` shape differs from Cohere's string `"NONE"` (046 case 2), so it is exercised here rather

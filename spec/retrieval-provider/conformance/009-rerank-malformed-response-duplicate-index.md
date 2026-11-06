@@ -13,7 +13,7 @@ one-result-per-input-document contract the `index` field encodes.
 **Cases:**
 
 1. `rerank_duplicate_index_raises_provider_invalid_response` — 3 input documents; mocked response
-   returns two results both with `index=0`. The adapter MUST detect the duplicate and raise
+   returns two results both with `index: 0`. The adapter MUST detect the duplicate and raise
    `provider_invalid_response`.
 
 **What passes:**

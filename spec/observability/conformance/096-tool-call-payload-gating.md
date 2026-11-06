@@ -5,7 +5,7 @@ gates the tool payload attributes on the OTel tool span.
 
 ## Spec coverage
 
-- §5.5.4 — `disable_provider_payload` (default `True`) suppresses
+- §5.5.4: `disable_provider_payload` (default `true`) suppresses
   `openarmature.tool.call.arguments` / `.result`; the identity attributes
   (`openarmature.tool.name` / `.call.id`) are not payload and stay.
 - §5.5.11 — the payload attributes are subject to the flag.

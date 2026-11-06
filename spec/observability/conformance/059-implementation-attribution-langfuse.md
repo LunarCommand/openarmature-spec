@@ -15,15 +15,15 @@ attributes per the mapping table. Companion to fixture 058 (OTel-side).
 
 1. `implementation_attribution_rows_present_on_trace_default_config` — A graph invocation
    against a fixture-mock Langfuse client with the default Langfuse-observer config
-   (`disable_state_payload = True` per §8.4.1's default). Asserts:
+   (`disable_state_payload = true` per §8.4.1's default). Asserts:
    - `trace.metadata.implementation_name` is present, non-empty, and matches the
      implementation under test.
    - `trace.metadata.implementation_version` is present and non-empty.
-   - Both rows emit despite `disable_state_payload = True` — the always-emit invariant from
+   - Both rows emit despite `disable_state_payload = true`: the always-emit invariant from
      §5.1 applies to runtime-identity constants, not runtime data.
 
 2. `implementation_attribution_rows_present_when_state_payload_enabled` — Same graph, but the
-   Langfuse-observer config sets `disable_state_payload = False` (state payload would
+   Langfuse-observer config sets `disable_state_payload = false` (state payload would
    otherwise be emitted to `trace.input` / `trace.output`). Asserts both rows are still
    present — the always-emit invariant is independent of the privacy-knob setting in BOTH
    directions (the privacy knob does not gate runtime identity regardless of whether it's
@@ -33,8 +33,8 @@ attributes per the mapping table. Companion to fixture 058 (OTel-side).
 
 - Both rows present on Langfuse Trace metadata; both non-empty strings.
 - `implementation_name` matches the per-language canonical value.
-- Rows emit under both `disable_state_payload = True` (the default) and `disable_state_payload
-  = False` configurations — privacy knob does not gate runtime-identity constants.
+- Rows emit under both `disable_state_payload = true` (the default) and `disable_state_payload
+  = false` configurations: privacy knob does not gate runtime-identity constants.
 
 **What fails:**
 
@@ -42,6 +42,6 @@ attributes per the mapping table. Companion to fixture 058 (OTel-side).
   attribute not emitted.
 - Either row empty / null — §5.1 says "never null" and the §8.4.1 mapping preserves the values
   verbatim.
-- Rows suppressed when `disable_state_payload = True` — the always-emit invariant from §5.1 is
+- Rows suppressed when `disable_state_payload = true`: the always-emit invariant from §5.1 is
   inherited; the privacy knob gates runtime data (caller state, LLM messages), not runtime
   identity.

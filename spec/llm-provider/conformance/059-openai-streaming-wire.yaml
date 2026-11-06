@@ -1,4 +1,4 @@
-# §8.1.6 OpenAI-compatible streaming wire path. complete(stream=True) sends
+# §8.1.6 OpenAI-compatible streaming wire path. complete(stream: true) sends
 # `stream: true` + `stream_options: {include_usage: true}` and consumes the
 # Server-Sent Events response, assembling the atomic Response per §6 *Streaming
 # assembly*. The assembled Response (content, tool_calls, usage, finish_reason)
@@ -10,7 +10,7 @@
 cases:
   - name: streamed_content_assembles_equal_to_non_streamed
     description: |
-      A stream=True text completion. The wire request MUST carry stream:true and
+      A stream: true text completion. The wire request MUST carry stream:true and
       stream_options.include_usage:true. The mocked SSE stream yields three
       content chunks ("Hello"/", "/"world."), a finish_reason=stop on the last
       content chunk, then a terminal empty-choices usage chunk, then [DONE]. The
@@ -52,7 +52,7 @@ cases:
 
   - name: streamed_tool_calls_reassemble_equal_to_non_streamed
     description: |
-      A stream=True call where the model streams a tool call: an opening
+      A stream: true call where the model streams a tool call: an opening
       tool_calls delta (index/id/function.name), then argument-string fragments,
       a finish_reason=tool_calls chunk, then the usage chunk and [DONE]. The
       assembled Response MUST carry the complete reassembled tool_calls — id
@@ -115,7 +115,7 @@ cases:
 
   - name: streamed_reasoning_extension_assembles_into_reasoning_block
     description: |
-      Reasoning extension (§8.1.6). A stream=True call against a reasoning-model
+      Reasoning extension (§8.1.6). A stream: true call against a reasoning-model
       server that streams reasoning via choices[].delta.reasoning_content FIRST,
       then content. The assembled Response MUST carry the reasoning text in a
       thinking block (§3.1.4) AND the content in message.content — the streamed

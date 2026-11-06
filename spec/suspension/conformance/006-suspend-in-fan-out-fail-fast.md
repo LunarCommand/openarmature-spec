@@ -1,6 +1,6 @@
 # 006 — Suspend inside fan-out (fail_fast)
 
-Under `error_policy="fail_fast"` (the default), one fan-out instance
+Under `error_policy: "fail_fast"` (the default), one fan-out instance
 calling `suspend()` suspends the entire fan-out node at the
 outer-graph level. Sibling instances are cancelled (consistent with
 cancellation-on-error under `fail_fast`). The descriptor bubbles up

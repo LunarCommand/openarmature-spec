@@ -20,13 +20,13 @@ server-side `prompt_name`; 020 uses Jina's `task`).
 **Cases:**
 
 1. `input_type_query_prepends_query_prefix_client_side` — provider bound with `query_prefix: "query: "`
-   / `document_prefix: "passage: "`. `embed(config={input_type: "query"})` MUST send wire
+   / `document_prefix: "passage: "`. `embed(config: {input_type: "query"})` MUST send wire
    `input: ["query: how tall is the eiffel tower?"]` (prefixed client-side), with NO `input_type` /
    `task` field on the wire and `Authorization: Bearer` present. `input_type` MUST reach
    `EmbeddingEvent.request_params` as `"query"` (the un-prefixed caller intent — the prefix is a wire
    detail).
 2. `input_type_document_prepends_document_prefix_client_side` — same provider;
-   `embed(config={input_type: "document"})` MUST send wire
+   `embed(config: {input_type: "document"})` MUST send wire
    `input: ["passage: the eiffel tower is 330 metres tall."]`. No `input_type` / `task` field on the
    wire; `Authorization: Bearer` present; `EmbeddingEvent.request_params` carries `input_type: document`.
 

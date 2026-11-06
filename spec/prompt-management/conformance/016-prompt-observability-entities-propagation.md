@@ -7,7 +7,7 @@ entities at all (case B, absent semantic).
 
 **Spec sections exercised:**
 
-- §3 — `Prompt.observability_entities` field (optional `dict[str, Any] | None`,
+- §3: `Prompt.observability_entities` field (optional `dict<string, any>` or null,
   backend-keyed entries following `<backend>_<entity>` naming convention).
 - §3 — spec-normative key `langfuse_prompt` for the Langfuse SDK Prompt-entity reference.
 - §4 — `PromptResult.observability_entities` propagation; rendering does NOT modify the
@@ -48,7 +48,7 @@ entities at all (case B, absent semantic).
   Violates §4 propagation rule.
 - Case A: the reference is stuffed into `Prompt.metadata` instead of the new typed field —
   backend didn't follow the v0.26.0 spec-defined location.
-- Case B: the field is defaulted to an empty dict `{}` instead of None — implementation
+- Case B: the field is defaulted to an empty dict `{}` instead of null: implementation
   synthesized a default; should remain absent entirely per the §3 "opt-in per backend"
   semantic.
 - Either case: the Langfuse observer reads from `Prompt.metadata` instead of

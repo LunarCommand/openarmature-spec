@@ -19,7 +19,7 @@ evaluated as over budget on the total bound. The exceeded counter and utilizatio
 
 1. `token_budget_total_exceeded_sets_attr_counter_and_utilization` — Budgeted prompt
    (`total_max_tokens: 25`, no input bound), mock usage `{prompt 40, completion 10, total 50}`,
-   `enable_metrics = True`. `total_tokens` 50 > `total_max_tokens` 25, so the total bound is exceeded.
+   `enable_metrics = true`. `total_tokens` 50 > `total_max_tokens` 25, so the total bound is exceeded.
    The `LlmCompletionEvent.token_budget` carries `{input_max_tokens: null, total_max_tokens: 25}`; the
    span carries `openarmature.prompt.token_budget.total_max_tokens = 25` and
    `openarmature.llm.token_budget.exceeded = true`; the exceeded counter records once with

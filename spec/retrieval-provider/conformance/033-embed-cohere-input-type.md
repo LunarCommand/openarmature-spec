@@ -24,16 +24,16 @@ recognized by mappings whose backend supports them").
 
 **Cases:**
 
-1. `input_type_query_sends_search_query` — `embed(config={input_type: "query"})`. The `/v2/embed` wire
+1. `input_type_query_sends_search_query`: `embed(config: {input_type: "query"})`. The `/v2/embed` wire
    request MUST carry `input_type: "search_query"`; `EmbeddingEvent.request_params` MUST carry
    `input_type: query`.
-2. `input_type_document_sends_search_document` — `embed(config={input_type: "document"})` ⇒
+2. `input_type_document_sends_search_document`: `embed(config: {input_type: "document"})` ⇒
    `input_type: "search_document"`; the event MUST carry `input_type: document`.
-3. `input_type_classification_sends_classification` — `embed(config={input_type: "classification"})`. A
+3. `input_type_classification_sends_classification`: `embed(config: {input_type: "classification"})`. A
    recognized value (Cohere's backend supports the purpose), so it MUST NOT be rejected pre-send; the wire
    value is an **identity** mapping — `input_type: "classification"`, with no `search_` prefix (only
    `query` / `document` take one). The event MUST carry `input_type: classification`.
-4. `input_type_clustering_sends_clustering` — `embed(config={input_type: "clustering"})` ⇒ the identity
+4. `input_type_clustering_sends_clustering`: `embed(config: {input_type: "clustering"})` ⇒ the identity
    wire value `input_type: "clustering"`; the event MUST carry `input_type: clustering`.
 5. `input_type_absent_sends_search_document_mandatory_default` — `embed()` with no config. The wire request
    MUST carry `input_type: "search_document"` (the mandatory-field default — the case no other embed

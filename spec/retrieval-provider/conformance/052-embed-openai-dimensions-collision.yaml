@@ -30,7 +30,7 @@ openai_embedding_provider:
 cases:
   - name: conflicting_extras_dimensions_rejected_pre_send
     description: |
-      embed(config={dimensions: 4, extras: {dimensions: 8}}). The declared
+      embed(config: {dimensions: 4, extras: {dimensions: 8}}). The declared
       `dimensions` (4) is realized as the wire `dimensions` field; the extras
       `dimensions` (8, an UNDECLARED key of the same wire name) CONFLICTS. Per
       §6 clause (b) (managed non-additive while `dimensions` is set), the mapping
@@ -66,7 +66,7 @@ cases:
 
   - name: matching_extras_dimensions_is_no_op
     description: |
-      embed(config={dimensions: 4, extras: {dimensions: 4}}). The extras
+      embed(config: {dimensions: 4, extras: {dimensions: 4}}). The extras
       `dimensions` EQUALS the declared value (4), so it is a redundant no-op:
       the wire request carries the single `dimensions: 4` and the call proceeds.
     state:

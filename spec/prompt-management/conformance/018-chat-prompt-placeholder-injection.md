@@ -2,7 +2,7 @@
 
 Verifies §3.1 placeholder segments and §6.render placeholder substitution rule for the
 non-empty injection case. A chat_template with a placeholder segment between a system and a
-final user segment expands the caller-supplied `list[Message]` at the slot position,
+final user segment expands the caller-supplied `list<Message>` at the slot position,
 in-order, as standalone Messages (no merging with surrounding segments).
 
 **Spec sections exercised:**
@@ -14,7 +14,7 @@ in-order, as standalone Messages (no merging with surrounding segments).
 **Cases:**
 
 1. `placeholder_injection_non_empty` — chat_template [system, placeholder("history"), user];
-   render with placeholders={"history": [user-prior, assistant-prior]}; asserts the
+   render with placeholders: {"history": [user-prior, assistant-prior]}; asserts the
    resulting messages sequence is [system, prior-user, prior-assistant, final-user] in
    order.
 

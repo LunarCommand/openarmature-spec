@@ -404,7 +404,7 @@ These directives appear under `nodes.<node_name>:` and define what the node does
 - **`raises: "<error_message>"`** — node raises an exception with the given message instead of
   returning. Exercises graph-engine §4 (error semantics).
 - **`suspend_with_descriptor: {signal_id: <id>, metadata: { ... }}`** — node calls
-  `suspend(descriptor)` per suspension §3 with the given descriptor. Default `mark_node_completed=True`.
+  `suspend(descriptor)` per suspension §3 with the given descriptor. Default `mark_node_completed: true`.
   The adapter MUST construct a real synthetic node body that calls the implementation's real
   `suspend()` operation; the directive does not simulate. Exercises suspension §3.
 - **`conditional_suspend: {suspend_on_item_index: <int>, descriptor: { ... }, on_other_indices: { ... }}`**
@@ -413,7 +413,7 @@ These directives appear under `nodes.<node_name>:` and define what the node does
   directive (typically `update_from_field`). Exercises suspension §8.2 fan-out propagation.
 - **`invoke_drain_events_for: {timeout_seconds: <float>, snapshot_observer: <observer_name>}`** —
   before this node returns, the adapter MUST invoke
-  `graph.drain_events_for(state.invocation_id, timeout=<timeout_seconds>)` then snapshot the named
+  `graph.drain_events_for(state.invocation_id, timeout: <timeout_seconds>)` then snapshot the named
   observer's accumulator bucket for the current `invoke()` call (§6.1). Both the drain summary and the
   snapshot are recorded for per-node assertion. Exercises graph-engine §6 *Per-invocation drain*.
 - **`wrap_with_middleware: [{name: <name>, <middleware_config>}, ...]`** — the node body executes
@@ -739,7 +739,7 @@ or beside `expected:`.
 - **`observers[]`** — list of observer registrations. Each entry:
   - **`name: <observer_name>`** — identifier for cross-reference from assertions.
   - **`attach: graph | invocation`** — `graph` registers on the compiled graph (fires on every
-    invocation); `invocation` passes through `invoke(observers=...)` for one invocation only.
+    invocation); `invocation` passes through `invoke(observers: ...)` for one invocation only.
   - **`target: outer | inner | <subgraph_or_node_name>`** — `outer` attaches to the outermost
     graph; `inner` attaches to the innermost subgraph; specific names attach to a named subgraph
     or node.
@@ -790,7 +790,7 @@ or beside `expected:`.
   The observers' payload settings use the existing per-observer convention — `langfuse_observer:
   {disable_provider_payload: <bool>}` for the Langfuse side and `otel_observer:
   {disable_provider_payload: <bool>}` for the OTel side (below). Omitted, each observer keeps its
-  §5.5.4 default (`True`). openarmature's mode-(b) payload-leak invariant (§6) applies whenever openarmature
+  §5.5.4 default (`true`). openarmature's mode-(b) payload-leak invariant (§6) applies whenever openarmature
   would emit any **harvested payload** — the provider payload (`disable_provider_payload: false`), the
   Trace-level state payload (`disable_state_payload: false` or a `trace_*_from_state` hook), or a failed
   observation's error message — that would reach a shared provider (broadened by proposal 0117); the
@@ -1756,8 +1756,8 @@ Adapters MUST provide the following runtime primitives to satisfy directives in 
 - **Shared persistence per pipeline-utilities §10.15.** The adapter MAY use one backend store for
   both checkpoint records and paused-invocation records with a discriminator field, or two separate
   stores. Implementation choice; the spec requires only that the discrimination is correct (resume
-  via `invoke(resume_invocation=...)` per §10.4 loads a checkpoint record; resume via
-  `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 loads a paused-invocation
+  via `invoke(resume_invocation: ...)` per §10.4 loads a checkpoint record; resume via
+  `invoke(resume_invocation: ..., signal_payload: ...)` per suspension §7 loads a paused-invocation
   record).
 
 ### 6.3 OTel collector capture
@@ -1819,7 +1819,7 @@ carrying only `error_type` and its category, still did.
 The `suspend_with_descriptor` directive on a node MUST compile (at adapter parse time) to a real
 synthetic node body that calls the implementation's real `suspend()` operation per suspension §3 —
 not a simulation or mock. Likewise, an `invocations[]` entry with `resume_invocation` +
-`signal_payload` MUST translate to a real `invoke(resume_invocation=..., signal_payload=...)` call
+`signal_payload` MUST translate to a real `invoke(resume_invocation: ..., signal_payload: ...)` call
 per suspension §7.
 
 The adapter MUST handle suspension-resume's reused-`invocation_id` semantic (per suspension §7 + the
@@ -1854,7 +1854,7 @@ Prompt-management fixtures that exercise the per-fetch `cache_ttl_seconds` contr
 fetched templates by `(name, label)`, counts **source reads** (fetches that reach its backing store
 rather than the cache), and honors `cache_ttl_seconds` per the prompt-management §5 contract:
 
-- **`None` (default)** — serve a cached entry when present; read the source only on a miss.
+- **`null` (default)**: serve a cached entry when present; read the source only on a miss.
 - **`0`** — bypass the cache: every fetch is a source read.
 - **`N > 0`** — serve a cached entry younger than `N` seconds; otherwise read the source. Age is
   measured against a **controllable clock** the adapter exposes, so a fixture can advance time
@@ -2234,7 +2234,7 @@ rule rather than an independent sanction: both are homes in the recognized vocab
 ## History
 
 - created by [proposal 0055](../../proposals/0055-conformance-adapter-capability.md)
-- §6 *Harness primitives* gains §6.8 *Caching prompt backend* — an in-memory `PromptBackend` that caches by `(name, label)`, counts source reads, and honors prompt-management `cache_ttl_seconds` (`0` bypasses the cache; `None` serves cached; `N > 0` serves within a controllable-clock max-age) — plus the `source_read_count` and `advance_clock` fixture shapes it exposes, supporting the prompt-management per-fetch cache-TTL fixtures by [proposal 0072](../../proposals/0072-prompt-management-fetch-cache-ttl.md)
+- §6 *Harness primitives* gains §6.8 *Caching prompt backend*, an in-memory `PromptBackend` that caches by `(name, label)`, counts source reads, and honors prompt-management `cache_ttl_seconds` (`0` bypasses the cache; `null` serves cached; `N > 0` serves within a controllable-clock max-age), plus the `source_read_count` and `advance_clock` fixture shapes it exposes, supporting the prompt-management per-fetch cache-TTL fixtures by [proposal 0072](../../proposals/0072-prompt-management-fetch-cache-ttl.md)
 - §5.8 *Expected-outcome directives* gains a `metrics:` assertion (recorded measurements — instrument + dimensions for every observation, recorded value for token-usage, presence-only for duration); §6 *Harness primitives* gains §6.9 *Metric capture* — an in-memory OTel `MetricReader` (sibling to §6.3 collector capture) recording every observation, gated by an `enable_metrics` observer flag — supporting the observability §11 metrics fixtures by [proposal 0067](../../proposals/0067-observability-genai-metrics.md)
 - §6.8 *Caching prompt backend* gains a fixture-level `manager: {default_cache_ttl_seconds: <int>}` construction slot and a `target: {manager: true}` fetch, so a fixture can exercise the §6 cache-TTL precedence chain (per-call value > manager default > backend) rather than only a backend-direct call — supporting the prompt-management service-wide-default fixture by [proposal 0086](../../proposals/0086-prompt-default-cache-ttl.md)
 - §5.1 *Node behavior directives* gained `calls_llm_from_wrapper` — issues a real `complete()` call from a pre- / post-phase middleware, outside the node body, exercising the observability §5.5 *Lineage-resolved parent* orphan fallback — alongside the existing `calls_llm` node directive it complements; §5.5 documents the case-level observability harness keys (`mock_llm`, `disable_llm_spans`, `caller_global_otel_active`); §5.4 *Composition directives* documents the existing `fan_out.concurrent_mode` (serial vs concurrent instance dispatch, distinct from `concurrency`), first surfaced in observability fixtures by the nested-fan-out span-keying tests. Supports proposal 0084's nested-fan-out span-lineage fixtures by [proposal 0084](../../proposals/0084-nested-fan-out-span-lineage.md)
@@ -2257,3 +2257,4 @@ rule rather than an independent sanction: both are homes in the recognized vocab
 - §5.1 `calls_llm` gains general definitions of four keys fixtures already used: `model`, `response_schema`, `config` (declared fields plus an optional `extras` mapping) and `retry` (§5.11's `call.retry` mapping, including `per_attempt_override` and `reask`). §5.5: `mock_llm` gains a mapping form `{capabilities, responses}` mirroring `mock_provider`, with each wire request taking the next entry; `expected.log_records` entries gain `count`; `expected.log_records_absent` asserts that no captured record matches, with the adapter required to capture the whole case, wait for observer delivery, and fail a case it cannot capture; `otel_observer: {attached: false}` composes no OTel observer for a case; and a case composes a Langfuse observer only when it carries a `langfuse_observer` or `langfuse_client` block or asserts Langfuse output. §5.10 adds `<call_id_X>` to the observability suite's binding tokens. §5.11 defines `mock_provider.capabilities` and the three flags already in use (`supports_native_response_format`, `supports_native_structured_output`, `supports_image_input`), with what `false` means for each, and `expected.llm_spans`, the per-attempt span assertion, as an exhaustive list in attempt order whose entries assert only the keys they carry. §5.12 retypes `error_message_mentions` to a string or a non-empty list and describes `output_content` as the message content as the mapping produced it, and §5.13's `_mentions` flavor accepts a non-empty list asserting every substring, an empty list being `fixture_schema_invalid` by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)
 - §8.4 *Assertion* states the matching rules every assertion follows: single values, complete lists with unordered and existence lists named in their definitions, mappings that assert the keys they name with a few exact positions, the `<key>_absent_keys` and `absent_keys` absence forms, the null rule, the call a block reads, and that every written assertion is checked. New §4.5 limits a fixture to what the spec requires, with capability gates that never take a check away from an adapter, and new §5.17 generalizes §5.5's capability mechanism. New §5.16 moves the wire-request assertions out of §5.15 and adds `expected_wire_request_includes`. §5's preamble requires every key at an assertion position to be a defined directive, apart from `capture_as` labels and named claims, which an adapter implements, and reserves the absence keys. §5.5, §5.6, §5.8, §5.10 and §5.11 define the assertion directives in use, including one category rule for raised errors through pipeline-utilities §6.4, `span_tree` and `traces`, `delivery_order`, `final_state_bounds`, `middleware_log_captured`, `<timestamp>` and the binding-token rules. §6.1's `accumulate` observer and §6.7's middleware log keep one bucket per call, §6.2's session store counts its calls, §6.3 composes span and log capture for any case asserting them and rejects one that also sets `otel_observer: {attached: false}`, and §6.9 records each measurement individually. §5.1's `flaky_by_index` deterministic form raises uncategorized errors, as `flaky_per_index` does without its new optional `category`, and §5.7 defines `run_count` by [proposal 0127](../../proposals/0127-assertion-matching-rules.md)
 - §5.1's `augment_metadata` and §5.2's factory-reducer entries describe their calls without Python's `**kwargs` notation. No behavior change; spec v0.120.1 (clarification, no proposal)
+- §5.1, §5.5, §6.2, §6.5 and §6.8 use language-neutral notation. Python's `None` and `True` become `null` and `true`, and keyword arguments are written `name: value`. No behavior change; spec v0.120.2 (clarification, no proposal)

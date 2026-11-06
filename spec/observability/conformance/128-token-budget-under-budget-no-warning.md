@@ -21,7 +21,7 @@ the baseline-of-the-signal case: a budget that is observed but not breached.
 
 1. `token_budget_under_budget_records_utilization_no_exceeded` — Budgeted prompt
    (`input_max_tokens: 40`, no total bound), mock usage `{prompt 20, completion 1, total 21}`,
-   `enable_metrics = True`. `prompt_tokens` 20 <= `input_max_tokens` 40, so no bound is exceeded. The
+   `enable_metrics = true`. `prompt_tokens` 20 <= `input_max_tokens` 40, so no bound is exceeded. The
    span carries `openarmature.prompt.token_budget.input_max_tokens = 40` and
    `openarmature.llm.token_budget.exceeded = false`; the utilization histogram records `20 / 40 = 0.5`
    with `kind = "input"`; the exceeded counter records nothing. The completion's ordinary token-usage

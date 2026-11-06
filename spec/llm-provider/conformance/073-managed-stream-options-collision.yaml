@@ -28,7 +28,7 @@
 cases:
   - name: extras_stream_options_conflicts_rejected_pre_send
     description: |
-      complete(stream=True, config={extras: {stream_options: {include_usage:
+      complete(stream: true, config: {extras: {stream_options: {include_usage:
       false}}}). The streaming mapping sets stream_options: {include_usage:
       true} (§8.1.6); the caller's extras stream_options — an UNDECLARED key —
       names that managed field, and {include_usage: false} conflicts: it would
@@ -59,7 +59,7 @@ cases:
 
   - name: extras_stream_options_without_streaming_rides_untouched
     description: |
-      complete(config={extras: {stream_options: {include_usage: false}}})
+      complete(config: {extras: {stream_options: {include_usage: false}}})
       NON-streaming (stream unset). The mapping sends no stream / stream_options
       (§8.1.6 — those are the streaming request fields), so stream_options is
       UNMANAGED: the extras value rides the extras bag untouched onto the wire

@@ -1,5 +1,5 @@
 # gen_ai.system caller-set override: the OpenAI-compatible provider is
-# configured with gen_ai.system="vllm" to reflect that the endpoint is a
+# configured with gen_ai.system: "vllm" to reflect that the endpoint is a
 # vLLM server, not OpenAI itself. Verifies §5.5.3's "Implementations MUST
 # allow the gen_ai.system value to be configurable per provider instance"
 # clause and confirms the override is honored on the emitted span.

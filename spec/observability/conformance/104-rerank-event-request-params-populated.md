@@ -11,7 +11,7 @@ retrieval-provider §2), with absence-is-meaningful semantics for unsupplied par
 
 **Cases:**
 
-1. `request_params_populates_return_documents_when_supplied` — `config.return_documents=True`; the
+1. `request_params_populates_return_documents_when_supplied`: `config.return_documents: true`; the
    event's `request_params` carries `{return_documents: true}` and no other keys.
 2. `request_params_empty_when_no_config_supplied` — no config; `request_params` is an empty mapping.
 

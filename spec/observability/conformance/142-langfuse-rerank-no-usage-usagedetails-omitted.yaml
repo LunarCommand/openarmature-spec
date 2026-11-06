@@ -9,7 +9,7 @@
 # populates usageDetails.searchUnits from a present record). The mock is a
 # harness stand-in for a no-usage reranker (TEI /rerank is the real-world
 # archetype), NOT a claim that this is any vendor's exact wire. Runs under
-# default observer config (disable_provider_payload=True) so input / output
+# default observer config (disable_provider_payload: true) so input / output
 # stay null. (calls_rerank / mock_rerank directives in retrieval-provider
 # fixture 006's header; the suite provider identifier is "cohere".)
 
@@ -20,7 +20,7 @@ cases:
       body omits meta.billed_units) => RerankResponse.usage = null — a harness
       stand-in for a no-usage reranker (TEI /rerank is the real-world
       archetype), NOT a claim that this is any vendor's exact wire. Default
-      Langfuse observer config (disable_provider_payload=True). The Retriever
+      Langfuse observer config (disable_provider_payload: true). The Retriever
       observation MUST emit model + identity metadata, but its usageDetails
       MUST carry neither usage figure (no input and no searchUnits key). input
       / output stay null under the default payload posture.

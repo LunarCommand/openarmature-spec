@@ -7,7 +7,7 @@ is not in `completed_positions`.
 
 **Spec sections exercised:**
 
-- §10.4 Resume model — `invoke(resume_invocation=...)` loads the prior record, restores
+- §10.4 Resume model: `invoke(resume_invocation: ...)` loads the prior record, restores
   state, mints a new `invocation_id`, preserves `correlation_id`, and resumes at the first
   not-yet-completed node.
 - §10.3 Save granularity — node A's `completed` event saved; node B's `started` fired but no
@@ -18,7 +18,7 @@ is not in `completed_positions`.
 **Cases:**
 
 1. `abort_in_b_resume_skips_a` — three nodes A → B → C; B raises on first run; resume invoked
-   with `resume_invocation=<original id>`; assert A is skipped, B and C run, final state
+   with `resume_invocation: <original id>`; assert A is skipped, B and C run, final state
    matches what an uninterrupted run produces.
 
 **What passes:**

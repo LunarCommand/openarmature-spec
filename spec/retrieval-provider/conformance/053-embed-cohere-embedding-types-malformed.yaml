@@ -37,7 +37,7 @@ cohere_embedding_provider:
 cases:
   - name: partially_malformed_embedding_types_falls_back_to_float
     description: |
-      embed(config={extras: {embedding_types: ["int8", {"x": 1}]}}) — a list
+      embed(config: {extras: {embedding_types: ["int8", {"x": 1}]}}): a list
       with a well-formed precision string AND a malformed (object) element. The
       whole list is malformed, so it is treated as ABSENT: the wire request MUST
       carry embedding_types: ["float"] — NOT ["float", "int8"] (the well-formed
@@ -113,7 +113,7 @@ cases:
 
   - name: fully_malformed_embedding_types_falls_back_to_float
     description: |
-      embed(config={extras: {embedding_types: 5}}) — a value that is not a list
+      embed(config: {extras: {embedding_types: 5}}): a value that is not a list
       at all. It is malformed for the merge and treated as ABSENT: the wire
       request MUST carry embedding_types: ["float"] only, no error raised.
     state:
@@ -184,7 +184,7 @@ cases:
 
   - name: unrecognized_precision_strings_merge_rather_than_malform
     description: |
-      embed(config={extras: {embedding_types: ["banana", ""]}}) — both elements
+      embed(config: {extras: {embedding_types: ["banana", ""]}}): both elements
       are well-typed strings the provider does not recognize, one of them empty.
       The malformed test is STRUCTURAL, not a vocabulary check, so neither is
       malformed: the list merges with the mapping's mandatory "float" in the

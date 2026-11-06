@@ -39,7 +39,7 @@ dispatch span, not the parallel-branches NODE span directly.
   (their distinct dispatch spans), not by an internal observer stack-key recovery.
 - `invariants.dispatch_spans_close_before_node_span: bool` — harness asserts dispatch spans'
   `ended_at` precedes the parallel-branches NODE span's `ended_at`.
-- `invariants.dispatch_spans_close_in_declaration_order: list[str]` — harness asserts the
+- `invariants.dispatch_spans_close_in_declaration_order: list<string>`: harness asserts the
   declared close order of the dispatch spans matches `parallel_branches_config.branch_names`.
 
 **What passes:**

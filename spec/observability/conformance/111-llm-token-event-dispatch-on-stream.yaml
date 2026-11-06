@@ -1,7 +1,7 @@
 # graph-engine §6 *Typed LLM token event* + llm-provider §5 *Streaming* /
 # §6 *Streaming assembly*. When complete() is called with `stream` set, the
 # provider consumes the streamed wire response and emits one LlmTokenEvent
-# per chunk (delta_kind="content" for answer text), in chunk_index order,
+# per chunk (delta_kind: "content" for answer text), in chunk_index order,
 # all BEFORE the terminal LlmCompletionEvent for the same call. The ordered
 # concatenation of the content deltas equals the terminal event's assembled
 # content, and every token event shares the terminal event's call_id.
@@ -14,7 +14,7 @@
 cases:
   - name: token_events_dispatched_in_chunk_order_concatenate_to_content
     description: |
-      One LLM-calling node invoked with stream=True. The mock yields three
+      One LLM-calling node invoked with stream: true. The mock yields three
       content chunks ("Hel", "lo ", "world") then a terminal usage chunk. The
       harness asserts:
       - exactly three LlmTokenEvents, delta_kind="content", chunk_index 0,1,2

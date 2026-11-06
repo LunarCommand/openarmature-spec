@@ -19,8 +19,8 @@
 #     concatenated deltas, not wire-incremental delivery (llm-provider §5).
 #     * `calls_llm.stream: <bool>`: when true, the node calls complete() with
 #       `stream` set, so the provider emits per-chunk LlmTokenEvents
-#       (graph-engine §6). False or absent keeps the atomic path, which
-#       emits no token events.
+#       (graph-engine §6). When it is false or absent, the call takes the
+#       atomic path, which emits no token events.
 #     * `mock_llm_stream: [[<chunk>, ...], ...]`: replaces `mock_llm` for
 #       streamed calls. It holds one entry per complete() call, in the order
 #       the calls are made; each entry is the ordered list of SSE chunks the

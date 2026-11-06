@@ -20,8 +20,8 @@ sibling branches.
 **What passes:**
 
 - Final state: alpha_result=1, beta_result=2, gamma_result=3.
-- Alpha's inner node fires events for `attempt_index=0` (failed) and
-  `attempt_index=1` (succeeded) — two observer event pairs.
+- Alpha's inner node fires events for `attempt_index: 0` (failed) and
+  `attempt_index: 1` (succeeded): two observer event pairs.
 - Beta and gamma each fire one event pair (no retry).
 - The graph completes (alpha's transient was caught and retried).
 

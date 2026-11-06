@@ -29,7 +29,7 @@ cases:
       One LLM-calling node that renders a budgeted prompt (input_max_tokens
       10) and passes a response_schema. The mock returns truncated JSON
       (finish_reason "length") with usage {prompt 20, completion 16, total
-      36}; complete() raises structured_output_invalid. enable_metrics=True.
+      36}; complete() raises structured_output_invalid. enable_metrics: true.
       Because this failure category carries usage (proposal 0082), the
       token-budget signal evaluates on the failure: prompt_tokens 20 >
       input_max_tokens 10. The harness asserts:
@@ -183,7 +183,7 @@ cases:
     description: |
       The companion no-usage case. The same budgeted prompt (input_max_tokens
       10), but the mock returns a 503 -> provider_unavailable (llm-provider
-      §7), which carries NO usage record (fixture 122). enable_metrics=True.
+      §7), which carries NO usage record (fixture 122). enable_metrics: true.
       LlmFailedEvent.token_budget MAY be populated (the active prompt's
       budget), but NO budget evaluation occurs — there is no usage to compare
       against (§5.5.15). The harness asserts:

@@ -52,7 +52,7 @@ cases:
 
   - name: disable_llm_spans
     description: |
-      OTel observer constructed with disable_llm_spans=True. The §5.5 LLM
+      OTel observer constructed with disable_llm_spans: true. The §5.5 LLM
       span is NOT emitted; node and other spans still emit normally.
     state:
       fields:

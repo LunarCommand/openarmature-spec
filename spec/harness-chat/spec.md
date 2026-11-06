@@ -124,7 +124,7 @@ Sessioned chat graphs store conversation history in a canonical session-state fi
 
 - **Field name.** `messages` (lowercase, plural). The chat harness reads + writes through this
   exact field name.
-- **Field type.** `list[ChatMessage]`, ordered.
+- **Field type.** `list<ChatMessage>`, ordered.
 - **Reducer.** `append`. Each turn appends one or more new messages to the tail.
 
 **Canonical name (v1).** v1 MANDATES the canonical field name. A follow-on proposal MAY add a
@@ -139,7 +139,7 @@ semantic-indexed retrieval) is OUT of scope per §13 — the `messages` field ca
 conversational turns within one `session_id`.
 
 **Reducer composition.** The chat harness does NOT register a reducer on its own; the application's
-graph state schema declares `messages: list[ChatMessage]` with the `append` reducer per
+graph state schema declares `messages: list<ChatMessage>` with the `append` reducer per
 graph-engine's canonical state-reducer conventions. Implementations MAY ship a helper that
 defines this field on a state schema for convenience (a "ChatStateMixin" or equivalent
 per-language idiom), but the spec contract requires only that a sessioned chat graph carries the
@@ -171,7 +171,7 @@ etc.) — the callable contract is the same.
 `ChatTurnOutcome` is a discriminated outcome carrying one of three variants:
 
 - **`completed`** — the turn returned a normal completion. Carries:
-  - `replies: list[ChatMessage]` — the new messages added to history during the turn, in
+  - `replies: list<ChatMessage>`: the new messages added to history during the turn, in
     graph-execution order. Always a list (length 1 in the common single-message case; longer for
     tool-loop agents that emit assistant-tool-call → tool-role → assistant-final sequences). The
     list MUST contain only messages newly added during this turn — pre-existing history MUST NOT
@@ -190,13 +190,13 @@ etc.) — the callable contract is the same.
     surfaces this directly to the user.
 - **`suspended`** — the turn called `suspend()` mid-invocation. Carries:
   - `signal_descriptor` — the suspension descriptor per suspension §4 (signal id, metadata).
-  - `pending_messages: list[ChatMessage]` — messages the graph appended to `state.messages`
+  - `pending_messages: list<ChatMessage>`: messages the graph appended to `state.messages`
     before reaching the suspending node (per §8.1), in graph-execution order. Empty list when
     the graph suspended without pre-emitting any pending message; one or more entries when it
     did. Always a list (matches `ChatTurnOutcome.completed.replies`'s always-list shape; same
     rationale per the proposal's Open Questions resolution).
   - `invocation_id` — the paused invocation's identifier per harness §3.3 (needed by the caller
-    when the resume-via-listener pattern is not used and `invoke(resume_invocation=...)` is called
+    when the resume-via-listener pattern is not used and `invoke(resume_invocation: ...)` is called
     explicitly).
 
 **Discriminator mechanism is per-language.** Implementations MAY use a tagged-union shape (Python
@@ -303,7 +303,7 @@ length) and surface it on the `ChatTurnOutcome.suspended.pending_messages` list.
 persists the post-update state at suspend time per suspension §4, so the upstream node's
 appended messages are in the captured state by the time the chat harness reads the tail.
 
-**Always-list shape.** `pending_messages` is always a `list[ChatMessage]` — empty when the
+**Always-list shape.** `pending_messages` is always a `list<ChatMessage>`: empty when the
 graph suspended without pre-emitting any message, one or more entries (in graph-execution
 order) when it did. The always-list shape matches the OQ-6 resolution for
 `ChatTurnOutcome.completed.replies`; per-language singular-or-list ergonomics is not a
@@ -324,7 +324,8 @@ order.
 
 When the resume signal arrives (per harness §6's signal coordinator):
 
-1. The chat harness dispatches the signal-resume invocation per harness §3.3 (`invoke(resume_invocation=<paused_id>, signal_payload=<payload>)`).
+1. The chat harness dispatches the signal-resume invocation per harness §3.3
+   (`invoke(resume_invocation: <paused_id>, signal_payload: <payload>)`).
 2. The resumed invocation continues from the post-suspend node per suspension §7.
 3. The post-resume turn's new messages (extracted per §7's tail rule) flow to the caller via a
    **subscribed listener** the caller registered against the chat harness.
@@ -466,7 +467,7 @@ non-deterministic message-interleaving in history.
 - **observability** (`spec/observability/spec.md`) — turn-level
   wrapper spans per harness §4.6; no chat-specific span attributes introduced.
 - **graph-engine** (`spec/graph-engine/spec.md`) — chat graphs are
-  graph-engine graphs; the `messages: list[ChatMessage]` field follows canonical state-reducer
+  graph-engine graphs; the `messages: list<ChatMessage>` field follows canonical state-reducer
   conventions.
 - **future memory capability** — cross-session memory (per-user profiles, episodic memory,
   vector retrieval) deferred to a future sub-spec; chat composes with it when its spec lands.
@@ -506,3 +507,4 @@ non-deterministic message-interleaving in history.
 
 - created by [proposal 0056](../../proposals/0056-harness-chat.md)
 - §5's `send()` and §9's `send_streaming()` signatures are fenced as plain text rather than Python. No behavior change; spec v0.120.1 (clarification, no proposal)
+- §4, §5.2, §8.1, §8.2 and §12 use language-neutral notation. `list[ChatMessage]` becomes `list<ChatMessage>` and keyword arguments are written `name: value`. No behavior change; spec v0.120.2 (clarification, no proposal)

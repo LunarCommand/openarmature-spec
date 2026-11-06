@@ -46,7 +46,7 @@ cohere_embedding_provider:
 cases:
   - name: unrecognized_input_type_rejected_pre_send
     description: |
-      embed(config={input_type: "summarization"}) — an OA input_type value
+      embed(config: {input_type: "summarization"}): an OA input_type value
       OUTSIDE the query / document / classification / clustering set §8.4
       recognizes. The mapping MUST raise provider_invalid_request (§7) at
       the pre-send validation layer and MUST NOT issue any /v2/embed request

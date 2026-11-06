@@ -20,7 +20,7 @@ distinct across attempts.
 **Cases:**
 
 1. `caller_supplied_correlation_id_flows_through_resume` — caller passes
-   `correlation_id="my-business-request-42"`; node B fails on first run; resume; assert
+   `correlation_id: "my-business-request-42"`; node B fails on first run; resume; assert
    both runs' spans/logs carry the same correlation_id; assert the two runs have different
    invocation_ids.
 2. `auto_generated_correlation_id_preserved_across_resume` — no caller value; framework

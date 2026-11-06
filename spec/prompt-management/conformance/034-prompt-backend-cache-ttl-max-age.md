@@ -15,7 +15,7 @@ dependence).
 
 - One caching backend (`cached_maxage`) preloaded with `greeting`.
 
-**Calls + expectations (`cache_ttl_seconds=60` throughout):**
+**Calls + expectations (`cache_ttl_seconds: 60` throughout):**
 
 1. `fetch` at t=0 → source read, entry cached.
 2. `advance_clock 30`, then `fetch` at t=30 (< 60) → served from cache (no source read).

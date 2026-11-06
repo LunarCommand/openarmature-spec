@@ -12,7 +12,7 @@ error message under the payload flag, collapsing two rules into one: payload off
 
 **Why the LLM case forced it.** A `structured_output_invalid` failure's exception message commonly quotes the
 model output that failed validation, and a provider 4xx can quote the request. Under the old arrangement a
-caller could set `disable_provider_payload=True`, watch `generation.output` disappear as promised, and still
+caller could set `disable_provider_payload: true`, watch `generation.output` disappear as promised, and still
 receive that same text inside `metadata.error_message` on a fully isolated provider, with no lever to stop it.
 
 **The load-bearing pair.** Neither case here involves a shared provider, which isolates the flag's effect from

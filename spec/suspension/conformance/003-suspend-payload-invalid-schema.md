@@ -13,7 +13,7 @@ is errored (not completed).
 **What passes:**
 
 - Initial invoke returns suspended.
-- Resume invoke with a type-incompatible payload (`count="not_an_int"`
+- Resume invoke with a type-incompatible payload (`count: "not_an_int"`
   against an `int`-typed field) raises
   `suspension_resume_payload_invalid`.
 

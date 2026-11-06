@@ -32,7 +32,7 @@ openai_embedding_provider:
 cases:
   - name: base64_byte_length_not_multiple_of_4_raises
     description: |
-      embed(config={extras: {encoding_format: "base64"}}) over one input.
+      embed(config: {extras: {encoding_format: "base64"}}) over one input.
       The mock returns data[0].embedding as the base64 string "AAAAPwAA",
       which decodes to 6 bytes — not a whole multiple of 4, so it cannot
       partition into float32 values. The adapter MUST raise

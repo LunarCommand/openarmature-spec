@@ -2,7 +2,7 @@
 # a response_schema and a retry record with NO reask builder. Attempt 0
 # returns schema-invalid JSON (missing required "age"). Absent a reask
 # builder, structured_output_invalid is non-transient and raises on the
-# first occurrence — the loop does NOT iterate, even though max_attempts=2.
+# first occurrence: the loop does NOT iterate, even though max_attempts: 2.
 # Exactly one attempt issues (one wire request, one LLM span); the second
 # mock response is never consumed.
 
@@ -45,7 +45,7 @@ call:
       age: {type: integer}
     required: [name, age]
     additionalProperties: false
-  # NO reask field — reask is off. max_attempts=2 has no effect because
+  # NO reask field: reask is off. max_attempts: 2 has no effect because
   # structured_output_invalid is non-transient without a reask builder.
   retry:
     max_attempts: 2

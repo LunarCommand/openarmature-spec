@@ -19,8 +19,8 @@ backends:
 cases:
   - name: placeholder_injection_non_empty
     description: |
-      Render with placeholders={"history": [user-prior, assistant-prior]}
-      and variables={"user_turn": "follow-up question"}. Asserts the
+      Render with placeholders: {"history": [user-prior, assistant-prior]}
+      and variables: {"user_turn": "follow-up question"}. Asserts the
       resulting PromptResult.messages sequence is the four-Message list
       [system, prior-user, prior-assistant, final-user] in order, with
       the injected pair appearing standalone at the placeholder slot

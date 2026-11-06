@@ -19,7 +19,7 @@ cases:
   - name: embedding_observation_omits_usagedetails_input_when_no_usage_record
     description: |
       One embedding call. Default Langfuse observer config
-      (disable_provider_payload=True). The mocked response is a usage-less
+      (disable_provider_payload: true). The mocked response is a usage-less
       embedding body (the standard embedding-mock body with the usage block
       dropped) that yields usage = null — a harness stand-in for a no-usage
       provider (TEI /embed is the real-world archetype), NOT a claim that this

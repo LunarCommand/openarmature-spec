@@ -12,7 +12,7 @@ single-call-multi-span framing.
 **Cases:**
 
 1. `call_level_retry_exhaustion_propagates_final_error` — Mocked provider returns HTTP 503 (→
-   `provider_unavailable`) on both attempts. `complete()` is called with `retry={max_attempts:
+   `provider_unavailable`) on both attempts. `complete()` is called with `retry: {max_attempts:
    2, backoff: {deterministic 0}}`. Asserts:
    - The call raises `provider_unavailable` (the final attempt's error propagates per the
      normal exception path).

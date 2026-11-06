@@ -26,7 +26,7 @@
 cases:
   - name: token_usage_histogram_records_no_input_observation_when_prompt_tokens_null
     description: |
-      One LLM-calling node, enable_metrics=True. The mock returns usage
+      One LLM-calling node, enable_metrics: true. The mock returns usage
       {prompt_tokens: null, completion_tokens: 5, total_tokens: 15}. Per §11.2
       the metric-capture primitive records:
       - NO openarmature.gen_ai.client.token.usage observation with

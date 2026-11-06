@@ -5,7 +5,7 @@
 cases:
   - name: llm_attempt_index_zero_on_single_attempt_call
     description: |
-      Default complete() call (no retry kwarg). The §5.5 LLM provider
+      Default complete() call (no retry parameter). The §5.5 LLM provider
       span carries openarmature.llm.attempt_index = 0; the
       single-span framing is preserved (no extra spans).
     state:
@@ -19,7 +19,7 @@ cases:
         calls_llm:
           messages: [{role: user, content: "hi"}]
           stores_response_in: msg
-          # No retry kwarg — single-attempt default.
+          # No retry parameter: single-attempt default.
     edges:
       - {from: ask_llm, to: END}
     initial_state: {}

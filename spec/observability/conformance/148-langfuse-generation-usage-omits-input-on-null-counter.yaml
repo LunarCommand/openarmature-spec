@@ -22,7 +22,7 @@ cases:
   - name: generation_usage_omits_input_when_prompt_tokens_null
     description: |
       Single successful LLM call, Langfuse observer with
-      disable_provider_payload=False. The mock returns usage {prompt_tokens:
+      disable_provider_payload: false. The mock returns usage {prompt_tokens:
       null, completion_tokens: 5, total_tokens: 15}. The Generation's
       generation.usage MUST carry output = 5 and total = 15 but MUST NOT carry
       an `input` field (prompt_tokens not reported — §8.4.3). The rest of the

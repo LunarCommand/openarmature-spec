@@ -4,11 +4,12 @@
 # SAME subgraph field, into a non-round-trip-idempotent parent reducer (e.g.
 # `append`), round-trips and re-merges — doubling the value.
 #
-# `inputs` is `Mapping[str, str]` (subgraph_field -> parent_field); `extra_outputs`
-# is `Mapping[str, str]` (parent_field -> subgraph_field). Here parent `log`
-# (reducer `append`) is copied into subgraph field `carry` via `inputs`, and
-# subgraph field `carry` is merged back into parent `log` via `extra_outputs` —
-# the SAME subgraph field, the SAME parent field: a round-trip.
+# `inputs` is `dict<string, string>` (subgraph_field -> parent_field);
+# `extra_outputs` is `dict<string, string>` (parent_field -> subgraph_field).
+# Here parent `log` (reducer `append`) is copied into subgraph field `carry`
+# via `inputs`, and subgraph field `carry` is merged back into parent `log`
+# via `extra_outputs`, the SAME subgraph field, the SAME parent field: a
+# round-trip.
 #
 # `projection_reducer_round_trip` is a WARNING (compilation SUCCEEDS), asserted
 # via the `expected_compile_warning` directive (conformance-adapter §5.8),

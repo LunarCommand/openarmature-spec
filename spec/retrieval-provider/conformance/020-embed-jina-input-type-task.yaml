@@ -56,7 +56,7 @@ jina_embedding_provider:
 cases:
   - name: input_type_query_sends_task_retrieval_query
     description: |
-      embed(config={input_type: "query"}) against a Jina EmbeddingProvider.
+      embed(config: {input_type: "query"}) against a Jina EmbeddingProvider.
       The §8.2 closed-set mapping translates input_type "query" to Jina's
       native task "retrieval.query", so the wire request to /v1/embeddings
       MUST carry task "retrieval.query" alongside {model, input,
@@ -122,7 +122,7 @@ cases:
 
   - name: input_type_document_sends_task_retrieval_passage
     description: |
-      embed(config={input_type: "document"}) against the same provider:
+      embed(config: {input_type: "document"}) against the same provider:
       document -> "retrieval.passage" per the §8.2 closed-set mapping, so
       the wire request MUST carry task "retrieval.passage". input_type MUST
       reach EmbeddingEvent.request_params as "document".
@@ -244,7 +244,7 @@ cases:
 
   - name: dimensions_maps_to_jina_dimensions_field
     description: |
-      embed(config={dimensions: 4}) — the §8.2 mapping sends Jina's
+      embed(config: {dimensions: 4}): the §8.2 mapping sends Jina's
       `dimensions` field (Matryoshka truncation) alongside {model, input,
       truncate: false}. No input_type, so `task` is ABSENT. Single input;
       the response is a one-element data array of length 4. Confirms the

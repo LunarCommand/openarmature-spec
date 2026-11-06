@@ -49,7 +49,7 @@ Implementations MUST provide at least the following eight canonical reducers: `l
 updates are lists of lists — e.g., fan-out target fields collecting list-emitting per-instance values),
 `merge_all` (for mapping-typed fields whose updates are lists of mappings — e.g., fan-out target fields
 collecting dict-emitting per-instance values), `bounded_append(max_len)` (factory; `append` capped at
-`max_len` entries with front-drop on overflow), `dedupe_append(key=None)` (factory; `append` skipping
+`max_len` entries with front-drop on overflow), `dedupe_append(key?)` (factory; `append` skipping
 items whose key already appears in the existing list), and `merge_by_key(key)` (factory; list-of-records
 keyed merge — entries with a key matching an existing entry replace the existing entry in place; entries
 with novel keys are appended). Users MAY register custom reducers per field.
@@ -92,7 +92,7 @@ summarized or transformed first (the canonical chat-history-with-LLM-summarizati
 `append` plus a separate compaction node or middleware — reducers are pure synchronous functions per the
 contract above and cannot perform the IO that real compaction requires.
 
-**`dedupe_append(key=None)` semantics.** A factory returning a reducer that extends a list with items from
+**`dedupe_append(key?)` semantics.** A factory returning a reducer that extends a list with items from
 the update that are not already present (by key) in the existing list. The `key` parameter is an optional
 callable mapping an item to its dedup key; if omitted, the item itself is used as the key (requires hashable
 items). Behavior: initialize a seen-keys set from `prior` (preserving `prior` unchanged in the result),
@@ -109,7 +109,7 @@ callable that raises on any item propagates as `ReducerError`. The reducer does 
 update with a key matching an existing item REPLACE the existing item in place; items with novel keys are
 appended at the end of the list in the order they appear in the update. The `key` parameter is a required
 callable mapping an item to its merge key — the spec does NOT default this; keyed merge without a key
-function is meaningless and a factory call with `key=None` raises `reducer_configuration_invalid` at field
+function is meaningless and a factory call with `key: null` raises `reducer_configuration_invalid` at field
 registration time. Behavior: build a `key_to_idx` index from `prior` (when `prior` contains duplicate keys,
 the index MUST hold the LAST index for each duplicate key — implementations whose native dict construction
 uses first-wins semantics MUST iterate explicitly to enforce last-wins); for each item in `update`, if its
@@ -251,7 +251,7 @@ identifiers (as an error class, error code, or tagged discriminant, per the lang
 - `conflicting_projection_forms` — a subgraph-as-node declares both the same-name projection sets and an
   explicit `inputs`/`outputs` mapping (the two are mutually exclusive).
 - `reducer_configuration_invalid` — a reducer factory was supplied invalid construction parameters
-  (e.g., `bounded_append(max_len=0)`, `merge_by_key(key=None)`). Raised at field registration / graph
+  (e.g., `bounded_append(max_len: 0)`, `merge_by_key(key: null)`). Raised at field registration / graph
   compilation time, before any node body runs. Distinct from `conflicting_reducers`, which is about
   the reducer-declaration shape across multiple reducers on the same field; `reducer_configuration_invalid`
   is about parameters supplied to a single reducer factory.
@@ -411,9 +411,9 @@ applies to a known finite set of workers captured at call time, rather than an o
 new invocations could extend past the deadline.
 
 The `drain` operation MUST accept an optional **timeout** parameter (interpreted as a non-negative
-duration in seconds, mapped to the host language's idiomatic wait-bound type — for example, Python's
-`float` seconds). If the timeout is omitted or `None`, drain waits indefinitely (the existing v0.3.0
-behavior). If a timeout is supplied:
+duration in seconds, mapped to the host language's idiomatic wait-bound type, such as a
+floating-point number of seconds). If the timeout is omitted or `null`, drain waits indefinitely
+(the existing v0.3.0 behavior). If a timeout is supplied:
 
 - drain MUST return no later than `timeout` seconds after the call begins;
 - any observer events still queued or in-flight when the timeout is reached are considered
@@ -472,7 +472,7 @@ returns (the deliver loop processes that event on the same queue the drain is wa
 The `timeout` parameter follows the same discipline as the existing `drain`'s timeout above — a
 non-negative duration in seconds, mapped to the host language's idiomatic wait-bound type;
 implementations MUST reject negative or `NaN` values at the API boundary with a per-language
-idiomatic error. If `timeout` is omitted or `None`, the drain waits indefinitely for the snapshotted
+idiomatic error. If `timeout` is omitted or `null`, the drain waits indefinitely for the snapshotted
 set to complete (the same default as `drain`); if supplied:
 
 - the operation MUST return no later than `timeout` seconds after the call begins;
@@ -854,8 +854,8 @@ llm-provider §7 error categories — `provider_invalid_response`, `provider_una
 event surface.
 
 Like the metadata-augmentation event above, `LlmCompletionEvent` carries no `phase` discriminator and
-is NOT subject to the `phases` subscription filter. Observers with a `phases={"started"}` or
-`phases={"completed"}` subscription still receive `LlmCompletionEvent`; the phases filter applies only
+is NOT subject to the `phases` subscription filter. Observers with a `phases: {"started"}` or
+`phases: {"completed"}` subscription still receive `LlmCompletionEvent`; the phases filter applies only
 to phase-bearing `NodeEvent` variants. Observers that want to selectively consume the typed event
 filter via type discrimination rather than via phase subscription. graph-engine does not define the
 event's emission timing semantics beyond this representation and delivery ordering; the rendering /
@@ -1152,7 +1152,7 @@ rerank-specific substitutions (`query` + `documents` in place of `input_strings`
 | `active_prompt_group` | record \| null | Snapshot of the active `PromptGroup` identity. Same shape as on `EmbeddingEvent`. |
 | `call_id` | string | A per-call disambiguator minted by the implementation. **Always present** (never null); freshly minted per `rerank()` call. |
 | `document_count` | int | The number of input documents the call was made with (equals `len(documents)`). Derivable but kept for ergonomics + cross-vendor consistency. |
-| `top_k` | int \| null | The caller-supplied `top_k` value (or null when the caller passed `None`). |
+| `top_k` | int \| null | The caller-supplied `top_k` value (or null when the caller passed `null`). |
 | `result_count` | int | The number of `ScoredDocument` entries the provider returned (equals `len(response.results)`). |
 | `output_results` | list of scored-document records | The scored results the call returned (`RerankResponse.results`; each `{index, relevance_score, document?}` per retrieval-provider §6 `ScoredDocument`). Populated unconditionally on the success event; observer-side privacy gating at the rendering boundary per the privacy paragraph below, same posture as `query` / `documents`. |
 
@@ -1197,7 +1197,7 @@ failure-specific fields in place of the success-only response-side fields (`resp
 | `active_prompt_group` | record \| null | Snapshot of the active `PromptGroup` identity. Same shape. |
 | `call_id` | string | A per-call disambiguator minted by the implementation. **Always present**; freshly minted per `rerank()` call. A failed call gets its own `call_id`, distinct from any retry-attempt sibling. |
 | `document_count` | int | The number of input documents the call was made with (equals `len(documents)`). |
-| `top_k` | int \| null | The caller-supplied `top_k` value (or null when the caller passed `None`). |
+| `top_k` | int \| null | The caller-supplied `top_k` value (or null when the caller passed `null`). |
 | `error_category` | string | One of the llm-provider §7 normative categories applicable to rerank (per retrieval-provider §7). Always present. |
 | `error_type` | string \| null | OPTIONAL impl-level / vendor-specific error type or code. Two acceptable styles (vendor error code, upstream exception class name). Null when no impl-side type is available. |
 | `error_message` | string | Human-readable message from the raised exception. Always present (empty string when the exception carried no message). |
@@ -1375,3 +1375,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §6 `LlmCompletionEvent.usage` **mirrors the response** for a malformed usage counter (llm-provider §7 *Malformed usage counter*): a partially-malformed record surfaces as a present record with the malformed counter(s) `null`, an all-malformed record as a present record of null counters (§6 null-together), **not** as a null `usage` — pinning which shape a malformed-counter response takes so the event and the response agree, and closing a divergence 0093 could leave dormant (no completion mapping reported "no usage" then; a malformed all-counter response reaches that state now). The `record | null` type is unchanged. Companion to the retrieval-side `EmbeddingEvent` / `RerankEvent` mirror (0100) by [proposal 0101](../../proposals/0101-malformed-usage-counter-llm-observability.md)
 - §6 `LlmCompletionEvent` and `LlmFailedEvent` gain **`structured_output_path`**: `"native"`, `"native_unenforced"`, `"tool_coercion"` or `"prompt_augmentation"`, or null when no `response_schema` was supplied or no request was sent; a classification, never gated by `disable_provider_payload`. Under call-level retry the call's single typed event describes the request its outcome came from: its `input_messages`, `request_params` and `request_extras` reflect the messages the last attempt sent and its configuration after any per-attempt override, while its `attempt_index` stays node-level. `input_messages` is the list as sent, including the schema directive on the prompt-augmentation path, or the caller's list for a call rejected before sending, and the failure event's `output_content` row points to §7's definition. The failure-event `error_message` paragraph now points to llm-provider §7's definition of the failure description rather than restating it by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)
 - §6's typed-event paragraphs name the event type an observer filters on in place of an `isinstance(...)` example, its drain-input rule's example names a `TypeError` in Python or TypeScript, its attempt-index precedence note says "context-primitive-style" in place of Python's `ContextVar`, and its state-immutability and `error_type` examples pair Python with TypeScript. No behavior change; spec v0.120.1 (clarification, no proposal)
+- §2 and §6 use language-neutral notation. Python's `None` becomes `null` and keyword arguments are written `name: value`. The `dedupe_append(key?)` signature marks its optional parameter with `?` in place of a `None` default, and §6's drain timeout example is a floating-point number of seconds in place of Python's `float`. No behavior change; spec v0.120.2 (clarification, no proposal)

@@ -36,7 +36,7 @@ reaches every span / observation.
   primitive: at the top of the named branch's subgraph (before any LLM call runs), the
   harness internally calls the framework's augment-metadata helper with the supplied
   entries. Equivalent to placing
-  `set_invocation_metadata(branchName="fraud_check")` at the top of the
+  `set_invocation_metadata(branchName: "fraud_check")` at the top of the
   `fraud_check` branch's first node.
 - `invariants.parallel_branches_per_branch_metadata_isolation: true` — harness verifies
   no branch's observation metadata contains the sibling branch's `branchName`.

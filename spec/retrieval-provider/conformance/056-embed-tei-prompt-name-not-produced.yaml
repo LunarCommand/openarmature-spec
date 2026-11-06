@@ -40,7 +40,7 @@ tei_embedding_provider:
 cases:
   - name: extras_prompt_name_rides_untouched_on_client_side_prefix_path
     description: |
-      embed(input_type=query, config={extras: {prompt_name: "passage"}}) against
+      embed(input_type: query, config: {extras: {prompt_name: "passage"}}) against
       a provider configured with client-side prefixes and NO prompt map. The
       mapping sends no prompt_name of its own, so the key is not managed on
       this call and the extras value keeps §6's untouched pass-through: the

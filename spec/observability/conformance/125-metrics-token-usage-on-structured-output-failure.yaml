@@ -21,7 +21,7 @@
 cases:
   - name: structured_output_failure_records_token_usage_and_duration_with_error_type
     description: |
-      One LLM-calling node passing a response_schema, enable_metrics=True.
+      One LLM-calling node passing a response_schema, enable_metrics: true.
       The mock returns truncated JSON (finish_reason "length") with usage
       {input 20, output 16}; complete() raises structured_output_invalid.
       Because the failure carries a usage record, the metric-capture

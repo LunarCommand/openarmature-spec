@@ -8,7 +8,7 @@ cases:
   - name: embedding_observation_payload_suppressed_by_default
     description: |
       One embedding call. Default Langfuse observer config
-      (disable_provider_payload=True). The Embedding observation
+      (disable_provider_payload: true). The Embedding observation
       MUST emit with model, usageDetails, identity metadata, but
       NOT input or output (payload-gated). Asserts the observation
       type is "embedding" (created via asType="embedding") rather
@@ -66,7 +66,7 @@ cases:
   - name: embedding_observation_payload_emitted_with_flag_off
     description: |
       One embedding call. Langfuse observer with
-      disable_provider_payload=False. The Embedding observation
+      disable_provider_payload: false. The Embedding observation
       MUST emit with input (the input strings list) and output
       (the full vectors) populated alongside the always-emitted
       fields.

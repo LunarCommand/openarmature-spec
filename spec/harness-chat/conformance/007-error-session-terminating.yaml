@@ -15,7 +15,7 @@ cases:
     state:
       fields:
         messages:
-          type: list[ChatMessage]
+          type: list<ChatMessage>
           reducer: append
           default: []
     entry: noop

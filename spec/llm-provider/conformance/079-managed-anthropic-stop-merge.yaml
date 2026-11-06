@@ -21,7 +21,7 @@ mapping: anthropic
 cases:
   - name: extras_stop_sequences_merges_with_declared
     description: |
-      complete(config={max_tokens: 64, stop_sequences: ["STOP"], extras:
+      complete(config: {max_tokens: 64, stop_sequences: ["STOP"], extras:
       {stop_sequences: ["END"]}}). The declared `stop_sequences` (["STOP"]) is
       emitted under Anthropic's native wire name; the extras `stop_sequences`
       (["END"]) collides and MERGES: declared first, de-duplicated. The wire
@@ -52,7 +52,7 @@ cases:
 
   - name: matching_extras_stop_sequences_collapses_dedup
     description: |
-      complete(config={max_tokens: 64, stop_sequences: ["STOP"], extras:
+      complete(config: {max_tokens: 64, stop_sequences: ["STOP"], extras:
       {stop_sequences: ["STOP"]}}). The extras matches the declared value;
       de-duplication collapses it, so the wire `stop_sequences` MUST be the
       single-element ["STOP"].

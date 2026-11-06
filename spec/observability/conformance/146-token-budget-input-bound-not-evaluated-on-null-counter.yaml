@@ -37,7 +37,7 @@ cases:
       10, no total bound) and calls the LLM. The mock returns usage
       {prompt_tokens: null, completion_tokens: 5, total_tokens: 15} — the
       input bound's actual counter (prompt_tokens) is not reported.
-      enable_metrics=True. The harness asserts:
+      enable_metrics: true. The harness asserts:
       - LlmCompletionEvent.usage mirrors the response: prompt_tokens null,
         completion 5, total 15 (graph-engine §6, proposal 0101);
       - LlmCompletionEvent.token_budget {input_max_tokens 10,
@@ -162,7 +162,7 @@ cases:
     description: |
       Independence: an input bound (input_max_tokens 10, actual prompt_tokens
       null -> not evaluated) beside a total bound (total_max_tokens 8, actual
-      total_tokens 12 -> exceeded) on the same call. enable_metrics=True. The
+      total_tokens 12 -> exceeded) on the same call. enable_metrics: true. The
       mock returns usage {prompt_tokens: null, completion_tokens: 5,
       total_tokens: 12}. total_tokens 12 > total_max_tokens 8, so the total
       bound is exceeded; the input bound's counter is null, so it is not

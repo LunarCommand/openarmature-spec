@@ -20,7 +20,7 @@ than routing to a generic load error or to the `_missing` category.
 **What passes:**
 
 - The error category is `session_state_migration_failed`.
-- The error carries `from_version="v1"` and `to_version="v2"`.
+- The error carries `from_version: "v1"` and `to_version: "v2"`.
 - The error's cause is the exception the `raises_during_migration` migration mock raised.
 - The graph's entry node is never invoked.
 

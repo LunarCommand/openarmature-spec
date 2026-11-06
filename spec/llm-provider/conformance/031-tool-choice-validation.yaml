@@ -17,7 +17,7 @@ cases:
       messages:
         - {role: user, content: "Do something."}
       tool_choice: required
-      # tools omitted — equivalent to None / [].
+      # tools omitted: equivalent to null / [].
     mock_provider:
       # If the implementation sends a request despite the validation
       # failure, the mock fails — confirming pre-send catch.
@@ -28,7 +28,7 @@ cases:
 
   - name: force_specific_with_empty_tools
     description: |
-      `tool_choice={type: "tool", name: X}` supplied with empty /
+      `tool_choice: {type: "tool", name: X}` supplied with empty /
       absent `tools`. Force-specific demands the named tool exist in
       the supplied list, but there are no tools. MUST raise
       `provider_invalid_request` at pre-send validation per §5
@@ -50,7 +50,7 @@ cases:
 
   - name: force_specific_with_name_not_in_tools_list
     description: |
-      `tool_choice={type: "tool", name: "search"}` supplied with
+      `tool_choice: {type: "tool", name: "search"}` supplied with
       `tools` containing only `summarize`. The forced tool name is not
       in the supplied tools list. MUST raise
       `provider_invalid_request` at pre-send validation per §5

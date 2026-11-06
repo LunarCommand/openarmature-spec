@@ -24,7 +24,7 @@
 cases:
   - name: extras_stop_merges_with_declared_stop_sequences
     description: |
-      complete(config={stop_sequences: ["STOP"], extras: {stop: ["END"]}}). The
+      complete(config: {stop_sequences: ["STOP"], extras: {stop: ["END"]}}). The
       declared `stop_sequences` (["STOP"]) is realized as OpenAI's wire `stop`;
       the caller's extras `stop` (the WIRE name, an UNDECLARED key) collides and
       MERGES per §6 clause (b): declared first, then the caller's, de-duplicated.
@@ -64,7 +64,7 @@ cases:
 
   - name: matching_extras_stop_collapses_dedup
     description: |
-      complete(config={stop_sequences: ["STOP"], extras: {stop: ["STOP"]}}). The
+      complete(config: {stop_sequences: ["STOP"], extras: {stop: ["STOP"]}}). The
       extras `stop` matches the declared value; de-duplication (first occurrence
       wins) collapses it, so the wire `stop` MUST be the single-element ["STOP"]
       — not ["STOP", "STOP"].
@@ -101,7 +101,7 @@ cases:
 
   - name: scalar_string_extras_stop_coerced_then_merged
     description: |
-      complete(config={stop_sequences: ["STOP"], extras: {stop: "END"}}). OpenAI's
+      complete(config: {stop_sequences: ["STOP"], extras: {stop: "END"}}). OpenAI's
       `stop` accepts string-or-array; the extras `stop` supplied as a scalar
       string "END" is coerced to the one-element list ["END"] before the merge,
       yielding the wire `stop` ["STOP", "END"].

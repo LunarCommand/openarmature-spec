@@ -1,7 +1,7 @@
 # 007 — Suspend inside collect-mode fan-out is rejected
 
 `suspend()` called inside a fan-out instance whose containing node is
-configured with `error_policy="collect"` MUST raise
+configured with `error_policy: "collect"` MUST raise
 `suspension_in_unsupported_context`. The collect-mode contract aggregates
 partial results across multiple concurrent instances; spec'ing the
 multi-suspend aggregate-descriptor case is deferred to a future

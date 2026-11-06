@@ -52,7 +52,7 @@ openai_embedding_provider:
 cases:
   - name: input_type_query_prepends_query_prefix_client_side
     description: |
-      embed(config={input_type: "query"}) against an ASYMMETRIC
+      embed(config: {input_type: "query"}) against an ASYMMETRIC
       openai_embedding_provider with query_prefix "query: " /
       document_prefix "passage: " bound. The OpenAI wire has no
       query/document field, so the mapping PREPENDS query_prefix to the
@@ -123,7 +123,7 @@ cases:
 
   - name: input_type_document_prepends_document_prefix_client_side
     description: |
-      embed(config={input_type: "document"}) against the same asymmetric
+      embed(config: {input_type: "document"}) against the same asymmetric
       provider: document_prefix "passage: " is prepended client-side, so
       the wire `input` MUST be ["passage: the eiffel tower is 330 metres
       tall."]. No input_type / task field on the wire; Authorization:

@@ -3,7 +3,7 @@
 The harness receives a synthetic signal payload correlating to a
 paused invocation and classifies it as the signal-resume inbound
 path. The harness invokes
-`invoke(resume_invocation=<id>, signal_payload=<payload>)`; the
+`invoke(resume_invocation: <id>, signal_payload: <payload>)`; the
 engine reuses the suspended invocation_id per suspension §7 and
 continues from the node after the suspending one.
 
@@ -25,8 +25,8 @@ continues from the node after the suspending one.
   arrive and be handled).
 - Second transmission classified as §3.3 signal-resume.
 - Resume invocation threads signal_payload into the engine.
-- Final state shows the merged payload (`approved=true`) plus the
-  post-resume node's update (`completed_flag=true`).
+- Final state shows the merged payload (`approved: true`) plus the
+  post-resume node's update (`completed_flag: true`).
 
 **What fails:**
 

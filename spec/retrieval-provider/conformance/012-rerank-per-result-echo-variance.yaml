@@ -8,7 +8,7 @@
 cases:
   - name: rerank_preserves_per_result_echo_variance
     description: |
-      Caller requests return_documents=True over 3 documents. The
+      Caller requests return_documents: true over 3 documents. The
       mocked provider echoes document text for two results (indices 0
       and 2) but omits it for one (index 1) — a realistic mixed
       response. The adapter MUST surface `document` populated for the

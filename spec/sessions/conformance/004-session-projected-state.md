@@ -19,12 +19,12 @@ Verifies §4.2 projected sessions: when a `SessionState` projection narrower tha
 
 **What passes:**
 
-- The saved record after invoke #1 contains `summary="done"` and excludes `scratch`.
-- Invoke #2's pre-execution state has `summary="done"` (loaded) and `scratch=""` (default).
+- The saved record after invoke #1 contains `summary: "done"` and excludes `scratch`.
+- Invoke #2's pre-execution state has `summary: "done"` (loaded) and `scratch: ""` (default).
 - The projection's outbound mapping does not write scratch fields into the record.
 
 **What fails:**
 
 - The saved record contains `scratch` (the projection did not exclude it).
-- Invoke #2 sees `scratch="tmp"` at entry (the scratch field was incorrectly persisted and
+- Invoke #2 sees `scratch: "tmp"` at entry (the scratch field was incorrectly persisted and
   reloaded).

@@ -36,7 +36,7 @@ variant.
 - The sentinel was dropped during render — render mutated the field. Violates §4
   propagation rule.
 - The Chat-prompt variant was treated differently from Text-prompt in the propagation
-  path (e.g., observability_entities was reset to `None` when the variant was Chat-prompt)
+  path (e.g., observability_entities was reset to `null` when the variant was Chat-prompt)
   — implementation differentiated where the spec mandates uniform propagation.
 - The rendered messages don't match the expected substitution — orthogonal to the
   observability propagation but verified together so failure modes don't conflate.

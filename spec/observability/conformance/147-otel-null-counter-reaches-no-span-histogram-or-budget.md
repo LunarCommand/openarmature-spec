@@ -6,7 +6,7 @@ token-usage histogram observation, and the token-budget instrument. This is 0101
 "a rule an observer routes around is not a rule": before this proposal the guards keyed on the usage
 **record** being null, so a null **counter** inside a present record slipped past all three surfaces.
 
-One node renders a budgeted prompt (`input_max_tokens` 10) and calls the LLM; `enable_metrics=True`;
+One node renders a budgeted prompt (`input_max_tokens` 10) and calls the LLM; `enable_metrics: true`;
 default OTel observer. Mock usage `{prompt_tokens: null, completion_tokens: 5, total_tokens: 15}` — the
 `{null, 5, 15}` record of 0101 (malformed `prompt_tokens` nulled per llm-provider §7 *Malformed usage
 counter*). The wire carries `prompt_tokens: null` directly (the post-nulling state); this fixture renders

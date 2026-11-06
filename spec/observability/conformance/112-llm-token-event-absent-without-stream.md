@@ -5,7 +5,7 @@ Verifies the opt-in gate for `LlmTokenEvent` (graph-engine §6, llm-provider §5
 **Spec sections exercised:**
 
 - graph-engine §6 — `LlmTokenEvent` fires ONLY when the call was made with `stream` set; a non-streamed call emits no token events.
-- llm-provider §5 — `stream` defaults to `False` / absent; the v0.4.0 atomic behavior is preserved exactly.
+- llm-provider §5: `stream` defaults to `false` / absent; the v0.4.0 atomic behavior is preserved exactly.
 
 **Cases:**
 

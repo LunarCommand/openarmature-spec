@@ -21,7 +21,7 @@ this mock). This is the no-usage counterpart to 108, whose default case populate
 **Cases:**
 
 1. `rerank_observation_usagedetails_empty_when_no_usage_record` — Default observer config
-   (`disable_provider_payload=True`). The mock reports no usage record (the `meta.billed_units` block is
+   (`disable_provider_payload: true`). The mock reports no usage record (the `meta.billed_units` block is
    omitted). Asserts the observation type is `retriever`, `model` + identity metadata are populated,
    `usageDetails` is present and carries no `searchUnits` and no `input` key (`usageDetails: {}` beside
    `usageDetails_absent_keys: [input, searchUnits]`; the empty map matches by named keys, so it asserts

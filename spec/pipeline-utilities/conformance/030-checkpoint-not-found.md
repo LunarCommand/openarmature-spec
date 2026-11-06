@@ -1,7 +1,7 @@
 # 030 — Checkpoint Not Found
 
 Verifies §10.10's `checkpoint_not_found` error category. The error fires when
-`invoke(resume_invocation=X)` is called and `Checkpointer.load(X)` returns `None` —
+`invoke(resume_invocation: X)` is called and `Checkpointer.load(X)` returns `null`,
 either because the store is empty or because no record matches the supplied id. The error
 is non-transient: retry middleware MUST NOT classify it as recoverable, since the missing
 record genuinely does not exist and re-attempting would not help.
@@ -10,17 +10,17 @@ record genuinely does not exist and re-attempting would not help.
 
 - §10.10 Errors — `checkpoint_not_found` canonical runtime category.
 - §10.4 step 1 — engine raises `checkpoint_not_found` when `Checkpointer.load` returns
-  `None`.
+  `null`.
 - §10.5 Idempotency contract — non-transient categories are not auto-recovered by retry
   middleware.
 
 **Cases:**
 
-1. `resume_against_empty_checkpointer` — `invoke(resume_invocation="ghost")` against an
+1. `resume_against_empty_checkpointer`: `invoke(resume_invocation: "ghost")` against an
    in-memory Checkpointer that has never been populated. Engine raises
    `checkpoint_not_found`.
 2. `resume_with_mismatched_id_when_other_records_exist` — checkpointer is populated with
-   records from prior unrelated runs; `invoke(resume_invocation="never-existed")` with a
+   records from prior unrelated runs; `invoke(resume_invocation: "never-existed")` with a
    fabricated id that matches none of them. Engine raises `checkpoint_not_found` — the
    error fires per-id, not "is the store empty?"
 

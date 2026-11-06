@@ -219,7 +219,7 @@ The retry middleware configuration record:
 | `max_attempts` | Int, default `3`. Total attempts including the first call. `1` disables retry. |
 | `classifier` | Predicate `(exception, state) -> bool`. Returns `true` if the exception is retryable. `state` is the pre-merge state the wrapped chain received as input on the failed attempt — i.e., the same `state` argument the middleware itself received. (There is no post-merge state on failure.) The default classifier ignores `state` and matches purely on exception category (see below); user-supplied classifiers MAY consult `state` for context-dependent retry policies. |
 | `backoff` | Callable `(attempt_index) -> seconds`. `attempt_index` is 0-based. Default: exponential with full jitter, base 1s, cap 30s. |
-| `on_retry` | Optional async callback `(exception, attempt_index) -> None`. Fires before each sleep. Implementations MAY use this for logging hooks. |
+| `on_retry` | Optional async callback `(exception, attempt_index)` that returns nothing. Fires before each sleep. Implementations MAY use this for logging hooks. |
 
 Behavior:
 
@@ -246,7 +246,7 @@ the final two events are a pair ending in either `post_state` (success) or `erro
 failure).
 
 Observers that only need terminal outcomes (per-attempt completed events) MAY subscribe to
-`phases={"completed"}` per the graph-engine §6 phase filter and skip the `started` deliveries
+`phases: {"completed"}` per the graph-engine §6 phase filter and skip the `started` deliveries
 entirely.
 
 **Default transient classifier.** The default classifier ignores its `state` argument and returns
@@ -309,7 +309,7 @@ configuration record:
 
 | Field | Description |
 |---|---|
-| `on_complete` | Async callback `(record) -> None`. Called once per dispatch after the chain returns or raises an ordinary error. A cancellation propagates without a record. |
+| `on_complete` | Async callback `(record)` that returns nothing. Called once per dispatch after the chain returns or raises an ordinary error. A cancellation propagates without a record. |
 
 A `TimingRecord`:
 
@@ -602,12 +602,12 @@ A fan-out node is registered with the following fields:
 | `count` | Optional. The instance count when no per-item data is being iterated. Accepts either a literal `int` (static count fixed at compile time) OR a callable `(state) -> int` (count read from / computed over parent state at fan-out entry). Mutually exclusive with `items_field`. |
 | `collect_field` | A field name on the subgraph state whose final value is collected from each instance. |
 | `target_field` | A field name on the parent state into which the collected list is merged. |
-| `concurrency` | Optional. Upper bound on concurrently-running instances. Accepts either a literal `int` (static, fixed at compile time), a callable `(state) -> int` (read from / computed over parent state at fan-out entry), or `None` (unbounded). Default: `10`. Same int-or-callable shape as `count` for symmetry. |
+| `concurrency` | Optional. Upper bound on concurrently-running instances. Accepts either a literal `int` (static, fixed at compile time), a callable `(state) -> int` (read from / computed over parent state at fan-out entry), or `null` (unbounded). Default: `10`. Same int-or-callable shape as `count` for symmetry. |
 | `error_policy` | One of `"fail_fast"` (default) or `"collect"`. See §9.5 below. |
 | `on_empty` | One of `"raise"` (default) or `"noop"`. Behavior when the resolved instance count is zero. `"raise"` (default) treats empty as unexpected and raises a `node_exception` per graph-engine §4 with category `fan_out_empty`. `"noop"` treats empty as a legitimate state and produces a silent no-op (zero instances run, downstream proceeds). See §9.1 below. |
 | `count_field` | Optional. A field name on the parent state into which the fan-out writes the resolved instance count after execution. MUST be a declared int-typed field on the parent state schema. Useful for programmatic inspection of how many instances ran (e.g., a downstream conditional edge that branches on `state.count_field == 0`). Written at the fan-in step regardless of `on_empty` mode; if `on_empty: "raise"` and count is zero, the raise occurs before the field is written, so the prior value is preserved. |
-| `inputs` | Optional `Mapping[str, str]` (subgraph_field → parent_field) to copy additional non-per-item parent fields into each instance. Same semantics as graph-engine §2 explicit input mapping. |
-| `extra_outputs` | Optional `Mapping[str, str]` (parent_field → subgraph_field) to merge additional non-collected fields back from each instance via the parent's reducer. |
+| `inputs` | Optional `dict<string, string>` (subgraph_field → parent_field) to copy additional non-per-item parent fields into each instance. Same semantics as graph-engine §2 explicit input mapping. |
+| `extra_outputs` | Optional `dict<string, string>` (parent_field → subgraph_field) to merge additional non-collected fields back from each instance via the parent's reducer. |
 | `instance_middleware` | Optional ordered list of middleware that wrap each instance's invocation as a unit. Composes outer-to-inner. Sits *between* outer fan-out-node-level middleware (per-graph + per-node on the fan-out node itself) and the inner subgraph's own middleware. See §9.7 below. |
 
 All `*_field` references (whether mandatory in their mode or optional `inputs`/`extra_outputs`
@@ -708,9 +708,9 @@ same int-or-callable rules as `count` (§9.1):
 - If `concurrency` is a literal int, that value is used directly.
 - If `concurrency` is a callable, the engine invokes `concurrency(snapshot)` once at entry; the
   returned int is used. The callable MUST NOT mutate `snapshot`. The returned value MUST be a
-  positive integer or `None` (unbounded); zero or negative values raise a runtime
+  positive integer or `null` (unbounded); zero or negative values raise a runtime
   `node_exception` with category `fan_out_invalid_concurrency`.
-- `None` (literal or returned from a callable) means unbounded — every instance runs in parallel.
+- `null` (literal or returned from a callable) means unbounded: every instance runs in parallel.
 
 Up to the resolved `concurrency` instances execute concurrently. The order in which instances
 *start* MUST match instance-index order (input list order in `items_field` mode; `0..count-1` in
@@ -954,19 +954,19 @@ set `collect_field`.
 
 Implementations MUST define a Checkpointer abstraction with four operations:
 
-- `save(invocation_id: str, record: CheckpointRecord) -> None` — persist a checkpoint record
-  for the given invocation. After return, the record MUST be durable across process crashes
-  for backends that document durability (in-memory backends are NOT durable and MUST document
-  this). Default behavior is **synchronous** — `save` returns only after persistence succeeds.
-- `load(invocation_id: str) -> CheckpointRecord | None` — return the most recent record for
-  this invocation, or `None` if no record exists. The returned record MUST be structurally
+- `save(invocation_id: string, record: CheckpointRecord)`: persist a checkpoint record for the given
+  invocation and return nothing. After return, the record MUST be durable across process crashes for
+  backends that document durability (in-memory backends are NOT durable and MUST document this).
+  Default behavior is **synchronous**: `save` returns only after persistence succeeds.
+- `load(invocation_id: string) -> CheckpointRecord`: return the most recent record for
+  this invocation, or `null` if no record exists. The returned record MUST be structurally
   identical to what `save` last wrote for this invocation_id (round-trip integrity).
-- `list(filter: CheckpointFilter | None = None) -> Iterable[CheckpointSummary]` —
+- `list(filter?: CheckpointFilter) -> iterable<CheckpointSummary>`:
   enumerate saved invocations. The summary shape includes at minimum `invocation_id`,
   `correlation_id`, `last_saved_at`, and `completed_node_count`. The `filter` shape is
   implementation-defined (per-language ergonomic API: query record matching by date range,
-  correlation_id, completion status, etc.).
-- `delete(invocation_id: str) -> None` — remove all records for the given invocation.
+  correlation_id, completion status, etc.). `filter` is optional, default `null`.
+- `delete(invocation_id: string)`: remove all records for the given invocation and return nothing.
   Implementations MUST tolerate `delete` on a non-existent invocation_id (no-op, no error).
 
 The protocol leaves serialization to the backend. The `CheckpointRecord` is an in-memory typed
@@ -984,7 +984,7 @@ a registered Checkpointer:
 
 - The engine does NOT call `save()` at any point. No `CheckpointRecord` is produced; no
   storage cost is paid; no save-related events fire on the §6 observer stream.
-- `invoke(resume_invocation=X)` raises a runtime error with category `checkpoint_not_found`,
+- `invoke(resume_invocation: X)` raises a runtime error with category `checkpoint_not_found`,
   because there is no Checkpointer to ask. (A user attempting to resume against an
   unregistered backend has misconfigured the run; the error surfaces it cleanly.)
 
@@ -1097,13 +1097,13 @@ batch internally MUST flush before `save` returns to honor this; backends that d
 flushing across `save` calls accept the risk of losing the last buffered records on crash
 and MUST document that risk.
 
-### 10.4 Resume model — `invoke(resume_invocation=invocation_id)`
+### 10.4 Resume model: `invoke(resume_invocation: invocation_id)`
 
 To resume, the application calls `invoke(...)` with a `resume_invocation` parameter naming a prior
 `invocation_id`. The engine:
 
-1. Calls `Checkpointer.load(resume_invocation)`. If `None` is returned, the engine raises a
-   resume-failure error (canonical category `checkpoint_not_found`). If non-None, proceed.
+1. Calls `Checkpointer.load(resume_invocation)`. If `null` is returned, the engine raises a
+   resume-failure error (canonical category `checkpoint_not_found`). If non-null, proceed.
 2. Restores the loaded `state` as the post-merge state at the latest save point.
 3. Restores the `correlation_id` from the loaded record (a resumed invocation keeps its
    original `correlation_id`; cross-backend pivots remain valid).
@@ -1262,8 +1262,8 @@ configuration — that is a fan-out resume question (§10.7), not a detached-tra
 
 ### 10.10 Errors
 
-New canonical runtime category: `checkpoint_not_found` — raised when `invoke(resume_invocation=X)`
-is called and `Checkpointer.load(X)` returns `None`. Non-transient (no auto-recovery via
+New canonical runtime category: `checkpoint_not_found`, raised when `invoke(resume_invocation: X)`
+is called and `Checkpointer.load(X)` returns `null`. Non-transient (no auto-recovery via
 retry — the checkpoint genuinely does not exist).
 
 New canonical runtime category: `checkpoint_save_failed` — raised when `Checkpointer.save`
@@ -1288,7 +1288,7 @@ fall back to `checkpoint_record_invalid` when the backend itself cannot expose t
 class-independent intermediate the migration system requires.)
 
 New canonical runtime category: `checkpoint_state_migration_missing` — raised on
-`invoke(resume_invocation=X)` when the loaded record's `schema_version` does not match the
+`invoke(resume_invocation: X)` when the loaded record's `schema_version` does not match the
 current state schema's `schema_version` AND no chain of registered migrations connects the
 two. Non-transient. The error MUST carry: **`from_version`** (the record's saved
 `schema_version`) and **`to_version`** (the current schema's `schema_version`); the
@@ -1725,8 +1725,8 @@ Composition rules:
 - **Record-type distinction.** Checkpoint records (per §10.2) and paused-invocation records (per
   suspension §2) are distinct record shapes. The discriminator (or the separate-stores choice)
   is implementation-defined; the spec requires only that resume operations load the correct
-  record type per the resume API in use (`invoke(resume_invocation=...)` per §10.4 loads a
-  checkpoint record; `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 loads
+  record type per the resume API in use (`invoke(resume_invocation: ...)` per §10.4 loads a
+  checkpoint record; `invoke(resume_invocation: ..., signal_payload: ...)` per suspension §7 loads
   a paused-invocation record).
 - **Independent registration.** An invocation MAY use both, neither, or either capability
   independently. Registering a `Checkpointer` on the compiled graph enables checkpointing but
@@ -1991,7 +1991,7 @@ sources is the same caveat §7 documents for conditional middleware.)
 - §10.11 gained a "Count drift on resume" rule: when a saved `fan_out_progress` entry's `instance_count` differs from the resumed run's resolved count, the engine MUST raise `checkpoint_record_invalid` (per §10.10); silent pad/truncate of the saved `instances` list is not permitted. §10.10 `checkpoint_record_invalid` description extended to enumerate count drift as a failure mode by [proposal 0029](../../proposals/0029-count-drift-strict.md)
 - §10.14 *Composition with sessions* added — notes that the new sessions capability is an orthogonal cross-invoke persistence layer; checkpointing and sessions register independently, MAY share a backend, but resume / session-load and the respective error categories surface independently by [proposal 0020](../../proposals/0020-sessions-capability.md)
 - §6.3 *Failure isolation* middleware added as the third canonical primitive in the §6 bundled set (alongside §6.1 Retry and §6.2 Timing); it packages the §2 third-MAY-bullet catch-and-recover pattern with a four-field configuration record (`degraded_update` [static or callable], `event_name` [required, no default: naming decision at construction site], `predicate` [single-arg `(exception) -> bool`, defaults to always-true], `on_caught` [optional async callback]); catches ordinary exceptions (not cancellation, interrupt or exit signals); on catch dispatches a framework-emitted failure-isolation event onto the observer delivery queue (parallels proposal 0040's metadata-augmentation event mechanism; distinct from `NodeEvent`, carries `event_name` + wrapped-node lineage tuple + `pre_state` / `post_state` + `caught_exception` record; not promoted to a typed variant on the observer event union for v1) and returns the configured degraded update so the engine continues edge resolution normally; documents the three-piece composition pattern with §6.1 retry (outer-to-inner: transient-aware node body + inner Retry + outer FailureIsolation) with outer-to-inner ordering load-bearing by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
-- §10.15 *Composition with suspension* added — notes that the new suspension capability uses the same persistence mechanism as checkpointing for paused-invocation records (single store with discriminator OR separate stores; implementation choice); paused-invocation records and checkpoint records are distinct shapes; resume operations load the correct record type per the resume API in use (`invoke(resume_invocation=...)` per §10.4 → checkpoint record; `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 → paused-invocation record); paused-record lifetime is NOT bound to invocation completion (unlike checkpoint records, persists until resume completes / cancellation / backend retention); error categories are distinct (`suspension_persistence_failed` per suspension §9 does not signal checkpoint failure and vice versa). Refer to the suspension capability spec for the full primitive contract by [proposal 0021](../../proposals/0021-graph-suspension.md)
+- §10.15 *Composition with suspension* added: it notes that the new suspension capability uses the same persistence mechanism as checkpointing for paused-invocation records (single store with discriminator OR separate stores; implementation choice); paused-invocation records and checkpoint records are distinct shapes; resume operations load the correct record type per the resume API in use (`invoke(resume_invocation: ...)` per §10.4 → checkpoint record; `invoke(resume_invocation: ..., signal_payload: ...)` per suspension §7 → paused-invocation record); paused-record lifetime is NOT bound to invocation completion (unlike checkpoint records, persists until resume completes / cancellation / backend retention); error categories are distinct (`suspension_persistence_failed` per suspension §9 does not signal checkpoint failure and vice versa). Refer to the suspension capability spec for the full primitive contract by [proposal 0021](../../proposals/0021-graph-suspension.md)
 - §6.3 *Failure isolation* gained a `catch` configuration field — a set of error categories matched against the caught exception's **cause chain** (via the new §6.4 primitive), so a carrier-wrapped failure at a §9.7 / §11.7 / §9.6 / §11.6 wrapping placement is caught correctly where a surface `predicate` check would miss it and invert an intended degrade into a crash; `catch` matches on the derived category (the outermost-non-carrier value reported as `caught_exception.category`, per the 0068 derivation), composes with `predicate` as a conjunction (both permissive by default), and `predicate` is documented as surface-only with the cause-aware alternatives. New §6.4 *Cause-chain classification* promotes §6.3's carrier-skipping cause-fidelity walk to a public, named classification primitive (cause chain + derived category) shared by §6.1 retry, §6.3 isolation, and consumers. §6.1's default-classifier depth is documented as deliberately single-level (retry re-runs → classifies at re-attempt granularity; the §6.4 primitive is the opt-in for full-chain retry), distinct from §6.3's full-chain degrade classification. New fixture 072; `catch` is additive (default catch-all preserved) and retry behavior is unchanged by [proposal 0074](../../proposals/0074-failure-isolation-catch-classification.md)
 - §11 *Parallel branches* extended — §11.1.1 *Branch spec* gains an inline-callable branch form (`call`, an async function over the parent state returning a parent-shaped partial update, with no subgraph / state schema / `inputs` / `outputs`) as an alternative to the compiled-`subgraph` form (exactly one required, mixing allowed, `parallel_branches_invalid_branch_spec` compile error otherwise); §11.4 defines the callable branch's contribution (the returned partial update, merged via the parent reducer with no projection); new §11.10 *Conditional branches* adds an optional `when` predicate skipping a branch at dispatch (no work / contribution / events / span; all-skipped is a valid no-op distinct from `parallel_branches_no_branches`); §11.7 branch middleware (per-leg failure-isolation) and §11.5 cancellation apply to callable branches unchanged. New fixtures 073–075. Additive; existing subgraph branches unchanged by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
 - §9.3 *Per-instance fan-in* and §11.4 *Per-branch projection (out)* gained a pointer to the graph-engine §2 `projection_reducer_round_trip` compile-time warning: a field carried in via `inputs` and back out via `extra_outputs` (fan-out) or `outputs` (a `subgraph` branch) through the same subgraph field round-trips through the parent's reducer, doubling under a non-round-trip-idempotent reducer. No behavioral change — the warning is defined in graph-engine §2 by [proposal 0094](../../proposals/0094-subgraph-projection-declared-boundary.md)
@@ -2001,3 +2001,4 @@ sources is the same caveat §7 documents for conditional middleware.)
 - §9.3 *Per-instance fan-in* collect-channel round-trip condition extended to the `items_field` / `item_field` per-item seeding path (the default fan-out mode): the `projection_reducer_round_trip` warning now also fires when `item_field` equals `collect_field` and `items_field` equals `target_field`, alongside the `inputs`-seeded case 0111 named — the same doubling in the more common spelling. A `collect_field` seeded from neither mechanism (or from a different parent field) does not warn. Fixture 078 gains an item-seeded round-trip case and an item-seeded no-false-positive case (no new file); graph-engine §2 and parallel-branches §11 unaffected by [proposal 0112](../../proposals/0112-fan-out-item-seeded-collect-round-trip.md)
 - §10.11.3's `fail_fast` bullet said every instance re-runs on resume after an instance's retry middleware exhausted. It now says every instance that had not completed re-runs while instances that completed before the failure are skipped, as §10.7 and §10.11.2 already state and fixtures 051 and 053 assert. No behavior or fixture change; spec v0.120.0 (clarification, no proposal)
 - §2, §3, §5, §6 to §6.3, §9.1, §10.2, §10.12.2, §11.5 and §11.9 use language-neutral notation. The Python code blocks become pseudo-code or prose, and Python's exception hierarchy, builder method names, `__cause__` attribute and `random.uniform` become plain words; asides that name several languages side by side are kept. §6 states once that its pseudo-code's `on error` lets cancellation, interrupt and exit signals pass uncaught, and §6.2's block calls `on_complete` once per dispatch, as its table says. No behavior change; spec v0.120.1 (clarification, no proposal)
+- §6.1, §6.2, §9's configuration table, §9.2, §10.1, §10.1.1, §10.4, §10.10 and §10.15 use language-neutral notation. Python's `None` becomes `null`, keyword arguments are written `name: value`, and `Mapping[str, str]` becomes `dict<string, string>`. The §6.1 and §6.2 callbacks and the §10.1 operations that returned `None` are described as returning nothing, and §10.1's signatures use `string`, mark `filter` optional with `?` and state its `null` default, and return `iterable<CheckpointSummary>`. No behavior change; spec v0.120.2 (clarification, no proposal)

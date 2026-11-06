@@ -22,12 +22,12 @@ substituted for it.
 
 **Cases:**
 
-1. `extras_embedding_types_merged_with_managed_float` — `embed(config={extras: {embedding_types:
+1. `extras_embedding_types_merged_with_managed_float`: `embed(config: {extras: {embedding_types:
    ["int8"]}})`. The wire request MUST carry `embedding_types: ["float", "int8"]` — not `["int8"]` (which
    strips the key the mapping reads) and not `["float"]` (which silently discards the caller's knob). The
    response is keyed by both types; `EmbeddingResponse.vectors` MUST still come from `embeddings.float`,
    and the `int8` block survives verbatim on `EmbeddingResponse.raw`.
-2. `extras_embedding_types_multiple_precisions_merged` — `embed(config={extras: {embedding_types: ["int8",
+2. `extras_embedding_types_multiple_precisions_merged`: `embed(config: {extras: {embedding_types: ["int8",
    "uint8"]}})` over two inputs. The wire request MUST carry `embedding_types: ["float", "int8", "uint8"]`
    — the managed `"float"` plus *both* caller precisions, proving the merge is a general union rather than
    a two-element special case. Vectors still come from `embeddings.float` in input order; both extra

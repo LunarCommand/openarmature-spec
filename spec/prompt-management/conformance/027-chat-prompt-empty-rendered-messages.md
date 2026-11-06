@@ -16,7 +16,7 @@ remains intact for partial cases — only the global-empty result is rejected.
 **Cases:**
 
 1. `single_empty_placeholder_raises` — chat_template `[{placeholder: "history"}]` rendered
-   with `placeholders={"history": []}`. Zero rendered Messages; asserts
+   with `placeholders: {"history": []}`. Zero rendered Messages; asserts
    `prompt_render_error` raised; error description mentions "empty".
 2. `multiple_empty_placeholders_raise` — chat_template with two placeholder segments
    (`[{placeholder: "examples"}, {placeholder: "history"}]`), both injected with empty

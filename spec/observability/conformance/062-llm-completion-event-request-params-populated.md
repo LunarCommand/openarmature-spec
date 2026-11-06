@@ -12,8 +12,8 @@ semantics — only parameters the caller actually supplied appear in the mapping
 
 **Cases:**
 
-1. `request_params_populated_with_supplied_subset` — Call passes `temperature=0.7` and
-   `max_tokens=512`; no other §5.5.2 parameters supplied. The typed event's `request_params`
+1. `request_params_populated_with_supplied_subset`: Call passes `temperature: 0.7` and
+   `max_tokens: 512`; no other §5.5.2 parameters supplied. The typed event's `request_params`
    carries exactly those two keys; the other five §5.5.2 parameters
    (`top_p`, `seed`, `frequency_penalty`, `presence_penalty`, `stop_sequences`) MUST NOT
    appear in the mapping.

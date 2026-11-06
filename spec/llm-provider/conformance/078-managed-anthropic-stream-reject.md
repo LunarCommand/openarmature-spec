@@ -17,7 +17,7 @@ rejection); a matching `stream: false` is a no-op.
 
 **Cases:**
 
-1. `extras_stream_true_on_atomic_mapping_rejected_pre_send` — `complete(config={max_tokens: 64, extras: {stream:
+1. `extras_stream_true_on_atomic_mapping_rejected_pre_send`: `complete(config: {max_tokens: 64, extras: {stream:
    true}})` unary → reject pre-send, no request issued (§5 does not fire because the *declared* stream param is
    unset; §8.2's managed `stream` catches the extras value).
 2. `extras_stream_false_on_atomic_mapping_no_op` — matching `stream: false` → no-op, wire carries no `stream` key.

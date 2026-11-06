@@ -23,7 +23,7 @@ without per-variant discrimination.
 
 - `PromptResult.messages` has length 1: `[{role: "user", content: "Hello, Alice!"}]`.
 - No error raised despite the non-empty `placeholders` mapping.
-- The result is bytewise identical to rendering with `placeholders=None`.
+- The result is bytewise identical to rendering with `placeholders: null`.
 
 **What fails:**
 

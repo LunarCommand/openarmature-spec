@@ -55,7 +55,7 @@ tei_embedding_provider:
 cases:
   - name: input_type_query_sends_prompt_name_query
     description: |
-      embed(config={input_type: "query"}) against a TEI EmbeddingProvider
+      embed(config: {input_type: "query"}) against a TEI EmbeddingProvider
       whose input_type_prompt_map binds query -> "query". The wire request
       to /embed MUST carry prompt_name "query" alongside the inputs array.
       input_type MUST also reach EmbeddingEvent.request_params.
@@ -106,7 +106,7 @@ cases:
 
   - name: input_type_document_sends_prompt_name_passage
     description: |
-      embed(config={input_type: "document"}) against the same provider:
+      embed(config: {input_type: "document"}) against the same provider:
       document -> "passage" per the map, so the wire request MUST carry
       prompt_name "passage". input_type MUST reach
       EmbeddingEvent.request_params as "document".

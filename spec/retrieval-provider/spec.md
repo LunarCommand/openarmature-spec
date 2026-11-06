@@ -95,9 +95,11 @@ the provider-assigned relevance score, and (optionally) an echo of the document 
 
 **Rerank runtime config.** A `RuntimeConfig`-shaped record (parallel to llm-provider §6) carrying
 rerank-specific caller-supplied request parameters. Initially minimal: one declared field,
-`return_documents` (boolean, default `False`), controlling whether the provider echoes document text
+`return_documents` (boolean, default `false`), controlling whether the provider echoes document text
 on each `ScoredDocument` in the response. The field name + default match the major rerank vendors'
-wire-shape parameter (Voyage AI exposes `return_documents` defaulting `False`; Jina AI's wire default is `True`, so the §8.2 Jina mapping sends the OA value explicitly; Cohere's `/v2/rerank` has no `return_documents` field, so the §8.4 mapping treats the OA knob as a silent no-op);
+wire-shape parameter (Voyage AI exposes `return_documents` defaulting `false`; Jina AI's wire default is
+`true`, so the §8.2 Jina mapping sends the OA value explicitly; Cohere's `/v2/rerank` has no
+`return_documents` field, so the §8.4 mapping treats the OA knob as a silent no-op);
 per-vendor wire-format mappings pin the source-side translation where a vendor diverges. Plus the
 extras-pass-through bag for vendor-specific knobs.
 
@@ -119,14 +121,14 @@ attempt, or a noop — whichever fits the backend. The operation:
 - MAY raise other §7 error categories (`provider_authentication`, `provider_unavailable`) when the
   underlying readiness check encounters those conditions.
 
-### `embed(input, *, config=None)`
+### `embed(input, config?)`
 
 The embedding operation. Parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
 | `input` | list of strings | The input strings to embed. MUST be a list even for single-string callers (callers wrap as a one-element list). Matches `complete()`'s "always a list" message contract. |
-| `config` | optional `EmbeddingRuntimeConfig` (keyword-only) | Caller-supplied embedding runtime config. Keyword-only (or per-language idiomatic equivalent that prevents positional confusion with `input`). |
+| `config` | optional `EmbeddingRuntimeConfig` (passed by name) | Caller-supplied embedding runtime config. Default `null`. Passed by name (or per-language idiomatic equivalent that prevents positional confusion with `input`). |
 
 Returns an `EmbeddingResponse` (§4).
 
@@ -203,7 +205,7 @@ model. Same idempotency + error-surfacing contract as §3's `ready()`:
 - MAY raise other §7 error categories (`provider_authentication`, `provider_unavailable`) under the
   same conditions as §3's `ready()`.
 
-### `rerank(query, documents, *, top_k=None, config=None)`
+### `rerank(query, documents, top_k?, config?)`
 
 The rerank operation. Parameters:
 
@@ -211,8 +213,8 @@ The rerank operation. Parameters:
 |---|---|---|
 | `query` | string | The query string the documents are scored against. MUST be non-empty; an empty query raises `provider_invalid_request` (§7) at the pre-send validation layer. |
 | `documents` | list of strings | The candidate documents to score against the query. MUST be a list (single-document callers wrap as a one-element list — matches the embedding protocol's "always a list" framing). MUST be non-empty; an empty document list raises `provider_invalid_request` (§7). |
-| `top_k` | optional int (keyword-only) | The maximum number of results the caller wants returned. `None` means "all" (the provider MAY return up to `len(documents)` results). MUST be positive when supplied; zero or negative raises `provider_invalid_request` (§7). MAY exceed `len(documents)` — the provider returns at most `len(documents)` results regardless. |
-| `config` | optional `RerankRuntimeConfig` (keyword-only) | Caller-supplied rerank runtime config. Keyword-only (or per-language idiomatic equivalent that prevents positional confusion). |
+| `top_k` | optional int (passed by name) | The maximum number of results the caller wants returned. Default `null`. `null` means "all" (the provider MAY return up to `len(documents)` results). MUST be positive when supplied; zero or negative raises `provider_invalid_request` (§7). MAY exceed `len(documents)`: the provider returns at most `len(documents)` results regardless. |
+| `config` | optional `RerankRuntimeConfig` (passed by name) | Caller-supplied rerank runtime config. Default `null`. Passed by name (or per-language idiomatic equivalent that prevents positional confusion). |
 
 Returns a `RerankResponse` (§6).
 
@@ -413,7 +415,7 @@ model without configured prompts, the mapping MAY instead prepend the constructi
 prefix (the symmetric default).
 
 **`/rerank`.** `POST {base_url}/rerank` with `{"query": str, "texts": [str], "truncate": false, "return_text": <bool>}`.
-TEI's `texts: [str]` maps directly onto `documents: list[str]` (§5; no per-document object wrapping);
+TEI's `texts: [str]` maps directly onto `documents: list<string>` (§5; no per-document object wrapping);
 `return_documents` (§2 rerank runtime config) → TEI's `return_text` (default `false`), surfacing the
 echoed text on `ScoredDocument.document`. The response `[{"index": int, "score": float, "text"?: str}]`
 maps onto `results` (§6): `index` → `ScoredDocument.index`, `score` → `relevance_score`, `text` →
@@ -509,7 +511,7 @@ private gateway). A Jina `EmbeddingProvider` (`/v1/embeddings`) and a Jina `Rera
 `{"model": str, "query": str, "documents": [str], "top_n"?: int, "return_documents": <bool>, "truncation": false}`.
 `documents` ← `documents` (§5); `top_n` ← `top_k` (§5); `return_documents` ← the
 `RerankRuntimeConfig.return_documents` value, **sent explicitly** — Jina's wire default is `true`, but
-OA's default is `False` (§2), so the mapping sends the OA value rather than relying on Jina's default.
+OA's default is `false` (§2), so the mapping sends the OA value rather than relying on Jina's default.
 The response `{model, usage: {total_tokens}, results: [{index, relevance_score, document?}]}` maps onto
 `results` (§6): `index` → `ScoredDocument.index`, `relevance_score` → `relevance_score`, the `document`
 echo per the shape rule below; `usage.total_tokens` → `RerankUsage.input_tokens` (Jina meters rerank by
@@ -691,7 +693,7 @@ the §8.2 Jina pattern.
 **`/v2/rerank`.** `POST {base_url}/v2/rerank` with `{"model": str, "query": str, "documents": [str], "top_n"?: int}`.
 `documents` ← `documents` (§5), sent as the **string-array** form (Cohere v2 takes strings only — the v1
 list-of-objects / `rank_fields` form is not used); `top_n` ← `top_k` (§5), omitted when the caller passed
-`None`. The response
+`null`. The response
 `{"id": str, "results": [{"index": int, "relevance_score": float}], "meta": {"billed_units": {"search_units": int}}}`
 maps onto §6: each `results` entry's `index` → `ScoredDocument.index`, `relevance_score` →
 `ScoredDocument.relevance_score`; `meta.billed_units.search_units` → `RerankUsage.search_units`
@@ -706,7 +708,7 @@ against the response.
 parameter and never echoes document text** (results carry `index` + `relevance_score` only). So
 `RerankRuntimeConfig.return_documents` (§2) is **not realized** on this wire: the mapping does not add any
 wire field for it, leaves `ScoredDocument.document` **null on every result regardless of the config
-value**, and does **not** error when `return_documents=True` is requested — the same "knob with no wire to
+value**, and does **not** error when `return_documents: true` is requested: the same "knob with no wire to
 land on is a silent no-op" path §8.3 takes for `input_type` on the symmetric OpenAI wire. This is
 consistent with §6's rule that an implementation MUST NOT fabricate the echo from the input `documents`
 list when the provider omits it; callers recover the document text via `documents[result.index]` (the
@@ -926,7 +928,7 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - Cohere `/v2/embed` endpoint (extends §8.4) added by [proposal 0091](../../proposals/0091-retrieval-provider-cohere-embeddings-wire.md)
 - §8 general embedding-mapping batch-chunking rule added by [proposal 0092](../../proposals/0092-retrieval-provider-embedding-batch-chunking.md)
 - `EmbeddingResponse.usage` (§4) and `RerankResponse.usage` (§6) made nullable (`record | null` — `null` when the provider reports no usage), reconciling the response types with the record-null model the typed events (graph-engine §6) and §11 metric already use; §2 concept lines qualify usage "(when present)", §8.1 pins TEI `/embed` + `/rerank` `usage = null`, and §8's batch-chunking step 4 combines usage record-aware by [proposal 0093](../../proposals/0093-nullable-provider-usage-records.md)
-- `EmbeddingResponse.raw` (§4) and `RerankResponse.raw` (§6) widened from `dict[str, Any]` to `dict | list` — the verbatim deserialized JSON of the successful response whatever its top-level shape (an array for bare-array wire like TEI §8.1); the mapping MUST NOT wrap or reshape it. §8's batch-chunking rule gains a `raw` stitch clause and §8.1 a `raw` note: a chunk-and-stitch call's `raw` is the list of the per-request responses (nothing lost across chunks), the normalized fields staying ergonomic summaries. Scoped to retrieval-provider — llm-provider `Response.raw` unchanged by [proposal 0096](../../proposals/0096-retrieval-raw-json-shape.md)
+- `EmbeddingResponse.raw` (§4) and `RerankResponse.raw` (§6) widened from `dict<string, any>` to `dict | list`: the verbatim deserialized JSON of the successful response whatever its top-level shape (an array for bare-array wire like TEI §8.1); the mapping MUST NOT wrap or reshape it. §8's batch-chunking rule gains a `raw` stitch clause and §8.1 a `raw` note: a chunk-and-stitch call's `raw` is the list of the per-request responses (nothing lost across chunks), the normalized fields staying ergonomic summaries. Scoped to retrieval-provider: llm-provider `Response.raw` unchanged by [proposal 0096](../../proposals/0096-retrieval-raw-json-shape.md)
 - `ScoredDocument.document` (§6) generalized to **object-shaped echoes**: an object echo surfaces its text content (a string-valued `text` key → that string, else `null`), an empty string is present (→ `""`), and the verbatim echo object is preserved on `RerankResponse.raw`; the "surface verbatim" MUST and the per-result null-dichotomy invariant amended (`null` now = omitted OR a non-text-shape echo). §8.2 Jina realizes it for `document: anyOf[string, TextDoc, ImageDoc, null]` (`TextDoc` → `text`, `ImageDoc` / text-less object → `null`, a non-object echo — number / array / boolean → `provider_invalid_response`), replacing the prior `document → document` direct mapping; fixture 019 gains TextDoc / ImageDoc→`null` / mixed-shape cases by [proposal 0097](../../proposals/0097-retrieval-provider-jina-document-echo-shape.md)
 - §8.4 Cohere `/v2/embed` **`input_type` widened** — the mapping now recognizes `query` / `document` / `classification` / `clustering` (identity-mapping the latter two onto Cohere's wire values), exercising §2's "additional well-known values MAY be recognized by mappings whose backend supports them". The recognized set is still fixed — a value outside it is still a pre-send `provider_invalid_request`; it is *wider*, not open. Removes §8.4's claim that Cohere's other `input_type` values "are reached via the extras-pass-through bag" — unachievable, since OA's `input_type` is a **declared** field and the bag carries only *undeclared* keys (llm-provider §6), and §8.4 rejects an unrecognized value pre-send anyway — the sentence directly contradicted the rule immediately before it. `image` stays unrecognized (an input modality, not a purpose for embedded text; §3 / §11 scope v1 to text). The "per §8.2's treatment" anchor on the recognized set is severed — the sets now differ deliberately (that copy-coupling is what carried the broken sentence across vendors). §8.4's **`embedding_types`** extras claim, whose collision with the mapping's mandatory `"float"` was undefined, is pinned: an extras-supplied value MUST be **merged** with `"float"`, never replace it (an override would strip the `embeddings.float` key the mapping's own response consumer reads). §8.2 Jina keeps its closed set, its rationale corrected to the real one — Jina's `task` support is **model-dependent**, so a mapping bound to a model identifier cannot promise those values by [proposal 0099](../../proposals/0099-cohere-embed-input-type-widening.md)
 - §7 gains **Malformed ancillary figures** — a provider figure that is present on the wire but malformed (a non-integer token count, a negative, a boolean) in an *ancillary* field (`usage`, `response_id`) is treated as **not reported**, not `provider_invalid_response`: the call succeeds, the figure is nulled (never fabricated, coerced, or repaired), and the verbatim value stays on `raw`. Judged per figure — a malformed `EmbeddingUsage.input_tokens` collapses `usage` to null, a malformed `RerankUsage` figure beside a sound one keeps the sound one, a malformed `response_id` is null — so no record shape changes and no new nullability is added (the figures were already individually nullable per 0093). §4 / §6 `usage` + `response_id` rows and §8 *Batch chunking* step 4 (a malformed chunk ⇒ stitched `usage = null`, never a partial sum; a malformed first-chunk id ⇒ null, no fall-through) gain the carve-out, and the rule binds the graph-engine §6 `EmbeddingEvent` / `RerankEvent` figures so a nulled figure cannot leak to the observability surfaces that render from the event. Scoped to retrieval-provider (the llm-provider parallel is a separate change — its usage record is always-present, so a null counter needs an observability-guard reconciliation retrieval does not) by [proposal 0100](../../proposals/0100-malformed-ancillary-figures-not-reported.md)
@@ -936,3 +938,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §10's inherited *Managed-field collision* clause extended for **declared-field realizations** (llm-provider §6 clause (b)): a wire key realizing a declared field is managed **while produced**. §8.2 Jina **`task`** (realizing the declared `input_type`) is a managed non-additive field while `input_type` is set — a conflicting extras `task` rejects pre-send `provider_invalid_request`, a matching one is a no-op — and rides untouched when `input_type` is absent (the escape hatch for a model-specific `task` the closed `input_type` set does not model, reconciling 0099's note); `dimensions` → `dimensions` (§8.1 TEI / §8.3 OpenAI) / `output_dimension` (§8.4 Cohere) is a managed non-additive scalar on the same rule by [proposal 0108](../../proposals/0108-declared-field-vs-extras-collision.md)
 - §8.4 `embedding_types` — a **malformed** extras value (not a list, or a list carrying an element that is not a precision string) is treated as **absent** per the general §6 malformed-merge rule (llm-provider §6, inherited): the wire carries `embedding_types: ["float"]` only (all-or-nothing — a partially-malformed list is not salvaged; no error, no diagnostic), the request-side counterpart of §7's malformed-ancillary handling. New fixture 053 (partial + fully malformed `embedding_types` → `["float"]`) by [proposal 0113](../../proposals/0113-malformed-merge-managed-extras.md)
 - §8.1, §8.2 and §8.3 gained the **managed wire key enumerations** llm-provider §6 requires and none of them carried, each covering **both** the embed and rerank surfaces since the realization set spans them, and §8.4's was corrected from two keys to **five**. It omitted `output_dimension` (the clause-(b) realization of the declared `dimensions`), `input_type` (a clause-(b) realization the mapping emits on **every** call, so it has no declared-field-absent branch) and the rerank-side `top_n`, while asserting that every other undeclared extras key rode untouched, which contradicted §10 outright. Two of those are **behavior changes** and carry new fixture 054 across the rename arm's reject / no-op / declared-absent outcomes and the always-managed arm's reject / no-op. New fixture 055 pins the same-name arm on §8.1, which fixture 052 cannot reach because a fixture is bound to one wire mapping, and the production-condition arm; new fixture 056 carries the production test itself, on TEI's client-side-prefix path, the one place where production and declared-field presence diverge and which 055 cannot reach since a provider block is fixture-level. Each enumeration's closing sentence is scoped to the mapping's **managed** fields and no longer reads as licensing an extras key to override a structural request field. §8.4's malformed-`embedding_types` element test changed from "not a precision string" to "not a string", and gained a paragraph stating the test is structural and never a vocabulary check: the general §6 rule it inherits is structural, never a vocabulary check, and fixture 053 gained a case pinning a well-typed but provider-unrecognized element, including the empty string, as **merging**. §10's realization list is marked **illustrative** with the per-mapping enumerations authoritative, and corrected: it named four realizations and omitted TEI's `prompt_name` and Jina's `dimensions` by [proposal 0122](../../proposals/0122-declared-field-collision-reachability.md)
+- §2, §3, §5, §8.1, §8.2 and §8.4 use language-neutral notation. Python's `None`, `True` and `False` become `null`, `true` and `false`, keyword arguments are written `name: value`, and `list[str]` becomes `list<string>`. The `embed()` and `rerank()` signatures mark optional parameters with `?` in place of Python's keyword-only `*`, and their parameter tables say "passed by name" and state each `null` default. No behavior change; spec v0.120.2 (clarification, no proposal)

@@ -9,7 +9,7 @@ Verifies the llm-provider §5 *Provider streaming support* rejection contract. A
 
 **Cases:**
 
-1. `stream_set_call_rejected_pre_send_no_token_events_no_fallback` — A `complete(stream=True)` call on the streaming-unsupported mapping. Asserts it raises `provider_invalid_request` at pre-send validation (the mock's empty response list fails the test if any request is sent, confirming pre-send catch and the no-fallback rule), with no `LlmTokenEvent` emitted.
+1. `stream_set_call_rejected_pre_send_no_token_events_no_fallback`: A `complete(stream: true)` call on the streaming-unsupported mapping. Asserts it raises `provider_invalid_request` at pre-send validation (the mock's empty response list fails the test if any request is sent, confirming pre-send catch and the no-fallback rule), with no `LlmTokenEvent` emitted.
 2. `atomic_call_on_same_mapping_still_succeeds` — Control: the same mapping handles an atomic call (stream unset) normally, returning the ordinary atomic `Response`. Confirms the rejection is specific to the `stream`-set request shape, not a broken mapping.
 
 **What passes:**

@@ -16,9 +16,9 @@ non-transient. Two sub-cases differ only in the initial value of `max_retries_re
 
 **Cases:**
 
-1. `state_permits_retry` — `max_retries_remaining=3`. Classifier returns true on first failure;
+1. `state_permits_retry`: `max_retries_remaining: 3`. Classifier returns true on first failure;
    node retries; success on second attempt. Final state reflects success.
-2. `state_blocks_retry` — `max_retries_remaining=0`. Classifier returns false on first failure;
+2. `state_blocks_retry`: `max_retries_remaining: 0`. Classifier returns false on first failure;
    exception propagates immediately, and the raised error's category is the node's own
    `provider_invalid_request`. The flaky_node call counter is exactly 1.
 

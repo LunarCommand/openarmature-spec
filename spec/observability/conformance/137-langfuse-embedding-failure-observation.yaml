@@ -25,7 +25,7 @@ cases:
     description: |
       One embedding call that fails (mock returns 503 ->
       provider_unavailable). Default Langfuse observer config
-      (disable_provider_payload=True). The Embedding observation MUST emit
+      (disable_provider_payload: true). The Embedding observation MUST emit
       at ERROR level with statusMessage = "provider_unavailable" (the §7
       error_category), error_type in metadata (error_message is gated off by the
       payload flag here, proposal 0118), and the
@@ -90,7 +90,7 @@ cases:
 
   - name: embedding_failure_no_output_even_with_payload_flag_off
     description: |
-      The same embedding failure with disable_provider_payload=False. The
+      The same embedding failure with disable_provider_payload: false. The
       request-side `input` populates (the strings list, as in success fixture
       083's flag-off case), but `output` is STILL null — no response was
       received, so the absence is intrinsic, not a payload-gating artifact.

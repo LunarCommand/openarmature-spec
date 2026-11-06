@@ -134,7 +134,8 @@ A `SessionStore` implementation MUST expose four async operations.
 
 ### 5.1 `load(session_id)`
 
-Async. Returns `SessionRecord | None`. None when no record exists for the given `session_id`.
+Async. Returns `SessionRecord` or null. The result is `null` when no record exists for the
+given `session_id`.
 
 Implementations SHOULD return the record together with its `schema_version` so the caller can route through
 migration before merging into state; see §7.
@@ -152,15 +153,15 @@ void-return; richer return types are backend extensions.
 
 Async. Removes the record. Idempotent — deleting a non-existent session MUST NOT raise.
 
-### 5.4 `list(filter=None)`
+### 5.4 `list(filter?)`
 
 Async. Returns an iterable of `SessionSummary` records (lightweight metadata — `session_id`,
 `schema_version`, `updated_at`; NOT the full serialized state). The filter parameter is
 implementation-defined; the spec recommends supporting `updated_after`, `created_after`, and
 `schema_version` as common filters.
 
-Implementations MUST support listing all sessions when filter is None. Pagination MAY be
-implementation-specific (cursor, offset/limit, etc.).
+The filter is optional, default `null`. Implementations MUST support listing all sessions when
+filter is null. Pagination MAY be implementation-specific (cursor, offset/limit, etc.).
 
 ### 5.5 Reference backends
 
@@ -217,8 +218,8 @@ after a mid-invoke save, the auto-save at END writes the final state (which subs
 
 ### 6.3 Opt-out from auto-save
 
-When `auto_save=False` is set on the builder registration, the engine MUST NOT save automatically at invoke
-exit. Sessions then persist only via explicit mid-invoke saves (§6.2). Default is `auto_save=True`.
+When `auto_save: false` is set on the builder registration, the engine MUST NOT save automatically at invoke
+exit. Sessions then persist only via explicit mid-invoke saves (§6.2). Default is `auto_save: true`.
 
 ## 7. Schema migration
 
@@ -376,3 +377,4 @@ determinism.
 - created by [proposal 0020](../../proposals/0020-sessions-capability.md)
 - §3 *Identity scoping* gained a *Harness threading* paragraph noting that deployments wrapping the engine via a harness (per the harness capability spec) are responsible for resolving `session_id` from inbound traffic and threading it into every `invoke()` call in sessioned mode; stateless-mode harnesses never thread a `session_id`. Documentary cross-reference; no behavior change at the sessions layer (the omit-and-skip rule was already normative) by [proposal 0022](../../proposals/0022-harness-contract.md)
 - §10 `session_state_migration_missing` / `session_state_migration_chain_ambiguous` error field surfaces documented as inheriting their checkpoint counterparts (pipeline-utilities §10.10) — the missing error's `from_version` / `to_version` / `registered_migrations_count` / `registry_description`, and the ambiguous error's nullable `(from_version, to_version)` pair by [proposal 0102](../../proposals/0102-general-carries-error-field-assertion.md)
+- §5.1, §5.4 and §6.3 use language-neutral notation. Python's `None`, `True` and `False` become `null`, `true` and `false`, and keyword arguments are written `name: value`. §5.4's `list(filter?)` states its `null` default. No behavior change; spec v0.120.2 (clarification, no proposal)

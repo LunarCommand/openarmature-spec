@@ -2,7 +2,7 @@
 
 Peer to fixture 007 (fan-out collect rejected). `suspend()` called
 inside a parallel-branches branch whose containing node is configured
-with `error_policy="collect"` MUST raise
+with `error_policy: "collect"` MUST raise
 `suspension_in_unsupported_context`.
 
 **Spec sections exercised:**

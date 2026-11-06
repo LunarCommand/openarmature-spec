@@ -1,11 +1,11 @@
-# Auto-save opt-out (§6.3): `auto_save=False` on the store registration. The
+# Auto-save opt-out (§6.3): `auto_save: false` on the store registration. The
 # engine MUST NOT save at invoke exit even after END is reached. Sessions then
 # persist only via explicit mid-invoke save (§6.2).
 
 cases:
   - name: auto_save_off_skips_save_at_end
     description: |
-      Single-node graph; in-memory SessionStore registered with auto_save=False.
+      Single-node graph; in-memory SessionStore registered with auto_save: false.
       invoke() is called with session_id="s5". The graph runs to END normally;
       the engine MUST NOT save at exit. The store remains empty for s5 after
       the invocation completes.

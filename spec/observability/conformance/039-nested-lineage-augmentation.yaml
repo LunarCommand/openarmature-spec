@@ -61,7 +61,7 @@ cases:
               # so each outer-instance has exactly one inner-instance.
               items_field: inner_seed
               inner_subgraph: per_category
-              # Each leaf augments `note=<inner_seed.value>` before its
+              # Each leaf augments `note: <inner_seed.value>` before its
               # LLM call. Same key across both outer subtrees, distinct
               # value per leaf — no key collision on shared parents
               # (which are not updated) and a unique value on each
@@ -128,7 +128,7 @@ cases:
             children:
               - type: span
                 # Outer instance for product alpha. The leaf inside
-                # this subtree augments `note=a-only`; per 0045 the
+                # this subtree augments `note: a-only`; per 0045 the
                 # augmentation MUST reach this dispatch span even
                 # though the augmentation happened inside the inner-
                 # instance dispatch context one level deeper.
@@ -147,7 +147,7 @@ cases:
                     children:
                       - type: span
                         # Inner instance under outer-alpha. Augmenter
-                        # context — MUST carry `note=a-only`.
+                        # context: MUST carry `note: a-only`.
                         metadata:
                           tenantId: "acme-corp"
                           note: "a-only"
@@ -166,8 +166,8 @@ cases:
                                 children: []
               - type: span
                 # Outer instance for product beta. Sibling of alpha at
-                # the outer-fan-out depth. MUST NOT carry `note=a-only`
-                # (sibling boundary); MUST carry its own `note=b-only`
+                # the outer-fan-out depth. MUST NOT carry `note: a-only`
+                # (sibling boundary); MUST carry its own `note: b-only`
                 # from its own subtree's augmenter (lineage-aware rule).
                 metadata:
                   tenantId: "acme-corp"
@@ -283,7 +283,7 @@ cases:
                 probe:
                   subgraph: probe
                   # Branch-level augmentation; harness primitive
-                  # equivalent to set_invocation_metadata(note=<id>)
+                  # equivalent to set_invocation_metadata(note: <id>)
                   # at the top of the probe branch's body, sourced
                   # from the surrounding outer-instance item.
                   augment_metadata_from_outer_item:
@@ -350,7 +350,7 @@ cases:
             children:
               - type: span
                 # Outer fan-out instance for product alpha. The `probe`
-                # branch inside augments `note=alpha`; per 0045 this
+                # branch inside augments `note: alpha`; per 0045 this
                 # MUST reach the outer-instance dispatch span.
                 metadata:
                   tenantId: "acme-corp"
@@ -367,7 +367,7 @@ cases:
                     children:
                       - type: span
                         # probe branch (augmenter's branch). MUST
-                        # carry `note=alpha` on its dispatch span and
+                        # carry `note: alpha` on its dispatch span and
                         # every inner span.
                         metadata:
                           tenantId: "acme-corp"
@@ -410,7 +410,7 @@ cases:
               - type: span
                 # Outer fan-out instance for product beta. Sibling of
                 # alpha at the outer-fan-out depth — MUST NOT carry
-                # alpha's note; MUST carry its own `note=beta`.
+                # alpha's note; MUST carry its own `note: beta`.
                 metadata:
                   tenantId: "acme-corp"
                   note: "beta"
@@ -597,7 +597,7 @@ cases:
             # Outer serial subgraph wrapper span. Per the lineage-
             # aware rule MUST carry the augmentation — both fan-out
             # instances inside augment `note`; last-writer-wins lands
-            # the last instance's value (`note=beta`) on this span,
+            # the last instance's value (`note: beta`) on this span,
             # since `concurrency: 1` runs the instances one at a time.
             metadata:
               tenantId: "acme-corp"
@@ -613,7 +613,7 @@ cases:
                 children:
                   - type: span
                     # Fan-out instance for product alpha. MUST carry
-                    # its own `note=alpha`; MUST NOT carry beta's.
+                    # its own `note: alpha`; MUST NOT carry beta's.
                     metadata:
                       tenantId: "acme-corp"
                       note: "alpha"
@@ -632,7 +632,7 @@ cases:
                             children: []
                   - type: span
                     # Fan-out instance for product beta. MUST carry
-                    # its own `note=beta`; MUST NOT carry alpha's.
+                    # its own `note: beta`; MUST NOT carry alpha's.
                     metadata:
                       tenantId: "acme-corp"
                       note: "beta"

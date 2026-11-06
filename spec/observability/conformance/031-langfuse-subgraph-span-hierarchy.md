@@ -38,7 +38,7 @@ Langfuse Trace / Observation tree rather than the OTel span tree.
   `["outer_in"]`, `["outer_sub"]`, `["outer_sub", "inner_x"]`, `["outer_sub", "inner_y"]`,
   `["outer_out"]`.
 - `metadata.step` values follow graph-engine §6's shared-counter rule across subgraph
-  dispatch: `outer_in=0`, `inner_x=1`, `inner_y=2`, `outer_out=3`. The global counter
+  dispatch: `outer_in: 0`, `inner_x: 1`, `inner_y: 2`, `outer_out: 3`. The global counter
   increments for every node execution including subgraph-internal nodes; it does NOT
   reset at the subgraph boundary. The `outer_sub` wrapper observation, which does not
   itself execute (wrappers don't emit events), synthesizes its `step` value from the
@@ -58,8 +58,8 @@ Langfuse Trace / Observation tree rather than the OTel span tree.
   per-node attribute).
 - `metadata.namespace` on inner-node observations is flat rather than reflecting the
   subgraph dispatch (e.g. `["inner_x"]` instead of `["outer_sub", "inner_x"]`).
-- `metadata.step` resets at the subgraph boundary (e.g. `outer_out=1` or `outer_out=2`
-  instead of `outer_out=3`) — implementation's step counter is sub-scoped rather than
+- `metadata.step` resets at the subgraph boundary (e.g. `outer_out: 1` or `outer_out: 2`
+  instead of `outer_out: 3`): implementation's step counter is sub-scoped rather than
   shared across subgraph descents, contradicting §6's "subgraph-internal node executions
   increment the same counter" rule.
 - `correlation_id` differs between the Trace and any of the Observations — cross-cutting

@@ -21,10 +21,10 @@ graph sees; the engine writes the new schema version on save.
 
 - The migration runs exactly once.
 - The graph's pre-execution state is `{value: 11}` (post-migration), not `{value: 1}` (raw v1).
-- The saved record after END has `schema_version="v2"` and `state={value: 11}`.
+- The saved record after END has `schema_version: "v2"` and `state: {value: 11}`.
 
 **What fails:**
 
 - The graph runs against `{value: 1}` (migration was skipped or ran after the merge).
 - The migration runs more than once.
-- The saved record retains `schema_version="v1"` (the new version wasn't written on save).
+- The saved record retains `schema_version: "v1"` (the new version wasn't written on save).

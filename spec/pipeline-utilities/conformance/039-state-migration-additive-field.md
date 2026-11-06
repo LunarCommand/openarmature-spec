@@ -1,6 +1,6 @@
 # 039 — State Migration Additive Field
 
-Smallest possible state migration: a saved record at `schema_version="v1"`
+Smallest possible state migration: a saved record at `schema_version: "v1"`
 carries a state that lacks an optional field added in `v2`; a single
 registered `v1 -> v2` migration populates the new field with its default.
 Resume succeeds with the migrated state.

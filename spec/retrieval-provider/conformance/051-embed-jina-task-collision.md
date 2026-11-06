@@ -19,10 +19,10 @@ realizing a declared field is managed **while the mapping is producing it**:
 
 **Cases:**
 
-1. `conflicting_extras_task_with_input_type_rejected_pre_send` — `embed(config={input_type: "query", extras:
+1. `conflicting_extras_task_with_input_type_rejected_pre_send`: `embed(config: {input_type: "query", extras:
    {task: "text-matching"}})`. The realized `task` is `retrieval.query`; the extras `text-matching` conflicts →
    `provider_invalid_request` pre-send, **no** `/v1/embeddings` request issued.
-2. `extras_task_without_input_type_rides_untouched` — `embed(config={extras: {task: "text-matching"}})` with no
+2. `extras_task_without_input_type_rides_untouched`: `embed(config: {extras: {task: "text-matching"}})` with no
    `input_type` → the mapping emits no managed `task`, so the extras `task: "text-matching"` rides untouched onto
    the wire (the escape hatch).
 

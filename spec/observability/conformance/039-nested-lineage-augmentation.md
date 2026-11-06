@@ -38,14 +38,14 @@ single-level rule).
 1. `inner_fan_out_augmenter_propagates_to_outer_dispatch_span` — outer fan-out over two
    products; each outer instance runs an inner fan-out over a single-element list (one
    inner instance per outer, avoiding last-writer races on the outer dispatch span). Each
-   leaf augments `note=<inner_seed.value>` via `augment_metadata_from_field`. Asserts each
+   leaf augments `note: <inner_seed.value>` via `augment_metadata_from_field`. Asserts each
    outer-instance dispatch span carries the inner-leaf's augmentation (lineage-aware
    propagation across two fan-out boundaries), sibling outer subtrees remain isolated, and
    the outer / inner fan-out NODE spans + invocation MUST NOT carry the augmentation.
 2. `parallel_branch_augmenter_propagates_to_outer_fan_out_instance` — outer fan-out over
    two products; each outer-instance subgraph runs a `dispatcher` parallel-branches node
    with two branches (`probe`, `baseline`); only the `probe` branch augments
-   `note=<outer.id>`. Asserts the augmentation reaches the probe branch's dispatch span
+   `note: <outer.id>`. Asserts the augmentation reaches the probe branch's dispatch span
    (existing single-level rule) AND the outer fan-out instance's dispatch span (the new
    lineage-aware rule), while the sibling `baseline` branch, the parallel-branches NODE
    span, the outer fan-out NODE span, sibling outer-instance subtrees, and the invocation
@@ -53,7 +53,7 @@ single-level rule).
 3. `fan_out_in_serial_subgraph_augmenter_propagates_to_wrapper_span` — outer graph has a
    `wrap` subgraph-call node that descends into the serial subgraph `wrapped_fan_out`; the
    wrapper contains a `pick` fan-out over two products. Each fan-out instance's leaf
-   augments `note=<product.id>` via `augment_metadata_from_field`. Asserts the outer
+   augments `note: <product.id>` via `augment_metadata_from_field`. Asserts the outer
    serial subgraph wrapper span (the `wrap` node span) carries the augmentation — the new
    lineage-aware rule across a `descend_into_subgraph` boundary, distinct from a fan-out
    fork. Both inner instances write the same key with distinct values, and the fan-out
@@ -76,7 +76,7 @@ single-level rule).
   surrounding outer-fan-out item rather than from a static literal, so each outer-instance's
   augmenting branch writes a distinct value (avoiding ambiguity when asserting per-outer-
   instance dispatch spans). Equivalent to placing
-  `set_invocation_metadata(note=outer_item["id"])` at the top of the probe branch's body
+  `set_invocation_metadata(note: outer_item["id"])` at the top of the probe branch's body
   inside an outer-instance's subgraph context.
 - Case 3's `wrap` node runs `wrapped_fan_out` as a subgraph (conformance-adapter §5.4's
   `subgraph:`), mapping the parent's `products` in and the subgraph's `picks` out to `result`, a

@@ -13,10 +13,10 @@ Verifies retrieval-provider §3 (`embed()` operation contract) and §4 (`Embeddi
 **Cases:**
 
 1. `embed_response_shape_invariants_satisfied` — Mocked OpenAI-compatible `/v1/embeddings`
-   response returns 3 vectors of dimension 4 for 3 input strings, with `usage.prompt_tokens=6`
-   and `id="emb-001-id"`. Asserts the response carries the mock's 3 `vectors` in input order,
-   each of length 4, `dimensions=4`, `usage.input_tokens=6`, `model="text-embedding-test"`, and
-   `response_id="emb-001-id"`.
+   response returns 3 vectors of dimension 4 for 3 input strings, with `usage.prompt_tokens: 6`
+   and `id: "emb-001-id"`. Asserts the response carries the mock's 3 `vectors` in input order,
+   each of length 4, `dimensions: 4`, `usage.input_tokens: 6`, `model: "text-embedding-test"`, and
+   `response_id: "emb-001-id"`.
 
 **What passes:**
 

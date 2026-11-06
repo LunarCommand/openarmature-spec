@@ -16,7 +16,7 @@
 #
 # Four cases, two positive (one per seeding spelling) and two isolated negatives:
 #   1. inputs-seeded round-trip (concat_flatten)      -> warns
-#   2. clean collect (inputs={}, collect a fresh field) -> silent
+#   2. clean collect (inputs: {}, collect a fresh field) -> silent
 #   3. item-seeded round-trip (append, default mode)  -> warns
 #   4. item-seeded but collect a DIFFERENT field      -> silent
 #

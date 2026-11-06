@@ -8,7 +8,7 @@
 cases:
   - name: each_streams_token_events_share_their_own_completion_call_id
     description: |
-      Graph chains two streamed LLM-calling nodes (both stream=True). Call 1
+      Graph chains two streamed LLM-calling nodes (both stream: true). Call 1
       streams "A1"/"B1"; call 2 streams "A2"/"B2"/"C2". The harness asserts:
       - 5 LlmTokenEvents and 2 LlmCompletionEvents total
       - the token events for call 1 (chunk_index 0,1) all share one call_id,

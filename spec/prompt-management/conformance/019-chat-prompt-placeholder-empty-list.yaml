@@ -1,5 +1,5 @@
 # §3.1 + §6.render — placeholder list-injection (empty-list valid).
-# Same chat_template as 018 but rendered with placeholders={"history":
+# Same chat_template as 018 but rendered with placeholders: {"history":
 # []}. The empty list contributes zero messages — present-with-empty-
 # value is valid and is NOT a render error (distinct from "name absent
 # from placeholders" which IS an error; see fixture 022).
@@ -19,7 +19,7 @@ backends:
 cases:
   - name: placeholder_injection_empty_list_valid
     description: |
-      Render with placeholders={"history": []} (the first-turn / no-
+      Render with placeholders: {"history": []} (the first-turn / no-
       prior-messages case for a chat-history layer). Asserts the
       resulting PromptResult.messages is [system, final-user] (length
       2) with no render error. Empty-list injection contributes zero

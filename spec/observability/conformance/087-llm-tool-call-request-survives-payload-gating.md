@@ -16,20 +16,20 @@ default payload-off posture; the arguments do not.
 
 ## Cases
 
-1. `identity_survives_payload_disabled` — `disable_provider_payload=True`
+1. `identity_survives_payload_disabled`: `disable_provider_payload: true`
    (default): the identity projections (`count` / `names` / `ids`) still emit;
    the gated `openarmature.llm.output.tool_calls` (carrying the arguments) is
    suppressed.
 2. `full_serialization_present_when_payload_enabled` —
-   `disable_provider_payload=False`: the same identity projections emit
+   `disable_provider_payload: false`: the same identity projections emit
    identically (flag-independent), and the gated `output.tool_calls` is
    additionally present (parsing to the `[{id, name, arguments}]` structure per
    §5.5.5).
 
 ## Anti-cases (would indicate a broken implementation)
 
-- The identity projections suppressed when `disable_provider_payload=True` —
+- The identity projections suppressed when `disable_provider_payload: true`:
   treating identifiers as payload defeats the point (tool-request visibility
   under the default privacy posture).
 - The gated `openarmature.llm.output.tool_calls` (arguments) emitted when
-  `disable_provider_payload=True` — leaking payload under the privacy default.
+  `disable_provider_payload: true`: leaking payload under the privacy default.

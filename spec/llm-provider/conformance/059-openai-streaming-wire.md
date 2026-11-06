@@ -1,6 +1,6 @@
 # 059 — OpenAI-compatible streaming wire path
 
-Verifies the llm-provider §8.1.6 streaming wire path. `complete(stream=True)` sends `stream: true` plus `stream_options: {include_usage: true}`, consumes the Server-Sent Events response, and assembles the atomic `Response` per §6 *Streaming assembly*. The assembled `Response` (content, tool calls, usage, finish_reason) MUST equal the equivalent non-streamed response: streaming is a delivery concern, not a `Response`-shape change. The streaming wire directives it uses, `call.stream` and the `mock_provider` `stream_body`, are defined in the harness note in fixture 001's header.
+Verifies the llm-provider §8.1.6 streaming wire path. `complete(stream: true)` sends `stream: true` plus `stream_options: {include_usage: true}`, consumes the Server-Sent Events response, and assembles the atomic `Response` per §6 *Streaming assembly*. The assembled `Response` (content, tool calls, usage, finish_reason) MUST equal the equivalent non-streamed response: streaming is a delivery concern, not a `Response`-shape change. The streaming wire directives it uses, `call.stream` and the `mock_provider` `stream_body`, are defined in the harness note in fixture 001's header.
 
 **Spec sections exercised:**
 

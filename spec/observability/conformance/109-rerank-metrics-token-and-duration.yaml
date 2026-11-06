@@ -9,7 +9,7 @@
 cases:
   - name: rerank_records_input_token_and_duration
     description: |
-      One rerank-calling node, enable_metrics=True. The mock reports
+      One rerank-calling node, enable_metrics: true. The mock reports
       usage.input_tokens=5. The metric-capture primitive records token.usage
       input=5 (operation "rerank", model, token.type "input") and one
       operation.duration observation (operation "rerank", dimensions only).

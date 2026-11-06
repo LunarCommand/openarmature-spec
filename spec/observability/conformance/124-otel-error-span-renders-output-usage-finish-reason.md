@@ -20,12 +20,12 @@ the §4.2 exception event. Runs the fixture-120 truncation case through the OTel
 
 1. `otel_error_span_renders_output_usage_finish_reason_payload_on` — Truncation failure
    (`finish_reason: "length"`, `usage.completion_tokens` at the `max_tokens` ceiling) with
-   `disable_provider_payload = False`. The `openarmature.llm.complete` span is `ERROR` with
+   `disable_provider_payload = false`. The `openarmature.llm.complete` span is `ERROR` with
    `status_description = "structured_output_invalid"` + a recorded exception AND carries
    `openarmature.llm.output.content` (the raw bytes), `openarmature.llm.finish_reason = "length"`,
    and `openarmature.llm.usage.{prompt,completion,total}_tokens`.
 2. `otel_error_span_payload_disabled_redacts_output_keeps_usage_finish_reason` — The same failure
-   with the default `disable_provider_payload = True`. `openarmature.llm.output.content` is absent,
+   with the default `disable_provider_payload = true`. `openarmature.llm.output.content` is absent,
    while `openarmature.llm.finish_reason`, the `openarmature.llm.usage.*` attributes, the `ERROR`
    status, and the recorded exception are unchanged.
 

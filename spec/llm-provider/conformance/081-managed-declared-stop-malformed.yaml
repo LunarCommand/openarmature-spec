@@ -26,7 +26,7 @@
 cases:
   - name: partially_malformed_extras_stop_treated_as_absent
     description: |
-      complete(config={stop_sequences: ["STOP"], extras: {stop: ["END", 123]}}).
+      complete(config: {stop_sequences: ["STOP"], extras: {stop: ["END", 123]}}).
       The extras `stop` is a list with a non-string element (123), so it is
       malformed for the merge and treated as ABSENT. The wire `stop` MUST be
       ["STOP"] — the declared value only — NOT ["STOP", "END"] (the well-formed
@@ -67,7 +67,7 @@ cases:
 
   - name: fully_malformed_extras_stop_treated_as_absent
     description: |
-      complete(config={stop_sequences: ["STOP"], extras: {stop: 5}}). The extras
+      complete(config: {stop_sequences: ["STOP"], extras: {stop: 5}}). The extras
       `stop` is neither a string nor a list of strings — malformed, treated as
       ABSENT. The wire `stop` MUST be ["STOP"] (declared only), no error raised.
     call:

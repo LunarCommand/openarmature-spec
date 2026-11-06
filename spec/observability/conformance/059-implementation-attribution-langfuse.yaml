@@ -37,7 +37,7 @@ cases:
 
   - name: implementation_attribution_rows_present_when_state_payload_enabled
     description: |
-      Same graph, but disable_state_payload=False. The two attribution
+      Same graph, but disable_state_payload: false. The two attribution
       rows still emit — they describe runtime identity, not runtime
       data, so the privacy knob does not gate them.
     state:
