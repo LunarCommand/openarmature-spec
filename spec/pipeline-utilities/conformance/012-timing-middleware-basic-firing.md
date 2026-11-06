@@ -5,7 +5,7 @@ successfully, the `on_complete` callback fires once with a record carrying the c
 `node_name`, the elapsed `duration_ms` (deterministic via the clock stub), `outcome ==
 "success"`, and `exception_category == null`.
 
-The harness's deterministic-clock stub advances 5 ms per `monotonic()` call. The timing
+The harness's deterministic-clock stub advances 5 ms per monotonic-clock read. The timing
 middleware reads monotonic twice (entry and after `next` returns), so `duration_ms == 5`.
 
 **Spec sections exercised:**

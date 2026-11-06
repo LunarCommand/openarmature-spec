@@ -47,8 +47,8 @@ under the prefix `openarmature.`.
 graph-engine §4 error categories into status `ERROR` with a category-bearing description.
 
 **Trace.** OTel's term for a complete tree of spans rooted at a single trace ID. By default, one
-outermost graph invocation produces one trace; subgraphs (whether composed via
-`add_subgraph_node` or instantiated by a fan-out per pipeline-utilities §9) participate in the
+outermost graph invocation produces one trace; subgraphs (whether composed as a
+subgraph node or instantiated by a fan-out per pipeline-utilities §9) participate in the
 parent invocation's trace as nested spans. Implementations MUST also support an opt-in
 **detached** mode for specific subgraphs or fan-outs (§4.4), where the subgraph or fan-out gets
 its own trace and the parent's dispatch span carries an OTel `Link` to that new trace.
@@ -312,7 +312,7 @@ serial-subgraph wrappers on the augmenter's specific call-stack path; it is natu
 available to the engine's dispatch machinery, as each `descend_into_fan_out_instance`,
 `descend_into_branch`, and `descend_into_subgraph` step pushes a new dispatch boundary onto
 the active path. Implementations MUST preserve this lineage as a *list* (one entry per
-dispatch depth) — a single scalar identifier (e.g., a lone `fan_out_index` ContextVar that
+dispatch depth); a single scalar identifier (e.g., a lone `fan_out_index` context-primitive value that
 gets clobbered on each nested descent) is insufficient. When an augmentation fires at a leaf,
 the observer uses the lineage to locate the open spans for each ancestor dispatch context on
 the augmenter's path (and only those — sibling and shared-parent contexts are not on the
@@ -336,7 +336,7 @@ Reads do NOT see entries set in sibling async contexts. Per the *Per-async-conte
 paragraph above, fan-out instance #0's writes are isolated to instance #0's copy of the mapping
 — instance #1's reads do not see them. A node reading at the outermost serial context (e.g.,
 after a fan-out joins) sees only the outermost context's view; fan-out instance writes are not
-visible after the join. This scoping is the natural consequence of the contextvar's
+visible after the join. This scoping is the natural consequence of the context primitive's
 copy-on-write semantics; implementations MUST NOT layer a separate global aggregator structure
 to make sibling-instance writes visible across the join — the read surface mirrors the write
 surface's scoping exactly.
@@ -635,16 +635,10 @@ inner subgraph nested within the (now-detached) outer subgraph's trace. A detach
 contains a detached inner subgraph produces three separate traces (parent, outer detached, inner
 detached) with two Links.
 
-**Configuration example** (informative; per-language API):
-
-```python
-# Python — opt-in via OTel observer constructor
-otel_observer = OTelObserver(
-    detached_subgraphs={"long_running_workflow"},
-    detached_fan_outs={"per_document_scoring"},
-)
-graph.add_observer(otel_observer)
-```
+**Configuration example** (informative; the API is per-language): the OTel observer is
+constructed with the set of subgraph names to detach (`detached_subgraphs`, e.g.
+`["long_running_workflow"]`) and the set of fan-out names to detach (`detached_fan_outs`, e.g.
+`["per_document_scoring"]`), then attached to the graph like any other observer.
 
 The implementation looks up the relevant set when entering a subgraph or fan-out by name and
 creates the detached trace if matched. Other detachment-configuration shapes (decorator,
@@ -660,7 +654,7 @@ Implementations MUST use these names for spans they emit:
 |---|---|
 | Invocation span | `"openarmature.invocation"` (constant) |
 | Node span | The node's registered name in its containing graph (e.g., `"summarize_doc"`, `"score_relevance"`) |
-| Subgraph span (regular `add_subgraph_node`) | The SubgraphNode's name in the parent graph |
+| Subgraph span (a regular subgraph node) | The SubgraphNode's name in the parent graph |
 | Fan-out node span (the parent dispatch span) | The fan-out node's name in the parent graph |
 | Fan-out instance span (each instance's subgraph dispatch) | The fan-out node's name in the parent graph; disambiguated from the fan-out node span and from siblings by the `openarmature.node.fan_out_index` attribute and parent-child hierarchy |
 | LLM provider span | `"openarmature.llm.complete"` (constant) |
@@ -1352,11 +1346,10 @@ typed-event fields (`input_messages`, `output_content`, `output_tool_calls`, `re
 implementation unconditionally; observers respect their own `disable_provider_payload` flag on the
 typed-event rendering path identically to the span attribute path.
 
-Observers consuming the typed event for backend-specific rendering (Langfuse generation per
-§8.7, OTel span enrichment per §5.5, custom queryable observer accumulators per §9) MAY filter
-the observer event stream via type discrimination (`isinstance(event, LlmCompletionEvent)` or
-per-language idiomatic equivalent) rather than via the sentinel-namespace string match the
-existing convention uses.
+Observers consuming the typed event for backend-specific rendering (Langfuse generation per §8.7, OTel span
+enrichment per §5.5, custom queryable observer accumulators per §9) MAY filter the observer event stream via type
+discrimination on `LlmCompletionEvent` rather than via the sentinel-namespace string match the existing convention
+uses.
 
 **Backwards compatibility with the sentinel-namespace convention.** Some implementations have
 historically emitted a sentinel-namespaced `NodeEvent` to drive LLM-call observability — a
@@ -1399,7 +1392,7 @@ the §7 failure description for this category, per graph-engine §6.)
 
 Observers consuming the typed event for backend-specific rendering (Langfuse generation error per
 §8.4.2, OTel span error status per §5.5, custom queryable observer accumulators per §9) MAY filter
-via type discrimination (`isinstance(event, LlmFailedEvent)` or per-language idiomatic equivalent).
+via type discrimination on `LlmFailedEvent`.
 The success and failure variants are mutually exclusive on a given LLM call; observers needing
 both outcome sides handle them as two separate type-discrimination branches.
 
@@ -1524,7 +1517,7 @@ The typed events carry the structured field set defined in graph-engine §6.
 Observers consuming the typed events for backend-specific rendering (OTel embedding span
 enrichment per §5.5.8, Langfuse embedding observation rendering per §8, custom queryable
 observer accumulators per §9) filter via type discrimination
-(`isinstance(event, EmbeddingEvent)` / `isinstance(event, EmbeddingFailedEvent)`).
+on `EmbeddingEvent` and `EmbeddingFailedEvent`.
 
 The privacy posture mirrors §5.5.7's LLM-side typed events — `input_strings`, `output_vectors`
 (on the success `EmbeddingEvent`), and `request_extras` are populated by the implementation
@@ -1626,8 +1619,7 @@ graph-engine §6 observer event union. Paralleling §5.5.7 *Typed LLM completion
 are dispatched per instrumented tool execution — mutually exclusive per execution, per the 0049 → 0058
 → 0059 success+failure pairing precedent. Observers consuming them for backend-specific rendering (OTel
 tool-span enrichment per §5.5.11, Langfuse `Tool` observation per §8.4.6, custom queryable observer
-accumulators per §9) filter via type discrimination (`isinstance(event, ToolCallEvent)` /
-`isinstance(event, ToolCallFailedEvent)`).
+accumulators per §9) filter via type discrimination on `ToolCallEvent` and `ToolCallFailedEvent`.
 
 The privacy posture mirrors §5.5.7's LLM-side typed events — `arguments` and `result` are populated by
 the implementation unconditionally on every typed event; observer-side gating at the rendering boundary
@@ -1698,7 +1690,7 @@ mutually exclusive on a given call, per the 0049 → 0058 success+failure pairin
 The typed events carry the structured field set defined in graph-engine §6. Observers consuming the
 typed events for backend-specific rendering (OTel rerank span enrichment per §5.5.13, Langfuse
 `Retriever` observation rendering per §8.4.7, custom queryable observer accumulators per §9) filter
-via type discrimination (`isinstance(event, RerankEvent)` / `isinstance(event, RerankFailedEvent)`).
+via type discrimination on `RerankEvent` and `RerankFailedEvent`.
 
 The privacy posture mirrors §5.5.9's embedding-side typed events — `query`, `documents`,
 `output_results` (on the success `RerankEvent`), and `request_extras` are populated by the
@@ -1872,16 +1864,15 @@ concurrent enclosing fan-out instances or parallel branches (which the innermost
 well as sibling branches that share a node name. Each chain is empty on events from nodes outside any
 fan-out / branch, keying identically to the pre-chain scalar case.)
 
-```python
-async def otel_observer(event):
-    key = (tuple(event.namespace), event.attempt_index, tuple(event.fan_out_index_chain), tuple(event.branch_name_chain))
+```text
+on event:
+    key = (event.namespace, event.attempt_index, event.fan_out_index_chain, event.branch_name_chain)
     if event.phase == "started":
-        span = tracer.start_span(span_name(event), attributes=base_attrs(event))
-        spans[key] = span
-    else:  # completed
-        span = spans.pop(key)
-        if event.error is not None:
-            span.set_status(ERROR, description=event.error.category)
+        spans[key] = tracer.start_span(span_name(event), attributes: base_attrs(event))
+    else:  // completed
+        span = remove spans[key]
+        if event.error is set:
+            span.set_status(ERROR, description: event.error.category)
             span.record_exception(event.error.exception)
         else:
             span.set_status(OK)
@@ -1975,19 +1966,24 @@ no interleaving. The observer's `spans` dictionary never has a key collision dur
 execution.
 
 **Middleware-driven (alternative).** Implementations MAY use a pipeline-utilities middleware as the
-lifecycle driver instead:
+lifecycle driver instead (`on error exc:` handles an ordinary error, as in pipeline-utilities §6, and
+cancellation passes through it):
 
-```python
-async def otel_middleware(state, next):
-    with tracer.start_as_current_span(span_name_for_node()) as span:
-        try:
-            partial_update = await next(state)
-            span.set_status(OK)
-            return partial_update
-        except Exception as exc:
-            span.set_status(ERROR, description=getattr(exc, "category", "unknown"))
-            span.record_exception(exc)
-            raise
+```text
+middleware otel_middleware(state, next):
+    span = tracer.start_span(span_name_for_node())
+    make span the current span
+    try:
+        partial_update = await next(state)
+        span.set_status(OK)
+        return partial_update
+    on error exc:
+        span.set_status(ERROR, description: <category of exc, or "unknown">)
+        span.record_exception(exc)
+        raise exc
+    finally:
+        span.end()
+        restore the previous current span
 ```
 
 Both approaches produce identical span structure for conformance purposes; the contract is the
@@ -3527,3 +3523,4 @@ values are stated to be strings so the rule does not silently reach a structured
 - §5.5 *Lineage-resolved parent* gained **Resolution is structural**: the enclosing wrapper is determined by the call's position in the graph, not by which spans an observer has materialized when it resolves. An implementation MUST NOT select a different parent because a wrapper span does not yet exist, and MUST NOT let the parent depend on event ordering. The six span-openness conditionals that made the temporal reading available are reworded to key on structural enclosure: two inside §5.5 and one each in the §5.5.8 / §5.5.11 / §5.5.13 cross-references, plus §5.5's own retry-sibling clause. §6's synthesis trigger changes from the **first inner `started` event** to the **first event that needs the span**, stated over any event whose span resolves under §5.5 rather than over provider events, so the LLM, embedding, tool-execution and rerank spans are covered without enumeration; the start time re-anchors to the triggering event, and a fifth statement of the trigger three paragraphs below is widened to match rather than left to be read as still confining synthesis. §5.4 gains the instance-span synthesis statement the per-branch dispatch span already had, so the two kinds are governed symmetrically. §5.7's `branch_name` sourcing re-anchors to the triggering event. On the Langfuse side §8.4.8's trigger defers to §6, and the four counterparts in §8.4.3 / §8.4.5 / §8.4.6 / §8.4.7 stop routing to the nearest **open** ancestor; §8.4.3's parity promise and its temporal routing were one sentence and moved together, since rewording only the routing would have left the promise asserting a parity the two trees no longer had by [proposal 0124](../../proposals/0124-orphan-provider-span-parent-resolution.md)
 - §5.5's baseline attributes gain **`openarmature.llm.structured_output.path`**, set on an LLM provider span when the call supplied a `response_schema` and sent a request, and never otherwise; a classification, not payload-gated. §5.5.7 gains **A schema the provider did not honor**: for each wire attempt of a `complete()` call, including an attempt call-level retry catches, an implementation MUST emit exactly one `WARNING` log record, however many observers are attached, when the attempt failed `structured_output_invalid` with content that is not well-formed JSON or not a JSON object, on the `"native"` path, with `finish_reason` `"stop"` and no stop sequence on its request, declared or under the mapping's stop key in its extras. It keys on malformed or non-object content alone, because vendors document schema non-conformance on a normal finish but promise well-formed JSON, and it is evaluated per attempt so that a reask that recovers cannot hide it. The record is advisory and MUST NOT by itself cause a retry, a path change or an altered request, and it carries `openarmature.llm.provider`, `openarmature.llm.model`, `openarmature.llm.call_id` and `openarmature.llm.attempt_index`. §5.5.2's absence rule reads per request, so each attempt's span reports its own request parameters. §11 takes a caught attempt's duration, `error.type` and token-usage samples from the implementation's record of that attempt, since it has no typed event, and §11.3's `error.type` applies per attempt. §7's *Diagnostic event names* table gains `openarmature.structured_output.schema_not_honored` (MUST) by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)
 - §11.5 *Conformance support*: the metric-capture primitive records each measurement individually, as a recording hook sees it, rather than through an aggregating in-memory `MetricReader`, so conformance-adapter §5.8's complete `metrics` list can count a repeated recording by [proposal 0127](../../proposals/0127-assertion-matching-rules.md)
+- §2, §3.4, §4.4, §4.5, §5.5.7, §5.5.9, §5.5.12, §5.5.14 and §6 use language-neutral notation. The Python configuration example and the observer and middleware code blocks become prose and pseudo-code, the `isinstance(...)` examples name the event type an observer filters on, single-language names such as `add_subgraph_node` and `ContextVar` become plain words, and the middleware-driven block restores the previous current span when its span ends. No behavior change; spec v0.120.1 (clarification, no proposal)

@@ -34,8 +34,8 @@ and is invisible to nodes that don't opt into middleware.
 
 **Middleware.** An async callable with the shape:
 
-```python
-async def middleware(state, next) -> partial_update
+```text
+middleware(state, next) -> partial_update
 ```
 
 where:
@@ -97,15 +97,15 @@ The two phases are tied to a single position in the chain: if `m1` is outermost,
 runs first AND `m1`'s post-phase runs last. Pre-order and post-order are not configured
 independently. Concretely, a middleware function carries both phases:
 
-```python
-async def my_middleware(state, next):
-    # ── pre-node phase: runs on the way IN ──
-    started_at = time.time()
+```text
+middleware my_middleware(state, next):
+    // pre-node phase: runs on the way IN
+    started_at = now()
 
-    partial_update = await next(state)   # the rest of the chain (and eventually the node) runs here
+    partial_update = await next(state)   // the rest of the chain (and eventually the node) runs here
 
-    # ── post-node phase: runs on the way OUT ──
-    log(f"node took {time.time() - started_at}s")
+    // post-node phase: runs on the way OUT
+    log("node took " + (now() - started_at) + "s")
     return partial_update
 ```
 
@@ -117,7 +117,7 @@ similar frameworks.
 Implementations MUST support two registration modes:
 
 - **Per-node middleware.** Declared at the node's registration site, applied only to that node.
-  The exact API is per-language (e.g., a `middleware=[m1, m2]` argument on `add_node`, or a
+  The exact API is per-language (e.g., a middleware list supplied when the node is added, or a
   decorator chain). The behavioral contract: the per-node middleware list is ordered outer-to-inner.
 - **Per-graph middleware.** Declared on the graph builder, applied to every node in that graph.
   Subgraph nodes are wrapped at the parent-graph layer (per §4). Per-graph middleware lists are
@@ -175,7 +175,7 @@ the engine, which then handles them per graph-engine §4 (`node_exception`).
 
 **Errors raised by middleware propagate the same way.** A middleware that raises produces a
 `node_exception` per §4 (the raise originated within the node-execution portion of the engine's
-loop). The exception's `__cause__` carries the original middleware exception. Middleware MAY raise
+loop). The exception's cause carries the original middleware exception. Middleware MAY raise
 deliberately (e.g., a circuit-breaker middleware that raises after N consecutive failures); the
 engine treats this identically to a node raising.
 
@@ -206,6 +206,10 @@ with llm-provider §7 categories, careful clock semantics, or interaction with s
 Implementations MAY provide additional middleware (logging, instrumentation, resource lifecycle,
 circuit breakers); those are not spec-mandated and may differ in shape across implementations.
 
+The behavior blocks in this section are language-neutral pseudo-code. In them, `on error exc:` handles an
+ordinary error raised inside its `try:`. Cancellation, interrupt and exit signals, and their host-language
+equivalents, pass through it uncaught (§6.1 *Cancellation signals MUST propagate*).
+
 ### 6.1 Retry
 
 The retry middleware configuration record:
@@ -219,18 +223,18 @@ The retry middleware configuration record:
 
 Behavior:
 
-```python
+```text
 attempt = 0
-while True:
+loop:
     try:
-        return await next(state)         # engine dispatches started+completed for this attempt
-    except Exception as exc:
+        return await next(state)         // engine dispatches started+completed for this attempt
+    on error exc:
         if not classifier(exc, state) or attempt + 1 >= max_attempts:
-            raise                        # terminal — engine dispatches completed-with-error
-        if on_retry is not None:
+            raise exc                    // terminal: engine dispatches completed-with-error
+        if on_retry is set:
             await on_retry(exc, attempt)
         await sleep(backoff(attempt))
-        attempt += 1
+        attempt = attempt + 1
 ```
 
 **Per-attempt observer events.** Each retry attempt produces a started/completed event pair from
@@ -259,7 +263,7 @@ It MUST return `false` for:
 - `provider_authentication`, `provider_invalid_model`, `provider_invalid_request`,
   `provider_invalid_response` (llm-provider §7)
 - All graph-engine §2 compile errors (these will not arise at runtime, but listed for completeness)
-- All graph-engine §4 errors except as carrier wrappers (a `node_exception` whose `__cause__` is a
+- All graph-engine §4 errors except as carrier wrappers (a `node_exception` whose cause is a
   transient category MUST be classified as transient).
 
 Dependency on llm-provider §7: the categories above are normative as of llm-provider §7 (spec
@@ -282,14 +286,14 @@ rather than re-runs — where the failure originated does not change whether it 
 (Python's `CancelledError`, TypeScript's `AbortError`, equivalents in other languages) MUST NOT
 be classified as transient — cancellation is intentional, and retrying through it defeats the
 calling context. In Python this is automatic: `CancelledError` extends `BaseException`, not
-`Exception`, so the retry middleware's `except Exception` does not catch it. In TypeScript and
-similar languages where cancellation is a regular `Exception` subclass, retry middleware
+`Exception`, so a Python retry middleware's `except Exception` does not catch it. In TypeScript and
+similar languages, where cancellation arrives as an ordinary error, retry middleware
 implementations MUST detect cancellation and re-raise it before consulting the classifier.
 
-**Backoff with full jitter.** The default backoff is `random.uniform(0, min(cap, base * 2^attempt))`
-where `base = 1.0` and `cap = 30.0`. The jitter is mandatory — fixed exponential backoff causes
-synchronized retries from many concurrent callers, amplifying the rate-limit storm. Implementations
-MAY provide additional named backoff strategies (constant, linear, exponential without jitter) but
+**Backoff with full jitter.** The default backoff is a uniformly random duration between `0` and
+`min(cap, base * 2^attempt)` seconds, where `base = 1.0` and `cap = 30.0`. The jitter is mandatory: fixed
+exponential backoff causes synchronized retries from many concurrent callers, amplifying the rate-limit storm.
+Implementations MAY provide additional named backoff strategies (constant, linear, exponential without jitter) but
 MUST default to exponential-with-full-jitter.
 
 **Partial-update inspection.** A retry middleware MUST NOT retry on a successful `next(state)` call
@@ -305,7 +309,7 @@ configuration record:
 
 | Field | Description |
 |---|---|
-| `on_complete` | Async callback `(record) -> None`. Called once per dispatch after the chain returns or raises. |
+| `on_complete` | Async callback `(record) -> None`. Called once per dispatch after the chain returns or raises an ordinary error. A cancellation propagates without a record. |
 
 A `TimingRecord`:
 
@@ -318,25 +322,25 @@ A `TimingRecord`:
 
 Behavior:
 
-```python
-started_at = monotonic()
+```text
+started_at = monotonic_now()
 try:
     partial_update = await next(state)
-    await on_complete(TimingRecord(
-        node_name=<captured at registration>,
-        duration_ms=(monotonic() - started_at) * 1000,
-        outcome="success",
-        exception_category=null,
-    ))
-    return partial_update
-except Exception as exc:
-    await on_complete(TimingRecord(
-        node_name=<captured at registration>,
-        duration_ms=(monotonic() - started_at) * 1000,
-        outcome="exception",
-        exception_category=getattr(exc, "category", null),
-    ))
-    raise
+on error exc:
+    await on_complete(TimingRecord {
+        node_name: <captured at registration>,
+        duration_ms: <milliseconds since started_at>,
+        outcome: "exception",
+        exception_category: <category of exc, or null>,
+    })
+    raise exc
+await on_complete(TimingRecord {
+    node_name: <captured at registration>,
+    duration_ms: <milliseconds since started_at>,
+    outcome: "success",
+    exception_category: null,
+})
+return partial_update
 ```
 
 **Monotonic clock requirement.** Implementations MUST use the language's monotonic clock (Python's
@@ -349,10 +353,10 @@ identity at call time, the timing middleware captures `node_name` at registratio
 forms MUST be supported:
 
 - **Per-node use.** The user supplies `node_name` explicitly when constructing the middleware,
-  alongside `on_complete`. The user already has the name at the call site (it's the first argument
-  to `add_node`).
+  alongside `on_complete`. The user already has the name at the call site: it is the name the node is
+  added under.
 - **Per-graph use.** Implementations MUST provide a factory form (e.g., a `for_graph()`
-  classmethod, a separate constructor, or a sentinel value) that defers binding until the engine
+  factory function, a separate constructor, or a sentinel value) that defers binding until the engine
   attaches the middleware to each node at compile time. The engine resolves the factory once per
   registration site, producing per-node-bound middleware. The exact API is per-language; the
   behavioral contract is that per-graph timing middleware MUST receive the correct `node_name`
@@ -362,7 +366,7 @@ forms MUST be supported:
 result returns to the caller — a slow callback adds to the apparent node duration. Users SHOULD
 keep the callback fast (queue work, defer I/O). Exceptions raised by `on_complete` propagate to
 the engine as `node_exception` per graph-engine §4 (consistent with general middleware error
-behavior). Users who want isolation MUST wrap their callback bodies in their own try/except.
+behavior). Users who want isolation MUST handle errors inside their own callback bodies.
 
 **Composition with retry.** When timing wraps retry (`[timing, retry, node]`), the recorded
 `duration_ms` includes all retry attempts and backoff sleeps — measuring the *total* time the
@@ -385,26 +389,26 @@ The failure-isolation middleware configuration record:
 | `degraded_update` | Required. The partial state update returned on caught exceptions. MAY be a static mapping OR a callable `(state) -> partial_update` for cases where the degraded shape depends on input state. Resolved at catch time; the callable form receives the same `state` argument the middleware received (pre-merge state on the failed inner chain). |
 | `event_name` | Required, no default. A stable identifier for this catch site. Surfaces on the framework-emitted failure-isolation event (see below). Required with no default because useful values are node-specific (e.g., `"segment_extraction_failure_isolated"`) — a generic `"failure_isolated"` default would make downstream telemetry strictly worse by hiding which specific path degraded. Forcing the name at the construction site puts the decision where the right context is available. |
 | `catch` | Optional. A set of error categories (the llm-provider §7 / graph-engine §4 category enum). When supplied, an exception is caught only if the **derived category** of its cause chain (per §6.4 — the outermost non-carrier link's category, the same value §6.3 reports as `caught_exception.category`) is in the set. The derived category is resolved *through* carrier wrappers, so a carrier-wrapped failure at a §9.7 / §11.7 / §9.6 / §11.6 wrapping placement is classified correctly (a surface check sees only the `node_exception` carrier and misses it); when no non-carrier link carries a category (a bare uncategorized error), the derived category is `null` and `catch` does not match, so the exception propagates. The recommended gate for category-scoped degradation ("degrade on these failure categories"), mirroring §6.1's category-based classifier; `predicate` remains the escape hatch. A per-language form accepting a native exception type MAY be offered as sugar resolving to the categories that type represents (an implementation concern, not part of the normative category contract). |
-| `predicate` | Optional. A callable `(exception) -> bool` evaluated on the **surface** (caught) exception. When supplied, only exceptions where `predicate(exc) is True` are caught; others propagate. Defaults to "always True". Single-argument signature (compare §6.1's two-argument retry classifier) — state-dependent failure-isolation predicates are not a documented use case; the simpler signature is sufficient for v1. **Because it sees the surface exception, a `predicate` that inspects the exception directly will misclassify a carrier-wrapped failure at the wrapping placements above — use `catch`, or walk the chain via the §6.4 primitive, for cause-aware gating.** When both `catch` and `predicate` are supplied they compose as a conjunction (both gates must pass; each defaults to permissive — `catch` unset matches any category, `predicate` unset is always-true). |
-| `on_caught` | Optional. An async callable `(exception) -> Awaitable[None]`. Fires when the middleware catches an exception. Lets consumers pump caught exceptions to caller-specific telemetry (custom logger, metric counter, etc.) beyond the default observer event. |
+| `predicate` | Optional. A callable `(exception) -> bool` evaluated on the **surface** (caught) exception. When supplied, only exceptions for which the predicate returns `true` are caught; others propagate. Defaults to always `true`. Single-argument signature (compare §6.1's two-argument retry classifier): state-dependent failure-isolation predicates are not a documented use case, and the simpler signature is sufficient for v1. **Because it sees the surface exception, a `predicate` that inspects the exception directly will misclassify a carrier-wrapped failure at the wrapping placements above; use `catch`, or walk the chain via the §6.4 primitive, for cause-aware gating.** When both `catch` and `predicate` are supplied they compose as a conjunction (both gates must pass; each defaults to permissive: `catch` unset matches any category, and `predicate` unset is always true). |
+| `on_caught` | Optional. An async callable `(exception)` that returns nothing. Fires when the middleware catches an exception. Lets consumers pump caught exceptions to caller-specific telemetry (custom logger, metric counter, etc.) beyond the default observer event. |
 
 Behavior:
 
-```python
+```text
 try:
     return await next(state)
-except Exception as exc:
-    if not (catch_gate(exc) and predicate(exc)):   # catch_gate: cause-chain category match per the `catch` field (§6.4); both gates default permissive
-        raise
-    resolved_update = degraded_update(state) if callable(degraded_update) else degraded_update
-    await emit_failure_isolation_event(           # see *Observability* below
-        event_name=event_name,
-        wrapped_node_lineage=<from graph-engine §6 event-source identity tuple>,
-        pre_state=state,
-        post_state=resolved_update,
-        caught_exception=<cause chain + derived category/message>,
+on error exc:
+    if not (catch_gate(exc) and predicate(exc)):   // catch_gate: cause-chain category match per the `catch` field (§6.4); both gates default permissive
+        raise exc
+    resolved_update = degraded_update(state) if degraded_update is callable, else degraded_update
+    await emit_failure_isolation_event(            // see *Observability* below
+        event_name: event_name,
+        wrapped_node_lineage: <from graph-engine §6 event-source identity tuple>,
+        pre_state: state,
+        post_state: resolved_update,
+        caught_exception: <cause chain + derived category/message>,
     )
-    if on_caught is not None:
+    if on_caught is set:
         await on_caught(exc)
     return resolved_update
 ```
@@ -414,9 +418,9 @@ field carries the resolved degraded payload (observers correlate the wrapped nod
 on `pre_state` with the actual partial update the engine will merge on `post_state`).
 `emit_failure_isolation_event` is the framework's observer-queue dispatch path described below.
 
-**Catch semantics.** Catches `Exception` by default; `BaseException` (cancellation,
-`KeyboardInterrupt`, equivalents) propagates uncaught — the same rule §6.1 retry middleware
-applies. Cancellation signals MUST propagate per the §6.1 cancellation-propagation paragraph.
+**Catch semantics.** Catches ordinary exceptions by default; cancellation, interrupt and exit signals, and their
+host-language equivalents, propagate uncaught, as §6's note on `on error` states for every canonical middleware.
+Cancellation signals MUST propagate per the §6.1 cancellation-propagation paragraph.
 
 **Engine continuation.** On a caught exception, the graph engine continues edge resolution from
 the `FailureIsolationMiddleware`-wrapped node's degraded return per the normal §3 / §4 contract.
@@ -469,8 +473,8 @@ chain has no carrier links (the caught raw error and any non-carrier causes it c
 category** — the surface failure when an intermediate layer re-categorized, otherwise the
 originating cause — not a masking carrier, generalizing to the full chain the carrier-skipping
 §6.1's default classifier performs at a single level (a `node_exception` whose cause is a transient
-category MUST be classified as transient). When no non-carrier link carries a category (e.g., a
-bare `ValueError`), the derived category is `null`. The full chain — carriers included — is
+category MUST be classified as transient). When no non-carrier link carries a category (e.g., an
+uncategorized host-language error), the derived category is `null`. The full chain, carriers included, is
 preserved so a consumer can inspect the complete provenance rather than rely only on the single
 derived value.
 
@@ -493,13 +497,13 @@ failure-isolation event to a spec-mandated typed variant on the observer event u
 accumulates across multiple primitives; for v1, the event-mechanism framing is sufficient.
 
 **Default emission is observer-event-only.** The middleware MUST NOT pin a logging library
-(stdlib `logging`, structlog, etc.) — the default emission path is the observer event.
+(a standard-library logger, a structured-logging package, etc.): the default emission path is the observer event.
 Consumers wanting additional logging attach their own observer or use `on_caught`.
 
 **Composition with §6.1 — the three-piece pattern.** Pipelines that want "retry transients,
 give up gracefully on exhaustion or non-transient errors" compose three pieces:
 
-1. **Node body** keeps a transient-aware `except` block — re-raise on exceptions whose
+1. **Node body** keeps a transient-aware error handler: re-raise on exceptions whose
    category §6.1's default classifier treats as transient (`provider_unavailable`,
    `provider_rate_limit`, etc.), degrade in-place on non-transient categories the application
    already knows how to recover from.
@@ -507,7 +511,7 @@ give up gracefully on exhaustion or non-transient errors" compose three pieces:
    its policy; on exhaustion, propagates the exception.
 3. **Outer middleware**: `FailureIsolationMiddleware` (this section) — catches the
    exhaustion-propagated exception (or any non-transient that re-raised through the node
-   body's `except`) and returns the configured degraded update.
+   body's error handler) and returns the configured degraded update.
 
 Outer-to-inner ordering is load-bearing: retry MUST be inner (it sees raw transients first);
 failure isolation MUST be outer (it only sees what escapes retry). Reversing the order would let
@@ -687,25 +691,9 @@ produce the same empty count. Retry middleware (§6.1) MUST NOT classify it as t
 
 When `on_empty: "noop"` is used and the user wants to react to the empty case, the recommended
 pattern is to configure `count_field` and add a downstream conditional edge that branches on the
-field value:
-
-```python
-add_fan_out_node(
-    name="process",
-    subgraph=worker,
-    items_field="items",
-    item_field="item",
-    collect_field="result",
-    target_field="results",
-    on_empty="noop",
-    count_field="processed_count",
-)
-
-builder.add_conditional_edge(
-    "process",
-    lambda s: "halt_on_empty" if s.processed_count == 0 else "continue",
-)
-```
+field value. For example, a fan-out node `process` configured with `on_empty: "noop"` and
+`count_field: "processed_count"` is followed by a conditional edge that routes to `halt_on_empty`
+when `processed_count` is `0` and to `continue` otherwise.
 
 Empty inputs ARE legitimate in some LLM pipeline shapes (a retrieval node that genuinely might
 return no documents, an upstream filter that may reject every candidate, a queue that may be
@@ -1050,14 +1038,12 @@ The `CheckpointRecord` carries:
   the empty string), and are not migration-eligible until they declare one. Users intending to
   evolve their schema across deploys MUST declare an explicit `schema_version` so that
   migrations (per §10.12) can be registered against it. **The framework reads `schema_version`
-  from the outermost declared graph state class** (the state class passed to the graph
-  constructor — e.g.,
-  `GraphBuilder(MyState)` in Python or the equivalent in another language idiom) at save
-  time and writes that value onto the record. Implementations MUST NOT source
-  `schema_version` from the runtime instance's class (e.g., `type(state).schema_version` in
-  Python) when the user passes a State subclass instance whose `schema_version` shadows the
-  declared class's value — the declared class is the canonical source for all save sites in
-  the engine (outermost-graph saves, subgraph-internal saves, fan-out instance internal
+  from the outermost declared graph state class** (the state class the graph builder is
+  created with) at save time and writes that value onto the record. Implementations MUST NOT
+  source `schema_version` from the runtime instance's own class when the user passes a State
+  subclass instance whose `schema_version` shadows the declared class's value: the declared
+  class is the canonical source for all save sites in the engine (outermost-graph saves,
+  subgraph-internal saves, fan-out instance internal
   saves, fan-out node completion saves), so resume sees a single consistent `schema_version`
   and the §10.12 migration registry's `from_version`/`to_version` lookups resolve
   unambiguously. The framework does not constrain the version identifier's syntax;
@@ -1637,7 +1623,7 @@ Chain resolution proceeds:
 If a migration function itself raises during step 3 (chain application), the engine MUST
 wrap the raised exception as `checkpoint_state_migration_failed` (per §10.10) and propagate
 it to the caller. The migration's exception is preserved as the cause per the language's
-idiom (`__cause__` in Python). Subsequent migrations in the chain MUST NOT run; the engine
+exception-cause idiom. Subsequent migrations in the chain MUST NOT run; the engine
 abandons the chain at the failing migration and the resume attempt fails as a whole.
 
 Migrations MUST be pure functions of their input (no I/O, no implicit state, deterministic
@@ -1881,7 +1867,7 @@ Same shape as §9.5. Behavior at runtime:
 - **`fail_fast` (default).** First branch failure cancels every still-running branch (via
   the host language's idiomatic cancellation primitive — Python `asyncio.Task.cancel()`,
   TypeScript `AbortController`, etc.). The parallel-branches node raises a wrapped
-  `node_exception` carrying the failing branch's exception as `__cause__`. Per §11.4's
+  `node_exception` carrying the failing branch's exception as its cause. Per §11.4's
   collect-then-apply semantics, no branch contributions have been applied to parent state at
   this point; the buffered contributions are discarded. `recoverable_state` is therefore the
   parent state at the moment the parallel-branches node entered — matching §9.5's fan-out
@@ -1951,7 +1937,7 @@ New canonical categories:
   `subgraph` and `call`, or neither (§11.1.1). Non-transient.
 - `parallel_branches_branch_failed` — runtime category. Raised by the engine when a
   branch raises under `error_policy: "fail_fast"` — a `subgraph` branch's inner node or a
-  `call` branch's callable. Wraps the inner exception as `__cause__`; carries the failing
+  `call` branch's callable. Wraps the inner exception as its cause; carries the failing
   `branch_name` as a structured field. Non-transient by default; inherits transient
   classification from the wrapped exception per §6.1.
 
@@ -2004,7 +1990,7 @@ sources is the same caveat §7 documents for conditional middleware.)
 - §10.2 `schema_version` paragraph clarified: the outermost declared graph state class is the canonical source for the value written onto saved records; implementations MUST NOT source `schema_version` from the runtime instance's class when a State subclass shadows the declared value by [proposal 0028](../../proposals/0028-schema-version-canonical-source.md)
 - §10.11 gained a "Count drift on resume" rule: when a saved `fan_out_progress` entry's `instance_count` differs from the resumed run's resolved count, the engine MUST raise `checkpoint_record_invalid` (per §10.10); silent pad/truncate of the saved `instances` list is not permitted. §10.10 `checkpoint_record_invalid` description extended to enumerate count drift as a failure mode by [proposal 0029](../../proposals/0029-count-drift-strict.md)
 - §10.14 *Composition with sessions* added — notes that the new sessions capability is an orthogonal cross-invoke persistence layer; checkpointing and sessions register independently, MAY share a backend, but resume / session-load and the respective error categories surface independently by [proposal 0020](../../proposals/0020-sessions-capability.md)
-- §6.3 *Failure isolation* middleware added as the third canonical primitive in the §6 bundled set (alongside §6.1 Retry and §6.2 Timing) — packages the §2 third-MAY-bullet catch-and-recover pattern with a four-field configuration record (`degraded_update` [static or callable], `event_name` [required, no default — naming decision at construction site], `predicate` [single-arg `(exception) -> bool`, defaults to always-true], `on_caught` [optional async callback]); catches `Exception` (not `BaseException`); on catch dispatches a framework-emitted failure-isolation event onto the observer delivery queue (parallels proposal 0040's metadata-augmentation event mechanism — distinct from `NodeEvent`, carries `event_name` + wrapped-node lineage tuple + `pre_state` / `post_state` + `caught_exception` record; not promoted to a typed variant on the observer event union for v1) and returns the configured degraded update so the engine continues edge resolution normally; documents the three-piece composition pattern with §6.1 retry (outer-to-inner: transient-aware node body + inner Retry + outer FailureIsolation) with outer-to-inner ordering load-bearing by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
+- §6.3 *Failure isolation* middleware added as the third canonical primitive in the §6 bundled set (alongside §6.1 Retry and §6.2 Timing); it packages the §2 third-MAY-bullet catch-and-recover pattern with a four-field configuration record (`degraded_update` [static or callable], `event_name` [required, no default: naming decision at construction site], `predicate` [single-arg `(exception) -> bool`, defaults to always-true], `on_caught` [optional async callback]); catches ordinary exceptions (not cancellation, interrupt or exit signals); on catch dispatches a framework-emitted failure-isolation event onto the observer delivery queue (parallels proposal 0040's metadata-augmentation event mechanism; distinct from `NodeEvent`, carries `event_name` + wrapped-node lineage tuple + `pre_state` / `post_state` + `caught_exception` record; not promoted to a typed variant on the observer event union for v1) and returns the configured degraded update so the engine continues edge resolution normally; documents the three-piece composition pattern with §6.1 retry (outer-to-inner: transient-aware node body + inner Retry + outer FailureIsolation) with outer-to-inner ordering load-bearing by [proposal 0050](../../proposals/0050-retry-and-degradation-primitives.md)
 - §10.15 *Composition with suspension* added — notes that the new suspension capability uses the same persistence mechanism as checkpointing for paused-invocation records (single store with discriminator OR separate stores; implementation choice); paused-invocation records and checkpoint records are distinct shapes; resume operations load the correct record type per the resume API in use (`invoke(resume_invocation=...)` per §10.4 → checkpoint record; `invoke(resume_invocation=..., signal_payload=...)` per suspension §7 → paused-invocation record); paused-record lifetime is NOT bound to invocation completion (unlike checkpoint records, persists until resume completes / cancellation / backend retention); error categories are distinct (`suspension_persistence_failed` per suspension §9 does not signal checkpoint failure and vice versa). Refer to the suspension capability spec for the full primitive contract by [proposal 0021](../../proposals/0021-graph-suspension.md)
 - §6.3 *Failure isolation* gained a `catch` configuration field — a set of error categories matched against the caught exception's **cause chain** (via the new §6.4 primitive), so a carrier-wrapped failure at a §9.7 / §11.7 / §9.6 / §11.6 wrapping placement is caught correctly where a surface `predicate` check would miss it and invert an intended degrade into a crash; `catch` matches on the derived category (the outermost-non-carrier value reported as `caught_exception.category`, per the 0068 derivation), composes with `predicate` as a conjunction (both permissive by default), and `predicate` is documented as surface-only with the cause-aware alternatives. New §6.4 *Cause-chain classification* promotes §6.3's carrier-skipping cause-fidelity walk to a public, named classification primitive (cause chain + derived category) shared by §6.1 retry, §6.3 isolation, and consumers. §6.1's default-classifier depth is documented as deliberately single-level (retry re-runs → classifies at re-attempt granularity; the §6.4 primitive is the opt-in for full-chain retry), distinct from §6.3's full-chain degrade classification. New fixture 072; `catch` is additive (default catch-all preserved) and retry behavior is unchanged by [proposal 0074](../../proposals/0074-failure-isolation-catch-classification.md)
 - §11 *Parallel branches* extended — §11.1.1 *Branch spec* gains an inline-callable branch form (`call`, an async function over the parent state returning a parent-shaped partial update, with no subgraph / state schema / `inputs` / `outputs`) as an alternative to the compiled-`subgraph` form (exactly one required, mixing allowed, `parallel_branches_invalid_branch_spec` compile error otherwise); §11.4 defines the callable branch's contribution (the returned partial update, merged via the parent reducer with no projection); new §11.10 *Conditional branches* adds an optional `when` predicate skipping a branch at dispatch (no work / contribution / events / span; all-skipped is a valid no-op distinct from `parallel_branches_no_branches`); §11.7 branch middleware (per-leg failure-isolation) and §11.5 cancellation apply to callable branches unchanged. New fixtures 073–075. Additive; existing subgraph branches unchanged by [proposal 0075](../../proposals/0075-parallel-branches-lightweight-branches.md)
@@ -2014,3 +2000,4 @@ sources is the same caveat §7 documents for conditional middleware.)
 - §9.3 *Per-instance fan-in* round-trip pointer extended to the fan-out **primary collect channel**: the graph-engine §2 `projection_reducer_round_trip` warning now also applies when the `collect_field` subgraph field is seeded from `target_field` via `inputs` and collected straight back out into that same `target_field` (not only the `inputs` / `extra_outputs` map channel named at 0094), doubling once per instance under a non-round-trip-idempotent reducer. A `collect_field` not seeded from `target_field` does not warn. New fixture 078 (two cases — collect-channel round-trip warns; isolated clean collect does not). Resolves a conformance-visible split — the warning is MUST for a canonical non-idempotent reducer; parallel-branches §11.4 is unaffected (it projects out only via `outputs`, already covered) by [proposal 0111](../../proposals/0111-fan-out-collect-round-trip-warning.md)
 - §9.3 *Per-instance fan-in* collect-channel round-trip condition extended to the `items_field` / `item_field` per-item seeding path (the default fan-out mode): the `projection_reducer_round_trip` warning now also fires when `item_field` equals `collect_field` and `items_field` equals `target_field`, alongside the `inputs`-seeded case 0111 named — the same doubling in the more common spelling. A `collect_field` seeded from neither mechanism (or from a different parent field) does not warn. Fixture 078 gains an item-seeded round-trip case and an item-seeded no-false-positive case (no new file); graph-engine §2 and parallel-branches §11 unaffected by [proposal 0112](../../proposals/0112-fan-out-item-seeded-collect-round-trip.md)
 - §10.11.3's `fail_fast` bullet said every instance re-runs on resume after an instance's retry middleware exhausted. It now says every instance that had not completed re-runs while instances that completed before the failure are skipped, as §10.7 and §10.11.2 already state and fixtures 051 and 053 assert. No behavior or fixture change; spec v0.120.0 (clarification, no proposal)
+- §2, §3, §5, §6 to §6.3, §9.1, §10.2, §10.12.2, §11.5 and §11.9 use language-neutral notation. The Python code blocks become pseudo-code or prose, and Python's exception hierarchy, builder method names, `__cause__` attribute and `random.uniform` become plain words; asides that name several languages side by side are kept. §6 states once that its pseudo-code's `on error` lets cancellation, interrupt and exit signals pass uncaught, and §6.2's block calls `on_complete` once per dispatch, as its table says. No behavior change; spec v0.120.1 (clarification, no proposal)

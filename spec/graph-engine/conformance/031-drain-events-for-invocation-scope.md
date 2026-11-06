@@ -11,7 +11,7 @@ and each terminal-node drain sees only its own invocation's events.
 
 - §6 *Per-invocation drain* — events are scoped via the
   `invocation_id` propagated through the observability §3.4
-  contextvar mechanism.
+  context-primitive mechanism.
 - §6 *Per-invocation drain* — events tagged with a different
   `invocation_id` do not affect the drain's completion.
 - §6 *Per-invocation drain* — composition with resume: a resumed

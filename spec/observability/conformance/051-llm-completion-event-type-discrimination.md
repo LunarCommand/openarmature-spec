@@ -7,8 +7,8 @@ emission is implementation-current convention preserved for backwards compatibil
 
 **Spec sections exercised:**
 
-- graph-engine §6 — Type-discrimination filter (`isinstance(event, LlmCompletionEvent)` or
-  per-language equivalent) as the spec-normative consumer surface.
+- graph-engine §6: the type-discrimination filter on `LlmCompletionEvent` as the
+  spec-normative consumer surface.
 - observability §5.5.7 — SHOULD-emit-both transition for the impl-current sentinel-namespace
   convention; backends SHOULD subscribe to one variant per LLM completion.
 
@@ -16,8 +16,8 @@ emission is implementation-current convention preserved for backwards compatibil
 
 1. `type_discriminating_observer_receives_typed_event_only` — A graph with one LLM-calling
    node and two observers:
-   - Observer A subscribes via type discrimination: it captures events where
-     `isinstance(event, LlmCompletionEvent)` is true. Asserts observer A captures exactly
+   - Observer A subscribes via type discrimination: it captures events whose type is
+     `LlmCompletionEvent`. Asserts observer A captures exactly
      one event.
    - Observer B subscribes to ALL events (no filter) for assertion purposes. Asserts
      observer B's captured list contains the `LlmCompletionEvent` AND — depending on the
