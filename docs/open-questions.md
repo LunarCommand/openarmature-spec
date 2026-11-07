@@ -522,6 +522,14 @@ response-side clause.
   rejected before any request is sent may or may not count as one. Fixture 161's
   pre-send case therefore asserts only the typed event's null path. Settling it
   would let a fixture assert the path attribute's absence on that span too.
+- **What an implementation does with a `$schema` it does not recognize.**
+  [still-relevant]: llm-provider §5 reads a `response_schema` that declares no
+  `$schema` as draft 2020-12, so that validation does not depend on the
+  validator. A declared `$schema` the validator does not recognize, such as the
+  `https` form of the draft-07 URI, is not covered. JSON Schema 2020-12 Core
+  §8.1.2.1 makes that case implementation-defined, so one implementation can
+  read the schema as 2020-12, ignoring a draft-07 keyword such as `dependencies`
+  without notice, while another rejects it with `provider_invalid_request`.
 
 ### 0119 — error-message cap and reserved keys
 
