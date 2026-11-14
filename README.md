@@ -87,7 +87,9 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 ### In the pipeline
 
-Nothing open. Every proposal is Accepted.
+| Proposal | Status | Targets | Summary |
+|---|---|---|---|
+| [0128](proposals/0128-llm-provider-anthropic-gemini-streaming.md) | Draft | llm-provider §3, §5, §8.2.1, §8.2.2, §8.2.6, §8.3.1, §8.3.2, §8.3.6 | Maps 0062's streaming contract onto Anthropic's server-sent events and Gemini's `streamGenerateContent`. Each mapping rebuilds its vendor's atomic response from the stream and applies its existing response mapping, so a streamed `Response` matches a non-streamed one. Also lets a filtered response have empty content, and maps a prompt Gemini blocks before answering. |
 
 See [`proposals/`](proposals/) for the full history.
 
