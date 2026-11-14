@@ -89,7 +89,7 @@ lives in each capability spec's §1 *Purpose* and in [`CHANGELOG.md`](CHANGELOG.
 
 | Proposal | Status | Targets | Summary |
 |---|---|---|---|
-| [0128](proposals/0128-llm-provider-anthropic-gemini-streaming.md) | Draft | llm-provider §3, §3.1.1, §3.1.4, §5, §6, §8.2.1, §8.2.2, §8.2.6, §8.3.1, §8.3.2, §8.3.6, §10; conformance-adapter §5.16; the llm-provider harness note and fixtures 060, 078 and 084 to 101; docs/compatibility.md | Maps 0062's streaming contract onto Anthropic's server-sent events and Gemini's `streamGenerateContent`. Each mapping rebuilds its vendor's atomic response from the stream and applies its existing response mapping, so a streamed `Response` matches a non-streamed one. Also defines a response cut short with no content, keeps empty signed thinking and text blocks, and leaves block types a mapping does not model out of the message. |
+| [0128](proposals/0128-llm-provider-anthropic-gemini-streaming.md) | Draft | llm-provider §3, §3.1.1, §3.1.4, §3.1.7, §5, §6, §8.1.1.1, §8.2.1, §8.2.1.1, §8.2.2, §8.2.6, §8.3.1, §8.3.1.1, §8.3.2, §8.3.6, §10; graph-engine §6; conformance-adapter §5.16; the llm-provider harness note and fixtures 060, 078 and 084 to 106; docs/compatibility.md | Maps 0062's streaming contract onto Anthropic's server-sent events and Gemini's `streamGenerateContent`. Each mapping rebuilds its vendor's atomic response from the stream and applies its existing response mapping, so a streamed `Response` matches a non-streamed one. Also defines a response cut short with no content, keeps empty signed thinking and text blocks, and leaves block types a mapping does not model out of the message. |
 
 See [`proposals/`](proposals/) for the full history.
 
