@@ -7,25 +7,30 @@
   - spec/llm-provider/spec.md: modifies §3 (an assistant message in a `Response` MAY have empty content when
     its `finish_reason` is `"content_filter"`, `"length"` or `"error"`; a request may not send one); modifies
     §3.1.1 and §3.1.4 (a text or thinking block MAY have empty text when it carries a signature; §3.1.4's
-    signature row also covers a Gemini signed thought part); modifies §3.1.7 (a message that stripping leaves
-    with no content and no tool calls is rejected before sending); modifies §5 (*Provider streaming support*:
-    the §8.2 and §8.3 mappings implement streaming; token events are emitted per non-empty delta); modifies §6
-    (*Streaming assembly*: each mapping defines its terminal usage and may define its `raw` assembly; an empty
-    delta emits no token event; Gemini signed parts are an exception to structural identity in block count;
-    the *Tool calls* bullet's unparseable-arguments rule follows §3; the `finish_reason: "error"` bullet is
-    distinguished from a vendor error event, which raises); modifies §8.1.1.1 (an empty signed block from
-    another provider's history is stripped and dropped, not rejected); modifies §8.1.6 (token events per
-    non-empty delta); modifies §8.2.1 (the Anthropic body `stream` field becomes the wire realization of the
-    declared `stream` argument, managed as §8.1.6 manages its own); modifies §8.2.1.1 (an empty signed
-    thinking block is sent back; an unsigned empty block is still rejected); modifies §8.2.2 and §8.3.2 (a
+    signature row becomes a "usually" statement that defers to §8.3.2's signed thought part; §3.1.4's strip
+    sentence gains "no error unless the message is left empty"); modifies §3.1.5 (the same qualifier on its
+    strip sentence); modifies §3.1.7 (stripping a foreign signature from an empty signed block drops the
+    block; a message that stripping leaves with no content and no tool calls is rejected before sending);
+    modifies §5 (*Provider streaming support*: the §8.2 and §8.3 mappings implement streaming; token events
+    are emitted per non-empty delta); modifies §6 (*Streaming assembly*: each mapping defines its terminal
+    usage and may define its `raw` assembly; an empty delta emits no token event; Gemini signed parts are an
+    exception to structural identity in block count; the *Tool calls* bullet's unparseable-arguments rule
+    follows §3; the `finish_reason: "error"` bullet is distinguished from a vendor error event, which raises);
+    modifies §8.1.1 (its strip-on-send rule raises no error unless the message is left empty, §3.1.7);
+    modifies §8.1.1.1 (an empty signed block from another provider's history is stripped and dropped, not
+    rejected); modifies §8.1.6 (token events per non-empty delta); modifies §8.2.1 (the Anthropic body
+    `stream` field becomes the wire realization of the declared `stream` argument, managed as §8.1.6 manages
+    its own); modifies §8.2.1.1 (an empty signed thinking block is sent back; a foreign empty signed text
+    block is stripped and dropped; an unsigned empty block is still rejected); modifies §8.2.2 and §8.3.2 (a
     content block or part type the mapping does not model is left out of the message and kept in `raw`; the
     `pause_turn` note); adds §8.2.6 *Streaming*; modifies §8.3.1 (the paragraph on `stream` says the mapping
     selects the streaming endpoint); modifies §8.3.1.1 (an empty signed text part and a signed thought part
-    are sent back; an unsigned empty part is still rejected); modifies §8.3.2 (a prompt Gemini blocks before
-    any candidate maps to a `"content_filter"` response; an empty unsigned text part is dropped; a signed
-    thought part maps to a signed thinking block, replacing the capture bullet's statement that a summary part
-    carries no signature); adds §8.3.6 *Streaming*; modifies §10 (removes the *Out of scope* item that says
-    these two mappings reject streaming)
+    are sent back; an unsigned empty part is still rejected; the existing thinking row's note becomes a
+    "usually" statement); modifies §8.3.2 (a prompt Gemini blocks before any candidate maps to a
+    `"content_filter"` response; an empty unsigned text part is dropped; a signed thought part maps to a
+    signed thinking block, and the capture bullet's statement that a summary part carries no signature becomes
+    a "usually" statement); modifies §8.3.3 (the precedence between code and status rows); adds §8.3.6
+    *Streaming*; modifies §10 (removes the *Out of scope* item that says these two mappings reject streaming)
   - spec/graph-engine/spec.md: modifies §6 (`LlmTokenEvent` is emitted per non-empty delta, and `chunk_index`
     counts the events the call emitted, from 0 with no gaps)
   - spec/conformance-adapter/spec.md: modifies §5.16 (under `mapping: gemini`, `expected_wire_url` compares
@@ -62,7 +67,7 @@ Several rules ride along, each a case the spec text does not settle today:
 
 - a response with no content, such as a prompt Gemini blocks before answering, has a defined shape (§3);
 - a thinking or text block that is empty but carries a signature is kept and sent back (§3.1.1, §3.1.4), and a
-  message left empty when a foreign signature is stripped is rejected (§3.1.7);
+  message that stripping another provider's blocks leaves empty is rejected (§3.1.7);
 - a Gemini thought part that carries a signature keeps it, on a signed thinking block (§8.3.2);
 - an empty Gemini text part without a signature is dropped (§8.3.2);
 - a content block or part of a type the mapping does not model is left out of the message (§8.2.2, §8.3.2);
@@ -125,10 +130,13 @@ An empty block without a signature is still invalid.
 
 §3.1.7 gains two sentences. A mapping that strips the signature from an empty signed block, because the
 signature belongs to another provider, drops the whole block, since the block carries nothing else. If
-stripping, of an empty block or of a `ThinkingBlock` as §3.1.7 already requires, leaves an `assistant`
-message with no content and no tool calls, the call is rejected before sending with `provider_invalid_request`
-(§7). The mapping does not drop the message or merge the turns around it, for the reason §3 gives for an empty
-request message: the caller owns the conversation's history.
+stripping under §3.1.7, of any kind of block, leaves an `assistant` message with no content and no tool calls,
+the call is rejected before sending with `provider_invalid_request` (§7). The mapping does not drop the
+message or merge the turns around it, for the reason §3 gives for an empty request message: the caller owns
+the conversation's history. This reaches a case that exists today: a message holding only thinking or redacted
+thinking blocks, sent to the §8.1 mapping, which strips them. §8.1.1 says that stripping raises no error, but
+it then sends an assistant turn with no content, which §3 forbids. §8.1.1 and the strip sentences of §3.1.4
+and §3.1.5 gain "unless the message is left empty (§3.1.7)".
 
 ### llm-provider §8.3.2: a blocked prompt
 
@@ -150,15 +158,17 @@ maps to empty content the same way, through the §3 exception.
   and §8.3.1.1 gains the reverse row, `ThinkingBlock {text, signature}` to `{text, thought: true,
   thoughtSignature}`. Google's guidance is to return every signature in the part it arrived on, and this keeps
   it there. §8.3.2's capture bullet, which says a summary part does not itself carry the signature, and §3.1.4's
-  signature row, which says Gemini's thinking block has no signature of its own, become "usually" statements
+  signature row, which says Gemini's thinking block has no signature of its own, and the note on §8.3.1.1's
+  existing thinking row, which says a thought part carries no `thoughtSignature`, become "usually" statements
   that defer to this rule. Whether Gemini signs thought parts at all is an open question.
 
 ### llm-provider §8.2.2 and §8.3.2: a block type the mapping does not model
 
-Neither response mapping says what happens to a content block, or a Gemini part, of a type it does not
-model. Vendors add such types: Anthropic's versioning policy allows new content block types, and both
-vendors return blocks for server-side tools a caller declares. Without a rule, one implementation raises,
-another drops the block and a third passes it through. Each mapping gains the same sentence:
+Neither response mapping says what happens to a content block, or a Gemini part, of a type it does not model.
+Vendors add such types: Anthropic's versioning policy says it may add "new variants to enum-like output
+values", and both vendors return blocks for server-side tools a caller declares. Without a rule, one
+implementation raises, another drops the block and a third passes it through. Each mapping gains the same
+sentence:
 
 > A content block (§8.2) or part (§8.3) of a type this mapping does not model is left out of
 > `message.content` and `message.tool_calls`. It stays in `raw`, verbatim, and is not an error.
@@ -185,7 +195,7 @@ streaming is removed.
 
 ### llm-provider §6: streaming assembly
 
-Three changes to *Streaming assembly* and the `finish_reason` list:
+Four changes to *Streaming assembly* and one to the `finish_reason` list:
 
 - **Usage and `raw`.** The *Usage / finish_reason* bullet says usage is sourced from the terminal chunk, and
   the `raw` bullet says `raw` is an implementation-defined assembly that keeps the terminal chunk's usage
@@ -267,8 +277,8 @@ consumes the server-sent event stream.
   `delta` and `usage`. Its `usage` counts are cumulative, so each key it carries replaces the same key in the
   message's `usage`.
 - `message_stop` ends the stream.
-- `ping` events are ignored. An event type the mapping does not recognize is ignored too, which Anthropic's
-  versioning policy asks of clients, since it may add event types.
+- `ping` events are ignored. An event type the mapping does not recognize is ignored too, as Anthropic's
+  streaming documentation instructs, since its versioning policy lets it add event types.
 
 The assembled message's `stop_reason` maps by §8.2.2's table and its `usage` by §8.2.2's usage rule. The
 merged `usage` is this mapping's terminal usage (§6). `raw` is the assembled `Message`.
@@ -343,13 +353,15 @@ candidates. It emits no token events, and the merged response maps by §8.3.2's 
 
 **Errors.** An HTTP error before the stream starts maps by §8.3.3. A chunk that carries a top-level `error`
 object, which Gemini can send inside a stream that began with HTTP 200, maps by §8.3.3 on its `code` and
-`status`, as the HTTP response with that error would, and ends the call. A row whose code matches decides,
-even where the status is not listed, so `{code: 400, status: "FAILED_PRECONDITION"}` maps by the 400 row; a
-row matching only the status decides when the code is not listed; and when neither is listed, the error maps
-to `provider_unavailable`. A stream that ends with no chunk
-carrying either a `finishReason` or a `promptFeedback.blockReason`, for a dropped connection or a client
-timeout, is a connection error, `provider_unavailable`. The call raises, and the token events already
-emitted stand, followed by the terminal `LlmFailedEvent`.
+`status`, as the HTTP response with that error would, and ends the call. §8.3.3 gains a precedence for its
+rows, which this follows: a row whose code and status both match decides; otherwise the code decides, with 400
+as `provider_invalid_request` and 403 as `provider_authentication`, and the content-part row applies only when
+the error names a rejected part; a row matching only the status decides when the code is not listed; and when
+neither is listed, the error maps to `provider_unavailable`. So `{code: 400, status: "FAILED_PRECONDITION"}`
+maps to `provider_invalid_request`. A stream that ends with no chunk carrying either a `finishReason` or a
+`promptFeedback.blockReason`, for a dropped connection or a client timeout, is a connection error,
+`provider_unavailable`. The call raises, and the token events already emitted stand, followed by the terminal
+`LlmFailedEvent`.
 
 **Structured output.** §8.3.5's paths apply to the merged response, and `parsed` is validated at the end.
 
@@ -357,9 +369,11 @@ emitted stand, followed by the terminal `LlmFailedEvent`.
 
 The Anthropic facts above were checked on 2026-11-14 against Anthropic's streaming and citations
 documentation: the event names and order, the five delta types (`text_delta`, `input_json_delta`,
-`thinking_delta`, `signature_delta`, `citations_delta`), cumulative `message_delta` usage, `ping`, the
-`error` event with `overloaded_error` as its example, whole `redacted_thinking` blocks, the empty
-`thinking_delta` sent with thinking display omitted, and the instruction to ignore unknown event types.
+`thinking_delta`, `signature_delta`, `citations_delta`), cumulative `message_delta` usage, `ping`, the `error`
+event with `overloaded_error` as its example, whole `redacted_thinking` blocks, the empty `thinking_delta`
+sent with thinking display omitted, and the instruction to ignore unknown event types. Anthropic's API
+versioning page, checked the same day, says Anthropic may "add new variants to enum-like output values (for
+example, streaming event types)", which covers new event, delta and content block types.
 
 Google's API reference documents `streamGenerateContent` without describing its chunks, so four Gemini facts
 were checked on 2026-11-14 against Google's own SDKs and documentation and one widely used client:
@@ -396,10 +410,11 @@ llm-provider's harness note (fixture 001's header) gains:
   `[]` asserts that none were emitted. A call outside an invocation has no observer to receive token events
   (§5), so the harness runs a call that asserts `token_events` as the one node of a single-node graph, with a
   `typed_event_collector` (conformance-adapter §5.5) filtered to `LlmTokenEvent`. After the invocation the
-  harness drains it (`drain_events_for`, graph-engine §6) before reading, and keeps the events whose `call_id`
-  is the call's. The node returns the call's `Response`, which the call's `expected.response` checks read; a
-  call that raises fails the node, and `expected.raises` matches the provider category the node failure
-  carries as its cause (conformance-adapter §5.8). Fixtures that used the `no_token_events_emitted` claim keep
+  harness calls `drain_events_for` on its invocation id (graph-engine §6) before reading. The graph makes one
+  call, so every retained token event is that call's. The node returns the call's `Response`, which the call's
+  `expected.response` checks read. A call that raises fails the node, and this note defines how
+  `expected.raises` reads it there: against the provider category of the error the node failure carries as
+  its cause, not the wrapper's `node_exception`. Fixtures that used the `no_token_events_emitted` claim keep
   it until the named-claims proposal settles it.
 - **`expected.response.raw_check.equals`**: a mapping of top-level `raw` keys to their expected values,
   each compared by exact deep equality. It is defined for an atomic call and, under `mapping: anthropic` or
@@ -424,7 +439,7 @@ header or by that parameter. `expected_wire_request` asserts the Anthropic body'
 | 089 | gemini | A `{error: {code: 429, status: "RESOURCE_EXHAUSTED"}}` chunk after one text part: one content token event, then `provider_rate_limit` raised. A second case: `{code: 400, status: "FAILED_PRECONDITION"}`, a listed code with an unlisted status, raises `provider_invalid_request`. A third: `{code: 409, status: "ABORTED"}`, neither listed, raises `provider_unavailable`. |
 | 090 | gemini | A text stream: `expected_wire_url` on the `:streamGenerateContent?alt=sse` path; `token_events` per non-empty text part; the merged `Response`; usage from the last `usageMetadata`, across chunks whose counts rise, whose last `promptTokenCount` is lower than an earlier one, and whose last `usageMetadata` omits `cachedContentTokenCount`, which an earlier chunk carried, so `cached_tokens` is absent (a per-counter merge would keep it); a final chunk with no `usageMetadata` changes nothing; `raw_check.equals` on the merged `usageMetadata`. |
 | 091 | gemini | A `functionCall` part: no token event, `message.tool_calls`, `finish_reason: "tool_calls"`. |
-| 092 | gemini | Thought parts: reasoning `token_events` for `thought: true` parts, joined into one `ThinkingBlock`; then content parts, one with `thought: false` and the next with `thought` absent, joined into one `TextBlock`. A signed text part is not joined with its neighbors and keeps its signature; two adjacent signed parts stay two blocks. A final chunk with an empty signed text part, its `finishReason` and its `usageMetadata`, and no function call in the stream, adds an empty signed `TextBlock` and no event. A second case: a `thought: true` part carrying a `thoughtSignature`, streamed and atomic, maps to a signed `ThinkingBlock`. A third: an empty unsigned text part after a `functionCall` part is left out, with `message.tool_calls` holding the call and `finish_reason: "tool_calls"`. |
+| 092 | gemini | Thought parts: reasoning `token_events` for `thought: true` parts, joined into one `ThinkingBlock`; then content parts, one with `thought: false` and the next with `thought` absent, joined into one `TextBlock`. A signed text part is not joined with its neighbors and keeps its signature; two adjacent signed parts stay two blocks. A final chunk with an empty signed text part, its `finishReason` and its `usageMetadata`, and no function call in the stream, adds an empty signed `TextBlock` and no event. A second case: an unsigned thought piece followed by a `thought: true` piece carrying a `thoughtSignature` gives two `ThinkingBlock`s when streamed, the signature only on the second, and the atomic response holding the whole thought as one part gives one signed `ThinkingBlock`. A third: an empty unsigned text part after a `functionCall` part is left out, with `message.tool_calls` holding the call and `finish_reason: "tool_calls"`. |
 | 093 | gemini | A `finishReason` of `SAFETY` on the last chunk maps to `"content_filter"`, after the content token events already emitted. |
 | 094 | gemini | Atomic: a blocked prompt (`promptFeedback.blockReason`, no candidates) returns a `Response` with empty content `""`, no tool calls and `finish_reason: "content_filter"`; `usage` with `prompt_tokens` and `total_tokens` set and `completion_tokens` `null`; `promptFeedback` on `raw`. |
 | 095 | gemini | The same blocked prompt streamed: one chunk, `token_events: []`, the same `Response`, and no `provider_unavailable`. |
@@ -439,7 +454,7 @@ header or by that parameter. `expected_wire_request` asserts the Anthropic body'
 | 104 | gemini | Request side: an assistant message with an empty signed `TextBlock` is sent as `{text: "", thoughtSignature: S}`; a signed `ThinkingBlock`, empty or not, is sent as `{text, thought: true, thoughtSignature: S}`; an unsigned empty `TextBlock` in a request is rejected with `provider_invalid_request`. |
 | 105 | openai | Streamed: a leading chunk with `delta.content: ""`, then two content deltas: two `token_events`, with `chunk_index` 0 and 1. |
 | 106 | anthropic | Cross-provider: a history from a Gemini response holding an empty signed `TextBlock` and a signed non-empty `TextBlock`, sent to Anthropic, drops the empty block and sends the other block's text without its signature. A second case: an assistant message whose only content is an empty signed `TextBlock` is rejected with `provider_invalid_request`. |
-| 107 | openai | Cross-provider: the same Gemini history sent to the OpenAI-compatible mapping drops the empty signed block and sends the other block's text, with no signature on the wire. |
+| 107 | openai | Cross-provider: the same Gemini history sent to the OpenAI-compatible mapping drops the empty signed block and sends the other block's text, with no signature on the wire. A second case: an assistant message holding only a `ThinkingBlock` is rejected with `provider_invalid_request`; one holding only a `RedactedThinkingBlock` is rejected the same way. |
 
 Fixture 078 is rewritten for §8.2.1's managed field in both modes: an extras `stream: true` on a call without
 `stream` and an extras `stream: false` on a `stream`-set call are each rejected before sending, and `true` on a
@@ -450,10 +465,12 @@ streaming fixtures (llm-provider 059, 071, 073, 077 and observability 111 to 118
 ## Versioning
 
 MINOR. Two mappings gain a behavior: a `stream`-set call that each rejected now streams. A caller that relied
-on the rejection is the only one affected, and the rejection was documented as temporary. The §3 and §3.1
-exceptions relax constraints on what a mapping returns, the blocked-prompt and unmodeled-type rules define
-cases that had no mapping, and the empty-delta rule removes events that carried no text. llm-provider's
-`Latest` moves, and so do conformance-adapter's and graph-engine's.
+on the rejection is the only one affected, and the rejection was documented as temporary. One rule tightens: a
+message that stripping leaves empty is now rejected before sending, where §8.1 sent an assistant turn with no
+content that §3 already forbade. The §3 and §3.1 exceptions relax constraints on what a mapping returns, the
+blocked-prompt and unmodeled-type rules define cases that had no mapping, and the empty-delta rule removes
+events that carried no text. llm-provider's `Latest` moves, and so do conformance-adapter's and
+graph-engine's.
 
 ## Alternatives considered
 
