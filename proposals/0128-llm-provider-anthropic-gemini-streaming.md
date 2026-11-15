@@ -16,7 +16,8 @@
     usage and may define its `raw` assembly; an empty delta emits no token event; Gemini signed parts are an
     exception to structural identity in block count; the *Tool calls* bullet's unparseable-arguments rule
     follows §3; the `finish_reason: "error"` bullet is distinguished from a vendor error event, which raises);
-    modifies §8.1.1 (its strip-on-send rule raises no error unless the message is left empty, §3.1.7);
+    modifies §7.1 (a `structured_output_invalid` failure with empty `output_content` is not re-asked); modifies
+    §8.1.1 (its strip-on-send rule raises no error unless the message is left empty, §3.1.7);
     modifies §8.1.1.1 (an empty signed block from another provider's history is stripped and dropped, not
     rejected); modifies §8.1.6 (token events per non-empty delta); modifies §8.2.1 (the Anthropic body
     `stream` field becomes the wire realization of the declared `stream` argument, managed as §8.1.6 manages
@@ -112,7 +113,10 @@ empty answer.
 
 Where the provider supplies text, such as a refusal's, that text is the content, as today. A call that
 supplied a `response_schema` and receives an empty response fails as `structured_output_invalid` (§7) with an
-empty `output_content`, through the existing path, since empty content is not a conforming object.
+empty `output_content`, through the existing path, since empty content is not a conforming object. §7.1
+gains a sentence for a call with `reask`: such a failure is not re-asked. The loop's re-ask appends the failed
+output as an `assistant` turn, an empty one is invalid in a request, and the loop has no other turn to append,
+so the error propagates as it would without `reask` and ends the call.
 
 The request-side rule keeps one behavior across vendors, which reject an empty assistant turn. A caller that
 keeps such a response in a conversation's history decides what that turn says.
@@ -453,7 +457,7 @@ header or by that parameter. `expected_wire_request` asserts the Anthropic body'
 | 098 | anthropic | Truncation: a stream that ends after two text deltas without `message_stop` emits the two content events, then raises `provider_unavailable`. |
 | 099 | gemini | Truncation: a stream that ends after one text part without any `finishReason` emits the content event, then raises `provider_unavailable`. |
 | 100 | gemini | Atomic empty responses: a candidate with no parts and `finishReason: "SAFETY"` returns `""` with `"content_filter"`; `MAX_TOKENS` returns `""` with `"length"`; `OTHER` returns `""` with `"error"`; `STOP` raises `provider_invalid_response`. |
-| 101 | gemini | An empty filtered response on a call with a `response_schema` raises `structured_output_invalid` with `output_content: ""`. |
+| 101 | gemini | An empty filtered response on a call with a `response_schema` raises `structured_output_invalid` with `output_content: ""`. A second case: the same call with a `retry` configured with `reask` raises the same error after the first attempt, the builder is not called, and only one request reaches the wire. |
 | 102 | anthropic | A refusal, atomic: `{content: [], stop_reason: "refusal", stop_details: {...}}` returns content `""`, `finish_reason: "content_filter"`, usage set, and `stop_details` on `raw`. |
 | 103 | anthropic | The same refusal streamed, with `stop_reason` and `stop_details` set by `message_delta`: `token_events: []`, the same `Response`, and `raw_check.equals` on `stop_details`. |
 | 104 | gemini | Request side: an assistant message with an empty signed `TextBlock` is sent as `{text: "", thoughtSignature: S}`; a signed `ThinkingBlock`, empty or not, is sent as `{text, thought: true, thoughtSignature: S}`; an unsigned empty `TextBlock` in a request is rejected with `provider_invalid_request`. |
