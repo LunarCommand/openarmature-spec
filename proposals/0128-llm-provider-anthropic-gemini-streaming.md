@@ -35,7 +35,12 @@
     counts the events the call emitted, from 0 with no gaps)
   - spec/conformance-adapter/spec.md: modifies §5.16 (under `mapping: gemini`, `expected_wire_url` compares
     the URL's path and query, without its scheme, host or a `key` parameter)
-  - docs/compatibility.md: the Anthropic and Gemini rows record the streaming facts checked at accept
+  - docs/compatibility.md: two new rows, *Anthropic streaming* and *Gemini streaming*, beside the existing
+    *OpenAI streaming* row, recording the facts under *Vendor facts* and, for Gemini, that they come from
+    Google's SDKs and thinking guide because the API reference does not describe chunks; the *Anthropic
+    Messages API* and *Google Gemini API* rows re-verified, with drift notes for Anthropic's `2026-10-21` API
+    version and Gemini's Interactions API; the page's *Last refreshed* date. The facts are re-checked on the
+    accept day, which is the date the rows carry.
   - spec/llm-provider/conformance/001-basic-completion.yaml (harness note: `stream_body` gains the named-event
     form and the Gemini chunk form; new `expected.token_events` and how it is captured; `raw_check` gains
     `equals`, and the reason `required_keys` is atomic-only is restated)
