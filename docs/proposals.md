@@ -7,6 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
+| [0128](proposals/0128-llm-provider-anthropic-gemini-streaming.md) | Streaming wire mappings for Anthropic and Gemini | llm-provider | Draft | —               | —          |
 | [0127](proposals/0127-assertion-matching-rules.md) | Matching rules and definitions for the assertion directives | conformance-adapter | Accepted | Pending         | —          |
 | [0126](proposals/0126-structured-output-failure-completeness.md) | Complete structured-output failure reports and a schema-not-honored diagnostic | llm-provider | Accepted | Partial (0.18.0)| —          |
 | [0125](proposals/0125-tool-arm-and-caller-set-fixture-coverage.md) | Fixture coverage for the Tool arm and the caller-set scope | observability | Accepted | Pending         | —          |
