@@ -1,0 +1,118 @@
+# Gemini empty responses, atomic: llm-provider §8.3.2 and §3 (proposal 0128).
+#
+# A candidate with no parts maps to the empty string when its finishReason
+# maps to "content_filter", "length" or "error" (§3 *An empty response*). The
+# empty string is the form, not an empty block list. Under any other finish
+# reason a response with no content and no tool calls is malformed and raises
+# provider_invalid_response.
+#
+# The cases vary how "no parts" arrives: no `content` key, a `content` with no
+# `parts` key, and an empty `parts` list. Each is a candidate with no parts.
+#
+# `raw_check.required_keys`: see the harness note in fixture 001's header.
+
+mapping: gemini
+
+cases:
+
+  - name: safety_without_content_returns_empty_content_filter
+    description: |
+      A candidate with finishReason SAFETY and no `content` key, as Gemini sends a
+      response it filtered.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Write the scene."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - finishReason: SAFETY
+                index: 0
+            usageMetadata: {promptTokenCount: 9, totalTokenCount: 9}
+            modelVersion: gemini-test
+            responseId: resp-100a
+    expected:
+      response:
+        message: {role: assistant, content: "", tool_calls: null}
+        finish_reason: content_filter
+        usage: {prompt_tokens: 9, completion_tokens: null, total_tokens: 9}
+        raw_check:
+          required_keys: [candidates, usageMetadata]
+
+  - name: max_tokens_without_parts_returns_empty_length
+    description: |
+      A candidate with finishReason MAX_TOKENS whose content has a role and no
+      `parts` key.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Write the scene."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - content: {role: model}
+                finishReason: MAX_TOKENS
+                index: 0
+            usageMetadata: {promptTokenCount: 9, totalTokenCount: 9}
+            modelVersion: gemini-test
+            responseId: resp-100b
+    expected:
+      response:
+        message: {role: assistant, content: "", tool_calls: null}
+        finish_reason: length
+        usage: {prompt_tokens: 9, completion_tokens: null, total_tokens: 9}
+        raw_check:
+          required_keys: [candidates, usageMetadata]
+
+  - name: other_with_empty_parts_returns_empty_error
+    description: |
+      A candidate with finishReason OTHER whose `parts` list is empty.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Write the scene."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - content: {role: model, parts: []}
+                finishReason: OTHER
+                index: 0
+            usageMetadata: {promptTokenCount: 9, totalTokenCount: 9}
+            modelVersion: gemini-test
+            responseId: resp-100c
+    expected:
+      response:
+        message: {role: assistant, content: "", tool_calls: null}
+        finish_reason: error
+        usage: {prompt_tokens: 9, completion_tokens: null, total_tokens: 9}
+        raw_check:
+          required_keys: [candidates, usageMetadata]
+
+  - name: stop_without_parts_raises_invalid_response
+    description: |
+      A candidate with finishReason STOP and an empty `parts` list. "stop" is
+      not one of §3's three finish reasons, so the response is malformed.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Write the scene."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - content: {role: model, parts: []}
+                finishReason: STOP
+                index: 0
+            usageMetadata: {promptTokenCount: 9, totalTokenCount: 9}
+            modelVersion: gemini-test
+            responseId: resp-100d
+    expected:
+      raises:
+        category: provider_invalid_response

@@ -975,7 +975,8 @@ failure variant are responsible for their own redaction posture, identical to th
 `LlmCompletionEvent` posture.
 
 **Typed LLM token event.** When a `complete()` call is made with `stream` set (llm-provider §5), the
-observer delivery queue also carries a typed `LlmTokenEvent` per streamed chunk. Unlike
+observer delivery queue also carries a typed `LlmTokenEvent` for each non-empty streamed delta; an
+empty delta emits none (llm-provider §6 *Streaming assembly*). Unlike
 `LlmCompletionEvent` / `LlmFailedEvent` (and the embedding / rerank pairs), `LlmTokenEvent` is a
 **within-call sub-event** — it carries one delta of an in-progress call, not a call outcome. It is
 therefore **unpaired**: there is no `LlmTokenFailedEvent`. A streamed call that fails mid-stream emits
@@ -985,7 +986,7 @@ the §7 category exception raises; the call's outcome is carried by the terminal
 on `LlmTokenEvent`; the class name
 `LlmTokenEvent` is normative as an identifier shape.
 
-The field set mirrors `LlmCompletionEvent`'s identity / scoping baseline plus the per-chunk delta.
+The field set mirrors `LlmCompletionEvent`'s identity / scoping baseline plus the streamed delta.
 Request-side and response-side payload fields are deliberately absent (they are invariant across the
 stream and live on the terminal `LlmCompletionEvent`; consumers correlate via `call_id`):
 
@@ -1004,9 +1005,9 @@ stream and live on the terminal `LlmCompletionEvent`; consumers correlate via `c
 | `model` | string | The model identifier the request was made against. |
 | `call_id` | string | The per-call disambiguator minted by the implementation for this `complete()` call. **Matches the `call_id` on the terminal `LlmCompletionEvent` / `LlmFailedEvent` for the same call** — the linkage observers use to associate a token stream with its eventual completion. |
 | `caller_invocation_metadata` | mapping \| null | OPTIONAL field; same opt-in semantics as on `LlmCompletionEvent`. |
-| `chunk_index` | int | Monotonic per call, starting at 0. Establishes delta ordering within the call's token stream. |
-| `delta_kind` | string | The kind of delta this chunk carries: `"content"` (assistant answer text) or `"reasoning"` (chain-of-thought / thinking text, when the provider streams it per llm-provider §8.1). Forwarding observers route by kind (e.g., a UI's answer stream vs. its "thinking" stream). Extensible: a `"tool_call"` value is reserved for live tool-argument streaming, NOT emitted in this version (tool-call deltas reassemble into the terminal `Response`, llm-provider §6). |
-| `delta` | string | The text delta for this chunk, of the kind named by `delta_kind`. Tool-call argument deltas are reassembled into `Response.message.tool_calls` (llm-provider §6) and are NOT emitted as token events in this version. |
+| `chunk_index` | int | Counts the token events the call emitted, starting at 0 with no gaps, so a skipped empty delta leaves no hole. Establishes delta ordering within the call's token stream. |
+| `delta_kind` | string | The kind of delta this event carries: `"content"` (assistant answer text) or `"reasoning"` (chain-of-thought / thinking text, when the provider streams it per llm-provider §8.1.6, §8.2.6 or §8.3.6). Forwarding observers route by kind (e.g., a UI's answer stream vs. its "thinking" stream). Extensible: a `"tool_call"` value is reserved for live tool-argument streaming, NOT emitted in this version (tool-call deltas reassemble into the terminal `Response`, llm-provider §6). |
+| `delta` | string | The non-empty text delta this event carries, of the kind named by `delta_kind`. Tool-call argument deltas are reassembled into `Response.message.tool_calls` (llm-provider §6) and are NOT emitted as token events in this version. |
 
 Dispatch + ordering: `LlmTokenEvent`s are dispatched on the observer delivery queue in `chunk_index`
 order, all **before** the terminal `LlmCompletionEvent` for the same call. Delivery follows the
@@ -1376,3 +1377,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §6 `LlmCompletionEvent` and `LlmFailedEvent` gain **`structured_output_path`**: `"native"`, `"native_unenforced"`, `"tool_coercion"` or `"prompt_augmentation"`, or null when no `response_schema` was supplied or no request was sent; a classification, never gated by `disable_provider_payload`. Under call-level retry the call's single typed event describes the request its outcome came from: its `input_messages`, `request_params` and `request_extras` reflect the messages the last attempt sent and its configuration after any per-attempt override, while its `attempt_index` stays node-level. `input_messages` is the list as sent, including the schema directive on the prompt-augmentation path, or the caller's list for a call rejected before sending, and the failure event's `output_content` row points to §7's definition. The failure-event `error_message` paragraph now points to llm-provider §7's definition of the failure description rather than restating it by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)
 - §6's typed-event paragraphs name the event type an observer filters on in place of an `isinstance(...)` example, its drain-input rule's example names a `TypeError` in Python or TypeScript, its attempt-index precedence note says "context-primitive-style" in place of Python's `ContextVar`, and its state-immutability and `error_type` examples pair Python with TypeScript. No behavior change; spec v0.120.1 (clarification, no proposal)
 - §2 and §6 use language-neutral notation. Python's `None` becomes `null` and keyword arguments are written `name: value`. The `dedupe_append(key?)` signature marks its optional parameter with `?` in place of a `None` default, and §6's drain timeout example is a floating-point number of seconds in place of Python's `float`. No behavior change; spec v0.120.2 (clarification, no proposal)
+- §6 `LlmTokenEvent` is emitted for each non-empty streamed delta, and `chunk_index` counts the token events the call emitted, from 0 with no gaps, so an empty delta, which emits no event, leaves no hole in the sequence by [proposal 0128](../../proposals/0128-llm-provider-anthropic-gemini-streaming.md)

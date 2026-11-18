@@ -1,0 +1,251 @@
+# Gemini streamed thought parts and signed parts: llm-provider §8.3.6 and
+# §8.3.2 (proposal 0128).
+#
+# Adjacent text parts join when they have the same `thought` value and
+# neither carries a thoughtSignature. An absent `thought` is false. A signed
+# part is never joined and keeps its signature. An empty signed text part,
+# which Gemini sends to deliver a signature, becomes an empty signed
+# TextBlock and emits no token event. A thought part that carries a
+# thoughtSignature maps to a signed ThinkingBlock. An empty text part with no
+# signature is left out of the message.
+#
+# Case 2 and case 3 are the two sides of §6's structural-identity exception:
+# streamed, a thought split into an unsigned piece and a signed piece gives
+# two ThinkingBlocks; atomic, the same thought as one signed part gives one.
+#
+# `stream_body` (gemini form) and `expected.token_events`: see the harness
+# note in fixture 001's header.
+
+mapping: gemini
+
+cases:
+  - name: streamed_thought_text_and_signed_parts
+    description: |
+      Two thought pieces join into one ThinkingBlock. A text piece with
+      thought: false and the next with thought absent join into one
+      TextBlock. Two adjacent signed text parts stay two blocks, each with its
+      signature, and neither joins the unsigned text on either side. The last
+      chunk carries an empty signed text part, its finishReason and its
+      usageMetadata; it adds an empty signed TextBlock and no event. The
+      stream has no function call.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "What is the answer?"}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - candidates:
+                - content: {role: model, parts: [{text: "Thinking about ", thought: true}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 10, candidatesTokenCount: 2, totalTokenCount: 12}
+              modelVersion: gemini-test
+              responseId: resp-092a
+            - candidates:
+                - content: {role: model, parts: [{text: "the answer.", thought: true}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15}
+              modelVersion: gemini-test
+              responseId: resp-092a
+            - candidates:
+                - content: {role: model, parts: [{text: "The answer ", thought: false}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 10, candidatesTokenCount: 7, totalTokenCount: 17}
+              modelVersion: gemini-test
+              responseId: resp-092a
+            - candidates:
+                - content: {role: model, parts: [{text: "is 42."}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 10, candidatesTokenCount: 9, totalTokenCount: 19}
+              modelVersion: gemini-test
+              responseId: resp-092a
+            - candidates:
+                - content: {role: model, parts: [{text: " Signed one.", thoughtSignature: "sig-a"}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 10, candidatesTokenCount: 11, totalTokenCount: 21}
+              modelVersion: gemini-test
+              responseId: resp-092a
+            - candidates:
+                - content: {role: model, parts: [{text: " Signed two.", thoughtSignature: "sig-b"}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 10, candidatesTokenCount: 13, totalTokenCount: 23}
+              modelVersion: gemini-test
+              responseId: resp-092a
+            - candidates:
+                - content: {role: model, parts: [{text: " Tail."}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 10, candidatesTokenCount: 15, totalTokenCount: 25}
+              modelVersion: gemini-test
+              responseId: resp-092a
+            - candidates:
+                - content: {role: model, parts: [{text: "", thoughtSignature: "sig-c"}]}
+                  finishReason: STOP
+                  index: 0
+              usageMetadata: {promptTokenCount: 10, candidatesTokenCount: 15, totalTokenCount: 25}
+              modelVersion: gemini-test
+              responseId: resp-092a
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: reasoning, delta: "Thinking about "}
+        - {chunk_index: 1, delta_kind: reasoning, delta: "the answer."}
+        - {chunk_index: 2, delta_kind: content, delta: "The answer "}
+        - {chunk_index: 3, delta_kind: content, delta: "is 42."}
+        - {chunk_index: 4, delta_kind: content, delta: " Signed one."}
+        - {chunk_index: 5, delta_kind: content, delta: " Signed two."}
+        - {chunk_index: 6, delta_kind: content, delta: " Tail."}
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: thinking, text: "Thinking about the answer.", absent_keys: [signature]}
+            - {type: text, text: "The answer is 42.", absent_keys: [signature]}
+            - {type: text, text: " Signed one.", signature: "sig-a"}
+            - {type: text, text: " Signed two.", signature: "sig-b"}
+            - {type: text, text: " Tail.", absent_keys: [signature]}
+            - {type: text, text: "", signature: "sig-c"}
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 10, completion_tokens: 15, total_tokens: 25}
+
+  - name: streamed_signed_thought_piece_gives_two_thinking_blocks
+    description: |
+      An unsigned thought piece, then a thought: true piece carrying a
+      thoughtSignature. The signed piece is not joined, so the message holds
+      two ThinkingBlocks, the signature only on the second.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Plan it."}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - candidates:
+                - content: {role: model, parts: [{text: "Step one. ", thought: true}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 6, candidatesTokenCount: 3, totalTokenCount: 9}
+              modelVersion: gemini-test
+              responseId: resp-092b
+            - candidates:
+                - content: {role: model, parts: [{text: "Step two.", thought: true, thoughtSignature: "sig-t"}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 6, candidatesTokenCount: 6, totalTokenCount: 12}
+              modelVersion: gemini-test
+              responseId: resp-092b
+            - candidates:
+                - content: {role: model, parts: [{text: "Done."}]}
+                  finishReason: STOP
+                  index: 0
+              usageMetadata: {promptTokenCount: 6, candidatesTokenCount: 8, totalTokenCount: 14}
+              modelVersion: gemini-test
+              responseId: resp-092b
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: reasoning, delta: "Step one. "}
+        - {chunk_index: 1, delta_kind: reasoning, delta: "Step two."}
+        - {chunk_index: 2, delta_kind: content, delta: "Done."}
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: thinking, text: "Step one. ", absent_keys: [signature]}
+            - {type: thinking, text: "Step two.", signature: "sig-t"}
+            - {type: text, text: "Done.", absent_keys: [signature]}
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 6, completion_tokens: 8, total_tokens: 14}
+
+  - name: atomic_signed_thought_part_gives_one_thinking_block
+    description: |
+      The atomic response for the same thought, as one signed thought part.
+      It maps to one ThinkingBlock carrying the signature.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Plan it."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - content:
+                  role: model
+                  parts:
+                    - {text: "Step one. Step two.", thought: true, thoughtSignature: "sig-t"}
+                    - {text: "Done."}
+                finishReason: STOP
+                index: 0
+            usageMetadata: {promptTokenCount: 6, candidatesTokenCount: 8, totalTokenCount: 14}
+            modelVersion: gemini-test
+            responseId: resp-092c
+    expected:
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: thinking, text: "Step one. Step two.", signature: "sig-t"}
+            - {type: text, text: "Done.", absent_keys: [signature]}
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 6, completion_tokens: 8, total_tokens: 14}
+
+  - name: empty_unsigned_part_after_function_call_left_out
+    description: |
+      A text part, a signed functionCall part, then an empty text part with
+      no signature. The empty part is left out of the message, so the content
+      holds only the first text part. The call is on message.tool_calls with
+      its signature, and the finish_reason is "tool_calls".
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Weather in SF?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather for a location."
+          parameters:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - candidates:
+                - content: {role: model, parts: [{text: "Checking."}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 30, candidatesTokenCount: 2, totalTokenCount: 32}
+              modelVersion: gemini-test
+              responseId: resp-092d
+            - candidates:
+                - content:
+                    role: model
+                    parts:
+                      - {functionCall: {name: get_weather, id: call_1, args: {location: "SF"}}, thoughtSignature: "sig-f"}
+                  index: 0
+              usageMetadata: {promptTokenCount: 30, candidatesTokenCount: 9, totalTokenCount: 39}
+              modelVersion: gemini-test
+              responseId: resp-092d
+            - candidates:
+                - content: {role: model, parts: [{text: ""}]}
+                  finishReason: STOP
+                  index: 0
+              usageMetadata: {promptTokenCount: 30, candidatesTokenCount: 9, totalTokenCount: 39}
+              modelVersion: gemini-test
+              responseId: resp-092d
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "Checking."}
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: text, text: "Checking.", absent_keys: [signature]}
+          tool_calls:
+            - {id: call_1, name: get_weather, arguments: {location: "SF"}, signature: "sig-f"}
+        finish_reason: tool_calls
+        usage: {prompt_tokens: 30, completion_tokens: 9, total_tokens: 39}

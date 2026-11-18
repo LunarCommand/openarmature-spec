@@ -271,6 +271,33 @@ response-side clause.
   `delta_kind = "tool_call"` value is reserved for a follow-on that
   streams tool-call argument deltas.
 
+### 0128: streaming wire mappings for Anthropic and Gemini
+
+- **Where a streamed Gemini signature lands, and whether Gemini signs
+  thought parts.** [still-relevant]: llm-provider §6's exception for
+  Gemini signed parts covers every placement: on the first piece of a part,
+  on the last non-empty piece, or on a trailing empty part. Google's
+  documentation names only the trailing empty part for a stream, and does
+  not describe a signed thought part. A live stream would settle both. If a
+  signature only ever arrives on a trailing empty text part, the exception
+  reduces to that one extra empty block, and the signed-thought rule stays
+  as a guard.
+- **How a mapping knows a signature is another provider's.**
+  [still-relevant]: §3.1.7 requires a mapping to strip signatures produced
+  by a different provider, but no record says which provider produced a
+  block. A block's shape used to hint at it: only Anthropic signed thinking
+  blocks and only Gemini signed text blocks. With a signed Gemini thought
+  part the shapes overlap. Settling it, for example with a provider tag on
+  a signed block, is a §3 change of its own.
+- **What in an error shows that the provider rejected a content part.**
+  [still-relevant]: llm-provider §8.1.3, §8.2.3 and §8.3.3 each map a
+  content-part rejection to `provider_unsupported_content_block`, but none
+  says what in the error body shows it: the message text, or a structured
+  detail such as a field violation on a `parts` path. Fixtures 016, 039 and
+  049 pin the rows with a message that names the rejected media. A signal
+  checked against each vendor's error responses would make the rule
+  testable beyond that.
+
 ## retrieval-provider
 
 ### 0059 — embedding provider

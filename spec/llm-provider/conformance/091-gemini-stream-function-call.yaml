@@ -1,0 +1,49 @@
+# Gemini streamed function call: llm-provider §8.3.6 (proposal 0128).
+#
+# On the Gemini API a functionCall part arrives whole in one chunk. It maps to
+# a ToolCall on message.tool_calls, emits no token event, and makes the
+# finish_reason "tool_calls" whatever finishReason Gemini reports (§8.3.2).
+#
+# `stream_body` (gemini form) and `expected.token_events`: see the harness
+# note in fixture 001's header.
+
+mapping: gemini
+
+call:
+  operation: complete
+  stream: true
+  messages:
+    - {role: user, content: "Weather in SF?"}
+  tools:
+    - name: get_weather
+      description: "Get current weather for a location."
+      parameters:
+        type: object
+        properties:
+          location: {type: string}
+        required: [location]
+
+mock_provider:
+  responses:
+    - status: 200
+      stream_body:
+        - candidates:
+            - content:
+                role: model
+                parts:
+                  - {functionCall: {name: get_weather, id: call_1, args: {location: "SF"}}}
+              finishReason: STOP
+              index: 0
+          usageMetadata: {promptTokenCount: 30, candidatesTokenCount: 8, totalTokenCount: 38}
+          modelVersion: gemini-test
+          responseId: resp-091
+
+expected:
+  token_events: []
+  response:
+    message:
+      role: assistant
+      tool_calls:
+        - {id: call_1, name: get_weather, arguments: {location: "SF"}, absent_keys: [signature]}
+    finish_reason: tool_calls
+    usage: {prompt_tokens: 30, completion_tokens: 8, total_tokens: 38}

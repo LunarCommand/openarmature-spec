@@ -1,0 +1,34 @@
+# Gemini truncated stream: llm-provider §8.3.6 (proposal 0128).
+#
+# A stream that ends with no chunk carrying either a finishReason or a
+# promptFeedback.blockReason, as a dropped connection or a client timeout
+# leaves it, is a connection error: provider_unavailable. The token events
+# already emitted stand, and the call raises.
+#
+# `stream_body` (gemini form), `expected.token_events` and how `raises` reads
+# a streamed call: see the harness note in fixture 001's header.
+
+mapping: gemini
+
+call:
+  operation: complete
+  stream: true
+  messages:
+    - {role: user, content: "Tell me a story."}
+
+mock_provider:
+  responses:
+    - status: 200
+      stream_body:
+        - candidates:
+            - content: {role: model, parts: [{text: "Once upon"}]}
+              index: 0
+          usageMetadata: {promptTokenCount: 8, candidatesTokenCount: 2, totalTokenCount: 10}
+          modelVersion: gemini-test
+          responseId: resp-099
+
+expected:
+  token_events:
+    - {chunk_index: 0, delta_kind: content, delta: "Once upon"}
+  raises:
+    category: provider_unavailable

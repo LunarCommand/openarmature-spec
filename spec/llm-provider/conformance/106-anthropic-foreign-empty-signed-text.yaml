@@ -1,0 +1,82 @@
+# A foreign empty signed text block sent to Anthropic: llm-provider §3.1.7
+# and §8.2.1.1 (proposal 0128).
+#
+# Gemini can deliver a thought signature on a text part with empty text, which
+# maps to an empty signed TextBlock (§3.1.1). Anthropic signs no text blocks,
+# so a signed TextBlock in a history sent to the §8.2 mapping came from
+# another provider. Stripping its signature leaves an empty block, which
+# carries nothing, so the mapping drops it rather than rejecting it. A signed
+# non-empty TextBlock loses its signature and keeps its text. If the strip
+# leaves the assistant message with no content and no tool calls, the call is
+# rejected before sending.
+#
+# The pre-send-reject convention (an empty mock response list) is defined in
+# fixture 001's harness note.
+
+mapping: anthropic
+
+cases:
+  - name: empty_signed_text_block_dropped_signed_text_stripped
+    description: |
+      A history whose assistant message holds an empty signed TextBlock and a
+      signed non-empty TextBlock, both from a Gemini response. The wire
+      assistant message holds only the second block's text, with no
+      signature.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Run the check."}
+        - role: assistant
+          content:
+            - {type: text, text: "", signature: "sig-g-empty"}
+            - {type: text, text: "Result ready.", signature: "sig-g-text"}
+        - {role: user, content: "Thanks. Summarize it."}
+      config: {max_tokens: 64}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 64
+      messages:
+        - {role: user, content: "Run the check."}
+        - role: assistant
+          content:
+            - {type: text, text: "Result ready."}
+        - {role: user, content: "Thanks. Summarize it."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_106a
+            model: claude-test
+            role: assistant
+            content:
+              - {type: text, text: "All checks passed."}
+            stop_reason: end_turn
+            usage: {input_tokens: 20, output_tokens: 4}
+    expected:
+      response:
+        message: {role: assistant, content: [{type: text, text: "All checks passed."}], tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+
+  - name: message_left_empty_by_strip_rejected_pre_send
+    description: |
+      An assistant message whose only content is an empty signed TextBlock
+      from another provider. Dropping it leaves the message with no content
+      and no tool calls, so the call raises provider_invalid_request before
+      sending.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Run the check."}
+        - role: assistant
+          content:
+            - {type: text, text: "", signature: "sig-g-empty"}
+        - {role: user, content: "Thanks. Summarize it."}
+      config: {max_tokens: 64}
+    mock_provider:
+      responses: []
+    expected_wire_request_count: 0
+    expected:
+      raises:
+        category: provider_invalid_request

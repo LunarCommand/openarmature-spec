@@ -1,38 +1,30 @@
-# llm-provider §6 *Managed-field collision* clause (b) / §8.2 — the §8.2
-# Anthropic mapping MANAGES the body `stream` field even though it does not
-# realize a declared `stream` (streaming unimplemented; §5 rejects a declared
-# stream-set call).
+# llm-provider §8.2.1: the Anthropic body `stream` field is managed in both
+# modes (proposals 0108 and 0128).
 #
-# §8.2 consumes an ATOMIC response. Anthropic's Messages API accepts a body
-# `stream` flag, so an extras `stream: true` on a NON-stream-set call (declared
-# stream: false, which §5 does not reject) would, if left unmanaged, ride the
-# §6 untouched pass-through to Anthropic's request-body root, make Anthropic
-# emit an event-stream, and break the atomic consumer opaquely mid-call (the
-# exact silent fallback §5 forbids). §8.2 therefore manages `stream` for its
-# own consumer's correctness: an extras `stream` selecting streaming is
-# REJECTED pre-send (the same outcome §5 gives a declared stream-set call); a
-# matching `stream: false` is a no-op.
+# The body `stream` field is the wire realization of the declared `stream`
+# argument (§5). The mapping sends `stream: true` for a `stream`-set call
+# (§8.2.6) and no `stream` key otherwise. Every call fixes a stream mode, so
+# the field is managed on every call (§6 *Managed-field collision*).
 #
-# ---------------------------------------------------------------------
-# Per-directory harness directives: see 001's header (mapping: anthropic, here
-# with the bound model `claude-test` and the §8.2 {type: message, ...}
-# response), 038's header (the max_tokens-required rule), 032's header
-# (config.extras pass-through bag), and 001's header again (the
-# pre-send-reject convention: mock_provider.responses: [] +
-# expected.raises: {category}).
+# An extras `stream` matching the call's mode is a redundant no-op: `true` on
+# a `stream`-set call or `false` on a call without it. A conflicting one,
+# `false` on a `stream`-set call or `true` on a call without it, is rejected
+# before sending with provider_invalid_request. The mapping does not drop it
+# silently or let it override the mode the call fixed.
+#
+# Per-directory harness directives: see 001's header (`mapping: anthropic`,
+# the `stream_body` Anthropic form, the pre-send-reject convention), 032's
+# header (the `config.extras` bag) and conformance-adapter §5.16 (the wire
+# assertions).
 
 mapping: anthropic
 
 cases:
-  - name: extras_stream_true_on_atomic_mapping_rejected_pre_send
+  - name: extras_stream_true_on_unstreamed_call_rejected_pre_send
     description: |
-      complete(config: {max_tokens: 64, extras: {stream: true}}) in unary mode
-      (declared stream unset). §5 does not reject (the declared stream param is
-      not set), but the extras `stream: true` names Anthropic's body `stream`
-      field and selects streaming — which would break §8.2's atomic consumer.
-      §8.2 manages `stream`: the mapping MUST raise provider_invalid_request at
-      pre-send validation and MUST NOT issue any request, closing the smuggling
-      path. It MUST NOT forward the extras value untouched onto the wire.
+      complete(config: {max_tokens: 64, extras: {stream: true}}) without
+      `stream` set. The call fixes the atomic mode, and the extras value
+      conflicts with it, so the call is rejected before sending.
     call:
       operation: complete
       messages: [{role: user, content: "hi"}]
@@ -41,22 +33,83 @@ cases:
         extras:
           stream: true
     mock_provider:
-      # Never reached — rejection is pre-send. A sent request fails the test.
+      # Never reached: rejection is pre-send. A sent request fails the case.
       responses: []
     expected:
       raises:
         category: provider_invalid_request
-      invariants:
-        atomic_mapping_extras_stream_conflict_rejected_pre_send: true
-        no_request_issued: true
-        extras_stream_not_smuggled_to_wire: true
 
-  - name: extras_stream_false_on_atomic_mapping_no_op
+  - name: extras_stream_false_on_streamed_call_rejected_pre_send
     description: |
-      complete(config: {max_tokens: 64, extras: {stream: false}}) in unary mode.
-      The extras `stream: false` MATCHES the mapping's atomic (non-streaming)
-      mode, so it is a redundant no-op: the mapping absorbs it (does NOT forward
-      it) and the atomic call proceeds. The wire body carries no `stream` key.
+      complete(stream: true, config: {max_tokens: 64, extras: {stream: false}}).
+      The call fixes the streaming mode, and the extras value conflicts with
+      it, so the call is rejected before sending. No token events are emitted.
+    call:
+      operation: complete
+      stream: true
+      messages: [{role: user, content: "hi"}]
+      config:
+        max_tokens: 64
+        extras:
+          stream: false
+    mock_provider:
+      # Never reached: rejection is pre-send. A sent request fails the case.
+      responses: []
+    expected:
+      token_events: []
+      raises:
+        category: provider_invalid_request
+
+  - name: extras_stream_true_on_streamed_call_no_op
+    description: |
+      complete(stream: true, config: {max_tokens: 64, extras: {stream: true}}).
+      The extras value matches the call's mode, so it is a no-op. The wire
+      carries `stream: true` once, and the stream assembles as usual.
+    call:
+      operation: complete
+      stream: true
+      messages: [{role: user, content: "hi"}]
+      config:
+        max_tokens: 64
+        extras:
+          stream: true
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 64
+      messages: [{role: user, content: "hi"}]
+      stream: true
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_078c, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 3, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: "ok"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: end_turn, stop_sequence: null}, usage: {output_tokens: 1}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "ok"}
+      response:
+        message: {role: assistant, content: [{type: text, text: "ok"}], tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}
+
+  - name: extras_stream_false_on_unstreamed_call_no_op
+    description: |
+      complete(config: {max_tokens: 64, extras: {stream: false}}) without
+      `stream` set. The extras value matches the call's atomic mode, so it is
+      a no-op: the mapping absorbs it, and the wire body carries no `stream`
+      key.
     call:
       operation: complete
       messages: [{role: user, content: "hi"}]
@@ -72,9 +125,9 @@ cases:
     mock_provider:
       responses:
         - status: 200
-          body: {type: message, id: msg_078, model: claude-test, role: assistant, content: [{type: text, text: "ok"}], stop_reason: end_turn, usage: {input_tokens: 3, output_tokens: 1}}
+          body: {type: message, id: msg_078d, model: claude-test, role: assistant, content: [{type: text, text: "ok"}], stop_reason: end_turn, stop_sequence: null, usage: {input_tokens: 3, output_tokens: 1}}
     expected:
-      response: {finish_reason: stop}
-      invariants:
-        matching_extras_stream_false_no_op: true
-        wire_carries_no_stream_key: true
+      response:
+        message: {role: assistant, content: [{type: text, text: "ok"}], tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 3, completion_tokens: 1, total_tokens: 4}

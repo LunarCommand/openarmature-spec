@@ -1,0 +1,112 @@
+# Gemini part of an unmodeled type: llm-provider §8.3.2 and §8.3.6
+# (proposal 0128).
+#
+# A part of a type the mapping does not model is left out of
+# message.content and message.tool_calls. It stays in raw, verbatim, and is
+# not an error. Streamed, it emits no token event and is kept in arrival
+# order, so it separates the text parts on either side of it, which then stay
+# two blocks. The atomic response maps the same way.
+#
+# An `executableCode` part, which Gemini returns for its code-execution tool,
+# stands for any unmodeled type.
+#
+# `stream_body` (gemini form), `expected.token_events` and the two
+# `raw_check` forms: see the harness note in fixture 001's header.
+
+mapping: gemini
+
+cases:
+  - name: streamed_unmodeled_part_between_text_parts
+    description: |
+      A text part, an executableCode part, then a text part. Two content
+      token events; two TextBlocks; the executableCode part only on raw,
+      between the two text parts.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Compute it."}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - candidates:
+                - content: {role: model, parts: [{text: "Before."}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 7, candidatesTokenCount: 2, totalTokenCount: 9}
+              modelVersion: gemini-test
+              responseId: resp-097a
+            - candidates:
+                - content: {role: model, parts: [{executableCode: {language: PYTHON, code: "print(6 * 7)"}}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 7, candidatesTokenCount: 9, totalTokenCount: 16}
+              modelVersion: gemini-test
+              responseId: resp-097a
+            - candidates:
+                - content: {role: model, parts: [{text: "After."}]}
+                  finishReason: STOP
+                  index: 0
+              usageMetadata: {promptTokenCount: 7, candidatesTokenCount: 11, totalTokenCount: 18}
+              modelVersion: gemini-test
+              responseId: resp-097a
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "Before."}
+        - {chunk_index: 1, delta_kind: content, delta: "After."}
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: text, text: "Before.", absent_keys: [signature]}
+            - {type: text, text: "After.", absent_keys: [signature]}
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 7, completion_tokens: 11, total_tokens: 18}
+        raw_check:
+          equals:
+            candidates:
+              - content:
+                  role: model
+                  parts:
+                    - {text: "Before."}
+                    - {executableCode: {language: PYTHON, code: "print(6 * 7)"}}
+                    - {text: "After."}
+                finishReason: STOP
+                index: 0
+
+  - name: atomic_unmodeled_part_between_text_parts
+    description: |
+      The same parts in one atomic response map to the same two TextBlocks,
+      with the executableCode part on raw only.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Compute it."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - content:
+                  role: model
+                  parts:
+                    - {text: "Before."}
+                    - {executableCode: {language: PYTHON, code: "print(6 * 7)"}}
+                    - {text: "After."}
+                finishReason: STOP
+                index: 0
+            usageMetadata: {promptTokenCount: 7, candidatesTokenCount: 11, totalTokenCount: 18}
+            modelVersion: gemini-test
+            responseId: resp-097b
+    expected:
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: text, text: "Before.", absent_keys: [signature]}
+            - {type: text, text: "After.", absent_keys: [signature]}
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 7, completion_tokens: 11, total_tokens: 18}
+        raw_check:
+          required_keys: [candidates, usageMetadata]

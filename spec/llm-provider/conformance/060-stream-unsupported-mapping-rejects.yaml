@@ -1,9 +1,9 @@
 # §5 *Provider streaming support* — a wire mapping that does NOT implement
 # streaming MUST reject a stream-set call at pre-send validation, raising
 # provider_invalid_request (§7), with NO token events emitted and NO silent
-# atomic fallback. Same mold as tool_choice pre-send validation. This is the
-# defined behavior for the §8.2 Anthropic / §8.3 Gemini mappings until their
-# streaming wire handling lands in follow-ons.
+# atomic fallback. Same mold as tool_choice pre-send validation. The §8.1, §8.2
+# and §8.3 mappings all stream, so the rule applies to any future mapping that
+# does not.
 #
 # `mapping: streaming_unsupported_stub` is defined in fixture 001's header.
 

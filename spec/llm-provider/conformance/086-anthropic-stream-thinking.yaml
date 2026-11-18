@@ -1,0 +1,218 @@
+# Anthropic streamed thinking: llm-provider §8.2.6, §3.1.4 and §8.2.1.1
+# (proposal 0128).
+#
+# A `thinking` block's text arrives as `thinking_delta` events, each emitted as
+# a reasoning token event, and its signature as one `signature_delta`. A
+# `redacted_thinking` block arrives whole on `content_block_start` and emits no
+# event.
+#
+# When a request asks for thinking display to be omitted, Anthropic sends a
+# thinking block whose text is empty, with a signature. It assembles to an
+# empty signed ThinkingBlock (§3.1.4), which the mapping keeps on the message,
+# and the empty `thinking_delta` emits no event (§6 *Streaming assembly*).
+# Sent back, the block goes on the wire as `{type: thinking, thinking: "",
+# signature}` (§8.2.1.1). An empty thinking block without a signature is
+# invalid and is rejected before sending.
+#
+# The mock responses stand in for a request that asked for thinking. How a
+# request asks for it is the caller's extras, which these cases do not set,
+# and nothing here asserts it.
+#
+# `stream_body`'s Anthropic form and `expected.token_events`: see the harness
+# note in fixture 001's header. The pre-send-reject convention
+# (`mock_provider.responses: []`) is in the same note.
+
+mapping: anthropic
+
+cases:
+  - name: thinking_redacted_and_text_stream
+    description: |
+      A thinking block in two thinking_delta events with its signature from a
+      signature_delta, a redacted_thinking block that arrives whole, then a
+      text block in two deltas. Two reasoning events, then two content
+      events; the redacted block emits none.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "What's the answer?"}
+      config: {max_tokens: 2048}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 2048
+      messages:
+        - {role: user, content: "What's the answer?"}
+      stream: true
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_086a, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 20, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: thinking, thinking: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: thinking_delta, thinking: "Let me "}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: thinking_delta, thinking: "work it out."}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: signature_delta, signature: "sig-086a"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: content_block_start
+              data: {type: content_block_start, index: 1, content_block: {type: redacted_thinking, data: "redacted-086"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 1}
+            - event: content_block_start
+              data: {type: content_block_start, index: 2, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 2, delta: {type: text_delta, text: "The answer "}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 2, delta: {type: text_delta, text: "is 42."}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 2}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: end_turn, stop_sequence: null}, usage: {output_tokens: 40}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: reasoning, delta: "Let me "}
+        - {chunk_index: 1, delta_kind: reasoning, delta: "work it out."}
+        - {chunk_index: 2, delta_kind: content, delta: "The answer "}
+        - {chunk_index: 3, delta_kind: content, delta: "is 42."}
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: thinking, text: "Let me work it out.", signature: "sig-086a"}
+            - {type: redacted_thinking, data: "redacted-086"}
+            - {type: text, text: "The answer is 42."}
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 40, total_tokens: 60}
+
+  - name: display_omitted_gives_empty_signed_thinking_block
+    description: |
+      Thinking display omitted: the thinking block's only thinking_delta is
+      empty, and a signature_delta follows. The Response keeps an empty signed
+      ThinkingBlock, and no reasoning event is emitted. The text deltas emit
+      content events from chunk_index 0.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "What's the answer?"}
+      config: {max_tokens: 2048}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 2048
+      messages:
+        - {role: user, content: "What's the answer?"}
+      stream: true
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_086b, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 20, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: thinking, thinking: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: thinking_delta, thinking: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: signature_delta, signature: "sig-086b"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: content_block_start
+              data: {type: content_block_start, index: 1, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 1, delta: {type: text_delta, text: "It is 42."}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 1}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: end_turn, stop_sequence: null}, usage: {output_tokens: 35}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "It is 42."}
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: thinking, text: "", signature: "sig-086b"}
+            - {type: text, text: "It is 42."}
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 35, total_tokens: 55}
+
+  - name: empty_signed_thinking_block_sent_back
+    description: |
+      The message from the previous case, passed back in history. The empty
+      signed thinking block goes on the wire unchanged, with its empty
+      `thinking` and its signature, in its original position.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "What's the answer?"}
+        - role: assistant
+          content:
+            - {type: thinking, text: "", signature: "sig-086b"}
+            - {type: text, text: "It is 42."}
+        - {role: user, content: "Are you sure?"}
+      config: {max_tokens: 2048}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 2048
+      messages:
+        - {role: user, content: "What's the answer?"}
+        - role: assistant
+          content:
+            - {type: thinking, thinking: "", signature: "sig-086b"}
+            - {type: text, text: "It is 42."}
+        - {role: user, content: "Are you sure?"}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_086c
+            model: claude-test
+            role: assistant
+            content:
+              - {type: text, text: "Yes."}
+            stop_reason: end_turn
+            stop_sequence: null
+            usage: {input_tokens: 45, output_tokens: 2}
+    expected:
+      response:
+        message: {role: assistant, content: [{type: text, text: "Yes."}], tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 45, completion_tokens: 2, total_tokens: 47}
+
+  - name: unsigned_empty_thinking_block_rejected_pre_send
+    description: |
+      An assistant message in history holds a thinking block with empty text
+      and no signature. That block is invalid (§3.1.4), so the call is
+      rejected before sending with provider_invalid_request.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "What's the answer?"}
+        - role: assistant
+          content:
+            - {type: thinking, text: ""}
+            - {type: text, text: "It is 42."}
+        - {role: user, content: "Are you sure?"}
+      config: {max_tokens: 2048}
+    mock_provider:
+      # Never reached: rejection is pre-send. A sent request fails the case.
+      responses: []
+    expected:
+      raises:
+        category: provider_invalid_request

@@ -1,0 +1,111 @@
+# Empty filtered response on a structured-output call: llm-provider §7,
+# §7.1 and §3 (proposal 0128).
+#
+# A Gemini response filtered before it produced anything maps to content ""
+# with finish_reason "content_filter" (§3 *An empty response*, §8.3.2). On a
+# call with a response_schema the empty content does not parse, so the call
+# raises structured_output_invalid with output_content "".
+#
+# §7.1: such a failure is not re-asked even when `reask` is supplied. The
+# re-ask would append the failed output as an assistant turn, and an empty
+# one is invalid in a request. The builder is not invoked, no second request
+# is sent, and the error propagates as it would without `reask`.
+#
+# `call.retry.reask` and `expected.wire_requests`: conformance-adapter §5.11.
+# `carries`: §5.12 and §5.13.
+
+mapping: gemini
+
+cases:
+  - name: empty_filtered_response_raises_structured_output_invalid
+    description: |
+      A response_schema call whose response is a candidate with no parts and
+      finishReason SAFETY. The call raises structured_output_invalid with
+      output_content "" and finish_reason "content_filter".
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          name: {type: string}
+        required: [name]
+        additionalProperties: false
+    mock_provider:
+      capabilities:
+        supports_native_structured_output: true
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - finishReason: SAFETY
+                index: 0
+            usageMetadata: {promptTokenCount: 14, totalTokenCount: 14}
+            modelVersion: gemini-test
+            responseId: resp-101a
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: ""
+          finish_reason: content_filter
+          usage: {prompt_tokens: 14, completion_tokens: null, total_tokens: 14}
+
+  - name: empty_filtered_response_is_not_reasked
+    description: |
+      The same call with a retry configured with `reask` and two attempts. The
+      first attempt fails with empty output_content, so the loop does not
+      re-ask: the builder is not invoked, the second mock response is never
+      consumed, and the call raises the first attempt's error.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Generate the record."}
+      response_schema:
+        type: object
+        properties:
+          name: {type: string}
+        required: [name]
+        additionalProperties: false
+      retry:
+        max_attempts: 2
+        backoff: {type: deterministic, seconds: 0}
+        reask:
+          template: "Your previous output {output_content} was invalid. Return corrected JSON."
+    mock_provider:
+      capabilities:
+        supports_native_structured_output: true
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - finishReason: SAFETY
+                index: 0
+            usageMetadata: {promptTokenCount: 14, totalTokenCount: 14}
+            modelVersion: gemini-test
+            responseId: resp-101b
+        # Never consumed: an empty failure is not re-asked.
+        - status: 200
+          body:
+            candidates:
+              - content: {role: model, parts: [{text: '{"name":"Alice"}'}]}
+                finishReason: STOP
+                index: 0
+            usageMetadata: {promptTokenCount: 30, candidatesTokenCount: 5, totalTokenCount: 35}
+            modelVersion: gemini-test
+            responseId: resp-101c
+    expected_wire_request_count: 1
+    expected:
+      raises:
+        category: structured_output_invalid
+        carries:
+          response_schema_present: true
+          output_content: ""
+          finish_reason: content_filter
+          usage: {prompt_tokens: 14, completion_tokens: null, total_tokens: 14}
+      wire_requests:
+        - appended_messages: []
+      invariants:
+        reask_builder_not_invoked: true

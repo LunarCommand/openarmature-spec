@@ -1,0 +1,131 @@
+# Anthropic atomic response with a block the mapping does not model:
+# llm-provider §8.2.2 (proposal 0128).
+#
+# A content entry of a type §8.2.1.1 does not map, here the server-side tool
+# blocks `server_tool_use` and `web_search_tool_result`, is left out of
+# `message.content` and `message.tool_calls`. It stays on `raw`, verbatim, and
+# is not an error. A text block with empty text and no signature is left out
+# the same way. A response with no content and no tool calls left has the
+# empty string as
+# its content, which §3 allows only for "content_filter", "length" or
+# "error"; under any other finish reason it raises provider_invalid_response.
+#
+# `raw_check.equals`: see the harness note in fixture 001's header.
+
+mapping: anthropic
+
+cases:
+  - name: unmodeled_blocks_left_out_text_mapped
+    description: |
+      A server_tool_use block, its web_search_tool_result block, and a text
+      block. The Response holds the text block only; raw holds all three.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Will it rain?"}
+      config: {max_tokens: 1024}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_096a
+            model: claude-test
+            role: assistant
+            content:
+              - {type: server_tool_use, id: srvtoolu_096a, name: web_search, input: {query: "rain today"}}
+              - type: web_search_tool_result
+                tool_use_id: srvtoolu_096a
+                content:
+                  - {type: web_search_result, url: "https://weather.example.com/today", title: "Today's forecast", encrypted_content: "enc-096", page_age: null}
+              - {type: text, text: "Rain is expected."}
+            stop_reason: end_turn
+            stop_sequence: null
+            usage: {input_tokens: 30, output_tokens: 25}
+    expected:
+      response:
+        message:
+          role: assistant
+          content: [{type: text, text: "Rain is expected."}]
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 30, completion_tokens: 25, total_tokens: 55}
+        raw_check:
+          equals:
+            content:
+              - {type: server_tool_use, id: srvtoolu_096a, name: web_search, input: {query: "rain today"}}
+              - type: web_search_tool_result
+                tool_use_id: srvtoolu_096a
+                content:
+                  - {type: web_search_result, url: "https://weather.example.com/today", title: "Today's forecast", encrypted_content: "enc-096", page_age: null}
+              - {type: text, text: "Rain is expected."}
+
+  - name: only_unmodeled_blocks_under_end_turn_raises
+    description: |
+      A response whose only content is unmodeled blocks, with stop_reason
+      end_turn. No content is left, and "stop" does not allow empty content,
+      so the call raises provider_invalid_response.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Will it rain?"}
+      config: {max_tokens: 1024}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_096b
+            model: claude-test
+            role: assistant
+            content:
+              - {type: server_tool_use, id: srvtoolu_096b, name: web_search, input: {query: "rain today"}}
+              - type: web_search_tool_result
+                tool_use_id: srvtoolu_096b
+                content:
+                  - {type: web_search_result, url: "https://weather.example.com/today", title: "Today's forecast", encrypted_content: "enc-096", page_age: null}
+            stop_reason: end_turn
+            stop_sequence: null
+            usage: {input_tokens: 30, output_tokens: 10}
+    expected:
+      raises:
+        category: provider_invalid_response
+
+  - name: empty_unsigned_text_block_left_out
+    description: |
+      An empty text block with no signature, then a non-empty text block.
+      The empty one carries nothing and would be an invalid TextBlock, so it
+      is left out of the message and stays on raw. The Response holds the
+      second block only.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Will it rain?"}
+      config: {max_tokens: 1024}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_096c
+            model: claude-test
+            role: assistant
+            content:
+              - {type: text, text: ""}
+              - {type: text, text: "Rain is expected."}
+            stop_reason: end_turn
+            stop_sequence: null
+            usage: {input_tokens: 30, output_tokens: 5}
+    expected:
+      response:
+        message:
+          role: assistant
+          content: [{type: text, text: "Rain is expected."}]
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 30, completion_tokens: 5, total_tokens: 35}
+        raw_check:
+          equals:
+            content:
+              - {type: text, text: ""}
+              - {type: text, text: "Rain is expected."}

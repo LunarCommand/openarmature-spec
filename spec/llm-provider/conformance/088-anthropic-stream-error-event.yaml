@@ -1,0 +1,127 @@
+# Anthropic in-stream error events: llm-provider §8.2.6 (proposal 0128).
+#
+# An `error` event inside a stream that began with HTTP 200 maps its
+# `error.type` through §8.2.3's table, as the HTTP response with that type
+# would map. A type the table does not list maps to provider_unavailable. The
+# call raises even when events follow the error. The token events already
+# emitted stand, followed by the terminal failure event (graph-engine §6).
+#
+# `stream_body`'s Anthropic form, `expected.token_events`, and how
+# `expected.raises` reads a call run inside a graph: see the harness note in
+# fixture 001's header.
+
+mapping: anthropic
+
+cases:
+  - name: rate_limit_error_event_after_two_deltas
+    description: |
+      Two text deltas, then an error event of type rate_limit_error, and the
+      stream ends. Two content token events, then provider_rate_limit.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Say hello."}
+      config: {max_tokens: 256}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_088a, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 10, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: "Hel"}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: "lo"}}
+            - event: error
+              data: {type: error, error: {type: rate_limit_error, message: "Rate limited."}}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "Hel"}
+        - {chunk_index: 1, delta_kind: content, delta: "lo"}
+      raises:
+        category: provider_rate_limit
+
+  - name: error_event_followed_by_message_stop_still_raises
+    description: |
+      The same error event, followed by the rest of a normal stream through
+      message_stop. The call still raises provider_rate_limit.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Say hello."}
+      config: {max_tokens: 256}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_088b, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 10, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: "Hel"}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: "lo"}}
+            - event: error
+              data: {type: error, error: {type: rate_limit_error, message: "Rate limited."}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: end_turn, stop_sequence: null}, usage: {output_tokens: 2}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "Hel"}
+        - {chunk_index: 1, delta_kind: content, delta: "lo"}
+      raises:
+        category: provider_rate_limit
+
+  - name: unlisted_error_type_maps_to_unavailable
+    description: |
+      An error event whose type §8.2.3 does not list raises
+      provider_unavailable. A text_delta and a normal ending through
+      message_stop follow the error. The category comes from the error
+      event, not from the truncation rule, and the delta after the error
+      emits no token event.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Say hello."}
+      config: {max_tokens: 256}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_088c, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 10, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: "Hel"}}
+            - event: error
+              data: {type: error, error: {type: future_error, message: "Something new went wrong."}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: "lo"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: end_turn, stop_sequence: null}, usage: {output_tokens: 1}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "Hel"}
+      raises:
+        category: provider_unavailable

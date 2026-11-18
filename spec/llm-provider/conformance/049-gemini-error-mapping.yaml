@@ -1,5 +1,7 @@
 # §8.3.3 Gemini error mapping. HTTP status + the Gemini error.status
-# string map to §7 error categories.
+# string map to §7 error categories. A 400 or 403 that matches the
+# content-part row (the model rejected a content part) maps to
+# provider_unsupported_content_block first, by §8.3.3's precedence.
 
 mapping: gemini
 
@@ -9,6 +11,24 @@ cases:
     mock_provider:
       responses: [{status: 400, body: {error: {code: 400, message: "bad request", status: "INVALID_ARGUMENT"}}}]
     expected: {raises: {category: provider_invalid_request}}
+
+  - name: content_part_rejected_400
+    # §8.3.3 Precedence: a 400 that matches the content-part row maps to
+    # provider_unsupported_content_block, whatever its status. The message
+    # names the rejected media type, as 039's Anthropic case does.
+    call:
+      operation: complete
+      messages:
+        - role: user
+          content:
+            - type: image
+              source: {type: url, url: "https://example.com/x.tiff"}
+            - {type: text, text: "describe"}
+      config: {max_tokens: 16}
+    mock_provider:
+      capabilities: {supports_image_input: true}
+      responses: [{status: 400, body: {error: {code: 400, message: "Unsupported MIME type: image/tiff", status: "INVALID_ARGUMENT"}}}]
+    expected: {raises: {category: provider_unsupported_content_block}}
 
   - name: permission_denied_403
     call: {operation: complete, messages: [{role: user, content: "hi"}], config: {max_tokens: 16}}

@@ -1,0 +1,46 @@
+# OpenAI stream with an empty leading delta: llm-provider §6 and §8.1.6,
+# graph-engine §6 (proposal 0128).
+#
+# Many OpenAI-compatible servers open a stream with a chunk whose
+# delta.content is "". An empty delta emits no token event, and chunk_index
+# counts the events the call emitted, from 0 with no gaps. So the two
+# non-empty deltas that follow are chunk_index 0 and 1. A counter that
+# numbered raw chunks would give 1 and 2, and an implementation that emitted
+# the empty delta would give three events.
+#
+# token_events is defined in fixture 001's harness note.
+
+cases:
+  - name: empty_leading_delta_emits_no_token_event
+    description: |
+      A stream: true call. The first chunk carries delta.role and
+      delta.content "", the next two carry "Hello" and " there". Two content
+      token events, chunk_index 0 and 1, and the assembled Response.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "say hello"}
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "say hello"}
+      stream: true
+      stream_options: {include_usage: true}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - {id: cc-105, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {role: assistant, content: ""}, finish_reason: null}]}
+            - {id: cc-105, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {content: "Hello"}, finish_reason: null}]}
+            - {id: cc-105, object: chat.completion.chunk, model: test-model, choices: [{index: 0, delta: {content: " there"}, finish_reason: stop}]}
+            - {id: cc-105, object: chat.completion.chunk, model: test-model, choices: [], usage: {prompt_tokens: 6, completion_tokens: 2, total_tokens: 8}}
+            - "[DONE]"
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "Hello"}
+        - {chunk_index: 1, delta_kind: content, delta: " there"}
+      response:
+        message: {role: assistant, content: "Hello there", tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 6, completion_tokens: 2, total_tokens: 8}

@@ -1,0 +1,60 @@
+# An Anthropic refusal with no content, streamed: llm-provider §8.2.6, §8.2.2
+# and §3 (proposal 0128).
+#
+# The streamed counterpart of fixture 102. No content block arrives, and
+# `message_delta` sets `stop_reason` and `stop_details`. The assembled message
+# maps by §8.2.2 as the atomic one does: content "", no tool calls,
+# "content_filter". No token events are emitted.
+#
+# `stream_body`'s Anthropic form, `expected.token_events` and
+# `raw_check.equals`: see the harness note in fixture 001's header.
+
+mapping: anthropic
+
+cases:
+  - name: streamed_empty_refusal_maps_to_empty_content_filter
+    description: |
+      message_start, then a message_delta carrying stop_reason refusal and
+      stop_details, then message_stop. token_events is empty, the Response
+      matches fixture 102's, and raw holds stop_details from message_delta.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Explain how to do something harmful."}
+      config: {max_tokens: 256}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 256
+      messages:
+        - {role: user, content: "Explain how to do something harmful."}
+      stream: true
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_103, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 14, output_tokens: 0}}
+            - event: message_delta
+              data:
+                type: message_delta
+                delta:
+                  stop_reason: refusal
+                  stop_sequence: null
+                  stop_details: {type: refusal, category: cyber, explanation: null}
+                usage: {output_tokens: 0}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events: []
+      response:
+        message: {role: assistant, content: "", tool_calls: null}
+        finish_reason: content_filter
+        usage: {prompt_tokens: 14, completion_tokens: 0, total_tokens: 14}
+        raw_check:
+          equals:
+            content: []
+            stop_reason: refusal
+            stop_details: {type: refusal, category: cyber, explanation: null}
