@@ -1,0 +1,38 @@
+# Gemini blocked prompt, atomic: llm-provider §8.3.2 (proposal 0128).
+#
+# When Gemini blocks the prompt itself, it returns a successful response with
+# promptFeedback.blockReason set and no candidates. The mapping returns a
+# Response whose content is the empty string, with no tool calls and
+# finish_reason "content_filter" (§3 *An empty response*). usage follows
+# §8.3.2's usage rule: prompt_tokens and total_tokens from usageMetadata, and
+# completion_tokens null because candidatesTokenCount is absent. raw keeps the
+# response verbatim, promptFeedback included.
+#
+# `raw_check.required_keys`: see the harness note in fixture 001's header.
+
+mapping: gemini
+
+call:
+  operation: complete
+  messages:
+    - {role: user, content: "A prompt Gemini blocks."}
+
+mock_provider:
+  responses:
+    - status: 200
+      body:
+        promptFeedback:
+          blockReason: SAFETY
+          safetyRatings:
+            - {category: HARM_CATEGORY_DANGEROUS_CONTENT, probability: HIGH, blocked: true}
+        usageMetadata: {promptTokenCount: 9, totalTokenCount: 9}
+        modelVersion: gemini-test
+        responseId: resp-094
+
+expected:
+  response:
+    message: {role: assistant, content: "", tool_calls: null}
+    finish_reason: content_filter
+    usage: {prompt_tokens: 9, completion_tokens: null, total_tokens: 9}
+    raw_check:
+      required_keys: [promptFeedback, usageMetadata, modelVersion, responseId]

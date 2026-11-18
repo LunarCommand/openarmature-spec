@@ -1,0 +1,258 @@
+# Anthropic streamed tool input: llm-provider §8.2.6 (proposal 0128).
+#
+# A `tool_use` block's input arrives as `input_json_delta` events. The mapping
+# appends each `partial_json` to the block's buffer, which starts empty
+# whatever `input` the start event carries, and parses it at
+# `content_block_stop`. An empty buffer, which a tool with no arguments
+# produces, keeps the start event's `input`. Tool-call deltas emit no token
+# events (§6 *Streaming assembly*).
+#
+# A buffer that does not parse becomes the block's `input` as a string, so
+# `raw` keeps the bytes. The tool call is then malformed: under a
+# `stop_reason` that maps to "error" its `arguments` are null (§3
+# *Validation under finish_reason: "error"*), and under any other the response
+# raises provider_invalid_response.
+#
+# On the §8.2.5.1 tool-coercion path the structured content arrives the same
+# way, on the synthetic tool's block, so a streamed coercion call emits no
+# token events (§8.2.6 *Structured output*).
+#
+# `stream_body`'s Anthropic form, `expected.token_events`,
+# `raw_check.equals`, the `anthropic_fallback_tool_coercion` capability and
+# the `<request_tool_choice_name>` echo: see the harness note in fixture
+# 001's header.
+
+mapping: anthropic
+
+cases:
+  - name: split_input_parses_and_empty_input_keeps_start_value
+    description: |
+      Two tool_use blocks. The first block's JSON is split mid-token across
+      three input_json_delta events, with input {} on its start event; the
+      call's arguments are the parsed object. The second block has no deltas,
+      so its arguments are the start event's {}. No token events;
+      finish_reason "tool_calls".
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Weather and time in SF?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather for a location."
+          parameters:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+        - name: get_time
+          description: "Get the current time."
+          parameters: {type: object, properties: {}}
+      config: {max_tokens: 256}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 256
+      messages:
+        - {role: user, content: "Weather and time in SF?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather for a location."
+          input_schema:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+        - name: get_time
+          description: "Get the current time."
+          input_schema: {type: object, properties: {}}
+      stream: true
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_085a, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 60, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: tool_use, id: toolu_085a, name: get_weather, input: {}}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "{\"loca"}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "tion\": \"S"}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "F\"}"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: content_block_start
+              data: {type: content_block_start, index: 1, content_block: {type: tool_use, id: toolu_085b, name: get_time, input: {}}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 1}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: tool_use, stop_sequence: null}, usage: {output_tokens: 30}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events: []
+      response:
+        message:
+          role: assistant
+          tool_calls:
+            - {id: toolu_085a, name: get_weather, arguments: {location: "SF"}}
+            - {id: toolu_085b, name: get_time, arguments: {}}
+        finish_reason: tool_calls
+        usage: {prompt_tokens: 60, completion_tokens: 30, total_tokens: 90}
+
+  - name: unparseable_input_under_tool_use_raises
+    description: |
+      The input buffer is cut off mid-string and does not parse. The
+      stop_reason is tool_use, which maps to "tool_calls", so the malformed
+      tool call raises provider_invalid_response. No token events.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Weather in SF?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather for a location."
+          parameters:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+      config: {max_tokens: 256}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_085b, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 40, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: tool_use, id: toolu_085c, name: get_weather, input: {}}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "{\"location\": \"S"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: tool_use, stop_sequence: null}, usage: {output_tokens: 12}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events: []
+      raises:
+        category: provider_invalid_response
+
+  - name: unparseable_input_under_unknown_stop_reason_gives_null_arguments
+    description: |
+      The same unparseable buffer under a stop_reason the §8.2.2 table does not
+      list, which maps to "error". The tool call surfaces with arguments null,
+      and raw keeps the buffer as the block's input, as a string.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Weather in SF?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather for a location."
+          parameters:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+      config: {max_tokens: 256}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_085c, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 40, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: tool_use, id: toolu_085d, name: get_weather, input: {}}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "{\"location\": \"S"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: future_stop_reason, stop_sequence: null}, usage: {output_tokens: 12}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events: []
+      response:
+        message:
+          role: assistant
+          tool_calls:
+            - {id: toolu_085d, name: get_weather, arguments: null}
+        finish_reason: error
+        usage: {prompt_tokens: 40, completion_tokens: 12, total_tokens: 52}
+        raw_check:
+          equals:
+            content:
+              - {type: tool_use, id: toolu_085d, name: get_weather, input: "{\"location\": \"S"}
+            stop_reason: future_stop_reason
+
+  - name: streamed_tool_coercion_parses_and_emits_no_content_events
+    description: |
+      Adapters declaring anthropic_fallback_tool_coercion. The model lacks
+      native structured output, so the mapping takes the §8.2.5.1
+      tool-coercion path on a streamed call. The structured content arrives
+      as input_json_delta on the synthetic tool's block, so it emits no
+      token events, and parsed is validated from the assembled input.
+    requires_capability:
+      anthropic_fallback_tool_coercion: true
+    call:
+      operation: complete
+      stream: true
+      messages: [{role: user, content: "Generate."}]
+      response_schema:
+        type: object
+        properties:
+          value: {type: integer}
+        required: [value]
+        additionalProperties: false
+      config: {max_tokens: 64}
+    expected_wire_request_includes:
+      tools:
+        # The input_schema copy is exact (conformance-adapter §8.4).
+        - name: "<tool_name_synthetic>"
+          input_schema:
+            type: object
+            properties:
+              value: {type: integer}
+            required: [value]
+            additionalProperties: false
+      tool_choice: {type: tool, name: "<tool_name_synthetic>"}
+      stream: true
+    expected_wire_request_absent_keys: [output_config]
+    mock_provider:
+      capabilities:
+        supports_native_structured_output: false
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_085e, type: message, role: assistant, model: claude-legacy, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 10, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: tool_use, id: toolu_085e, name: "<request_tool_choice_name>", input: {}}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "{\"value\": "}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "42}"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: tool_use, stop_sequence: null}, usage: {output_tokens: 5}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events: []
+      response:
+        parsed: {value: 42}

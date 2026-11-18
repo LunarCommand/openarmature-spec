@@ -4,6 +4,30 @@ All notable changes to the OpenArmature specification are documented in this fil
 
 The format is adapted from [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — subsection labels render as bold paragraphs (rather than H3) to keep the rendered docs-site right-rail TOC focused on releases, and there is no `[Unreleased]` section since the spec tags after every acceptance PR. The spec follows [Semantic Versioning](https://semver.org/).
 
+## [0.121.0] - 2026-11-17
+
+**Changed**
+
+- **The Anthropic and Gemini mappings stream** ([proposal 0128](proposals/0128-llm-provider-anthropic-gemini-streaming.md)). A `stream`-set call that §8.2 and §8.3 rejected now streams. Each mapping rebuilds its vendor's atomic response from the stream and maps it by its existing response mapping, so a streamed `Response` matches a non-streamed one, apart from block count where Gemini signs parts (llm-provider §6). §8.2.6 consumes Anthropic's named server-sent events: it buffers `input_json_delta` until the block stops, merges cumulative `message_delta` usage, ignores unknown events and deltas, and maps an in-stream `error` event through §8.2.3. §8.3.6 consumes `streamGenerateContent?alt=sse`: it joins adjacent text parts but never a signed one, takes the last `usageMetadata` whole, and maps an in-stream `error` object through §8.3.3. A stream that ends without its terminal event is `provider_unavailable`. §8.2.1's body `stream` field becomes the wire realization of the declared `stream` argument, managed in both modes.
+- **An empty delta emits no token event** (llm-provider §5 and §6), and graph-engine §6's `chunk_index` counts the events a call emitted, from 0 with no gaps. This applies to §8.1.6 as well.
+- **A response cut short may have empty content.** §3 allows an assistant message with the empty string as its content in a `Response` whose `finish_reason` is `"content_filter"`, `"length"` or `"error"`. A request carrying an empty assistant message is still rejected. §8.3.2 maps a prompt Gemini blocks (`promptFeedback.blockReason`, no candidates) to such a response, with `finish_reason` `"content_filter"`. §7.1 does not re-ask a structured-output failure whose `output_content` is empty.
+- **Empty signed blocks are kept.** A text or thinking block MAY have empty text when it carries a `signature` (§3.1.1, §3.1.4), as Anthropic's thinking block does with display omitted, and the mapping sends it back. §3.1.7: stripping a foreign signature from an empty block drops the block, and a message the strip leaves with no content and no tool calls is rejected before sending with `provider_invalid_request`. This tightens §8.1.1, which sent a thinking-only assistant message as an empty turn.
+- **A block type a mapping does not model** is left out of the message and kept in `raw` (§8.2.2, §8.3.2), and so is an empty text block or part with no signature. A response with only such blocks and no tool calls raises `provider_invalid_response` unless its `finish_reason` is one of the three above. §8.2.2's note that a caller MAY continue a `pause_turn` response now applies only when the content held no unmodeled blocks.
+- **Gemini signed thought parts and error precedence.** §8.3.2 maps a thought part that carries a `thoughtSignature` to a signed `ThinkingBlock`, which §8.3.1.1 sends back as a signed thought part. §8.3.3 gains a precedence: a 400 or 403 error that matches the content-part row maps to `provider_unsupported_content_block`, then the code and status rows decide, with `provider_unavailable` as the fallback.
+
+**Added**
+
+- llm-provider §8.2.6 and §8.3.6 *Streaming*. §10 drops its deferral of per-vendor streaming.
+- conformance-adapter §5.16: under `mapping: gemini`, `expected_wire_url` compares the path and query, without the scheme, the host or a `key` query parameter.
+- The llm-provider harness note (fixture 001's header) gains the Anthropic named-event and Gemini chunk forms of `stream_body`, `expected.token_events` (captured through a one-node graph and a drain), and `raw_check.equals`, says how `expected.raises` reads a call that fails its node, and lets the `<request_tool_choice_name>` echo apply in a `stream_body` entry.
+- Fixtures: llm-provider **084** to **107**. Fixture 078 is rewritten for §8.2.1's managed `stream` field in both modes, fixture 060's notes say its stub stands for any future mapping that does not stream, and fixture 049 gains a case for §8.3.3's content-part precedence. Observability fixtures 001 and 111 say a token event is emitted per non-empty delta; no assertion changes.
+
+**Notes**
+
+- **MINOR.** Two mappings gain a behavior, and one rule tightens: a message that stripping leaves empty is rejected before sending. llm-provider, graph-engine and conformance-adapter `Latest` move to 0.121.0.
+- The vendor facts were checked against current documentation before accept. Anthropic's streaming events and deltas come from its streaming and citations documentation. Google's API reference does not describe `streamGenerateContent`'s chunks, so the Gemini facts come from Google's SDKs and thinking guide. `docs/compatibility.md` adds *Anthropic streaming* and *Gemini streaming* rows and logs one drift: Google now calls `generateContent`, the endpoint §8.3 maps, legacy beside its Interactions API, though fully supported.
+- Three questions stay open in `docs/open-questions.md`: where a streamed Gemini signature lands and whether Gemini signs thought parts, how a mapping knows a signature is another provider's, and what in an error shows that the provider rejected a content part.
+
 ## [0.120.2] - 2026-11-06
 
 **Changed**

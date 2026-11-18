@@ -24,9 +24,9 @@
 #     without `mapping` targets the §8.1 OpenAI-compatible mapping.
 #   - `mapping: streaming_unsupported_stub` selects a synthetic wire mapping
 #     that supports an atomic complete() and declares no streaming support.
-#     It stands in for a mapping that does not implement streaming, so the
-#     §5 rejection of a stream-set call is tested apart from any one
-#     vendor's wire details.
+#     It stands in for any future mapping that does not implement
+#     streaming, so the §5 rejection of a stream-set call is tested apart
+#     from any one vendor's wire details.
 #   - Positions. For each call, the harness invokes the named operation
 #     (`complete` or `ready`) with the inputs given, then checks the call's
 #     assertions. They sit at `calls[i].expected` for the i-th call of a
@@ -44,6 +44,30 @@
 #     and the terminal usage chunk carries empty choices and {usage: {...}}.
 #     The mock SSE server yields these lines as the response body.
 #     Observability's mock_llm_stream stands in for this wire-level source.
+#     Two more forms, selected by the fixture's `mapping`:
+#       - `mapping: anthropic`: a list of `{event: <name>, data: <object>}`
+#         entries, each yielded as an SSE `event:` line and a `data:` line,
+#         in order. There is no "[DONE]" sentinel; the stream ends after
+#         the last entry.
+#       - `mapping: gemini`: a list of objects, each yielded as one `data:`
+#         line. Each is a `GenerateContentResponse` or, for an in-stream
+#         failure, `{error: {code, message, status}}`.
+#   - `expected.token_events`, in a call's `expected:`: the
+#     `LlmTokenEvent`s the call emitted, a complete ordered list of
+#     `{chunk_index, delta_kind, delta}` entries compared as values
+#     (conformance-adapter §8.4). `[]` asserts that none were emitted. A
+#     call outside an invocation has no observer to receive token events
+#     (§5), so the harness runs a call that asserts `token_events` as the
+#     one node of a single-node graph, with a `typed_event_collector`
+#     (conformance-adapter §5.5) filtered to `LlmTokenEvent`. After the
+#     invocation the harness calls `drain_events_for` on its invocation id
+#     (graph-engine §6) before reading. The graph makes one call, so every
+#     retained token event is that call's. The node returns the call's
+#     Response, which the call's `expected.response` checks read. A call
+#     that raises fails the node, and `expected.raises` then reads the
+#     provider category of the error the node failure carries as its
+#     cause, not the wrapper's `node_exception`. Fixtures that use the
+#     `no_token_events_emitted` claim keep it.
 #   - `expected.response`, in a call's `expected:`, is the Response the
 #     operation returned, matched by named keys (conformance-adapter §8.4).
 #     `parsed` and each tool call's `arguments` are exact. `message.tool_calls`
@@ -55,16 +79,21 @@
 #   - `expected.response.raw_check.required_keys` is a parameter list. Each
 #     listed key is a top-level key of `raw` whose value equals the mock
 #     body's value for that key, by exact deep equality. It is defined only
-#     for an atomic call: a streamed mock has no single body, and §6 fixes
-#     only that the assembled `raw` keeps the terminal chunk's usage block
-#     verbatim, not where it keeps it.
+#     for an atomic call: a streamed mock has no single body to compare
+#     with, and `equals` carries the expected values instead.
+#   - `expected.response.raw_check.equals` is a mapping of top-level `raw`
+#     keys to their expected values, each compared by exact deep equality.
+#     It is defined for an atomic call and, under `mapping: anthropic` or
+#     `mapping: gemini`, for a streamed call, where §8.2.6 and §8.3.6
+#     define `raw`.
 #   - `expected.raises` is defined in conformance-adapter §5.8.
 #   - The wire assertions (`expected_wire_request`,
 #     `expected_wire_request_includes`, `expected_wire_request_absent_keys`
 #     and `expected_wire_request_count`) are defined in conformance-adapter
-#     §5.16. That section also states the Gemini rule: under
+#     §5.16. That section also states the Gemini rules: under
 #     `mapping: gemini`, the wire `model` key is compared with the request
-#     URL's {model} path segment.
+#     URL's {model} path segment, and `expected_wire_url` compares the
+#     path and query without the scheme, the host or a `key` parameter.
 #   - `expected_wire_bytes_identical: {calls: [...]}`, at the document root:
 #     the captured request bytes of every listed call are byte-identical
 #     (§8's intra-implementation wire-byte stability). A body with a
@@ -76,7 +105,8 @@
 #     `requires_capability` (conformance-adapter §5.17), which also defines
 #     `llm_strict_native_schema` and `llm_prompt_augmentation_fallback`.
 #   - Mock echo `<request_tool_choice_name>`: written in a mock response
-#     body, it is replaced by the `tool_choice` name the request carried.
+#     body or a `stream_body` entry, it is replaced by the `tool_choice`
+#     name the request carried.
 #     It is a mock input, not a matcher, and lets a coercion case's mock
 #     answer with the synthetic tool the implementation named.
 #   - Binding token `<tool_name_X>` (conformance-adapter §5.10): a name the

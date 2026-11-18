@@ -1,0 +1,90 @@
+# Gemini text streaming: llm-provider §8.3.6 (proposal 0128).
+#
+# complete(stream: true) sends the atomic request body to
+# :streamGenerateContent?alt=sse. Each chunk carries the parts produced since
+# the previous one. Adjacent unsigned text parts join into one part. Each
+# non-empty text part is emitted as a content token event, and an empty one
+# emits none, so chunk_index runs 0, 1 with no gap.
+#
+# Usage is the last usageMetadata any chunk carried, taken whole. Gemini's
+# counts are already accumulated, so summing them is wrong. The last
+# usageMetadata here reports a lower promptTokenCount than an earlier chunk
+# and omits cachedContentTokenCount, which an earlier chunk carried. A
+# per-counter merge would keep cached_tokens; taking the last record whole
+# leaves it absent. A final chunk with no usageMetadata changes nothing.
+#
+# `stream_body` (gemini form), `expected.token_events` and `raw_check.equals`:
+# see the harness note in fixture 001's header. `expected_wire_url` under
+# `mapping: gemini` compares the path and query (conformance-adapter §5.16).
+
+mapping: gemini
+
+call:
+  operation: complete
+  stream: true
+  messages:
+    - {role: user, content: "Say hello."}
+  config: {max_tokens: 256}
+
+mock_provider:
+  responses:
+    - status: 200
+      stream_body:
+        - candidates:
+            - content: {role: model, parts: [{text: "Hello"}]}
+              index: 0
+          usageMetadata: {promptTokenCount: 12, candidatesTokenCount: 1, totalTokenCount: 13, cachedContentTokenCount: 4}
+          modelVersion: gemini-test
+          responseId: resp-090
+        - candidates:
+            - content: {role: model, parts: [{text: ""}]}
+              index: 0
+          usageMetadata: {promptTokenCount: 12, candidatesTokenCount: 1, totalTokenCount: 13, cachedContentTokenCount: 4}
+          modelVersion: gemini-test
+          responseId: resp-090
+        - candidates:
+            - content: {role: model, parts: [{text: ", world."}]}
+              finishReason: STOP
+              index: 0
+          usageMetadata: {promptTokenCount: 11, candidatesTokenCount: 4, totalTokenCount: 15}
+          modelVersion: gemini-test
+          responseId: resp-090
+        - candidates:
+            - finishReason: STOP
+              index: 0
+          modelVersion: gemini-test
+          responseId: resp-090
+
+expected_wire_url: "/v1beta/models/gemini-test:streamGenerateContent?alt=sse"
+expected_wire_request:
+  model: gemini-test
+  contents:
+    - role: user
+      parts:
+        - {text: "Say hello."}
+  generationConfig:
+    maxOutputTokens: 256
+expected_wire_request_count: 1
+
+expected:
+  token_events:
+    - {chunk_index: 0, delta_kind: content, delta: "Hello"}
+    - {chunk_index: 1, delta_kind: content, delta: ", world."}
+  response:
+    message:
+      role: assistant
+      content:
+        - {type: text, text: "Hello, world.", absent_keys: [signature]}
+      tool_calls: null
+    finish_reason: stop
+    usage: {prompt_tokens: 11, completion_tokens: 4, total_tokens: 15}
+    usage_absent_keys: [cached_tokens, cache_creation_tokens]
+    raw_check:
+      equals:
+        usageMetadata: {promptTokenCount: 11, candidatesTokenCount: 4, totalTokenCount: 15}
+        candidates:
+          - content: {role: model, parts: [{text: "Hello, world."}]}
+            finishReason: STOP
+            index: 0
+        modelVersion: gemini-test
+        responseId: resp-090

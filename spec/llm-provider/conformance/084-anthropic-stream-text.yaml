@@ -1,0 +1,90 @@
+# Anthropic text stream: llm-provider §8.2.6 (proposal 0128).
+#
+# A `stream`-set call sends `stream: true` (§8.2.1) and consumes Anthropic's
+# named server-sent events. The mapping rebuilds the atomic Message from the
+# events and maps it by §8.2.2.
+#
+# The stream carries an empty `text_delta` between the first and second
+# non-empty ones. It emits no token event (§6 *Streaming assembly*), and
+# `chunk_index` counts the events emitted with no gaps (graph-engine §6), so
+# the indexes are 0, 1, 2. A counter that left a hole for the empty delta
+# would give 0, 2, 3.
+#
+# Usage merges across `message_start` and `message_delta`. `message_start`
+# carries `input_tokens` 25 and `output_tokens` 1; `message_delta` carries
+# `output_tokens` 15 only, which replaces the same key. Taking `message_delta`
+# alone gives no `prompt_tokens`. The cache counts on `message_start` stay on
+# `raw` and are not promoted to the §6 cache fields (§8.2.2).
+#
+# `stream_body`'s Anthropic form, `expected.token_events` and
+# `raw_check.equals`: see the harness note in fixture 001's header.
+
+mapping: anthropic
+
+cases:
+  - name: text_stream_assembles_with_merged_usage
+    description: |
+      Three non-empty text deltas with an empty one between the first and
+      second. Three content token events with chunk_index 0, 1, 2; the
+      assembled Response; usage merged from message_start and message_delta.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Say hello."}
+      config: {max_tokens: 256}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 256
+      messages:
+        - {role: user, content: "Say hello."}
+      stream: true
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message:
+                  id: msg_084
+                  type: message
+                  role: assistant
+                  model: claude-test
+                  content: []
+                  stop_reason: null
+                  stop_sequence: null
+                  usage: {input_tokens: 25, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 1}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: "Hello"}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: ", "}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: "world."}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: end_turn, stop_sequence: null}, usage: {output_tokens: 15}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "Hello"}
+        - {chunk_index: 1, delta_kind: content, delta: ", "}
+        - {chunk_index: 2, delta_kind: content, delta: "world."}
+      response:
+        message:
+          role: assistant
+          content: [{type: text, text: "Hello, world."}]
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 25, completion_tokens: 15, total_tokens: 40}
+        usage_absent_keys: [cached_tokens, cache_creation_tokens]
+        raw_check:
+          equals:
+            usage: {input_tokens: 25, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 15}
+            stop_reason: end_turn

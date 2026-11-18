@@ -18,7 +18,7 @@
 #     wire streaming: the spec tests the assembled content against the
 #     concatenated deltas, not wire-incremental delivery (llm-provider §5).
 #     * `calls_llm.stream: <bool>`: when true, the node calls complete() with
-#       `stream` set, so the provider emits per-chunk LlmTokenEvents
+#       `stream` set, so the provider emits an LlmTokenEvent per non-empty delta
 #       (graph-engine §6). When it is false or absent, the call takes the
 #       atomic path, which emits no token events.
 #     * `mock_llm_stream: [[<chunk>, ...], ...]`: replaces `mock_llm` for

@@ -1,0 +1,275 @@
+# Anthropic stream events and blocks the mapping does not model:
+# llm-provider §8.2.6 and §8.2.2 (proposal 0128).
+#
+# `ping` events and event types the mapping does not recognize are ignored. A
+# delta type it does not recognize is ignored too. A `citations_delta` appends
+# its citation to the text block's `citations` list, which starts as [] when
+# the start event carried none; a text block with no `citations_delta` keeps
+# the start event's value or its absence. Citations are not part of a
+# TextBlock, so they are visible on `raw` only.
+#
+# A block of a type the mapping does not model, here `server_tool_use`, is
+# assembled from its events like any other, its `input_json_delta` buffer
+# parsed at `content_block_stop`, and then left out of the message. It stays
+# on `raw`. A buffer that does not parse becomes the block's `input` as a
+# string, and for an unmodeled block that is not an error.
+#
+# None of these emits a token event, and neither does a delta on an
+# unmodeled block, whatever its delta type. Events for different block
+# indexes may interleave, and each applies to its own block. `raw` is exact where `raw_check.equals`
+# names a key, so the uncited text block's missing `citations` key is
+# asserted by the `content` value.
+#
+# `stream_body`'s Anthropic form, `expected.token_events` and
+# `raw_check.equals`: see the harness note in fixture 001's header.
+
+mapping: anthropic
+
+cases:
+  - name: ignored_events_citations_and_server_tool_block
+    description: |
+      A ping, a server_tool_use block with streamed input, a cited text block
+      that also receives an unknown delta type, an unknown event type, and an
+      uncited text block. The Response holds the two text blocks; the token
+      events are their two text deltas; raw holds all three blocks.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Will it rain?"}
+      config: {max_tokens: 1024}
+    expected_wire_request:
+      model: claude-test
+      max_tokens: 1024
+      messages:
+        - {role: user, content: "Will it rain?"}
+      stream: true
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_087a, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 30, output_tokens: 1}}
+            - event: ping
+              data: {type: ping}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: server_tool_use, id: srvtoolu_087a, name: web_search, input: {}}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "{\"query\": "}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "\"rain today\"}"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: content_block_start
+              data: {type: content_block_start, index: 1, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 1, delta: {type: text_delta, text: "Rain is expected."}}
+            - event: content_block_delta
+              data:
+                type: content_block_delta
+                index: 1
+                delta:
+                  type: citations_delta
+                  citation: {type: web_search_result_location, url: "https://weather.example.com/today", title: "Today's forecast", encrypted_index: "enc-087", cited_text: "Rain expected this afternoon."}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 1, delta: {type: future_delta, value: "ignored"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 1}
+            - event: future_event
+              data: {type: future_event, detail: "ignored"}
+            - event: content_block_start
+              data: {type: content_block_start, index: 2, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 2, delta: {type: text_delta, text: " Take an umbrella."}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 2}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: end_turn, stop_sequence: null}, usage: {output_tokens: 50}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "Rain is expected."}
+        - {chunk_index: 1, delta_kind: content, delta: " Take an umbrella."}
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: text, text: "Rain is expected."}
+            - {type: text, text: " Take an umbrella."}
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 30, completion_tokens: 50, total_tokens: 80}
+        raw_check:
+          equals:
+            content:
+              - {type: server_tool_use, id: srvtoolu_087a, name: web_search, input: {query: "rain today"}}
+              - type: text
+                text: "Rain is expected."
+                citations:
+                  - {type: web_search_result_location, url: "https://weather.example.com/today", title: "Today's forecast", encrypted_index: "enc-087", cited_text: "Rain expected this afternoon."}
+              - {type: text, text: " Take an umbrella."}
+
+  - name: unparseable_server_tool_input_is_not_an_error
+    description: |
+      A server_tool_use block whose input buffer does not parse, under
+      stop_reason end_turn. The block is unmodeled, so this is not an error:
+      the text maps, and raw holds the block with the buffer string as its
+      input.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Will it rain?"}
+      config: {max_tokens: 1024}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_087b, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 30, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: server_tool_use, id: srvtoolu_087b, name: web_search, input: {}}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "{\"query\": \"ra"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: content_block_start
+              data: {type: content_block_start, index: 1, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 1, delta: {type: text_delta, text: "I could not search."}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 1}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: end_turn, stop_sequence: null}, usage: {output_tokens: 20}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "I could not search."}
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: text, text: "I could not search."}
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 30, completion_tokens: 20, total_tokens: 50}
+        raw_check:
+          equals:
+            content:
+              - {type: server_tool_use, id: srvtoolu_087b, name: web_search, input: "{\"query\": \"ra"}
+              - {type: text, text: "I could not search."}
+
+  - name: unmodeled_block_text_delta_emits_no_event
+    description: |
+      A block of a type the mapping does not model receives a text_delta.
+      The block is not part of the message, so its delta emits no token
+      event, whatever its delta type. Only the text block's delta is
+      emitted, and the message holds only the text block. How the unmodeled
+      block assembles on raw is not asserted.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Will it rain?"}
+      config: {max_tokens: 1024}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_087c, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 30, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: future_block, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: text_delta, text: "Not for the message."}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: content_block_start
+              data: {type: content_block_start, index: 1, content_block: {type: text, text: ""}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 1, delta: {type: text_delta, text: "Rain is expected."}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 1}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: end_turn, stop_sequence: null}, usage: {output_tokens: 12}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "Rain is expected."}
+      response:
+        message:
+          role: assistant
+          content:
+            - {type: text, text: "Rain is expected."}
+          tool_calls: null
+        finish_reason: stop
+        usage: {prompt_tokens: 30, completion_tokens: 12, total_tokens: 42}
+
+  - name: interleaved_block_indexes_apply_to_their_own_blocks
+    description: |
+      Two tool_use blocks, at index 0 and 1, receive their input_json_delta
+      events alternately. Each delta applies to the block its index names,
+      so each call's arguments parse to its own object. A mapping that
+      routed deltas by block type, or to the most recently started block,
+      would mix the two buffers and fail to parse. No token events.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Weather in SF and NYC?"}
+      tools:
+        - name: get_weather
+          description: "Get current weather for a location."
+          parameters:
+            type: object
+            properties:
+              location: {type: string}
+            required: [location]
+      config: {max_tokens: 256}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - event: message_start
+              data:
+                type: message_start
+                message: {id: msg_087d, type: message, role: assistant, model: claude-test, content: [], stop_reason: null, stop_sequence: null, usage: {input_tokens: 40, output_tokens: 1}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 0, content_block: {type: tool_use, id: toolu_087d, name: get_weather, input: {}}}
+            - event: content_block_start
+              data: {type: content_block_start, index: 1, content_block: {type: tool_use, id: toolu_087e, name: get_weather, input: {}}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "{\"location\": "}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 1, delta: {type: input_json_delta, partial_json: "{\"location\": "}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 0, delta: {type: input_json_delta, partial_json: "\"SF\"}"}}
+            - event: content_block_delta
+              data: {type: content_block_delta, index: 1, delta: {type: input_json_delta, partial_json: "\"NYC\"}"}}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 0}
+            - event: content_block_stop
+              data: {type: content_block_stop, index: 1}
+            - event: message_delta
+              data: {type: message_delta, delta: {stop_reason: tool_use, stop_sequence: null}, usage: {output_tokens: 25}}
+            - event: message_stop
+              data: {type: message_stop}
+    expected:
+      token_events: []
+      response:
+        message:
+          role: assistant
+          tool_calls:
+            - {id: toolu_087d, name: get_weather, arguments: {location: "SF"}}
+            - {id: toolu_087e, name: get_weather, arguments: {location: "NYC"}}
+        finish_reason: tool_calls
+        usage: {prompt_tokens: 40, completion_tokens: 25, total_tokens: 65}

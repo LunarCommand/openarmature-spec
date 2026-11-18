@@ -1,0 +1,58 @@
+# Gemini streamed safety stop: llm-provider §8.3.6 and §8.3.2 (proposal 0128).
+#
+# The last chunk carries finishReason SAFETY. The finish_reason is the last
+# value any chunk carried, mapped by §8.3.2's table to "content_filter". The
+# content token events already emitted stand, and the text produced before the
+# stop is the message's content.
+#
+# `stream_body` (gemini form), `expected.token_events` and `raw_check.equals`:
+# see the harness note in fixture 001's header.
+
+mapping: gemini
+
+call:
+  operation: complete
+  stream: true
+  messages:
+    - {role: user, content: "Write the scene."}
+
+mock_provider:
+  responses:
+    - status: 200
+      stream_body:
+        - candidates:
+            - content: {role: model, parts: [{text: "The door "}]}
+              index: 0
+          usageMetadata: {promptTokenCount: 9, candidatesTokenCount: 2, totalTokenCount: 11}
+          modelVersion: gemini-test
+          responseId: resp-093
+        - candidates:
+            - content: {role: model, parts: [{text: "opened"}]}
+              finishReason: SAFETY
+              index: 0
+              safetyRatings:
+                - {category: HARM_CATEGORY_DANGEROUS_CONTENT, probability: HIGH, blocked: true}
+          usageMetadata: {promptTokenCount: 9, candidatesTokenCount: 3, totalTokenCount: 12}
+          modelVersion: gemini-test
+          responseId: resp-093
+
+expected:
+  token_events:
+    - {chunk_index: 0, delta_kind: content, delta: "The door "}
+    - {chunk_index: 1, delta_kind: content, delta: "opened"}
+  response:
+    message:
+      role: assistant
+      content:
+        - {type: text, text: "The door opened", absent_keys: [signature]}
+      tool_calls: null
+    finish_reason: content_filter
+    usage: {prompt_tokens: 9, completion_tokens: 3, total_tokens: 12}
+    raw_check:
+      equals:
+        candidates:
+          - content: {role: model, parts: [{text: "The door opened"}]}
+            finishReason: SAFETY
+            index: 0
+            safetyRatings:
+              - {category: HARM_CATEGORY_DANGEROUS_CONTENT, probability: HIGH, blocked: true}

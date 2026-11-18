@@ -1,0 +1,45 @@
+# Gemini blocked prompt, streamed: llm-provider §8.3.6 and §8.3.2 (proposal
+# 0128).
+#
+# A blocked prompt arrives as one chunk with promptFeedback.blockReason and no
+# candidates. It emits no token events, and the merged response maps by
+# §8.3.2's blocked-prompt rule to the same Response as fixture 094. The chunk
+# carries a blockReason, so the stream is not a truncated one and does not
+# raise provider_unavailable.
+#
+# `stream_body` (gemini form), `expected.token_events` and `raw_check.equals`:
+# see the harness note in fixture 001's header.
+
+mapping: gemini
+
+call:
+  operation: complete
+  stream: true
+  messages:
+    - {role: user, content: "A prompt Gemini blocks."}
+
+mock_provider:
+  responses:
+    - status: 200
+      stream_body:
+        - promptFeedback:
+            blockReason: SAFETY
+            safetyRatings:
+              - {category: HARM_CATEGORY_DANGEROUS_CONTENT, probability: HIGH, blocked: true}
+          usageMetadata: {promptTokenCount: 9, totalTokenCount: 9}
+          modelVersion: gemini-test
+          responseId: resp-095
+
+expected:
+  token_events: []
+  response:
+    message: {role: assistant, content: "", tool_calls: null}
+    finish_reason: content_filter
+    usage: {prompt_tokens: 9, completion_tokens: null, total_tokens: 9}
+    raw_check:
+      equals:
+        promptFeedback:
+          blockReason: SAFETY
+          safetyRatings:
+            - {category: HARM_CATEGORY_DANGEROUS_CONTENT, probability: HIGH, blocked: true}
+        usageMetadata: {promptTokenCount: 9, totalTokenCount: 9}

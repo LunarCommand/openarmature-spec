@@ -1,0 +1,92 @@
+# Foreign empty signed blocks and thinking-only messages sent to the
+# OpenAI-compatible mapping: llm-provider §3.1.7, §8.1.1 and §8.1.1.1
+# (proposal 0128).
+#
+# The §8.1 mapping strips thinking blocks and signatures (§8.1.1). An empty
+# signed TextBlock from a Gemini history is dropped once its signature is
+# stripped, and a signed non-empty TextBlock keeps its text. A message that
+# the strip leaves with no content and no tool calls is rejected before
+# sending: an assistant message holding only a ThinkingBlock, or only a
+# RedactedThinkingBlock, is one.
+#
+# No `mapping` key: the §8.1 OpenAI-compatible mapping. The pre-send-reject
+# convention is defined in fixture 001's harness note.
+
+cases:
+  - name: empty_signed_text_block_dropped_signed_text_stripped
+    description: |
+      The history from fixture 106: an empty signed TextBlock and a signed
+      non-empty TextBlock. The wire assistant message carries only the second
+      block's text, collapsed to a string, with no signature.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Run the check."}
+        - role: assistant
+          content:
+            - {type: text, text: "", signature: "sig-g-empty"}
+            - {type: text, text: "Result ready.", signature: "sig-g-text"}
+        - {role: user, content: "Thanks. Summarize it."}
+    expected_wire_request:
+      model: test-model
+      messages:
+        - {role: user, content: "Run the check."}
+        - {role: assistant, content: "Result ready."}
+        - {role: user, content: "Thanks. Summarize it."}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            id: chatcmpl-107a
+            object: chat.completion
+            created: 1700000000
+            model: test-model
+            choices:
+              - index: 0
+                message: {role: assistant, content: "All checks passed."}
+                finish_reason: stop
+            usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+    expected:
+      response:
+        message: {role: assistant, content: "All checks passed.", tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 4, total_tokens: 24}
+
+  - name: thinking_only_message_rejected_pre_send
+    description: |
+      An assistant message holding only a ThinkingBlock. Stripping it leaves
+      no content and no tool calls, so the call raises
+      provider_invalid_request before sending.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Run the check."}
+        - role: assistant
+          content:
+            - {type: thinking, text: "Checking the inputs first.", signature: "sig-a-think"}
+        - {role: user, content: "Thanks. Summarize it."}
+    mock_provider:
+      responses: []
+    expected_wire_request_count: 0
+    expected:
+      raises:
+        category: provider_invalid_request
+
+  - name: redacted_thinking_only_message_rejected_pre_send
+    description: |
+      An assistant message holding only a RedactedThinkingBlock. The strip
+      leaves it empty, so the call is rejected the same way.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Run the check."}
+        - role: assistant
+          content:
+            - {type: redacted_thinking, data: "opaque-redacted-blob"}
+        - {role: user, content: "Thanks. Summarize it."}
+    mock_provider:
+      responses: []
+    expected_wire_request_count: 0
+    expected:
+      raises:
+        category: provider_invalid_request

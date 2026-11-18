@@ -1,0 +1,120 @@
+# Gemini request side for signed and empty blocks: llm-provider §8.3.1.1,
+# §3.1.1 and §3.1.4 (proposal 0128).
+#
+# An empty TextBlock that carries a signature is valid and is sent back as
+# {text: "", thoughtSignature}. A ThinkingBlock that carries a signature,
+# empty or not, is sent as {text, thought: true, thoughtSignature}. An empty
+# TextBlock with no signature is still rejected before sending with
+# provider_invalid_request.
+#
+# Wire `model` is the URL's {model} path segment (conformance-adapter §5.16).
+# The pre-send-reject convention: see the harness note in fixture 001's
+# header.
+
+mapping: gemini
+
+cases:
+  - name: empty_signed_text_block_sent_with_signature
+    description: |
+      An assistant turn holding a text block and an empty signed text block.
+      Both are sent, the empty one as {text: "", thoughtSignature}.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "What is the answer?"}
+        - role: assistant
+          content:
+            - {type: text, text: "It is 42."}
+            - {type: text, text: "", signature: "sig-e"}
+        - {role: user, content: "Why?"}
+      config: {max_tokens: 256}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - content: {role: model, parts: [{text: "Because."}]}
+                finishReason: STOP
+                index: 0
+            usageMetadata: {promptTokenCount: 20, candidatesTokenCount: 2, totalTokenCount: 22}
+    expected_wire_request:
+      model: gemini-test
+      contents:
+        - {role: user, parts: [{text: "What is the answer?"}]}
+        - role: model
+          parts:
+            - {text: "It is 42."}
+            - {text: "", thoughtSignature: "sig-e"}
+        - {role: user, parts: [{text: "Why?"}]}
+      generationConfig:
+        maxOutputTokens: 256
+    expected:
+      response:
+        message: {role: assistant, content: [{type: text, text: "Because.", absent_keys: [signature]}], tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 20, completion_tokens: 2, total_tokens: 22}
+
+  - name: signed_thinking_blocks_sent_as_signed_thought_parts
+    description: |
+      An assistant turn holding an empty signed thinking block, a non-empty
+      signed thinking block and a text block. Each thinking block is sent as
+      a thought part carrying its own thoughtSignature.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "What is the answer?"}
+        - role: assistant
+          content:
+            - {type: thinking, text: "", signature: "sig-t1"}
+            - {type: thinking, text: "Reasoned it out.", signature: "sig-t2"}
+            - {type: text, text: "It is 42."}
+        - {role: user, content: "Why?"}
+      config: {max_tokens: 256}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            candidates:
+              - content: {role: model, parts: [{text: "Because."}]}
+                finishReason: STOP
+                index: 0
+            usageMetadata: {promptTokenCount: 24, candidatesTokenCount: 2, totalTokenCount: 26}
+    expected_wire_request:
+      model: gemini-test
+      contents:
+        - {role: user, parts: [{text: "What is the answer?"}]}
+        - role: model
+          parts:
+            - {text: "", thought: true, thoughtSignature: "sig-t1"}
+            - {text: "Reasoned it out.", thought: true, thoughtSignature: "sig-t2"}
+            - {text: "It is 42."}
+        - {role: user, parts: [{text: "Why?"}]}
+      generationConfig:
+        maxOutputTokens: 256
+    expected:
+      response:
+        message: {role: assistant, content: [{type: text, text: "Because.", absent_keys: [signature]}], tool_calls: null}
+        finish_reason: stop
+        usage: {prompt_tokens: 24, completion_tokens: 2, total_tokens: 26}
+
+  - name: unsigned_empty_text_block_rejected_pre_send
+    description: |
+      An assistant turn holding a text block and an empty text block with no
+      signature. The empty unsigned block is invalid (§3.1.1), so the call is
+      rejected before sending with provider_invalid_request.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "What is the answer?"}
+        - role: assistant
+          content:
+            - {type: text, text: "It is 42."}
+            - {type: text, text: ""}
+        - {role: user, content: "Why?"}
+      config: {max_tokens: 256}
+    mock_provider:
+      responses: []
+    expected_wire_request_count: 0
+    expected:
+      raises:
+        category: provider_invalid_request

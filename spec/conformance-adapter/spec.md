@@ -1407,8 +1407,8 @@ llm-provider mock, each meaning the capability is present when absent:
   carrying an image block fails with `provider_unsupported_content_block` (llm-provider §7), raised before
   sending or mapped from the provider's rejection.
 
-None of the three is new: llm-provider fixtures 026, 027 and 072 use the first, 040, 041, 050 and 051 the
-second, and 016, 035 and 039 the third.
+llm-provider fixtures 026, 027 and 072 use the first, 040, 041, 050, 051 and 085 the second, and 016, 035,
+039 and 049 the third.
 
 **Call configuration.** Beyond the pipeline-utilities §6.1 four-field record, the `call.retry`
 mapping accepts the two llm-provider adaptive fields (llm-provider §7.1):
@@ -1704,6 +1704,9 @@ case-insensitively. Primary use: `Authorization: "Bearer <api_key>"` from the pr
 a mismatch is `fixture_schema_invalid`.
 
 **`expected_wire_url: <url>`** is the full resolved URL of every request, compared as an exact string.
+Under `mapping: gemini` it compares the path and query instead, without the scheme and host, which the
+harness's mock server sets, and without a `key` query parameter, since an implementation MAY authenticate
+either by header or by that parameter.
 
 ### 5.17 Capability gates
 
@@ -2258,3 +2261,4 @@ rule rather than an independent sanction: both are homes in the recognized vocab
 - §8.4 *Assertion* states the matching rules every assertion follows: single values, complete lists with unordered and existence lists named in their definitions, mappings that assert the keys they name with a few exact positions, the `<key>_absent_keys` and `absent_keys` absence forms, the null rule, the call a block reads, and that every written assertion is checked. New §4.5 limits a fixture to what the spec requires, with capability gates that never take a check away from an adapter, and new §5.17 generalizes §5.5's capability mechanism. New §5.16 moves the wire-request assertions out of §5.15 and adds `expected_wire_request_includes`. §5's preamble requires every key at an assertion position to be a defined directive, apart from `capture_as` labels and named claims, which an adapter implements, and reserves the absence keys. §5.5, §5.6, §5.8, §5.10 and §5.11 define the assertion directives in use, including one category rule for raised errors through pipeline-utilities §6.4, `span_tree` and `traces`, `delivery_order`, `final_state_bounds`, `middleware_log_captured`, `<timestamp>` and the binding-token rules. §6.1's `accumulate` observer and §6.7's middleware log keep one bucket per call, §6.2's session store counts its calls, §6.3 composes span and log capture for any case asserting them and rejects one that also sets `otel_observer: {attached: false}`, and §6.9 records each measurement individually. §5.1's `flaky_by_index` deterministic form raises uncategorized errors, as `flaky_per_index` does without its new optional `category`, and §5.7 defines `run_count` by [proposal 0127](../../proposals/0127-assertion-matching-rules.md)
 - §5.1's `augment_metadata` and §5.2's factory-reducer entries describe their calls without Python's `**kwargs` notation. No behavior change; spec v0.120.1 (clarification, no proposal)
 - §5.1, §5.5, §6.2, §6.5 and §6.8 use language-neutral notation. Python's `None` and `True` become `null` and `true`, and keyword arguments are written `name: value`. No behavior change; spec v0.120.2 (clarification, no proposal)
+- §5.16's `expected_wire_url` compares the path and query under `mapping: gemini`, without the scheme, the host or a `key` query parameter; §5.11's list of fixtures using the mock capability flags adds 085 and 049 by [proposal 0128](../../proposals/0128-llm-provider-anthropic-gemini-streaming.md)

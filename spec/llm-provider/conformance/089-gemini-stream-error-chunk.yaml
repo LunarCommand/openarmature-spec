@@ -1,0 +1,96 @@
+# Gemini in-stream error: llm-provider §8.3.6 and §8.3.3 (proposal 0128).
+#
+# A stream that began with HTTP 200 can carry a chunk holding a top-level
+# `error` object. The mapping maps it by §8.3.3 on its `code` and `status`, as
+# the HTTP response with that error would map, and the call raises. Token
+# events already emitted stand.
+#
+# §8.3.3's precedence (for an error that does not match the content-part
+# row, which fixture 049 covers): a
+# row whose code and status both match decides; otherwise the code decides (400 is provider_invalid_request); a row matching
+# only the status decides when the code is not listed; and when neither is
+# listed, the error is provider_unavailable.
+#
+# `stream_body` (gemini form), `expected.token_events` and how `raises` reads
+# a streamed call: see the harness note in fixture 001's header.
+
+mapping: gemini
+
+cases:
+  - name: rate_limit_error_chunk_after_text_raises
+    description: |
+      One text part, then a chunk carrying {code: 429, status:
+      RESOURCE_EXHAUSTED}. The text part's content token event is emitted,
+      then the call raises provider_rate_limit.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Tell me a story."}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - candidates:
+                - content: {role: model, parts: [{text: "Once upon"}]}
+                  index: 0
+              usageMetadata: {promptTokenCount: 8, candidatesTokenCount: 2, totalTokenCount: 10}
+              modelVersion: gemini-test
+              responseId: resp-089a
+            - error: {code: 429, message: "Resource has been exhausted.", status: RESOURCE_EXHAUSTED}
+    expected:
+      token_events:
+        - {chunk_index: 0, delta_kind: content, delta: "Once upon"}
+      raises:
+        category: provider_rate_limit
+
+  - name: listed_code_with_unlisted_status_decides_by_code
+    description: |
+      {code: 400, status: FAILED_PRECONDITION}. No row matches both. The code
+      400 is listed, so the code decides: provider_invalid_request. A mapping
+      that let the unlisted status fall to the fallback would raise
+      provider_unavailable.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Tell me a story."}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - error: {code: 400, message: "Precondition check failed.", status: FAILED_PRECONDITION}
+    expected:
+      token_events: []
+      raises:
+        category: provider_invalid_request
+
+  - name: unlisted_code_and_status_fall_back_to_unavailable
+    description: |
+      {code: 409, status: ABORTED}. Neither the code nor the status is listed
+      in §8.3.3, so the error maps to provider_unavailable. A normal chunk
+      with a finishReason follows the error, so the category comes from the
+      error chunk, not from the truncation rule, and the error ends the call
+      even though chunks follow it. The trailing chunk's text emits no token
+      event.
+    call:
+      operation: complete
+      stream: true
+      messages:
+        - {role: user, content: "Tell me a story."}
+    mock_provider:
+      responses:
+        - status: 200
+          stream_body:
+            - error: {code: 409, message: "The operation was aborted.", status: ABORTED}
+            - candidates:
+                - content: {role: model, parts: [{text: "Once upon a time."}]}
+                  finishReason: STOP
+                  index: 0
+              usageMetadata: {promptTokenCount: 8, candidatesTokenCount: 4, totalTokenCount: 12}
+              modelVersion: gemini-test
+              responseId: resp-089c
+    expected:
+      token_events: []
+      raises:
+        category: provider_unavailable

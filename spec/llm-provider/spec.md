@@ -91,6 +91,16 @@ Per-role constraints:
     §3.1.5).
 
   `tool_call_id` MUST be absent.
+
+  **An empty response.** In a `Response` (§6) whose `finish_reason` is `"content_filter"`, `"length"`
+  or `"error"`, the `assistant` message's content MAY be the empty string with no tool calls. These are
+  the finish reasons that report a response cut short: a filter blocked it, the token budget ran out, or
+  the provider failed while producing it. A mapping that produces no content for such a response MUST
+  use the empty string, not an empty block sequence. A response with any other `finish_reason` and no
+  content and no tool calls is malformed and raises `provider_invalid_response` (§7). In a request, an
+  `assistant` message with empty content and no tool calls remains invalid and is rejected before
+  sending with `provider_invalid_request` (§7); a caller that keeps an empty response in a
+  conversation's history decides what that turn says.
 - `tool`: `content` MUST be a string (the tool's textual result; serialize structured results to a
   string at the call boundary). `tool_call_id` MUST be present and MUST match the `id` of an
   `assistant` `ToolCall` earlier in the message list. `tool_calls` MUST be absent.
@@ -159,12 +169,18 @@ A text block is a record:
 | Field | Required | Description |
 |---|---|---|
 | `type` | yes | The literal string `"text"`. |
-| `text` | yes | A non-empty string. |
+| `text` | yes | A non-empty string, or the empty string when the block carries a `signature` (below). |
 | `signature` | optional | An opaque provider-issued reasoning-continuity token, present only when the provider attaches one to a text block (e.g. Gemini's `thoughtSignature` on a text part). Same semantics as `ToolCall.signature`: preserved verbatim, passed back to the same provider, never constructed / modified / interpreted by callers; provider-bound (§3.1.7). |
 
 A text block is the content-array equivalent of the text-string form. A user message containing
 exactly one text block with text `T` is normatively equivalent to a user message with
 `content: T`.
+
+**An empty signed block.** A text block's `text` MAY be the empty string when the block carries a
+`signature`. Gemini, streaming a response without a function call, may deliver its thought signature
+on a part with empty text (§8.3.6). Implementations MUST keep such a block on
+`Response.message.content` and MUST send it back unchanged with the message, as for any signed block
+(§3.1.7). An empty text block without a signature is invalid.
 
 #### 3.1.2 Image block
 
@@ -201,8 +217,8 @@ A thinking block is a record:
 | Field | Required | Description |
 |---|---|---|
 | `type` | yes | The literal string `"thinking"`. |
-| `text` | yes | The reasoning content the provider emitted. A non-empty string. |
-| `signature` | optional | An opaque provider-issued token used by the provider to verify the block on round-trip. Present when the provider attaches the signature to the thinking block itself (e.g. Anthropic). Absent when the provider carries reasoning-continuity signatures on sibling parts instead (e.g. Gemini, where the thought summary maps to a thinking block with no own signature — the signature rides on the adjacent `TextBlock` / `ToolCall`). Implementations MUST pass the value through unchanged when present; spec callers MUST NOT construct, modify, or fabricate the field. |
+| `text` | yes | The reasoning content the provider emitted. A non-empty string, or the empty string when the block carries a `signature` (below). |
+| `signature` | optional | An opaque provider-issued token used by the provider to verify the block on round-trip. Present when the provider attaches the signature to the thinking block itself (e.g. Anthropic). Usually absent when the provider carries reasoning-continuity signatures on sibling parts instead: Gemini's thought summary usually maps to a thinking block with no signature of its own, the signature riding on the adjacent `TextBlock` or `ToolCall`. A Gemini thought part that does carry a signature maps to a thinking block with that signature (§8.3.2). Implementations MUST pass the value through unchanged when present; spec callers MUST NOT construct, modify, or fabricate the field. |
 
 Thinking blocks represent provider-emitted reasoning content. They MAY appear in `assistant`
 message content sequences. They MUST NOT appear in `user`, `system`, or `tool` message content.
@@ -210,13 +226,19 @@ Implementations MUST surface thinking blocks a provider emits on the `Response.m
 block list (per §6) and MUST preserve them verbatim when the same `assistant` message is sent
 back to that provider in a subsequent `complete()` call.
 
+**An empty signed block.** A thinking block's `text` MAY be the empty string when the block carries a
+`signature`. Anthropic sends one when the request asks for thinking display to be omitted, and its
+signature is what lets the next turn continue the reasoning. Implementations MUST keep such a block on
+`Response.message.content` and MUST send it back unchanged with the message (§3.1.7). An empty thinking
+block without a signature is invalid.
+
 Provider mappings that do not surface reasoning content (e.g., the §8.1 OpenAI mapping) MUST
 strip thinking blocks from outbound `assistant` messages (per §8.1.1's strip-on-send rule) and
 MUST NOT emit thinking blocks on inbound responses. Each provider's §8.X mapping specifies its
 wire-level handling. Thinking-block `signature` values are provider-bound — a signature issued
 by one provider is not portable to another; routing thinking-bearing conversation history to a
 different provider's mapping strips the blocks rather than forwarding signatures the target
-provider cannot verify.
+provider cannot verify. Stripping raises no error unless it leaves the message empty (§3.1.7).
 
 #### 3.1.5 Redacted thinking block
 
@@ -231,7 +253,8 @@ The redacted variant covers cases where a provider's policy withholds reasoning 
 caller while preserving the structural slot so subsequent conversation turns can round-trip
 without breaking the provider's reasoning continuity. Same scope and round-trip rules as
 `ThinkingBlock` (§3.1.4): `assistant`-message-content only; preserved verbatim on round-trip;
-provider-bound; stripped when routed to a non-surfacing provider mapping.
+provider-bound; stripped when routed to a non-surfacing provider mapping, with no error unless
+stripping leaves the message empty (§3.1.7).
 
 #### 3.1.6 Mixing blocks
 
@@ -262,6 +285,14 @@ mapping MUST strip the signatures (and any `ThinkingBlock` /
 the same strip-on-send behavior the §8.1 OpenAI mapping applies to
 thinking blocks. Thinking-bearing conversations are thus
 single-provider for round-trip purposes.
+
+A mapping that strips the signature from an empty signed block (§3.1.1,
+§3.1.4) drops the whole block, since the block carries nothing else. If
+stripping, of any kind of block, leaves an `assistant` message with no
+content and no tool calls, the call MUST be rejected before sending
+with `provider_invalid_request` (§7). The mapping does not drop the message
+or merge the turns around it: the caller owns the conversation's
+history, as for any empty `assistant` message in a request (§3).
 
 The OA-level use of reasoning content — reading `ThinkingBlock.text`,
 branching on it, logging it — is uniform across providers; only the
@@ -318,8 +349,8 @@ additionally requests output that conforms to the schema and validates the respo
 depends on the path the mapping takes and on the vendor's own limits (§8). When `tool_choice` is
 supplied, the call additionally constrains the model's tool-calling behavior. When `retry` is
 supplied, the call additionally performs an in-call retry loop on transient failures per §7.1. When
-`stream` is set, the provider additionally consumes the model's streaming wire response and emits a
-per-chunk `LlmTokenEvent` (graph-engine §6) as each chunk arrives — the return type is unchanged
+`stream` is set, the provider additionally consumes the model's streaming wire response and emits an
+`LlmTokenEvent` (graph-engine §6) for each non-empty delta as it arrives. The return type is unchanged
 (still a `Response`); see *Streaming* below.
 
 - `messages` — non-empty ordered sequence of messages. The first message MAY be `system`; otherwise
@@ -374,9 +405,9 @@ per-chunk `LlmTokenEvent` (graph-engine §6) as each chunk arrives — the retur
   the §7.1 opt-in behaviors below.
 - `stream`: optional boolean (passed by name, or per-language idiomatic equivalent). Default `false`
   / absent — the v0.4.0 atomic behavior is preserved exactly. When set, the provider consumes the
-  model's streaming wire response and emits per-chunk `LlmTokenEvent`s (graph-engine §6) as chunks
-  arrive; the call STILL returns the atomic `Response` (the flag controls per-chunk event emission,
-  not the return shape). See *Streaming* below.
+  model's streaming wire response and emits an `LlmTokenEvent` (graph-engine §6) for each non-empty
+  delta as it arrives; the call STILL returns the atomic `Response` (the flag controls token event
+  emission, not the return shape). See *Streaming* below.
 
 Returns: a `Response` (§6).
 
@@ -436,15 +467,15 @@ contract.
 
 - The provider MUST consume the model's **streaming wire response** (SSE / chunked transfer per the
   provider's API) rather than awaiting a single atomic response body, and MUST emit a `LlmTokenEvent`
-  (graph-engine §6) on the observer delivery queue **per chunk, as it arrives** — genuinely
-  incremental. Implementations MUST NOT satisfy the contract by awaiting the full response and then
+  (graph-engine §6) on the observer delivery queue **for each non-empty delta, as it arrives**, which
+  is genuinely incremental. A delta whose text is empty emits no event (§6 *Streaming assembly*). Implementations MUST NOT satisfy the contract by awaiting the full response and then
   emitting synthesized chunks; the first-token-latency benefit is the contract's purpose. (This MUST
   states behavioral intent. Conformance verifies the testable proxy — that the assembled `Response`
   equals the ordered concatenation of the streamed deltas, per §6 *Streaming assembly* — not that
   chunks crossed the wire incrementally; a faked implementation passes conformance while violating
   the contract's purpose.)
 - The call STILL returns the atomic `Response` (§6) at completion. **The return type is unchanged** —
-  `complete()` returns `Response` whether or not `stream` is set. The flag governs per-chunk event
+  `complete()` returns `Response` whether or not `stream` is set. The flag governs token event
   emission, not the return shape; node bodies, reducers, retry middleware, and the terminal
   `LlmCompletionEvent` all see the same atomic `Response` either way.
 - With no observer attached (direct provider use outside an invocation), `stream` set is **observably
@@ -457,9 +488,9 @@ call at pre-send validation, raising `provider_invalid_request` (§7) with a mes
 the mapping does not support streaming. It MUST NOT silently fall back to an atomic call (which would
 hide that the requested mode was unavailable) and MUST NOT fail opaquely mid-call. This is the same
 mold as `tool_choice` validation — a request shape a mapping cannot satisfy is a pre-send
-`provider_invalid_request`. The §8.1 OpenAI-compatible mapping implements streaming (below); the §8.2
-Anthropic and §8.3 Gemini mappings do NOT in this version and therefore reject `stream`-set calls
-until their streaming wire handling lands in follow-ons.
+`provider_invalid_request`. The §8.1 OpenAI-compatible, §8.2 Anthropic and §8.3 Gemini mappings
+implement streaming (§8.1.6, §8.2.6, §8.3.6), so this rule applies to any future mapping that does
+not.
 
 ## 6. Response and configuration
 
@@ -483,7 +514,9 @@ A `Response` record:
   response. This is distinct from a `complete()` exception (which signals a request-level failure
   per §7); `finish_reason: "error"` signals a degraded but parseable response. The response MAY
   carry `tool_calls`, possibly with malformed `arguments`; see §3 "Validation under
-  `finish_reason: \"error\"`" for handling.
+  `finish_reason: \"error\"`" for handling. A mapping whose wire delivers an error as an event inside
+  a stream (§8.2.6, §8.3.6) does not return an `"error"` response for it: the call raises the §7
+  category that event maps to.
 
 `parsed` semantics. The `parsed` field is the language-idiomatic deserialized form of the
 structured value (e.g., a Python `dict[str, Any]` populated per the JSON Schema, or a TypeScript
@@ -604,30 +637,42 @@ not constrain undeclared-field types).
 assembled from the streamed chunks so the streamed and non-streamed paths produce structurally
 identical `Response` records:
 
-- **Content** — `message.content` is the ordered concatenation of the streamed content deltas. Each
+- **Content**: `message.content` is the ordered concatenation of the streamed content deltas. Each
   content delta is also emitted live as `LlmTokenEvent(delta_kind: "content")` (graph-engine §6).
-- **Reasoning** — when the provider streams reasoning / thinking content (§3.1.4 / §3.1.5), the
+- **Empty deltas**: a delta whose text is the empty string MUST NOT emit an `LlmTokenEvent`, in every mapping.
+  Vendors send empty deltas as carriers for other fields, such as a Gemini part that carries only a
+  signature, or an Anthropic thinking block with its display omitted.
+- **Reasoning**: when the provider streams reasoning / thinking content (§3.1.4 / §3.1.5), the
   reasoning deltas assemble into their `ThinkingBlock` / `RedactedThinkingBlock` entries on the
   terminal `Response` AND are emitted live as `LlmTokenEvent(delta_kind: "reasoning")`. Whether a
-  provider streams reasoning is a per-§8.X-mapping capability (see §8.1); a mapping that does not
+  provider streams reasoning is a per-§8.X-mapping capability (§8.1.6, §8.2.6, §8.3.6); a mapping that does not
   surface streamed reasoning simply emits no `reasoning`-kind token events.
-- **Tool calls** — streamed tool-call argument deltas are reassembled into complete `ToolCall`
+- **Tool calls**: streamed tool-call argument deltas are reassembled into complete `ToolCall`
   records (`id`, `name`, `arguments`) on `message.tool_calls`, in the order the provider streamed
-  them; the reassembled `arguments` MUST parse identically to the non-streamed case (a mapping when
-  valid JSON; `null` when unparseable, per §3). This reassembly is provider-internal — tool-call
+  them; the reassembled `arguments` MUST parse identically to the non-streamed case: a mapping when
+  valid JSON; when unparseable, `null` under `finish_reason: "error"`, and otherwise the response raises
+  `provider_invalid_response` (§3). This reassembly is provider-internal: tool-call
   argument deltas are NOT emitted as `LlmTokenEvent`s in this version (only the complete `tool_calls`
   on the terminal `LlmCompletionEvent` is surfaced).
-- **Usage / finish_reason** — sourced from the terminal chunk (providers emit usage and the finish
-  reason on the final streamed event; §8.1 documents the OpenAI-compatible specifics).
-- **`raw`** — the parsed provider response; for a streamed call, the assembled representation of the
-  streamed events (implementation-defined assembly; MUST be populated per the `raw` contract above). The
-  assembly MUST preserve the terminal chunk's usage block **verbatim**, so a malformed counter nulled on
-  the normalized `Response.usage` remains inspectable on `raw` (§7 *Malformed usage counter*).
-  Within-implementation wire-byte stability (§8) applies to the assembled form.
-- **Structural identity** — a `Response` assembled from a stream MUST be indistinguishable in shape
+- **Usage / finish_reason**: each §8.X mapping defines its stream's terminal usage and finish reason.
+  §8.1.6 takes usage from the terminal usage chunk and the finish reason from the last content-bearing chunk
+  (or `"content_filter"` for a refusal),
+  §8.2.6 merges usage across `message_start` and `message_delta` and takes `stop_reason` from
+  `message_delta`, and §8.3.6 takes the last `usageMetadata` and the last `finishReason` any chunk carried.
+- **`raw`**: the parsed provider response; for a streamed call, the assembled representation of the
+  streamed events, MUST be populated per the `raw` contract above. The assembly is implementation-defined
+  unless the §8.X mapping defines it, as §8.2.6 and §8.3.6 do. It MUST keep the mapping's terminal usage
+  **verbatim**, so a malformed counter nulled on the normalized `Response.usage` remains inspectable on
+  `raw` (§7 *Malformed usage counter*). Within-implementation wire-byte stability (§8) applies to the
+  assembled form.
+- **Structural identity**: a `Response` assembled from a stream MUST be indistinguishable in shape
   from a `Response` returned atomically for the equivalent non-streamed call. This is the contract
   that lets every downstream consumer (node bodies, reducers, the terminal typed events, the OTel /
-  Langfuse mappings) ignore whether streaming was used.
+  Langfuse mappings) ignore whether streaming was used. One exception: where a Gemini response's parts
+  carry thought signatures, the streamed `Response` MAY hold more `TextBlock`s and more `ThinkingBlock`s
+  than the atomic one, because §8.3.6 never joins a signed part, and a signature MAY sit on a different
+  block of the same kind. The concatenated text of each kind of block is identical, and every other
+  element of the shape is unchanged.
 
 ## 7. Error semantics
 
@@ -838,7 +883,11 @@ not on the framework-agnostic §6.1 middleware.
   7, *No built-in prompts* — the caller owns every word OA adds beyond the model's own output; the
   framework provides only the retry loop and the typed error surface). Absent a `reask` builder,
   `structured_output_invalid` is non-transient and raises
-  on first occurrence (§7), unchanged.
+  on first occurrence (§7), unchanged. A `structured_output_invalid` failure whose `output_content` is
+  empty, from an empty response (§3), MUST NOT be re-asked even when `reask` is supplied: the re-ask appends
+  the failed output as an `assistant` turn, an empty one is invalid in a request (§3), and the loop has no
+  other turn to append. The builder MUST NOT be invoked, and the error is handled as it would be without
+  `reask`.
 
 The two extensions compose: with both set, a `structured_output_invalid` retry both applies the next
 override (e.g. a higher temperature) and appends the caller's corrective message.
@@ -1117,7 +1166,7 @@ has no wire representation for `ThinkingBlock` / `RedactedThinkingBlock` (§3.1.
 an `assistant` message in the request carries thinking or redacted-thinking blocks — e.g.,
 because the caller is replaying conversation history that originated from a different §8.X-mapped
 provider — the §8.1 mapping MUST strip those blocks before emitting the OpenAI wire request.
-Stripping is deterministic and raises no error; it preserves the spec's content-block superset
+Stripping is deterministic and raises no error unless it leaves the message empty (§3.1.7); it preserves the spec's content-block superset
 across cross-provider conversation round-trips (a conversation that accrued thinking blocks under
 one provider can be routed through an OpenAI-compatible provider without manual filtering). The
 remaining text-block content emits normally. The §8.1 mapping MUST NOT emit thinking blocks on
@@ -1145,7 +1194,9 @@ Each spec content block maps to one OpenAI content-array entry:
 
 Empty content blocks (e.g., a text block with empty `text`, or an image block with both
 sources absent) are spec-invalid and MUST be rejected at pre-send validation per §3 /
-`provider_invalid_request`. The wire never sees them.
+`provider_invalid_request`. The wire never sees them. An empty text block that carries a signature
+(§3.1.1) is valid; it comes from another provider's history, so this mapping strips it with its
+signature and drops it (§3.1.7) rather than rejecting it.
 
 OpenAI uses the same `image_url` content-entry shape for both URL-referenced and base64-inline
 images (with the inline case expressed as a `data:` URL). Anthropic and Google use different
@@ -1295,7 +1346,7 @@ absent, `tool_calls` is populated, `finish_reason` is `"tool_calls"`.
 #### 8.1.6 Streaming
 
 When `complete()` is called with `stream` set (§5), the OpenAI-compatible mapping consumes the
-Server-Sent Events streaming response and emits per-chunk `LlmTokenEvent`s (graph-engine §6),
+Server-Sent Events streaming response and emits an `LlmTokenEvent` (graph-engine §6) per non-empty delta,
 assembling the atomic `Response` per §6 *Streaming assembly*.
 
 - **Request** — `stream: true` in the request body, plus `stream_options: {include_usage: true}` so
@@ -1316,7 +1367,8 @@ assembling the atomic `Response` per §6 *Streaming assembly*.
   `content` delta, a `refusal` delta, `tool_calls` deltas (each with an `index` and partial `id` /
   `function.name` / `function.arguments` fields), and/or a reasoning delta (see below). The
   `data: [DONE]` sentinel terminates the stream.
-- **Content deltas** → `LlmTokenEvent(delta_kind: "content")` (§5), concatenated into
+- **Content deltas** → `LlmTokenEvent(delta_kind: "content")` (§5), except an empty one, such as the
+  `""` many servers send in a stream's first chunk (§6 *Streaming assembly*), concatenated into
   `message.content` per §6. A `refusal` delta is a content delta: OpenAI streams a refusal's text
   there in place of `content`, so each piece is emitted as a content token event as it arrives.
 - **Tool-call deltas** → reassembled into `message.tool_calls` per §6; NOT emitted as token events.
@@ -1416,13 +1468,13 @@ scalar fields `temperature`, `top_p`, and `max_tokens` are **non-additive**: a m
 the same name is a redundant no-op, a **conflicting** one is **rejected pre-send** `provider_invalid_request`.
 While a declared field is **absent** the mapping emits no such key and an extras key of that name rides untouched
 (`max_tokens`, required by this mapping, has no absent branch — an absent `max_tokens` is already rejected
-above). §8.2 does not implement streaming — a declared `stream`-set call is rejected at §5 and the mapping
-consumes an atomic response — so it never *realizes* a declared `stream`. It nonetheless **manages** the Anthropic
-body `stream` field for its own consumer's correctness: an extras `stream` selecting streaming (a truthy value)
-is **rejected pre-send** with `provider_invalid_request` — the same outcome §5 gives a declared `stream`-set
-call, since forwarding it would make Anthropic emit an event-stream while the mapping parses an atomic body — and
-a matching `stream: false` is a no-op. This closes the path where an extras `stream: true` on a non-`stream`-set
-call would otherwise ride the untouched pass-through onto the wire.
+above). The Anthropic body `stream` field is the wire realization of the declared `stream` argument (§5),
+managed as §8.1.6 manages its own: the mapping sends `stream: true` for a `stream`-set call (§8.2.6) and no
+`stream` key otherwise. Because every call fixes a stream mode, the field is managed on every call. An extras
+`stream` matching the call's mode, `true` on a `stream`-set call or `false` on a call without it, is a redundant
+no-op; a **conflicting** one, `false` on a `stream`-set call or `true` on a call without it, is **rejected
+pre-send** with `provider_invalid_request`. The mapping MUST NOT drop a conflicting value silently or let it
+override the mode the call fixed.
 
 **Wire-byte stability** (per §8 framing). The §8.2 mapping implementation applies the intra-impl
 wire-byte stability rule to its outputs. Specifically: `system` extraction concatenates with a
@@ -1449,7 +1501,10 @@ inbound `tool_use` entries back into `Response.message.tool_calls`).
 | `RedactedThinkingBlock { data }` (content block; assistant-only) | `{ "type": "redacted_thinking", "data": <data> }`. The data blob passes through verbatim in both directions. |
 
 Empty content blocks are spec-invalid and MUST be rejected at pre-send validation per §3 /
-`provider_invalid_request`.
+`provider_invalid_request`. An empty `ThinkingBlock` that carries a signature (§3.1.4) is valid and is sent
+as `{ "type": "thinking", "thinking": "", "signature": <signature> }`. An empty `TextBlock` that carries a
+signature (§3.1.1) comes from another provider's history, since Anthropic signs no text blocks, so this
+mapping strips it with its signature and drops it (§3.1.7) rather than rejecting it.
 
 ##### 8.2.1.2 `tool` role bidirectional translation
 
@@ -1489,7 +1544,13 @@ A successful Anthropic response maps onto a §6 `Response`:
   `Message.content`. Anthropic `tool_use` entries are NOT content blocks — per §3, `ToolCall`
   is the top-level `message.tool_calls` field, not a §3.1 content-block type — so they are
   extracted to `Response.message.tool_calls` (next bullet) and do NOT appear on
-  `Message.content`.
+  `Message.content`. A content entry of a type this mapping does not model (any type §8.2.1.1 does not
+  map, such as a server-side tool block) is left out of `message.content` and `message.tool_calls`. It
+  stays in `raw`, verbatim, and is not an error. A `text` entry with empty text and no `signature` MUST be
+  left out of the message and kept in `raw`: it carries nothing, and as a `TextBlock` it would be invalid
+  (§3.1.1). A response with no content and no tool calls left, such as a refusal with an empty `content`
+  array, has the empty string as its content, which §3 allows only for a `"content_filter"`, `"length"` or
+  `"error"` finish reason; for any other it raises `provider_invalid_response` (§7).
 - `tool_calls` — the `tool_use` entries from the content array, extracted in wire order onto
   `Response.message.tool_calls` as spec `ToolCall` records (mirroring §8.1's flatter shape so
   callers see tool calls in the same place regardless of provider). Order within the
@@ -1502,7 +1563,7 @@ A successful Anthropic response maps onto a §6 `Response`:
   | `max_tokens` | `"length"` |
   | `stop_sequence` | `"stop"` (the matched sequence is preserved in `Response.raw.stop_sequence`) |
   | `tool_use` | `"tool_calls"` |
-  | `pause_turn` | `"stop"` (a long-running turn the provider paused; the caller MAY continue by passing the response back — the pause is preserved in `Response.raw.stop_reason`) |
+  | `pause_turn` | `"stop"` (a long-running turn the provider paused; the caller MAY continue by passing the response back, but only when its content held no unmodeled entries, since the mapped message leaves them out; the pause is preserved in `Response.raw.stop_reason`) |
   | `refusal` | `"content_filter"` (the refusal category, when present, is preserved in `Response.raw.stop_details`) |
   | (unknown) | `"error"` |
 
@@ -1611,6 +1672,83 @@ already supplies tools (the synthetic tool would override the caller's tool inte
 `system` field (or message list), issue the request otherwise unmodified, parse and validate the
 text response against `response_schema`, raise `structured_output_invalid` on failure. The
 caller's original `messages` MUST be left unchanged.
+
+#### 8.2.6 Streaming
+
+When `complete()` is called with `stream` set (§5), the Anthropic mapping sends `"stream": true` (§8.2.1)
+and consumes the server-sent event stream. Each event has an SSE `event:` name and a `data:` object whose
+`type` matches the name.
+
+**Assembly.** The mapping rebuilds Anthropic's atomic `Message` from the events and maps it to the §6
+`Response` by §8.2.2, unchanged:
+
+- `message_start` carries the `Message` with empty `content`. It is the assembled message's initial value,
+  with every field it carries.
+- Each content block arrives as `content_block_start`, any number of `content_block_delta` events and
+  `content_block_stop`, keyed by `index`, the block's position in the final `content` array. Events for
+  different indexes MAY interleave, and each applies to its own block. The block in `content_block_start` is
+  the block's initial value, and each delta extends it:
+  - `text_delta` appends `text` to a `text` block;
+  - `citations_delta` appends its `citation` to the `text` block's `citations` list. When the first one
+    arrives and the start event carried no `citations`, or `null`, the list starts as `[]`; a block that gets
+    no `citations_delta` keeps the start event's value, or its absence. Citations are not part of a
+    `TextBlock` (§3.1.1), so they are visible on `raw` only, as for an atomic response;
+  - `thinking_delta` appends `thinking` to a `thinking` block;
+  - `signature_delta` sets the `thinking` block's `signature`;
+  - `input_json_delta` appends `partial_json` to the input buffer of the block, for any block whose start
+    event carries an `input` (`tool_use`, and server-side tool blocks such as `server_tool_use`). The buffer
+    starts empty, whatever `input` the start event carries, and the mapping parses it as JSON at
+    `content_block_stop`, where the parsed value replaces the block's `input`. An empty buffer, which a tool
+    with no arguments produces, keeps the start event's `input`. A buffer that does not parse becomes the
+    block's `input` as a string, so `raw` keeps the bytes verbatim. For a `tool_use` block the tool call is
+    then malformed: under a `stop_reason` that maps to `"error"`, its `arguments` are `null` (§3
+    *Validation under `finish_reason: "error"`*); under any other, the response raises
+    `provider_invalid_response` (§3). For a block the mapping does not model it is not an error: the block
+    stays in `raw` with the string as its `input` (§8.2.2).
+  - A block that arrives whole, with no deltas, such as `redacted_thinking`, takes its value from
+    `content_block_start`.
+  - A block of a type the mapping does not model is assembled from its events like any other and then left
+    out of the message by §8.2.2, staying in `raw`. A delta type the mapping does not recognize is ignored:
+    Anthropic's versioning policy allows it to add new variants to enum-like output values, and a delta
+    type is one.
+- Each `message_delta` replaces the message's value for every key in its `delta`, among them
+  `stop_reason`, `stop_sequence` and `stop_details`, and for every other top-level field the event carries
+  besides `type`, `delta` and `usage`. Its `usage` counts are cumulative, so each key it carries replaces
+  the same key in the message's `usage`.
+- `message_stop` ends the stream.
+- `ping` events are ignored. An event type the mapping does not recognize is ignored too, as Anthropic's
+  streaming documentation instructs.
+
+The assembled message's `stop_reason` maps by §8.2.2's table and its `usage` by §8.2.2's usage rule. The
+merged `usage` is this mapping's terminal usage (§6 *Streaming assembly*). `raw` is the assembled
+`Message`.
+
+**Token events.** Each non-empty `text_delta` is emitted as it arrives as
+`LlmTokenEvent(delta_kind: "content")`, and each non-empty `thinking_delta` as
+`LlmTokenEvent(delta_kind: "reasoning")` (§5, §6 *Streaming assembly*). `citations_delta`,
+`signature_delta`, `input_json_delta` and a block that arrives whole emit none. A delta on a block of a type
+the mapping does not model emits none, whatever its delta type, since the block is not part of the message.
+Tool-call input is
+reassembled into `message.tool_calls`, per §6. With thinking display omitted, the thinking block assembles
+to an empty signed `ThinkingBlock` (§3.1.4) and emits no reasoning events.
+
+**Errors.** An HTTP error before the stream starts maps by §8.2.3. An `error` event inside the stream maps
+its `error.type` through §8.2.3's table as the HTTP response with that type would map (`rate_limit_error`
+to `provider_rate_limit`, `overloaded_error` to `provider_unavailable`, `invalid_request_error` to
+`provider_invalid_request`, and so on); a type the table does not list maps to `provider_unavailable`. A
+stream that ends before `message_stop`, for a dropped connection or a client timeout, is a connection
+error, `provider_unavailable`. Either way the call raises, even when events follow the error, and the token
+events already emitted stand, followed by the terminal `LlmFailedEvent` (graph-engine §6).
+
+**Structured output.** §8.2.5's paths apply to the assembled message, and `parsed` is validated at the end,
+per §6. On the tool-coercion path the structured content arrives as `input_json_delta` on the synthetic
+tool's block, so it emits no content token events.
+
+The event names and order, the five delta types (`text_delta`, `input_json_delta`, `thinking_delta`,
+`signature_delta`, `citations_delta`), cumulative `message_delta` usage, `ping`, the `error` event, whole
+`redacted_thinking` blocks and the empty `thinking_delta` sent with thinking display omitted are verified
+against Anthropic's streaming, citations and API-versioning documentation (tracked in
+`docs/compatibility.md`).
 
 ### 8.3 Google Gemini mapping
 
@@ -1739,11 +1877,9 @@ extras value of the same wire name is a redundant no-op, a
 **conflicting** one is **rejected pre-send** `provider_invalid_request`.
 While a declared field is **absent** the mapping emits no such key and
 an extras key of that name rides untouched. The mapping realizes **no**
-wire `stream`: §8.3 does not implement streaming (a declared
-`stream`-set call is rejected at §5), and — unlike Anthropic —
-Gemini selects streaming by a distinct **endpoint**
-(`streamGenerateContent`), not a request-body flag, so `stream`
-is not a Gemini body field. An extras `stream` is therefore a
+wire `stream` field: unlike Anthropic, Gemini selects streaming by a
+distinct **endpoint** (`streamGenerateContent`, §8.3.6), not a
+request-body flag, so `stream` is not a Gemini body field. An extras `stream` is therefore a
 stray body key Gemini ignores; it rides the untouched
 pass-through harmlessly (there is no body `stream` for it to
 flip).
@@ -1773,8 +1909,9 @@ This sub-subsection covers two wire-encoding paths, mirroring
 | `ImageBlock` with `source: inline { base64_data }` + `media_type` | `{ "inlineData": { "mimeType": <media_type>, "data": <base64_data> } }`. The `detail` hint, when set, is dropped — Gemini does not honor it. |
 | `ImageBlock` with `source: url { url }` | `{ "fileData": { "mimeType": <inferred>, "fileUri": <url> } }`. Gemini references external media via `fileData.fileUri`; the `detail` hint is dropped. (Note: Gemini's `fileUri` typically expects a Gemini Files API URI or a supported storage URI; arbitrary `http(s)` image URLs may be rejected by the provider — surfaced as `provider_unsupported_content_block` per §8.3.3.) |
 | `ToolCall { id, name, arguments, signature? }` from assistant `tool_calls` field | `{ "functionCall": { "name": <name>, "id": <id>, "args": <arguments> }, "thoughtSignature": <signature> }`. The `id` round-trips Gemini's per-call identifier. `args` is the deserialized mapping (Gemini accepts an object directly). When the spec `ToolCall` carries an opaque `signature` (a Gemini `thoughtSignature` captured on receive), it is reattached to this part on send. |
-| `ThinkingBlock { text }` | A `Part` flagged `{ "text": <text>, "thought": true }`. Gemini's thought summary is a text part with `thought: true` and carries no `thoughtSignature` of its own — for Gemini-origin reasoning the signature rides on the sibling `functionCall` / text part (captured to `ToolCall.signature` / `TextBlock.signature` per §8.3.2), not on the summary. |
-| `TextBlock { text, signature }` (assistant, signature present) | `{ "text": <text>, "thoughtSignature": <signature> }`. A text part carrying a captured Gemini thought signature. |
+| `ThinkingBlock { text }` | A `Part` flagged `{ "text": <text>, "thought": true }`. Gemini's thought summary is a text part with `thought: true` and usually carries no `thoughtSignature` of its own, so for Gemini-origin reasoning the signature usually rides on the sibling `functionCall` / text part (captured to `ToolCall.signature` / `TextBlock.signature` per §8.3.2), not on the summary. |
+| `TextBlock { text, signature }` (assistant, signature present) | `{ "text": <text>, "thoughtSignature": <signature> }`. A text part carrying a captured Gemini thought signature. `text` MAY be empty (§3.1.1). |
+| `ThinkingBlock { text, signature }` (assistant, signature present) | `{ "text": <text>, "thought": true, "thoughtSignature": <signature> }`. A thought part that carried its own signature (§8.3.2). `text` MAY be empty (§3.1.4). |
 
 `thoughtSignature` is emitted on a part only when the corresponding
 spec block carries a non-empty `signature`. When the block has no
@@ -1782,7 +1919,8 @@ signature (the common case), the key MUST be omitted entirely — not
 set to `null` — so the wire request matches Gemini's contract.
 
 Empty content blocks are rejected at pre-send validation per §3 /
-`provider_invalid_request`.
+`provider_invalid_request`, apart from an empty text or thinking block that
+carries a signature (§3.1.1, §3.1.4), which is sent with its signature.
 
 ##### 8.3.1.2 `tool` role bidirectional translation
 
@@ -1824,15 +1962,38 @@ A successful Gemini response maps onto a §6 `Response`:
   spec `assistant`). Each `parts` entry maps back to its spec form
   per §8.3.1.1: `text` parts → `TextBlock` (or `ThinkingBlock`
   when flagged `thought: true`); `functionCall` parts → `ToolCall`
-  entries. Block order is preserved.
+  entries. Block order is preserved. A text part with empty text and
+  no `thoughtSignature` MUST be left out of the message and kept in `raw`:
+  it carries nothing, and as a `TextBlock` it would be invalid
+  (§3.1.1). A part of a type this mapping does not model (any type
+  §8.3.1.1 does not map) is left out of `message.content` and
+  `message.tool_calls`; it stays in `raw`, verbatim, and is not an
+  error. A response with no content and no tool calls left, such as
+  a candidate with no parts, has the empty string as its content,
+  which §3 allows
+  only for a `"content_filter"`, `"length"` or `"error"` finish
+  reason; for any other it raises `provider_invalid_response` (§7).
+- **Blocked prompt.** When Gemini blocks the prompt itself, it
+  returns a successful response with `promptFeedback.blockReason`
+  set and no candidates. The mapping returns a `Response` whose
+  `message.content` is the empty string, with no tool calls, and
+  whose `finish_reason` is `"content_filter"`. `usage` follows the
+  usage rule below, so `prompt_tokens` and `total_tokens` come from
+  `usageMetadata` and `completion_tokens` is `null` when
+  `candidatesTokenCount` is absent. `raw` keeps the response
+  verbatim, `promptFeedback` included, so the block reason stays
+  visible.
 - **Thought-signature capture.** When a `parts` entry carries a
   `thoughtSignature`, the §8.3 mapping captures it onto the
   corresponding spec block's opaque `signature` field:
   `functionCall` part → `ToolCall.signature`; text part →
   `TextBlock.signature`; a `thought: true` summary part's own
-  text → `ThinkingBlock.text` (Gemini's summary part does not
-  itself carry the signature). The mapping MUST preserve every
-  `thoughtSignature` it receives so that, on the next
+  text → `ThinkingBlock.text` (Gemini's summary part usually does
+  not itself carry the signature). A `thought: true` part that does
+  carry a `thoughtSignature` maps to a `ThinkingBlock` with that
+  signature, which §8.3.1.1 sends back as a signed thought part, so
+  the signature stays on the part it arrived on. The mapping MUST
+  preserve every `thoughtSignature` it receives so that, on the next
   `complete()` call passing the assistant message back, the
   signatures reattach to their parts in original position (per
   Gemini's "return all parts with signatures intact" rule). OA-level
@@ -1901,6 +2062,17 @@ Gemini returns errors with an HTTP status and a body
 Gemini's `error.status` string surfaces in `Response.raw` for
 finer-grained handling.
 
+**Precedence.** A 400 or 403 error that matches the content-part
+row maps to `provider_unsupported_content_block`, whatever its
+status. Otherwise a row whose code and status both match decides.
+Otherwise the code decides, with 400 as `provider_invalid_request`
+and 403 as `provider_authentication`. A row matching only the
+status decides when the code is not listed. When neither is listed,
+the error maps to `provider_unavailable`. So
+`{code: 400, status: "FAILED_PRECONDITION"}` maps to
+`provider_invalid_request`. An `error` object inside a stream maps
+the same way (§8.3.6).
+
 #### 8.3.4 Concurrency
 
 Matches §8.1.4. Gemini's hosted API supports concurrent requests;
@@ -1960,6 +2132,64 @@ document which path a given call uses. The path a call took is reported
 on the typed LLM event as `structured_output_path` (graph-engine §6), so a
 caller or observer can inspect it per call.
 
+#### 8.3.6 Streaming
+
+When `complete()` is called with `stream` set (§5), the Gemini mapping sends the same request body to
+`POST /v1beta/models/{model}:streamGenerateContent?alt=sse` in place of `:generateContent`, and consumes the
+server-sent event stream. Each `data:` line is a JSON `GenerateContentResponse` carrying the parts produced
+since the previous one.
+
+**Assembly.** The mapping merges the chunks into one `GenerateContentResponse` and maps it to the §6
+`Response` by §8.3.2, unchanged:
+
+- The `parts` of `candidates[0].content` across all chunks are concatenated in arrival order.
+- Adjacent text parts join into one part when both have the same `thought` value and neither carries a
+  `thoughtSignature`, since a stream splits one atomic text part across chunks. An absent `thought` is
+  `false`. A part of any other type between two text parts separates them.
+- A part that carries a `thoughtSignature` is never joined with another part, which Google's guidance
+  forbids, and keeps its signature. One with empty text, which Gemini sends to deliver a signature when the
+  response has no function call, becomes an empty signed `TextBlock` (§3.1.1), or an empty signed
+  `ThinkingBlock` if it is a thought part (§8.3.2). §8.3.2's signature capture then applies as it does
+  atomically.
+- An empty text part without a signature that is left after joining is dropped by §8.3.2's rule.
+- A part of a type the mapping does not model is kept in arrival order and left out of the message by
+  §8.3.2's rule, staying in `raw`.
+- Each `functionCall` part is one complete call. On the Gemini API a call is never split across chunks:
+  partial-argument streaming (`partialArgs` and `willContinue`, enabled by `streamFunctionCallArguments`) is a
+  Vertex AI feature the Gemini API does not support.
+- `finishReason` is the last value any chunk carried for `candidates[0]`.
+- `usageMetadata` is the last one any chunk carried, taken whole. Gemini sends counts already accumulated with
+  each chunk, so the mapping MUST NOT sum them across chunks and MUST NOT combine counters from different
+  chunks: the last `usageMetadata` holds the totals, even where one of its counts is lower than an earlier
+  chunk's. It is this mapping's terminal usage (§6 *Streaming assembly*).
+- Every other field, top-level (`modelVersion`, `responseId`, `promptFeedback`) or on `candidates[0]`
+  (`safetyRatings`, `citationMetadata`, `content.role`, `index`, `avgLogprobs` and any other), takes the last
+  value any chunk carried.
+
+`raw` is the merged response, and the rules above define all of it.
+
+**Token events.** Each text part is emitted as it arrives, except an empty one (§6 *Streaming assembly*): a
+part with `thought: true` as `LlmTokenEvent(delta_kind: "reasoning")`, any other text part as
+`LlmTokenEvent(delta_kind: "content")`. A `functionCall` part, and a part of an unmodeled type, emit none.
+
+**Blocked prompt.** A chunk that carries `promptFeedback.blockReason` and no candidates emits no token
+events. When the merged response has a `promptFeedback.blockReason` and no candidates, it maps by §8.3.2's
+blocked-prompt rule.
+
+**Errors.** An HTTP error before the stream starts maps by §8.3.3. A chunk that carries a top-level `error`
+object, inside a stream that began with HTTP 200, maps by §8.3.3 on its `code` and `status`, as the HTTP
+response with that error would, and ends the call, even when chunks follow it. A stream that ends with no chunk
+carrying either a `finishReason` or a `promptFeedback.blockReason`, for a dropped connection or a client
+timeout, is a connection error, `provider_unavailable`. Either way the call raises, and the token events
+already emitted stand, followed by the terminal `LlmFailedEvent` (graph-engine §6).
+
+**Structured output.** §8.3.5's paths apply to the merged response, and `parsed` is validated at the end,
+per §6.
+
+The `?alt=sse` endpoint, whole function calls on the Gemini API, cumulative `usageMetadata` and the
+signature rules (no joining of signed parts; a signature delivered on an empty text part) are verified
+against Google's SDKs and thinking documentation (tracked in `docs/compatibility.md`).
+
 ## 9. Determinism
 
 LLM completions are not deterministic by default. Even with `temperature: 0` and a fixed `seed`,
@@ -1984,9 +2214,6 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - **Tool-call-delta token events** — `LlmTokenEvent` carries `content` and `reasoning` deltas (§5);
   tool-call argument deltas are reassembled into the atomic `Response` but NOT emitted as token events.
   A `delta_kind: "tool_call"` variant is additive if a consumer needs live tool-argument streaming.
-- **Per-vendor streaming wire mappings beyond OpenAI-compatible** — Anthropic §8.2 and Gemini §8.3
-  streaming handling land as follow-ons; until then those mappings reject `stream`-set calls (§5
-  *Provider streaming support*).
 - **Streaming for non-completion provider operations** — embedding / rerank streaming is a separate
   concern; not in this version.
 - **Multi-modal audio and video** — audio and video inputs and outputs. Image inputs are
@@ -2029,3 +2256,4 @@ Not covered by this specification; deferred to follow-on capabilities or proposa
 - §7 `structured_output_invalid`: the exposure sentence is rewritten, and **What `error_message` describes** is added. `error_message` MUST describe every violation the content commits, each with its location as a JSON Pointer in RFC 6901's URI fragment form (`#`, `#/site/lat`) and the constraint that failed, and for a `type` violation the expected type. The definition says where a violation is located (a missing required property at the pointer it would occupy, an unexpected property at its own location), filters `anyOf` / `oneOf` members by their own `type`, applies every `allOf` member, makes a composite whose own constraint fails (a `oneOf` over-match, a satisfied `not`, a `contains` with too few or too many matches) one violation at the keyword, and makes content that is not well-formed JSON a single violation with no location. §7.1's per-attempt span paragraph states that each attempt's span, and the call's typed event, describe the request actually sent. §8.1.2 and §8.1.6 map an OpenAI refusal, atomic or streamed, to `finish_reason` `"content_filter"` with the refusal text as the message's content, matching the Anthropic mapping; a streamed refusal's `delta.refusal` pieces are content deltas, each emitted as a content token event whether or not tool-call deltas arrive, and §8.1.5.2 notes that content. §5 now says a `response_schema` call requests and validates conforming output, with decoding constrained only on some paths, and that a `response_schema` without `$schema` is interpreted as JSON Schema draft 2020-12; §7 defines `output_content` as the mapped message content, and §8.2.5's strict-tool-use note carries the same inherent exceptions as its JSON output. §8.1.5 narrows "identical regardless of `strict`" to validation, reporting `strict: true` as the `"native"` path and `strict: false` or no `strict` as `"native_unenforced"`. §8.2.5 corrects what Anthropic's constrained decoding guarantees (well-formed JSON with the schema's field types and required properties, but not the capitalization of string `enum` / `const` values) and adds that capitalization case as a third inherent non-conformance case. §8.3.5 states that Gemini produces well-formed JSON but supports a subset of JSON Schema. §8.1.5.1, §8.2.5.1 and §8.3.5.1 report the path a call took on the typed event, and §8.1.5.1 points at observability §5.5.7's `schema_not_honored` diagnostic, which is not a detection arm and MUST NOT by itself trigger the fallback by [proposal 0126](../../proposals/0126-structured-output-failure-completeness.md)
 - §7.1's guidance against inline retry and §8.1.1's note on the extras pass-through use plain words in place of Python's `try/except` and keyword-argument syntax. No behavior change; spec v0.120.1 (clarification, no proposal)
 - §5 to §10 use language-neutral notation. Python's `None`, `True` and `False` become `null`, `true` and `false`, and keyword arguments are written `name: value`. §5's `complete()` signature marks optional parameters with `?`, its parameter list states the `null` default of `tools` and `config`, and "keyword-only" becomes "passed by name". §8's canonicalization example says object keys are serialized in sorted order in place of quoting Python's `json.dumps`. No behavior change; spec v0.120.2 (clarification, no proposal)
+- §8.2.6 and §8.3.6 add Anthropic and Gemini streaming: each mapping rebuilds its vendor's atomic response from the stream (Anthropic's typed server-sent events; Gemini's `streamGenerateContent?alt=sse` chunks, with the last `usageMetadata` taken whole) and maps it by its existing response mapping, and §5's provider-support sentence names all three mappings. §3 allows an empty-string response content for a `"content_filter"`, `"length"` or `"error"` finish reason, in a `Response` only. §3.1.1 and §3.1.4 allow an empty text or thinking block when it carries a `signature`, which is kept and sent back; §3.1.7 drops an empty block whose foreign signature is stripped, and rejects a message the strip leaves empty with `provider_invalid_request`; the §8.1.1 and §8.2.1 request rows apply that drop to an empty signed block from another provider's history. §8.2.1 makes the body `stream` field always managed, sending `stream: true` for a `stream`-set call, and §8.3.1 notes that Gemini has no body `stream` field. §8.2.2 and §8.3.2 leave a block or part of a type the mapping does not model out of the message and keep it in `raw`, and drop an empty unsigned text block or part; §8.2.2's `pause_turn` row allows passing the response back only when its content held no unmodeled entries. §8.3.2 adds a blocked prompt (`promptFeedback.blockReason`, no candidates) as an empty `"content_filter"` response, and maps a signed thought part to a signed `ThinkingBlock`, which §8.3.1.1 sends back. §6 emits no token event for an empty delta; its *Tool calls* bullet raises `provider_invalid_response` for unparseable streamed arguments outside `finish_reason: "error"`, and its `finish_reason: "error"` description says an in-stream error event raises its §7 category rather than returning an `"error"` response; §3.1.5's strip raises no error unless it leaves the message empty (§3.1.7). §6 also gives its structural identity an exception for Gemini signed parts, and reads usage from each mapping's terminal usage. §8.3.3 gains a precedence: a 400 or 403 error that matches the content-part row maps to `provider_unsupported_content_block`, then the code and status rows decide, with `provider_unavailable` as the fallback. §7.1 does not re-ask a structured-output failure whose `output_content` is empty. §10 drops the deferral of per-vendor streaming by [proposal 0128](../../proposals/0128-llm-provider-anthropic-gemini-streaming.md)

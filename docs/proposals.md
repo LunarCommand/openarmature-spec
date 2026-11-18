@@ -7,7 +7,7 @@ lifecycle and the proposal template.
 
 | #    | Title                                       | Capability          | Status   | Python          | TypeScript |
 |------|---------------------------------------------|---------------------|----------|-----------------|------------|
-| [0128](proposals/0128-llm-provider-anthropic-gemini-streaming.md) | Streaming wire mappings for Anthropic and Gemini | llm-provider | Draft | —               | —          |
+| [0128](proposals/0128-llm-provider-anthropic-gemini-streaming.md) | Streaming wire mappings for Anthropic and Gemini | llm-provider | Accepted | Pending         | —          |
 | [0127](proposals/0127-assertion-matching-rules.md) | Matching rules and definitions for the assertion directives | conformance-adapter | Accepted | Pending         | —          |
 | [0126](proposals/0126-structured-output-failure-completeness.md) | Complete structured-output failure reports and a schema-not-honored diagnostic | llm-provider | Accepted | Partial (0.18.0)| —          |
 | [0125](proposals/0125-tool-arm-and-caller-set-fixture-coverage.md) | Fixture coverage for the Tool arm and the caller-set scope | observability | Accepted | Pending         | —          |
@@ -98,7 +98,7 @@ lifecycle and the proposal template.
 | [0040](proposals/0040-observability-mid-invocation-metadata-open-span-update.md) | Mid-invocation metadata open-span update | observability | Accepted | Shipped (0.11.0)| —          |
 | [0039](proposals/0039-observability-caller-supplied-invocation-id.md) | Caller-supplied `invocation_id` | observability | Accepted | Shipped (0.11.0)| —          |
 | [0038](proposals/0038-llm-provider-google-gemini-mapping.md) | Google Gemini wire-format mapping | llm-provider  | Accepted | Pending         | —          |
-| [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping | llm-provider  | Accepted | Pending         | —          |
+| [0037](proposals/0037-llm-provider-anthropic-messages-mapping.md) | Anthropic Messages wire-format mapping | llm-provider  | Accepted | Partial (0.18.0)| —          |
 | [0036](proposals/0036-graph-engine-fan-out-collection-reducers.md) | Fan-out collection reducers | graph-engine  | Accepted | Shipped (0.10.0)| —          |
 | [0035](proposals/0035-observability-langfuse-graph-topology-fixtures.md) | Langfuse graph-topology fixtures | observability | Accepted | Shipped (0.10.0)| —          |
 | [0034](proposals/0034-caller-supplied-invocation-metadata.md) | Caller-supplied invocation metadata | observability | Accepted | Shipped (0.10.0)| —          |

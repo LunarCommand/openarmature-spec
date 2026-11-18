@@ -1,0 +1,46 @@
+# An Anthropic refusal with no content, atomic: llm-provider §8.2.2 and §3
+# (proposal 0128).
+#
+# A refusal can arrive with an empty `content` array. `stop_reason: refusal`
+# maps to "content_filter", which §3 allows to have empty content, so the
+# message's content is the empty string, with no tool calls. The refusal
+# category stays on `raw.stop_details`.
+#
+# `raw_check.equals`: see the harness note in fixture 001's header.
+
+mapping: anthropic
+
+cases:
+  - name: empty_refusal_maps_to_empty_content_filter
+    description: |
+      {content: [], stop_reason: refusal, stop_details: {...}}. The Response
+      has content "", no tool calls, finish_reason "content_filter" and usage
+      set. raw keeps stop_details and the empty content array.
+    call:
+      operation: complete
+      messages:
+        - {role: user, content: "Explain how to do something harmful."}
+      config: {max_tokens: 256}
+    mock_provider:
+      responses:
+        - status: 200
+          body:
+            type: message
+            id: msg_102
+            model: claude-test
+            role: assistant
+            content: []
+            stop_reason: refusal
+            stop_sequence: null
+            stop_details: {type: refusal, category: cyber, explanation: null}
+            usage: {input_tokens: 14, output_tokens: 0}
+    expected:
+      response:
+        message: {role: assistant, content: "", tool_calls: null}
+        finish_reason: content_filter
+        usage: {prompt_tokens: 14, completion_tokens: 0, total_tokens: 14}
+        raw_check:
+          equals:
+            content: []
+            stop_reason: refusal
+            stop_details: {type: refusal, category: cyber, explanation: null}
