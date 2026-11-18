@@ -387,7 +387,7 @@ maps to `provider_invalid_request`. A stream that ends with no chunk carrying ei
 
 ### Vendor facts
 
-The Anthropic facts above were checked on 2026-11-14 against Anthropic's streaming and citations
+The Anthropic facts above were checked on 2026-11-14, and again on 2026-11-17, the accept day, against Anthropic's streaming and citations
 documentation: the event names and order, the five delta types (`text_delta`, `input_json_delta`,
 `thinking_delta`, `signature_delta`, `citations_delta`), cumulative `message_delta` usage, `ping`, the `error`
 event with `overloaded_error` as its example, whole `redacted_thinking` blocks, the empty `thinking_delta`
@@ -396,7 +396,7 @@ versioning page, checked the same day, says Anthropic may "add new variants to e
 example, streaming event types)", which covers new event, delta and content block types.
 
 Google's API reference documents `streamGenerateContent` without describing its chunks, so four Gemini facts
-were checked on 2026-11-14 against Google's own SDKs and documentation and one widely used client:
+were checked on 2026-11-14, and again on 2026-11-17, the accept day, against Google's own SDKs and documentation and one widely used client:
 
 1. **`?alt=sse`.** Google's Python SDK (`google-genai`) requests `{model}:streamGenerateContent?alt=sse` for
    both the Gemini API and Vertex AI.
@@ -410,8 +410,8 @@ were checked on 2026-11-14 against Google's own SDKs and documentation and one w
    noting that Gemini 2.0 reports a lower prompt count in the final chunk. That observation is third-party,
    and the rule above, the last `usageMetadata` taken whole, holds whether or not it recurs.
 4. **Signatures.** Google's thinking guide says not to concatenate parts with signatures or merge a signed
-   part with an unsigned one, and that when streaming a response without a function call "the model may
-   return the thought signature in a part with an empty text content part".
+   part with an unsigned one. Its thought-signatures guide says that when streaming a response without a
+   function call "the model may return the thought signature in a part with an empty text content part".
 
 ## Conformance test impact
 
